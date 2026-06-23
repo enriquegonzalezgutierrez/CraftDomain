@@ -1,17 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
-#              handling dependency injection, state transitions, and music orchestration.
+#              handling dynamic, loosely-typed dependency injection to prevent
+#              compile-time circular class loops.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
 class_name Bootstrap
 extends Node
 
-## References to active systems.
+## References to active systems, loosely typed to prevent circular loops
 var main_menu: MainMenu
-var world_controller: WorldController
-var player_controller: PlayerController
+var world_controller: Node3D
+var player_controller: CharacterBody3D
 var audio_service: AudioService
 
 func _ready() -> void:
@@ -108,7 +109,9 @@ func _on_start_game_requested() -> void:
 func _bootstrap_world() -> void:
 	print("[Bootstrap] Instantiating World controller...")
 	
-	world_controller = WorldController.new()
+	# Dynamically load the controller class to bypass compile dependency checks
+	var controller_script: Script = load("res://src/Infrastructure/World/WorldController.gd")
+	world_controller = controller_script.new() as Node3D
 	world_controller.name = "World"
 	add_child(world_controller)
 	
@@ -117,16 +120,25 @@ func _bootstrap_world() -> void:
 func _bootstrap_player() -> void:
 	print("[Bootstrap] Instantiating Player controller...")
 	
-	player_controller = PlayerController.new()
+	# Dynamically load the player class to bypass compile dependency checks
+	var player_script: Script = load("res://src/Infrastructure/Player/PlayerController.gd")
+	player_controller = player_script.new() as CharacterBody3D
 	player_controller.name = "Player"
 	add_child(player_controller)
 	
 	print("[Bootstrap] Player controller loaded.")
 
 func _inject_dependencies() -> void:
-	print("[Bootstrap] Injecting dependencies...")
+	print("[Bootstrap] Injecting dependencies dynamically...")
 	
-	# Inject the player dependency into the WorldController for real-time proximity tracking
-	world_controller.player = player_controller
-	
-	print("[Bootstrap] Game bootstrap complete. World activated.")
+	# Use dynamic safe property binding to fully bypass circular compile-time errors
+	if is_instance_valid(world_controller) and is_instance_valid(player_controller):
+		world_controller.set("player", player_controller)
+		player_controller.set("world_controller", world_controller)
+		
+		# Locate and inject world_controller reference into the Player's HUD
+		var hud_node: Control = player_controller.get_node_or_null("HUD")
+		if is_instance_valid(hud_node):
+			hud_node.set("world_controller", world_controller)
+			
+	print("[Bootstrap] Dynamic dependency injection completed successfully.")

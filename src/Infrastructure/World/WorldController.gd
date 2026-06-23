@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications
-#              and player persistence to disk asynchronously.
+#              and dynamic animal/villager/merchant entity lifecycles.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -16,7 +16,10 @@ var loader_service: ChunkLoaderService
 var repository: WorldRepository
 
 ## Dependency-injected player reference.
-var player: PlayerController
+var player: CharacterBody3D
+
+## Statically loaded Entity Script to prevent compile-time cache bugs
+var _entity_script: Script = load("res://src/Infrastructure/Life/PassiveEntity.gd")
 
 ## Tracking map for active ChunkNode representations: Vector3i -> ChunkNode.
 var _chunk_nodes: Dictionary = {}
@@ -24,7 +27,7 @@ var _chunk_nodes: Dictionary = {}
 ## Tracking dictionary to prevent initiating duplicate load threads: Vector3i -> bool.
 var _pending_loading_chunks: Dictionary = {}
 
-## Tracking map for entities spawned within specific chunks: Vector3i -> Array[PassiveEntity].
+## Tracking map for entities spawned within specific chunks: Vector3i -> Array[CharacterBody3D].
 var _chunk_entities: Dictionary = {}
 
 ## Thread safety sync structures
@@ -168,7 +171,7 @@ func _render_completed_chunks_from_queue() -> void:
 			_spawn_entities_for_chunk(task.chunk)
 			
 			# Safe spawn activation: Activate player once the home chunk is rendered
-			if chunk_pos == Vector3i(0, 0, 0) and is_instance_valid(player) and not player.is_active:
+			if chunk_pos == Vector3i(0, 0, 0) and is_instance_valid(player) and not player.get("is_active"):
 				_activate_player_spawn()
 
 func _pre_shaded_colors_of_chunk(chunk: Chunk, transforms: Array[Transform3D]) -> Array[Color]:
@@ -188,35 +191,36 @@ func _pre_shaded_colors_of_chunk(chunk: Chunk, transforms: Array[Transform3D]) -
 
 func _activate_player_at_coord(spawn_y: float) -> void:
 	player.position = Vector3(8.5, spawn_y, 8.5)
-	player.is_active = true
+	player.set("is_active", true)
 	print("[World] Home chunk loaded. Player activated safely.")
 
 func _spawn_entities_for_chunk(chunk: Chunk) -> void:
 	var chunk_pos := chunk.position
 	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
-	var entities_list: Array[PassiveEntity] = []
+	var entities_list: Array[CharacterBody3D] = []
 	
 	# Spawn a Villager and a Merchant if the chunk generated a rustic cabin
 	var has_house: bool = (abs(chunk_pos.x) + abs(chunk_pos.z)) % 3 == 2 and chunk_pos.y == 0
 	if has_house:
-		# Place the Villager safely above ground in front of the house doorway (local coordinates x=7, z=5)
+		# Place the Villager safely above ground (Type 2 is VILLAGER)
 		var spawn_pos_global := chunk_offset + Vector3(7.5, 14.0, 5.5)
-		var villager := PassiveEntity.new(PassiveEntity.Type.VILLAGER, spawn_pos_global)
+		var villager = _entity_script.new(2, spawn_pos_global) as CharacterBody3D
 		add_child(villager)
 		entities_list.append(villager)
 		
-		# Place the Merchant on the side of the house (local coordinates x=5, z=7)
+		# Place the Merchant on the side of the house (Type 3 is MERCHANT)
 		var merchant_pos_global := chunk_offset + Vector3(5.5, 14.0, 7.5)
-		var merchant := PassiveEntity.new(PassiveEntity.Type.MERCHANT, merchant_pos_global)
+		var merchant = _entity_script.new(3, merchant_pos_global) as CharacterBody3D
 		add_child(merchant)
 		entities_list.append(merchant)
 		
 	# Spawn local animals (Pigs / Chickens) deterministically
 	var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2
 	if should_spawn_animal:
-		var animal_type := PassiveEntity.Type.PIG if (chunk_pos.x + chunk_pos.z) % 2 == 0 else PassiveEntity.Type.CHICKEN
+		# Type 0 is PIG, Type 1 is CHICKEN
+		var animal_type_id: int = 0 if (chunk_pos.x + chunk_pos.z) % 2 == 0 else 1
 		var spawn_pos_global := chunk_offset + Vector3(8.5, 14.0, 8.5)
-		var animal := PassiveEntity.new(animal_type, spawn_pos_global)
+		var animal = _entity_script.new(animal_type_id, spawn_pos_global) as CharacterBody3D
 		add_child(animal)
 		entities_list.append(animal)
 		
@@ -272,12 +276,12 @@ func _activate_player_spawn() -> void:
 		# Restore player coordinates and camera look angles from last save session
 		player.position = saved_global["player_pos"]
 		player.rotation = saved_global["player_rot"]
-		player.is_active = true
+		player.set("is_active", true)
 		print("[WorldController] Restored player spawn position from save: ", player.position)
 	else:
 		# Fresh spawn: default safe coordinates
 		player.position = Vector3(8.5, 14.0, 8.5)
-		player.is_active = true
+		player.set("is_active", true)
 		print("[WorldController] Fresh world spawn created.")
 
 ## Exposes a public, real-time API to edit blocks globally from anywhere.

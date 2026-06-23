@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player, 
 #              handling camera look, movements, RayCast targeting, inventory,
-#              and dynamic auto-saving upon pause.
+#              and dynamic auto-saving upon pause. Fully decoupled from WorldController.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -25,10 +25,10 @@ var is_active: bool = false
 var lava_buckets: int = 3
 var fried_chickens: int = 0
 
-# Node references created via code
+# Node references created via code (loosely typed to prevent circular dependency errors)
 var camera: Camera3D
 var raycast: RayCast3D
-var world_controller: WorldController
+var world_controller: Node3D
 var hud: PlayerHUD
 
 # Build inventory selection state
@@ -145,12 +145,12 @@ func _physics_process(delta: float) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			
 			# Dynamic Auto-Save: Silently write player position and all world modifications to disk
-			if is_instance_valid(world_controller):
-				world_controller.save_all()
+			if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
+				world_controller.call("save_all")
 		else:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-	# Quick Slot Selection
+	# Quick Slot Selection mapping keys 1-6 directly to modern Hotbar Slots 0-5
 	if Input.is_action_just_pressed("select_stone"):
 		active_build_type = BlockType.Type.STONE
 		is_item_selected = true
@@ -209,17 +209,17 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 func _mine_block() -> void:
-	if raycast.is_colliding():
+	if raycast.is_colliding() and is_instance_valid(world_controller):
 		# Get collision vector and step slightly inside the block surface to find its center
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.1)
 		var block_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
 		
 		# Replace with Air
-		world_controller.set_block_globally(block_coord, BlockType.Type.AIR)
+		world_controller.call("set_block_globally", block_coord, BlockType.Type.AIR)
 		print("[Player] Mined block at: ", block_coord)
 
 func _build_block() -> void:
-	if raycast.is_colliding():
+	if raycast.is_colliding() and is_instance_valid(world_controller):
 		# Clean interaction routing: If the targeted collider is an interactive Entity, trigger transaction
 		var collider = raycast.get_collider()
 		if collider is PassiveEntity:
@@ -241,7 +241,7 @@ func _build_block() -> void:
 		if block_coord == player_feet_coord or block_coord == player_head_coord:
 			return # Avoid self-clipping
 			
-		world_controller.set_block_globally(block_coord, active_build_type)
+		world_controller.call("set_block_globally", block_coord, active_build_type)
 		print("[Player] Placed block at: ", block_coord)
 
 # Handle Left-Click/Right-Click action maps dynamically

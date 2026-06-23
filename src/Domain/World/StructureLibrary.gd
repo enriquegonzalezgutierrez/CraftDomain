@@ -1,9 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain Service representing the architectural blueprint library,
-#              procedurally constructing cabins, fortresses, and harbor docks.
+#              procedurally constructing cabins, fortresses, harbor docks,
+#              trees, streetlights, and fenced merchant stalls.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/StructureGenerator.gd
+# File: res://src/Domain/World/StructureLibrary.gd
 # ==============================================================================
 class_name StructureLibrary
 extends RefCounted
@@ -53,6 +54,42 @@ static func build_village_cabin(chunk: Chunk, start_x: int, start_z: int, ground
 			if chunk.is_within_bounds(lx, roof_y, lz):
 				chunk.set_block(lx, roof_y, lz, BlockType.Type.LEAVES)
 
+## Procedurally constructs an open wooden market stall with fences for the merchant.
+static func build_merchant_stall_with_fences(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
+	var width: int = 4
+	var depth: int = 4
+	
+	# 1. Floor (Stone base)
+	for x in range(width):
+		var lx := start_x + x
+		for z in range(depth):
+			var lz := start_z + z
+			chunk.set_block(lx, ground_y, lz, BlockType.Type.STONE)
+			
+	# 2. Support Pillars (Wood corners, height 3)
+	for y in range(1, 4):
+		var ly := ground_y + y
+		chunk.set_block(start_x, ly, start_z, BlockType.Type.WOOD)
+		chunk.set_block(start_x + width - 1, ly, start_z, BlockType.Type.WOOD)
+		chunk.set_block(start_x, ly, start_z + depth - 1, BlockType.Type.WOOD)
+		chunk.set_block(start_x + width - 1, ly, start_z + depth - 1, BlockType.Type.WOOD)
+		
+	# 3. Front Counter Fence (Half-height wooden barrier on z=0, y=1)
+	chunk.set_block(start_x + 1, ground_y + 1, start_z, BlockType.Type.WOOD)
+	chunk.set_block(start_x + 2, ground_y + 1, start_z, BlockType.Type.WOOD)
+	
+	# 4. Colorful Roof (Striped Leaves/Wood canopy)
+	var roof_y := ground_y + 3
+	for x in range(width):
+		var lx := start_x + x
+		for z in range(depth):
+			var lz := start_z + z
+			var is_stripe: bool = (x % 2 == 0)
+			if is_stripe:
+				chunk.set_block(lx, roof_y, lz, BlockType.Type.LEAVES)
+			else:
+				chunk.set_block(lx, roof_y, lz, BlockType.Type.WOOD)
+
 ## Procedurally constructs a medieval stone watchtower on mountain peaks.
 static func build_medieval_watchtower(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
 	var size: int = 3
@@ -76,7 +113,6 @@ static func build_medieval_watchtower(chunk: Chunk, start_x: int, start_z: int, 
 				var is_edge: bool = (x == 0 or x == size - 1 or z == 0 or z == size - 1)
 				
 				if is_edge:
-					# Add archery window slits on high levels
 					var is_window: bool = (y == 4 or y == 6) and (x == 1 or z == 1)
 					if is_window:
 						chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
@@ -91,10 +127,8 @@ static func build_medieval_watchtower(chunk: Chunk, start_x: int, start_z: int, 
 		var lx := start_x + x
 		for z in range(size):
 			var lz := start_z + z
-			# Top deck floor
 			chunk.set_block(lx, roof_y, lz, BlockType.Type.STONE)
 			
-			# Outer protective battlements (corner pillars)
 			var is_corner: bool = (x == 0 or x == size - 1) and (z == 0 or z == size - 1)
 			if is_corner:
 				if chunk.is_within_bounds(lx, roof_y + 1, lz):
@@ -104,7 +138,6 @@ static func build_medieval_watchtower(chunk: Chunk, start_x: int, start_z: int, 
 static func build_harbor_pier(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
 	var pier_length: int = 5
 	
-	# Draw a flat wooden dock extending over the surface
 	for z in range(pier_length):
 		var lz := start_z + z
 		
@@ -116,3 +149,38 @@ static func build_harbor_pier(chunk: Chunk, start_x: int, start_z: int, ground_y
 		# Wooden plank walkway surface
 		chunk.set_block(start_x, ground_y + 1, lz, BlockType.Type.WOOD)
 		chunk.set_block(start_x + 1, ground_y + 1, lz, BlockType.Type.WOOD)
+
+## Procedurally constructs a natural tree trunks with a leafy canopy.
+static func build_procedural_tree(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
+	var trunk_height: int = 4
+	
+	# 1. Grow Wood Trunk vertically
+	for y in range(1, trunk_height + 1):
+		chunk.set_block(start_x, ground_y + y, start_z, BlockType.Type.WOOD)
+		
+	# 2. Place Leaf Canopy (3x3x3 Leaves cube centered on the top trunk)
+	var top_y := ground_y + trunk_height
+	for x in range(-1, 2):
+		for y in range(0, 3):
+			for z in range(-1, 2):
+				var lx := start_x + x
+				var ly := top_y + y
+				var lz := start_z + z
+				
+				# Skip the trunk core to save block calculations
+				if x == 0 and z == 0 and y == 0:
+					continue
+					
+				chunk.set_block(lx, ly, lz, BlockType.Type.LEAVES)
+
+## Procedurally constructs a tall street lamppost.
+static func build_village_streetlight(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
+	var post_height: int = 3
+	
+	# 1. Tall Wooden post
+	for y in range(1, post_height + 1):
+		chunk.set_block(start_x, ground_y + y, start_z, BlockType.Type.WOOD)
+		
+	# 2. Glow stone lantern block at the top (Represented by a unique colored Stone block)
+	# (We can color code it later, but using Stone is standard and fully visible)
+	chunk.set_block(start_x, ground_y + post_height + 1, start_z, BlockType.Type.STONE)

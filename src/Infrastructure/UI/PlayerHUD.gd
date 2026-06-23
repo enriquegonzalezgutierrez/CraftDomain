@@ -3,15 +3,16 @@
 # Description: Infrastructure UI controller managing a modern, glassmorphic HUD
 #              comprising a perfect circular Minimap with native hardware clipping,
 #              a sleek crosshair, and a centered hotbar with selection indicators.
+#              Loosely typed to prevent compile-time circular class loops.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
 class_name PlayerHUD
 extends Control
 
-## Dependencies injected by the parent controller
+## Dependencies injected by the parent controller, loosely typed to prevent circular loops
 var player: PlayerController
-var world_controller: WorldController
+var world_controller: Node3D
 
 # Inner UI nodes created dynamically
 var minimap: Control
@@ -78,7 +79,7 @@ func _setup_minimap() -> void:
 	minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	minimap_bg.add_child(minimap)
 	
-	# Statically construct the compiled code line-by-line (clipping is handled automatically by the engine now!)
+	# Statically construct the compiled code line-by-line (statically typed assignments used)
 	var minimap_script := GDScript.new()
 	var code_lines: Array[String] = [
 		"extends Control",
@@ -93,17 +94,22 @@ func _setup_minimap() -> void:
 		"\tvar radius_limit: float = size_pixels / 2.0 - 5.0",
 		"\t# Draw clean background radar circle matching the panel boundaries",
 		"\tdraw_circle(center, radius_limit, Color(0.08, 0.08, 0.08, 0.75))",
-		"\tvar world_state: WorldState = hud.world_controller.world_state",
+		"\tvar world_state = hud.world_controller.world_state",
 		"\tvar p_block_pos := Vector3i(floor(hud.player.global_position.x), 0, floor(hud.player.global_position.z))",
-		"\tvar center_chunk_pos := world_state.global_to_chunk_pos(p_block_pos)",
+		"\t# Statically typed assignment to prevent parser type inference errors",
+		"\tvar center_chunk_pos: Vector3i = world_state.global_to_chunk_pos(p_block_pos)",
 		"\tvar scale_factor: float = (size_pixels - 20) / 5.0",
 		"\tfor x in range(-2, 3):",
 		"\t\tfor z in range(-2, 3):",
 		"\t\t\tvar target_pos := Vector3i(center_chunk_pos.x + x, 0, center_chunk_pos.z + z)",
-		"\t\t\tvar chunk: Chunk = world_state.get_chunk(target_pos)",
+		"\t\t\tvar chunk = world_state.get_chunk(target_pos)",
 		"\t\t\tif chunk == null:",
 		"\t\t\t\tcontinue",
 		"\t\t\tvar draw_pos := center + Vector2(x, z) * scale_factor - Vector2(scale_factor / 2.0, scale_factor / 2.0)",
+		"\t\t\t# Mathematical Clipping: Crop drawing of blocks if they fall outside the radar circle",
+		"\t\t\tvar block_center := draw_pos + Vector2(scale_factor / 2.0, scale_factor / 2.0)",
+		"\t\t\tif block_center.distance_to(center) > radius_limit:",
+		"\t\t\t\tcontinue",
 		"\t\t\tvar is_village: bool = (abs(target_pos.x) + abs(target_pos.z)) % 3 == 2",
 		"\t\t\tvar chunk_color := Color(0.4, 0.75, 0.3)",
 		"\t\t\tif is_village:",
