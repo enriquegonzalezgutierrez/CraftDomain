@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
-#              handling dependency injection and event-driven main menu transitions.
+#              handling dependency injection, state transitions, and music orchestration.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -12,6 +12,7 @@ extends Node
 var main_menu: MainMenu
 var world_controller: WorldController
 var player_controller: PlayerController
+var audio_service: AudioService
 
 func _ready() -> void:
 	_initialize_application()
@@ -20,6 +21,7 @@ func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
 	
 	_setup_environment()
+	_setup_audio()
 	_load_main_menu()
 
 func _setup_environment() -> void:
@@ -61,6 +63,16 @@ func _setup_environment() -> void:
 	
 	print("[Bootstrap] Procedural environment initialized.")
 
+func _setup_audio() -> void:
+	print("[Bootstrap] Initializing Audio Service...")
+	
+	# Instantiate and register the audio presentation service
+	audio_service = AudioService.new()
+	add_child(audio_service)
+	
+	# Fade-in the main menu background music
+	audio_service.play_menu_music()
+
 func _load_main_menu() -> void:
 	print("[Bootstrap] Loading Main Menu...")
 	
@@ -84,7 +96,11 @@ func _on_start_game_requested() -> void:
 		main_menu.queue_free()
 		main_menu = null
 		
-	# 2. Bootstrap 3D World and Player
+	# 2. Transition soundtrack using professional 1.5s crossfading
+	if is_instance_valid(audio_service):
+		audio_service.play_world_music()
+		
+	# 3. Bootstrap 3D World and Player
 	_bootstrap_world()
 	_bootstrap_player()
 	_inject_dependencies()
