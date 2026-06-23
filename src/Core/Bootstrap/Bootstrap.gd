@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
-#              handling dynamic, loosely-typed dependency injection to prevent
-#              compile-time circular class loops.
+#              handling dynamic, decoupled dependency injection, soundtracks, 
+#              and celestial Day/Night cycle management.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -14,6 +14,11 @@ var main_menu: MainMenu
 var world_controller: Node3D
 var player_controller: CharacterBody3D
 var audio_service: AudioService
+var celestial_service: Node
+
+## Environmental nodes stored for dependency injection
+var sun_light: DirectionalLight3D
+var world_environment: WorldEnvironment
 
 func _ready() -> void:
 	_initialize_application()
@@ -22,21 +27,22 @@ func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
 	
 	_setup_environment()
+	_setup_celestial()
 	_setup_audio()
 	_load_main_menu()
 
 func _setup_environment() -> void:
 	# 1. Setup directional Sun light with shadows
-	var sun_light := DirectionalLight3D.new()
+	sun_light = DirectionalLight3D.new()
 	sun_light.name = "SunLight"
 	sun_light.shadow_enabled = true
 	
-	# Rotate the sun to a natural high-noon angle
+	# Rotate the sun to a natural high-noon angle initially
 	sun_light.transform.basis = Basis(Vector3(1, 0, 0), deg_to_rad(-55)).rotated(Vector3(0, 1, 0), deg_to_rad(30))
 	add_child(sun_light)
 	
 	# 2. Configure a gorgeous Procedural Sky Environment
-	var world_environment := WorldEnvironment.new()
+	world_environment = WorldEnvironment.new()
 	world_environment.name = "WorldEnvironment"
 	
 	var environment := Environment.new()
@@ -63,6 +69,21 @@ func _setup_environment() -> void:
 	add_child(world_environment)
 	
 	print("[Bootstrap] Procedural environment initialized.")
+
+func _setup_celestial() -> void:
+	print("[Bootstrap] Initializing Celestial Day/Night Cycle Service...")
+	
+	# Dynamically load the Celestial Service class to prevent compilation caching locks
+	var celestial_script: Script = load("res://src/Infrastructure/Celestial/CelestialService.gd")
+	celestial_service = celestial_script.new() as Node
+	celestial_service.name = "CelestialService"
+	
+	# Inject atmospheric dependencies
+	celestial_service.set("sun_light", sun_light)
+	celestial_service.set("world_environment", world_environment)
+	
+	add_child(celestial_service)
+	print("[Bootstrap] Celestial Service activated.")
 
 func _setup_audio() -> void:
 	print("[Bootstrap] Initializing Audio Service...")
