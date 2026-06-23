@@ -1,20 +1,32 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain service responsible for procedurally generating terrain 
-#              and scattering structures (village houses) inside chunks.
+#              shaping Biomes, and spawning rare structured Landmarks.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldGenerator.gd
 # ==============================================================================
 class_name WorldGenerator
 extends RefCounted
 
-var _noise: FastNoiseLite
+var _terrain_noise: FastNoiseLite
+var _biome_noise: FastNoiseLite
 
 func _init(p_seed: int = 42) -> void:
-	_noise = FastNoiseLite.new()
-	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	_noise.seed = p_seed
-	_noise.frequency = 0.03
+	# 1. Primary Terrain Noise: Multi-Octave Fractal Brownian Motion (FBM)
+	_terrain_noise = FastNoiseLite.new()
+	_terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_terrain_noise.seed = p_seed
+	_terrain_noise.frequency = 0.02
+	_terrain_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_terrain_noise.fractal_octaves = 4
+	_terrain_noise.fractal_lacunarity = 2.0
+	_terrain_noise.fractal_gain = 0.45
+	
+	# 2. Secondary Biome Noise: Low Frequency Simplex to classify terrains
+	_biome_noise = FastNoiseLite.new()
+	_biome_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	_biome_noise.seed = p_seed + 1000
+	_biome_noise.frequency = 0.005
 
 ## Generates and fills the internal voxel grid of a given Chunk.
 func generate_chunk(chunk: Chunk) -> void:
@@ -22,19 +34,31 @@ func generate_chunk(chunk: Chunk) -> void:
 	var chunk_offset_y := chunk.position.y * Chunk.SIZE
 	var chunk_offset_z := chunk.position.z * Chunk.SIZE
 
-	# Store heights to find flat ground for houses later
+	# Store height limits locally for landmark evaluation pass
 	var heights: Array[int] = []
 	heights.resize(Chunk.SIZE * Chunk.SIZE)
+	
+	var landmark_types: Array[BiomeService.LandmarkType] = []
+	landmark_types.resize(Chunk.SIZE * Chunk.SIZE)
+	landmark_types.fill(BiomeService.LandmarkType.NONE)
 
-	# Pass 1: Heightmap & Terrain layers
+	# Pass 1: Biome shaping and terrain blocks
 	for x in range(Chunk.SIZE):
 		var global_x := chunk_offset_x + x
 		for z in range(Chunk.SIZE):
 			var global_z := chunk_offset_z + z
 			
-			var noise_val := _noise.get_noise_2d(float(global_x), float(global_z))
-			var height_limit := int(remap(noise_val, -1.0, 1.0, 2.0, 10.0))
+			# Query the Biome Service to evaluate topography profile at this coordinate
+			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(
+				global_x, 
+				global_z, 
+				_terrain_noise, 
+				_biome_noise
+			)
+			
+			var height_limit: int = profile.base_height
 			heights[x + Chunk.SIZE * z] = height_limit
+			landmark_types[x + Chunk.SIZE * z] = profile.landmark
 			
 			for y in range(Chunk.SIZE):
 				var global_y := chunk_offset_y + y
@@ -45,62 +69,32 @@ func generate_chunk(chunk: Chunk) -> void:
 				elif global_y < height_limit:
 					block_type = BlockType.Type.DIRT
 				elif global_y == height_limit:
-					block_type = BlockType.Type.GRASS
+					# Sand beach logic: If near ocean water height, paint as dirt sandbank
+					if profile.biome == BiomeService.BiomeType.OCEAN and height_limit <= 4:
+						block_type = BlockType.Type.DIRT
+					else:
+						block_type = BlockType.Type.GRASS
 				
 				chunk.set_block(x, y, z, block_type)
 
-	# Pass 2: Procedural Village House Placement
-	# Deterministically spawn a village house in specific chunks (e.g., every 3rd chunk grid interval)
-	var should_spawn_house: bool = (abs(chunk.position.x) + abs(chunk.position.z)) % 3 == 2 and chunk.position.y == 0
-	
-	if should_spawn_house:
-		# Place the house offset in the center of the chunk (X=5, Z=5)
-		var start_x: int = 5
-		var start_z: int = 5
-		var ground_height: int = heights[start_x + Chunk.SIZE * start_z]
-		
-		# Verify ground height fits safely within our vertical chunk slice
-		if ground_height > 1 and ground_height < 11:
-			_build_local_village_house(chunk, start_x, start_z, ground_height)
-
-func _build_local_village_house(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
-	var house_width: int = 5
-	var house_depth: int = 5
-	var house_height: int = 4
-	
-	# 1. Foundation (Stone flooring layers)
-	for x in range(house_width):
-		var lx := start_x + x
-		for z in range(house_depth):
-			var lz := start_z + z
-			# Replace blocks under foundation to prevent floating on sloped hillsides
-			for fill_y in range(ground_y - 2, ground_y + 1):
-				chunk.set_block(lx, fill_y, lz, BlockType.Type.STONE)
-
-	# 2. Hollow Wood Walls
-	for y in range(1, house_height):
-		var ly := ground_y + y
-		for x in range(house_width):
-			var lx := start_x + x
-			for z in range(house_depth):
-				var lz := start_z + z
+	# Pass 2: Procedural Structure Spawns
+	for x in range(Chunk.SIZE):
+		for z in range(Chunk.SIZE):
+			var landmark: BiomeService.LandmarkType = landmark_types[x + Chunk.SIZE * z]
+			if landmark == BiomeService.LandmarkType.NONE:
+				continue
 				
-				var is_edge: bool = (x == 0 or x == house_width - 1 or z == 0 or z == house_depth - 1)
-				if is_edge:
-					# Doorway opening at the front center (x=2, z=0)
-					var is_door: bool = (x == 2 and z == 0 and (y == 1 or y == 2))
-					if is_door:
-						chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
-					else:
-						chunk.set_block(lx, ly, lz, BlockType.Type.WOOD)
-				else:
-					chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
-
-	# 3. Overhanging Shrubbery Roof (Leaves)
-	var roof_y := ground_y + house_height
-	for x in range(-1, house_width + 1):
-		var lx := start_x + x
-		for z in range(-1, house_depth + 1):
-			var lz := start_z + z
-			if chunk.is_within_bounds(lx, roof_y, lz):
-				chunk.set_block(lx, roof_y, lz, BlockType.Type.LEAVES)
+			var ground_y: int = heights[x + Chunk.SIZE * z]
+			
+			# Build landmarks safely inside vertical boundaries
+			if ground_y > 1 and ground_y < 10:
+				match landmark:
+					BiomeService.LandmarkType.VILLAGE:
+						# Spawn a detailed Village Cabin
+						StructureLibrary.build_village_cabin(chunk, x, z, ground_y)
+					BiomeService.LandmarkType.PORT:
+						# Spawn Harbor Pier extending over water
+						StructureLibrary.build_harbor_pier(chunk, x, z, ground_y)
+					BiomeService.LandmarkType.CASTLE:
+						# Spawn mountain peak stone Watchtower
+						StructureLibrary.build_medieval_watchtower(chunk, x, z, ground_y)

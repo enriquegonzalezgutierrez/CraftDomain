@@ -1,14 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
-#              handling dependency injection between the World and Player controllers.
+#              handling dependency injection and event-driven main menu transitions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
 class_name Bootstrap
 extends Node
 
-## References to initialized domain controllers.
+## References to active systems.
+var main_menu: MainMenu
 var world_controller: WorldController
 var player_controller: PlayerController
 
@@ -19,9 +20,7 @@ func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
 	
 	_setup_environment()
-	_bootstrap_world()
-	_bootstrap_player()
-	_inject_dependencies()
+	_load_main_menu()
 
 func _setup_environment() -> void:
 	# 1. Setup directional Sun light with shadows
@@ -62,6 +61,34 @@ func _setup_environment() -> void:
 	
 	print("[Bootstrap] Procedural environment initialized.")
 
+func _load_main_menu() -> void:
+	print("[Bootstrap] Loading Main Menu...")
+	
+	# Ensure the mouse cursor is visible to interact with buttons
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	
+	main_menu = MainMenu.new()
+	main_menu.name = "MainMenu"
+	
+	# Connect to UI signal using event-driven delegation
+	main_menu.play_pressed.connect(_on_start_game_requested)
+	add_child(main_menu)
+	
+	print("[Bootstrap] Main Menu loaded successfully.")
+
+func _on_start_game_requested() -> void:
+	print("[Bootstrap] Start game requested. Swapping states...")
+	
+	# 1. Unload the Main Menu from memory
+	if is_instance_valid(main_menu):
+		main_menu.queue_free()
+		main_menu = null
+		
+	# 2. Bootstrap 3D World and Player
+	_bootstrap_world()
+	_bootstrap_player()
+	_inject_dependencies()
+
 func _bootstrap_world() -> void:
 	print("[Bootstrap] Instantiating World controller...")
 	
@@ -86,4 +113,4 @@ func _inject_dependencies() -> void:
 	# Inject the player dependency into the WorldController for real-time proximity tracking
 	world_controller.player = player_controller
 	
-	print("[Bootstrap] Dependency injection completed successfully.")
+	print("[Bootstrap] Game bootstrap complete. World activated.")

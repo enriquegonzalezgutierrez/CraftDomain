@@ -1,7 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure physics controller node representing a passive entity,
-#              building its own geometric box visuals and executing wandering AI.
+#              building its own geometric box visuals, running wandering AI,
+#              and exposing interactive trade transactions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -12,7 +13,8 @@ extends CharacterBody3D
 enum Type {
 	PIG,
 	CHICKEN,
-	VILLAGER
+	VILLAGER,
+	MERCHANT
 }
 
 # AI Wandering states
@@ -50,7 +52,7 @@ func _setup_collision() -> void:
 		Type.PIG:
 			box_shape.size = Vector3(0.6, 0.6, 0.8)
 			col.position = Vector3(0, 0.3, 0)
-		Type.VILLAGER:
+		Type.VILLAGER, Type.MERCHANT:
 			box_shape.size = Vector3(0.5, 1.4, 0.5)
 			col.position = Vector3(0, 0.7, 0)
 			
@@ -89,6 +91,12 @@ func _build_visual_representation() -> void:
 			_create_box(visual_root, Vector3(0.08, 0.18, 0.1), Vector3(0, 1.05, -0.2), Color(0.85, 0.65, 0.55)) # Nose
 			_create_box(visual_root, Vector3(0.5, 0.15, 0.2), Vector3(0, 0.65, -0.18), Color(0.25, 0.15, 0.1)) # Folded Arms
 
+		Type.MERCHANT:
+			_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.45, 0.15, 0.6)) # Robe (Purple)
+			_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.95, 0.75, 0.65)) # Head (Skin)
+			_create_box(visual_root, Vector3(0.08, 0.18, 0.1), Vector3(0, 1.05, -0.2), Color(0.85, 0.65, 0.55)) # Nose
+			_create_box(visual_root, Vector3(0.5, 0.15, 0.2), Vector3(0, 0.65, -0.18), Color(0.85, 0.6, 0.15)) # Folded Arms (Golden)
+
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> void:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -103,6 +111,36 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	
 	parent.add_child(mesh_instance)
 
+## Public Domain Transaction API to process trade interactions.
+func interact(player: PlayerController) -> void:
+	# Make the merchant look at the player during interaction
+	var look_direction: Vector3 = (player.global_position - global_position).normalized()
+	look_direction.y = 0 # Lock pitch
+	var visuals_node: Node3D = get_node("Visuals")
+	if is_instance_valid(visuals_node) and look_direction != Vector3.ZERO:
+		visuals_node.look_at(global_position + look_direction, Vector3.UP)
+		visuals_node.rotation.x = 0
+		visuals_node.rotation.z = 0
+
+	# Evaluate active selection item of the player
+	if not player.is_item_selected and player.hud.inventory_label.text.begins_with("ITEM: LAVA BUCKETS"):
+		if player.lava_buckets >= 1:
+			# Perform trade
+			player.lava_buckets -= 1
+			player.fried_chickens += 1
+			
+			# Hop excited with physical joy
+			velocity.y = JUMP_VELOCITY
+			
+			# Synchronize HUD overlay
+			player.hud.update_active_item("LAVA BUCKETS: %d" % player.lava_buckets)
+			
+			print("[Merchant] Hmmm! Hot lava! Thank you! Here is your famous Lava-Fried Chicken!")
+		else:
+			print("[Merchant] Hmmm? You are out of Lava Buckets!")
+	else:
+		print("[Merchant] Hmmm? Bring me a Bucket of Lava (Key 5) to trade for my Lava-Fried Chicken!")
+
 func _physics_process(delta: float) -> void:
 	# 1. Apply gravity
 	if not is_on_floor():
@@ -111,19 +149,11 @@ func _physics_process(delta: float) -> void:
 	# 2. Run simple AI state machine
 	_wander_timer -= delta
 	if _wander_timer <= 0:
-		# Choose a new decision: rest or wander
 		_is_wandering = randf() > 0.4
 		if _is_wandering:
-			# Pick random flat direction
 			var angle := randf() * TAU
 			_wander_direction = Vector3(cos(angle), 0, sin(angle))
 			_wander_timer = randf_range(2.0, 5.0)
-			
-			# Rotate visuals towards travel direction
-			var target_rot := atan2(_wander_direction.x, _wander_direction.z)
-			var visuals_node: Node3D = get_node("Visuals")
-			if is_instance_valid(visuals_node):
-				visuals_node.rotation.y = target_rot
 		else:
 			_wander_direction = Vector3.ZERO
 			_wander_timer = randf_range(1.0, 3.0)
@@ -132,6 +162,15 @@ func _physics_process(delta: float) -> void:
 	if _is_wandering:
 		velocity.x = _wander_direction.x * SPEED
 		velocity.z = _wander_direction.z * SPEED
+		
+		# Turn visuals towards wander direction cleanly using look_at()
+		var visuals_node: Node3D = get_node("Visuals")
+		if is_instance_valid(visuals_node):
+			# Align model forward vector (-Z) towards the travel direction
+			var target_look_at: Vector3 = global_position + _wander_direction
+			visuals_node.look_at(target_look_at, Vector3.UP)
+			visuals_node.rotation.x = 0 # Lock pitch axis rotation
+			visuals_node.rotation.z = 0 # Lock roll axis rotation
 		
 		# Jump over blocks automatically if colliding with walls on floor level
 		if is_on_wall() and is_on_floor():

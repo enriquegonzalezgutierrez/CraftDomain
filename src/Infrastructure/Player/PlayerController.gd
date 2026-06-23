@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player, 
-#              handling camera look, movements, crosshair canvas, RayCast targeting,
-#              left-click mining, and right-click block building with Spawn Protection.
+#              handling camera look, movements, RayCast targeting, inventory counts,
+#              and dynamic communication with the PlayerHUD hotbar selector.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -21,13 +21,19 @@ var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 # Spawn Protection: Player remains frozen until home chunk is generated
 var is_active: bool = false
 
+# Player Inventory Currency (Trading)
+var lava_buckets: int = 3
+var fried_chickens: int = 0
+
 # Node references created via code
 var camera: Camera3D
 var raycast: RayCast3D
 var world_controller: WorldController
+var hud: PlayerHUD
 
 # Build inventory selection state
 var active_build_type: BlockType.Type = BlockType.Type.STONE
+var is_item_selected: bool = true # False if selecting currency
 
 # Internal rotation tracking
 var _rotation_input: Vector2 = Vector2.ZERO
@@ -35,8 +41,8 @@ var _rotation_input: Vector2 = Vector2.ZERO
 func _ready() -> void:
 	_setup_inputs()
 	_setup_player_geometry()
-	_setup_crosshair()
 	_locate_world()
+	_setup_hud()
 	
 	# Capture mouse cursor
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -53,7 +59,9 @@ func _setup_inputs() -> void:
 		"select_stone": KEY_1,
 		"select_dirt": KEY_2,
 		"select_wood": KEY_3,
-		"select_leaves": KEY_4
+		"select_leaves": KEY_4,
+		"select_lava": KEY_5,
+		"select_chicken": KEY_6
 	}
 	
 	var secondary_inputs := {
@@ -71,7 +79,6 @@ func _setup_inputs() -> void:
 		InputMap.action_erase_events(action_name)
 		
 		var primary_event := InputEventKey.new()
-		# Swapped to keycode for universal platform/keyboard layout mapping
 		primary_event.keycode = primary_inputs[action_name]
 		InputMap.action_add_event(action_name, primary_event)
 		
@@ -108,19 +115,13 @@ func _setup_player_geometry() -> void:
 	# Initial safe spawn altitude (to fall onto the generated chunk)
 	position = Vector3(8.0, 16.0, 8.0)
 
-func _setup_crosshair() -> void:
-	# Programmatic 2D UI creation with custom draw logic to represent the aim crosshair
-	var crosshair_ui := Control.new()
-	crosshair_ui.name = "CrosshairControl"
-	crosshair_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	crosshair_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	
-	# Attach drawing script using a clean, escaped string to prevent indentation errors
-	var draw_script := GDScript.new()
-	draw_script.source_code = "extends Control\n\nfunc _draw() -> void:\n\tvar center := get_viewport_rect().size / 2.0\n\tdraw_line(center - Vector2(6, 0), center + Vector2(6, 0), Color.WHITE, 2.0)\n\tdraw_line(center - Vector2(0, 6), center + Vector2(0, 6), Color.WHITE, 2.0)\n"
-	draw_script.reload()
-	crosshair_ui.set_script(draw_script)
-	add_child(crosshair_ui)
+func _setup_hud() -> void:
+	# Instantiate and initialize the HUD node
+	hud = PlayerHUD.new()
+	hud.name = "HUD"
+	hud.player = self
+	hud.world_controller = world_controller
+	add_child(hud)
 
 func _locate_world() -> void:
 	# Clean dependency lookup of sibling nodes
@@ -145,19 +146,29 @@ func _physics_process(delta: float) -> void:
 		else:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-	# Quick Slot Material Selection
+	# Quick Slot Selection mapping keys 1-6 directly to modern Hotbar Slots 0-5
 	if Input.is_action_just_pressed("select_stone"):
 		active_build_type = BlockType.Type.STONE
-		print("[Inventory] Active Block: STONE")
+		is_item_selected = true
+		hud.update_active_slot(0)
 	elif Input.is_action_just_pressed("select_dirt"):
 		active_build_type = BlockType.Type.DIRT
-		print("[Inventory] Active Block: DIRT")
+		is_item_selected = true
+		hud.update_active_slot(1)
 	elif Input.is_action_just_pressed("select_wood"):
 		active_build_type = BlockType.Type.WOOD
-		print("[Inventory] Active Block: WOOD")
+		is_item_selected = true
+		hud.update_active_slot(3) # Mapping Wood to slot 3
 	elif Input.is_action_just_pressed("select_leaves"):
 		active_build_type = BlockType.Type.LEAVES
-		print("[Inventory] Active Block: LEAVES")
+		is_item_selected = true
+		hud.update_active_slot(4) # Mapping Leaves to slot 4
+	elif Input.is_action_just_pressed("select_lava"):
+		is_item_selected = false
+		hud.update_active_slot(5) # Mapping Lava to slot 5 (inventory coin slot)
+	elif Input.is_action_just_pressed("select_chicken"):
+		is_item_selected = false
+		hud.update_active_slot(6) # Mapping Chicken to slot 6 (inventory coin slot)
 
 	# Block Mining & Placement Handlers
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and is_instance_valid(world_controller):
@@ -205,6 +216,16 @@ func _mine_block() -> void:
 
 func _build_block() -> void:
 	if raycast.is_colliding():
+		# Clean interaction routing: If the targeted collider is an interactive Entity, trigger transaction
+		var collider = raycast.get_collider()
+		if collider is PassiveEntity:
+			collider.interact(self)
+			return # Bypass block placement
+			
+		# Avoid placing blocks if selecting currency items
+		if not is_item_selected:
+			return
+			
 		# Get collision vector and step slightly outside the block surface to find the open position
 		var build_pos: Vector3 = raycast.get_collision_point() + (raycast.get_collision_normal() * 0.1)
 		var block_coord := Vector3i(floor(build_pos.x), floor(build_pos.y), floor(build_pos.z))

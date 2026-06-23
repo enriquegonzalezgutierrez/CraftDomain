@@ -2,8 +2,7 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator that orchestrates the World State, 
 #              procedural generation, dynamic chunk loading, village houses,
-#              and passive animal/villager entity lifecycles using high-performance
-#              compound BoxShape3D physics.
+#              and passive animal/villager/merchant entity lifecycles.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -35,6 +34,22 @@ var _completed_tasks_queue: Array[GeneratedChunkTask] = []
 var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.2
 
+## Background calculation data structures (Thread-safe constants)
+const DIRECTIONS: Array[Vector3i] = [
+	Vector3i(0, 1, 0), Vector3i(0, -1, 0),
+	Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
+	Vector3i(0, 0, 1), Vector3i(0, 0, -1)
+]
+
+const FACE_VERTICES: Dictionary = {
+	Vector3i(0, 1, 0): [Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(0, 1, 0)], # TOP
+	Vector3i(0, -1, 0): [Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1)], # BOTTOM
+	Vector3i(1, 0, 0): [Vector3(1, 0, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(1, 0, 0)], # RIGHT
+	Vector3i(-1, 0, 0): [Vector3(0, 0, 0), Vector3(0, 1, 0), Vector3(0, 1, 1), Vector3(0, 0, 1)], # LEFT
+	Vector3i(0, 0, 1): [Vector3(0, 0, 1), Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 0, 1)], # FRONT
+	Vector3i(0, 0, -1): [Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(0, 1, 0), Vector3(0, 0, 0)]  # BACK
+}
+
 ## Subclass containing the completed background generation results.
 class GeneratedChunkTask:
 	var chunk: Chunk
@@ -44,8 +59,13 @@ func _ready() -> void:
 	_initialize_systems()
 
 func _initialize_systems() -> void:
+	# Randomize Godot's primary RNG system to get unique seeds
+	randomize()
+	var random_world_seed: int = randi()
+	print("[WorldController] Spawning new world with unique Seed: ", random_world_seed)
+	
 	world_state = WorldState.new()
-	generator = WorldGenerator.new(98765) # Seed value for the world generator
+	generator = WorldGenerator.new(random_world_seed)
 	loader_service = ChunkLoaderService.new()
 	_queue_mutex = Mutex.new()
 
@@ -150,7 +170,7 @@ func _spawn_entities_for_chunk(chunk: Chunk) -> void:
 	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	var entities_list: Array[PassiveEntity] = []
 	
-	# 1. Spawn a Villager if the chunk generated a rustic cabin
+	# 1. Spawn a Villager and a Merchant if the chunk generated a rustic cabin
 	var has_house: bool = (abs(chunk_pos.x) + abs(chunk_pos.z)) % 3 == 2 and chunk_pos.y == 0
 	if has_house:
 		# Place the Villager safely above ground in front of the house doorway (local coordinates x=7, z=5)
@@ -158,6 +178,13 @@ func _spawn_entities_for_chunk(chunk: Chunk) -> void:
 		var villager := PassiveEntity.new(PassiveEntity.Type.VILLAGER, spawn_pos_global)
 		add_child(villager)
 		entities_list.append(villager)
+		
+		# Place the Merchant on the side of the house (local coordinates x=5, z=7)
+		var merchant_pos_global := chunk_offset + Vector3(5.5, 14.0, 7.5)
+		var merchant := PassiveEntity.new(PassiveEntity.Type.VILLAGER, merchant_pos_global) # Reuse villager box geometry
+		merchant.name = "Entity_MERCHANT"
+		add_child(merchant)
+		entities_list.append(merchant)
 		
 	# 2. Spawn local animals (Pigs / Chickens) deterministically based on coordinates
 	var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2
