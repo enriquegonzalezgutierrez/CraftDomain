@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
 #              handling dynamic, decoupled dependency injection, soundtracks, 
-#              and celestial Day/Night cycle management.
+#              and safe main menu state reloading transitions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -126,6 +126,28 @@ func _on_start_game_requested() -> void:
 	_bootstrap_world()
 	_bootstrap_player()
 	_inject_dependencies()
+
+## Public API: Safely unloads the active 3D world/player and reloads the Main Menu
+func return_to_main_menu() -> void:
+	print("[Bootstrap] Unloading gameplay state...")
+	
+	# 1. Unload Player Controller
+	if is_instance_valid(player_controller):
+		player_controller.queue_free()
+		player_controller = null
+		
+	# 2. Unload World Controller
+	if is_instance_valid(world_controller):
+		world_controller.queue_free()
+		world_controller = null
+		
+	# 3. Fade soundtrack back to Main Menu music
+	if is_instance_valid(audio_service):
+		audio_service.play_menu_music()
+		
+	# 4. Reload starting Main Menu overlay
+	_load_main_menu()
+	print("[Bootstrap] Returned to main menu safely.")
 
 func _bootstrap_world() -> void:
 	print("[Bootstrap] Instantiating World controller...")

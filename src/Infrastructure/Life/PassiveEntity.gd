@@ -1,14 +1,13 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure physics controller node representing a passive entity,
-#              building its own geometric box visuals, running wandering AI,
-#              and exposing interactive trade transactions.
-#              Fully decoupled using dynamic safe property binding.
+#              inheriting from VoxelEntity, running wandering AI, and executing
+#              trades through the segregated IInventory interface.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
 class_name PassiveEntity
-extends CharacterBody3D
+extends VoxelEntity
 
 ## Entity Type definitions.
 enum Type {
@@ -112,8 +111,7 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	
 	parent.add_child(mesh_instance)
 
-## Public Domain Transaction API to process trade interactions.
-## Loosely typed to prevent compile-time circular loops.
+## Polymorphic LSP Override: Processes direct trading using the segregated IInventory interface.
 func interact(player: CharacterBody3D) -> void:
 	# Make the merchant look at the player during interaction
 	var look_direction: Vector3 = (player.global_position - global_position).normalized()
@@ -124,37 +122,33 @@ func interact(player: CharacterBody3D) -> void:
 		visuals_node.rotation.x = 0
 		visuals_node.rotation.z = 0
 
-	# Safely fetch active HUD and currency properties using dynamic runtime lookups
+	# ISP Compliance: Fetch and cast the player's inventory as a segregated IInventory interface
+	var inventory: IInventory = player.get("inventory") as IInventory
 	var player_hud = player.get("hud")
-	var is_item_selected: bool = player.get("is_item_selected")
+	var active_slot: int = player.get("active_slot_index")
 	
-	if is_instance_valid(player_hud) and not is_item_selected:
-		# Dynamic lookup of the InventoryLabel Node to prevent deep static properties coupling
-		var inventory_label_node = player_hud.get_node_or_null("InventoryLabel")
-		if is_instance_valid(inventory_label_node) and inventory_label_node is Label:
-			var label_text: String = inventory_label_node.text
-			if label_text.begins_with("[ LAVA BUCKET"):
-				var lava_buckets: int = player.get("lava_buckets")
-				if lava_buckets >= 1:
-					# Perform trade
-					player.set("lava_buckets", lava_buckets - 1)
-					player.set("fried_chickens", player.get("fried_chickens") + 1)
-					
-					# Hop excited with physical joy
-					velocity.y = JUMP_VELOCITY
-					
-					# Synchronize HUD overlay using dynamic call
-					player_hud.call("update_active_slot", 5) # Highlight the active currency slot
-					
-					print("[Merchant] Hmmm! Hot lava! Thank you! Here is your famous Lava-Fried Chicken!")
-				else:
-					print("[Merchant] Hmmm? You are out of Lava Buckets!")
+	if is_instance_valid(inventory) and is_instance_valid(player_hud):
+		# Verify if player is holding Lava Buckets (Slot 5)
+		if active_slot == 5:
+			# Verify if player has at least 1 Lava Bucket
+			if inventory.can_modify_slot_quantity(5, -1):
+				# Perform transaction using segregated interface methods
+				inventory.modify_slot_quantity(5, -1) # Consume 1 Lava Bucket
+				inventory.modify_slot_quantity(6, 1)  # Gain 1 Fried Chicken
+				
+				# Hop excited with physical joy
+				velocity.y = JUMP_VELOCITY
+				
+				# Refresh HUD active slot selection display dynamically
+				player_hud.call("update_active_slot", 5)
+				
+				print("[Merchant] Hmmm! Hot lava! Thank you! Here is your famous Lava-Fried Chicken!")
 			else:
-				print("[Merchant] Hmmm? Bring me a Bucket of Lava (Key 5) to trade for my Lava-Fried Chicken!")
+				print("[Merchant] Hmmm? You are out of Lava Buckets!")
 		else:
-			print("[Merchant] Hmmm? Bring me a Bucket of Lava (Key 5) to trade for my Lava-Fried Chicken!")
+			print("[Merchant] Hmmm? Bring me a Bucket of Lava (Slot 5) to trade for my Lava-Fried Chicken!")
 	else:
-		print("[Merchant] Hmmm? Bring me a Bucket of Lava (Key 5) to trade for my Lava-Fried Chicken!")
+		print("[Merchant] Hmmm? Bring me a Bucket of Lava (Slot 5) to trade for my Lava-Fried Chicken!")
 
 func _physics_process(delta: float) -> void:
 	# 1. Apply gravity

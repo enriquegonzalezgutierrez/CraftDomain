@@ -1,9 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure UI controller managing a modern, glassmorphic HUD
-#              comprising a perfect circular Minimap with native hardware clipping,
-#              a sleek crosshair, and a centered hotbar with selection indicators.
-#              Loosely typed to prevent compile-time circular class loops.
+# Description: Infrastructure UI controller managing a modern, glassmorphic HUD,
+#              incorporating centered hotbars, life indicators, a dynamic minimap,
+#              and a programmatically built interactive Pause/Quit menu overlay.
+#              Universal responsive scaling with zero shadowing warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -17,10 +17,14 @@ var world_controller: Node3D
 # Inner UI nodes created dynamically
 var minimap: Control
 var inventory_label: Label
+var health_label: Label
 var hotbar_slots: Array[Panel] = []
 
-# Hotbar items mapping
-const HOTBAR_ITEMS = ["Stone", "Dirt", "Grass", "Wood", "Leaves", "Lava Bucket", "Fried Chicken"]
+# Pause Menu Overlay nodes
+var _pause_overlay: Panel
+
+# Modern 8-Slot Hotbar items mapping
+const HOTBAR_ITEMS = ["Stone", "Dirt", "Grass", "Wood", "Leaves", "Lava", "Chicken", "Sword"]
 
 func _ready() -> void:
 	# Stretch HUD to cover the full viewport
@@ -31,6 +35,12 @@ func _ready() -> void:
 	_setup_minimap()
 	_setup_hotbar()
 	_setup_inventory_display()
+	_setup_health_display()
+	_setup_pause_menu()
+	
+	# Safe startup synchronization
+	if is_instance_valid(player) and player.has_method("_sync_hud_counters"):
+		player.call("_sync_hud_counters")
 
 func _setup_crosshair() -> void:
 	# Programmatic center targeting minimalist crosshair (Tiny white plus)
@@ -79,7 +89,7 @@ func _setup_minimap() -> void:
 	minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	minimap_bg.add_child(minimap)
 	
-	# Statically construct the compiled code line-by-line (statically typed assignments used)
+	# Statically construct the compiled code line-by-line
 	var minimap_script := GDScript.new()
 	var code_lines: Array[String] = [
 		"extends Control",
@@ -135,12 +145,23 @@ func _setup_minimap() -> void:
 	minimap.set("hud", self)
 
 func _setup_hotbar() -> void:
-	# 1. Main Hotbar container at the bottom-center
+	# 1. Main Hotbar container at the bottom-center (Expanded to 560px for 8 slots)
 	var hotbar_bg := Panel.new()
 	hotbar_bg.name = "HotbarBackground"
-	hotbar_bg.custom_minimum_size = Vector2(480, 70)
+	hotbar_bg.custom_minimum_size = Vector2(560, 70)
+	hotbar_bg.size = Vector2(560, 70) # Statically specify size for perfect centering
+	
+	# Explicitly configure both grow directions to prevent the panel from slipping off-screen
+	hotbar_bg.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	hotbar_bg.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	
 	hotbar_bg.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	
+	# Statically center the horizontal offsets to keep it perfectly visible and centered
+	hotbar_bg.offset_left = -280
+	hotbar_bg.offset_right = 280
 	hotbar_bg.offset_bottom = -20
+	hotbar_bg.offset_top = -90
 	
 	# Stylize hotbar base
 	var style := StyleBoxFlat.new()
@@ -157,8 +178,8 @@ func _setup_hotbar() -> void:
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hotbar_bg.add_child(hbox)
 	
-	# 3. Create 6 distinct quick-slots programmatically
-	for i in range(6):
+	# 3. Create 8 distinct quick-slots programmatically
+	for i in range(8):
 		var slot := Panel.new()
 		slot.name = "Slot_%d" % i
 		slot.custom_minimum_size = Vector2(60, 60)
@@ -173,7 +194,7 @@ func _setup_hotbar() -> void:
 		# Item label inside the slot
 		var label := Label.new()
 		label.name = "ItemLabel"
-		label.text = HOTBAR_ITEMS[i].substr(0, 3).to_upper() # First 3 letters
+		label.text = HOTBAR_ITEMS[i].substr(0, 3).to_upper()
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -208,10 +229,115 @@ func _setup_inventory_display() -> void:
 	add_child(inventory_label)
 	_update_inventory_display()
 
+func _setup_health_display() -> void:
+	# Centered player heart container display placed above the left side of the Hotbar
+	health_label = Label.new()
+	health_label.name = "HealthLabel"
+	health_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	health_label.offset_left = -210 # Positioned cleanly to the left of the item text
+	health_label.offset_bottom = -95
+	health_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	health_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	
+	var style := LabelSettings.new()
+	style.font_size = 18
+	style.font_color = Color(0.9, 0.1, 0.1) # Bright heart red
+	style.outline_size = 4
+	style.outline_color = Color.BLACK
+	health_label.label_settings = style
+	
+	add_child(health_label)
+	update_health_display(3) # Start with 3 full hearts
+
+func _setup_pause_menu() -> void:
+	# Programmatically construct a beautiful glassmorphic Pause/Quit menu
+	_pause_overlay = Panel.new()
+	_pause_overlay.name = "PauseOverlay"
+	_pause_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	
+	# Translucent dark wash background
+	var bg_style := StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.0, 0.0, 0.0, 0.45)
+	_pause_overlay.add_theme_stylebox_override("panel", bg_style)
+	
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_pause_overlay.add_child(center)
+	
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_child(box)
+	
+	# Pause Title
+	var title := Label.new()
+	title.text = "GAME PAUSED"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	
+	var title_style := LabelSettings.new()
+	title_style.font_size = 32
+	title_style.font_color = Color(1.0, 0.95, 0.85)
+	title_style.outline_size = 4
+	title_style.outline_color = Color.BLACK
+	title.label_settings = title_style
+	box.add_child(title)
+	
+	# Spacers
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 30)
+	box.add_child(spacer)
+	
+	# Resume Button
+	var resume_btn := Button.new()
+	resume_btn.text = "RESUME GAME"
+	resume_btn.custom_minimum_size = Vector2(250, 48)
+	resume_btn.pressed.connect(_on_resume_pressed)
+	box.add_child(resume_btn)
+	
+	var spacer2 := Control.new()
+	spacer2.custom_minimum_size = Vector2(0, 12)
+	box.add_child(spacer2)
+	
+	# Quit Button
+	var quit_btn := Button.new()
+	quit_btn.text = "QUIT TO MAIN MENU"
+	quit_btn.custom_minimum_size = Vector2(250, 48)
+	quit_btn.pressed.connect(_on_quit_pressed)
+	box.add_child(quit_btn)
+	
+	# Initially hide the overlay until ESC is pressed
+	_pause_overlay.visible = false
+	add_child(_pause_overlay)
+
 func _process(_delta: float) -> void:
 	# Force the minimap drawing system to refresh on every frame
 	if is_instance_valid(minimap):
 		minimap.queue_redraw()
+
+func _update_inventory_display() -> void:
+	if is_instance_valid(player):
+		update_active_slot(0)
+
+## Public API: Shows or hides the dynamic Pause Menu overlay card.
+func toggle_pause_menu(p_visible: bool) -> void:
+	if is_instance_valid(_pause_overlay):
+		_pause_overlay.visible = p_visible
+
+func _on_resume_pressed() -> void:
+	# Lock mouse and resume gameplay
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	toggle_pause_menu(false)
+
+func _on_quit_pressed() -> void:
+	print("[PlayerHUD] Quit requested. Saving progress and returning to menu...")
+	
+	# 1. Silently trigger complete world serialization
+	if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
+		world_controller.call("save_all")
+		
+	# 2. Call dynamic state-unload to main menu on the Bootstrap root node
+	var bootstrap = get_node_or_null("/root/Bootstrap")
+	if is_instance_valid(bootstrap) and bootstrap.has_method("return_to_main_menu"):
+		bootstrap.call("return_to_main_menu")
 
 ## Public API to update the highlighted slot on the hotbar dynamically.
 func update_active_slot(active_index: int) -> void:
@@ -243,6 +369,22 @@ func update_active_slot(active_index: int) -> void:
 			style.border_width_bottom = 1
 			style.border_color = Color(0.2, 0.2, 0.2, 0.4)
 
-func _update_inventory_display() -> void:
-	if is_instance_valid(player):
-		update_active_slot(0)
+## Public API: Updates the text/quantity displayed inside a specific Hotbar Slot dynamically.
+func update_slot_quantity(slot_index: int, item_name: String, quantity: int) -> void:
+	if slot_index >= 0 and slot_index < hotbar_slots.size():
+		var slot: Panel = hotbar_slots[slot_index]
+		var label: Label = slot.get_node_or_null("ItemLabel")
+		if is_instance_valid(label):
+			# Format: e.g. "STO (64)" or just "SWO" for unlimited weapon
+			if quantity < 0:
+				label.text = item_name.substr(0, 3).to_upper()
+			else:
+				label.text = "%s\n(%d)" % [item_name.substr(0, 3).to_upper(), quantity]
+
+## Public API: Redraws remaining hearts instantly when player takes damage or heals.
+func update_health_display(current_hp: int) -> void:
+	if is_instance_valid(health_label):
+		var hearts_text: String = "HP: "
+		for i in range(max(0, current_hp)):
+			hearts_text += "❤ "
+		health_label.text = hearts_text

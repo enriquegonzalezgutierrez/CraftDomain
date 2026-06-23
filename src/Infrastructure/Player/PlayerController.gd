@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player, 
-#              handling camera look, movements, RayCast targeting, inventory,
-#              and dynamic auto-saving upon pause. Fully decoupled from WorldController.
+#              handling camera look, movements, RayCast targeting, and interactive
+#              Day/Night Pause Menu dynamic triggers.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -21,19 +21,21 @@ var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 # Spawn Protection: Player remains frozen until home chunk is generated
 var is_active: bool = false
 
-# Player Inventory Currency (Trading)
-var lava_buckets: int = 3
-var fried_chickens: int = 0
+# Player Survival Combat Health
+var health: int = 3
 
-# Node references created via code (loosely typed to prevent circular dependency errors)
+# Segregated Inventory Interface (ISP compliant)
+var inventory: IInventory
+
+# Node references created via code (loosely typed to prevent compile-time loops)
 var camera: Camera3D
 var raycast: RayCast3D
 var world_controller: Node3D
 var hud: PlayerHUD
 
-# Build inventory selection state
-var active_build_type: BlockType.Type = BlockType.Type.STONE
-var is_item_selected: bool = true # False if selecting currency
+# Build inventory selection state (0 to 7 matches our 8 slots)
+var active_slot_index: int = 0
+var is_item_selected: bool = true # False if selecting currency/weapon
 
 # Internal rotation tracking
 var _rotation_input: Vector2 = Vector2.ZERO
@@ -58,10 +60,12 @@ func _setup_inputs() -> void:
 		"ui_cancel": KEY_ESCAPE,
 		"select_stone": KEY_1,
 		"select_dirt": KEY_2,
-		"select_wood": KEY_3,
-		"select_leaves": KEY_4,
-		"select_lava": KEY_5,
-		"select_chicken": KEY_6
+		"select_grass": KEY_3,
+		"select_wood": KEY_4,
+		"select_leaves": KEY_5,
+		"select_lava": KEY_6,
+		"select_chicken": KEY_7,
+		"select_sword": KEY_8
 	}
 	
 	var secondary_inputs := {
@@ -116,12 +120,18 @@ func _setup_player_geometry() -> void:
 	position = Vector3(8.0, 16.0, 8.0)
 
 func _setup_hud() -> void:
+	# Instantiate concrete inventory manager component (SRP compliant)
+	inventory = InventoryComponent.new()
+	
 	# Instantiate and initialize the HUD node
 	hud = PlayerHUD.new()
 	hud.name = "HUD"
 	hud.player = self
 	hud.world_controller = world_controller
 	add_child(hud)
+	
+	# Sync starting HUD displays
+	_sync_hud_counters()
 
 func _locate_world() -> void:
 	# Clean dependency lookup of sibling nodes
@@ -139,47 +149,64 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 
-	# Mouse lock & Auto-save handling
+	# Mouse lock & Pause Menu handling
 	if Input.is_action_just_pressed("ui_cancel"):
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			
+			# Trigger the glassmorphic Pause Menu overlay
+			if is_instance_valid(hud):
+				hud.toggle_pause_menu(true)
 			
 			# Dynamic Auto-Save: Silently write player position and all world modifications to disk
 			if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
 				world_controller.call("save_all")
 		else:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			# Hide the Pause Menu overlay
+			if is_instance_valid(hud):
+				hud.toggle_pause_menu(false)
 
-	# Quick Slot Selection mapping keys 1-6 directly to modern Hotbar Slots 0-5
+	# Quick Slot Selection mapping keys 1-8 directly to modern Hotbar Slots 0-7
 	if Input.is_action_just_pressed("select_stone"):
-		active_build_type = BlockType.Type.STONE
+		active_slot_index = 0
 		is_item_selected = true
 		hud.update_active_slot(0)
 	elif Input.is_action_just_pressed("select_dirt"):
-		active_build_type = BlockType.Type.DIRT
+		active_slot_index = 1
 		is_item_selected = true
 		hud.update_active_slot(1)
+	elif Input.is_action_just_pressed("select_grass"):
+		active_slot_index = 2
+		is_item_selected = true
+		hud.update_active_slot(2)
 	elif Input.is_action_just_pressed("select_wood"):
-		active_build_type = BlockType.Type.WOOD
+		active_slot_index = 3
 		is_item_selected = true
-		hud.update_active_slot(3) # Mapping Wood to slot 3
+		hud.update_active_slot(3)
 	elif Input.is_action_just_pressed("select_leaves"):
-		active_build_type = BlockType.Type.LEAVES
+		active_slot_index = 4
 		is_item_selected = true
-		hud.update_active_slot(4) # Mapping Leaves to slot 4
+		hud.update_active_slot(4)
 	elif Input.is_action_just_pressed("select_lava"):
+		active_slot_index = 5
 		is_item_selected = false
-		hud.update_active_slot(5) # Mapping Lava to slot 5 (inventory coin slot)
+		hud.update_active_slot(5)
 	elif Input.is_action_just_pressed("select_chicken"):
+		active_slot_index = 6
 		is_item_selected = false
-		hud.update_active_slot(6) # Mapping Chicken to slot 6 (inventory coin slot)
+		hud.update_active_slot(6)
+	elif Input.is_action_just_pressed("select_sword"):
+		active_slot_index = 7
+		is_item_selected = false
+		hud.update_active_slot(7)
 
 	# Block Mining & Placement Handlers
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and is_instance_valid(world_controller):
-		if Input.is_action_just_pressed("click_left") or Input.is_key_pressed(KEY_E): # Left mouse or 'E' key
-			_mine_block()
-		elif Input.is_action_just_pressed("click_right") or Input.is_key_pressed(KEY_Q): # Right mouse or 'Q' key
-			_build_block()
+		if Input.is_action_just_pressed("click_left"):
+			_mine_or_attack()
+		elif Input.is_action_just_pressed("click_right"):
+			_build_or_interact()
 
 	# Gravity
 	if not is_on_floor():
@@ -208,29 +235,75 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-func _mine_block() -> void:
-	if raycast.is_colliding() and is_instance_valid(world_controller):
-		# Get collision vector and step slightly inside the block surface to find its center
+func _mine_or_attack() -> void:
+	if not raycast.is_colliding():
+		return
+		
+	var collider = raycast.get_collider()
+	
+	# 1. LSP Polymorphic Combat check: If holding the Sword (Slot 7) and targeting any entity, strike it!
+	if active_slot_index == 7 and is_instance_valid(collider):
+		if collider is VoxelEntity:
+			# Calculate directional knockback away from the camera heading
+			var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
+			knockback_dir.y = 2.5 # Lift them upward slightly
+			
+			collider.take_damage(1, knockback_dir)
+			return # Bypass mining
+
+	# 2. Mining check (Standard block breaking)
+	if is_instance_valid(world_controller):
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.1)
 		var block_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
+		
+		# Query what block type we are breaking to collect it
+		var world_state = world_controller.get("world_state")
+		if is_instance_valid(world_state) and world_state.has_method("get_block"):
+			var mined_block_type: BlockType.Type = world_state.call("get_block", block_coord)
+			
+			# Collect and add to inventory counts (ISP check)
+			if inventory is InventoryComponent:
+				(inventory as InventoryComponent).add_block_by_type(mined_block_type)
+				_sync_hud_counters()
+				print("[Inventory] Gathered 1: ", BlockType.Type.keys()[mined_block_type])
 		
 		# Replace with Air
 		world_controller.call("set_block_globally", block_coord, BlockType.Type.AIR)
 		print("[Player] Mined block at: ", block_coord)
 
-func _build_block() -> void:
-	if raycast.is_colliding() and is_instance_valid(world_controller):
-		# Clean interaction routing: If the targeted collider is an interactive Entity, trigger transaction
-		var collider = raycast.get_collider()
-		if collider is PassiveEntity:
-			collider.interact(self)
-			return # Bypass block placement
+func _build_or_interact() -> void:
+	if not raycast.is_colliding():
+		return
+		
+	var collider = raycast.get_collider()
+	
+	# 1. LSP Polymorphic Interaction check: If targeting a VoxelEntity, trigger transaction
+	if is_instance_valid(collider) and collider is VoxelEntity:
+		collider.interact(self)
+		_sync_hud_counters()
+		return # Bypass placement/eating
+		
+	# 2. Eating check: If holding Fried Chicken (Slot 6), eat 1 to restore 1 full heart
+	if active_slot_index == 6 and is_instance_valid(inventory):
+		if inventory.can_modify_slot_quantity(6, -1) and health < 3:
+			inventory.modify_slot_quantity(6, -1)
+			health += 1
 			
-		# Avoid placing blocks if selecting currency items
-		if not is_item_selected:
+			# Update HUD
+			hud.update_health_display(health)
+			_sync_hud_counters()
+			print("[Player] Crunch munch! Consumed 1 Fried Chicken. Restored 1 Heart. HP: ", health)
+		return
+
+	# 3. Block placement check (Only if holding slot 0-4 and counts > 0)
+	if is_item_selected and is_instance_valid(world_controller) and is_instance_valid(inventory):
+		var inventory_comp := inventory as InventoryComponent
+		var build_type: BlockType.Type = inventory_comp.get_slot_build_type(active_slot_index)
+		
+		if not inventory.can_modify_slot_quantity(active_slot_index, -1):
+			print("[Player] Out of blocks for: ", inventory_comp.get_slot_item_name(active_slot_index))
 			return
 			
-		# Get collision vector and step slightly outside the block surface to find the open position
 		var build_pos: Vector3 = raycast.get_collision_point() + (raycast.get_collision_normal() * 0.1)
 		var block_coord := Vector3i(floor(build_pos.x), floor(build_pos.y), floor(build_pos.z))
 		
@@ -241,8 +314,58 @@ func _build_block() -> void:
 		if block_coord == player_feet_coord or block_coord == player_head_coord:
 			return # Avoid self-clipping
 			
-		world_controller.call("set_block_globally", block_coord, active_build_type)
+		# Deduct and place using the abstract IInventory interface
+		inventory.modify_slot_quantity(active_slot_index, -1)
+		_sync_hud_counters()
+		
+		world_controller.call("set_block_globally", block_coord, build_type)
 		print("[Player] Placed block at: ", block_coord)
+
+## Public Combat API: Called by hostile zombies to deal damage and knock the player back.
+func take_damage(amount: int, knockback_force: Vector3) -> void:
+	if not is_active:
+		return
+		
+	health -= amount
+	print("[Player] Ouch! Took damage! HP remaining: ", health)
+	
+	# Apply knockback thrust
+	velocity += knockback_force
+	
+	# Update UI hearts display
+	if is_instance_valid(hud):
+		hud.update_health_display(health)
+		
+	if health <= 0:
+		_die_and_respawn()
+
+func _die_and_respawn() -> void:
+	print("[Player] You died! Respawning at home coordinates...")
+	
+	# Reset state
+	health = 3
+	position = Vector3(8.5, 14.0, 8.5) # Safe spawn height
+	velocity = Vector3.ZERO
+	
+	# Restore HUD display
+	if is_instance_valid(hud):
+		hud.update_health_display(health)
+
+## Public Inventory Synchronizer (ISP & DIP compliant): Writes values cleanly to the HUD
+func _sync_hud_counters() -> void:
+	if not is_instance_valid(hud) or not is_instance_valid(inventory):
+		return
+		
+	# Synchronize all 8 quick-slots counters directly with the HUD
+	var comp := inventory as InventoryComponent
+	hud.update_slot_quantity(0, comp.get_slot_item_name(0), inventory.get_slot_quantity(0))
+	hud.update_slot_quantity(1, comp.get_slot_item_name(1), inventory.get_slot_quantity(1))
+	hud.update_slot_quantity(2, comp.get_slot_item_name(2), inventory.get_slot_quantity(2))
+	hud.update_slot_quantity(3, comp.get_slot_item_name(3), inventory.get_slot_quantity(3))
+	hud.update_slot_quantity(4, comp.get_slot_item_name(4), inventory.get_slot_quantity(4))
+	hud.update_slot_quantity(5, comp.get_slot_item_name(5), inventory.get_slot_quantity(5))
+	hud.update_slot_quantity(6, comp.get_slot_item_name(6), inventory.get_slot_quantity(6))
+	hud.update_slot_quantity(7, comp.get_slot_item_name(7), -1) # -1 hides the numeric counter for the sword
 
 # Handle Left-Click/Right-Click action maps dynamically
 func _setup_inputs_mouse_actions() -> void:
@@ -254,9 +377,16 @@ func _setup_inputs_mouse_actions() -> void:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action)
 		InputMap.action_erase_events(action)
+		
+		# Bind Mouse Button Click
 		var click_event := InputEventMouseButton.new()
 		click_event.button_index = mouse_actions[action]
 		InputMap.action_add_event(action, click_event)
+		
+		# Bind secondary keyboard equivalents (E/Q) to act exactly like mouse clicks (Anti-Spam)
+		var key_event := InputEventKey.new()
+		key_event.keycode = KEY_E if action == "click_left" else KEY_Q
+		InputMap.action_add_event(action, key_event)
 
 # Call the helper directly inside the constructor/setup chain
 func _init() -> void:

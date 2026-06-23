@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications,
-#              mobs, and dynamic day/night village streetlights.
+#              fully compliant with SOLID and SRP by delegating life and lighting.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -16,10 +16,11 @@ var loader_service: ChunkLoaderService
 var repository: WorldRepository
 
 ## Dependency-injected player reference.
-var player: PlayerController
+var player: CharacterBody3D
 
-## Statically loaded Entity Script to prevent compile-time cache bugs
-var _entity_script: Script = load("res://src/Infrastructure/Life/PassiveEntity.gd")
+# Decoupled Private helper services (SRP compliant)
+var _mob_spawning_service: MobSpawningService
+var _streetlight_service: StreetlightService
 
 ## Tracking map for active ChunkNode representations: Vector3i -> ChunkNode.
 var _chunk_nodes: Dictionary = {}
@@ -30,10 +31,6 @@ var _pending_loading_chunks: Dictionary = {}
 ## Tracking map for entities spawned within specific chunks: Vector3i -> Array[CharacterBody3D].
 var _chunk_entities: Dictionary = {}
 
-## Active streetlights tracker coordinates list: Array[Vector3i].
-var _streetlight_coords: Array[Vector3i] = []
-var _streetlights_active: bool = false
-
 ## Thread safety sync structures
 var _queue_mutex: Mutex
 var _completed_tasks_queue: Array[GeneratedChunkTask] = []
@@ -41,13 +38,6 @@ var _completed_tasks_queue: Array[GeneratedChunkTask] = []
 ## Throttling timer variables to avoid running distance checks on every single frame.
 var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.2
-
-## Background calculation data structures (Thread-safe constants)
-const DIRECTIONS: Array[Vector3i] = [
-	Vector3i(0, 1, 0), Vector3i(0, -1, 0),
-	Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
-	Vector3i(0, 0, 1), Vector3i(0, 0, -1)
-]
 
 ## Subclass containing the completed background generation and rendering results. Statically typed.
 class GeneratedChunkTask:
@@ -63,6 +53,10 @@ func _initialize_systems() -> void:
 	world_state = WorldState.new()
 	loader_service = ChunkLoaderService.new()
 	_queue_mutex = Mutex.new()
+	
+	# Instantiate our helper services (SRP compliant)
+	_mob_spawning_service = MobSpawningService.new()
+	_streetlight_service = StreetlightService.new(self, world_state)
 	
 	# Check if a saved world state exists on disk
 	var saved_global := repository.load_global_state()
@@ -113,15 +107,9 @@ func _process_day_night_lighting() -> void:
 		
 	var is_night: bool = celestial.call("is_night_time")
 	
-	# If daylight state has shifted, toggle streetlights dynamically
-	if is_night != _streetlights_active:
-		_streetlights_active = is_night
-		print("[WorldController] Day/Night state shifted. Toggling streetlights: ", "ON" if is_night else "OFF")
-		
-		var lantern_material_type: BlockType.Type = BlockType.Type.GRASS if is_night else BlockType.Type.STONE
-		
-		for coord in _streetlight_coords:
-			set_block_globally(coord, lantern_material_type)
+	# Delegate light toggling responsibility to the StreetlightService (SRP)
+	if is_instance_valid(_streetlight_service):
+		_streetlight_service.update_streetlights_state(is_night)
 
 func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 	if _pending_loading_chunks.has(chunk_pos):
@@ -156,7 +144,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 					var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
 					collision_transforms.append(Transform3D(Basis(), transform_pos))
 						
-	# 4. Queue the task result using the corrected transforms property name
+	# 4. Queue the task result
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.transforms = collision_transforms
@@ -190,11 +178,15 @@ func _render_completed_chunks_from_queue() -> void:
 			# Send pre-compiled background physics transforms
 			chunk_node.setup_chunk_visuals(task.transforms, _pre_shaded_colors_of_chunk(task.chunk, task.transforms), task.transforms)
 			
-			# Spawn animals and villagers for this chunk dynamically
-			_spawn_entities_for_chunk(task.chunk)
+			# Delegate animal and villager spawning responsibility to MobSpawningService (SRP)
+			if is_instance_valid(_mob_spawning_service):
+				var spawned := _mob_spawning_service.spawn_mobs_for_chunk(task.chunk, self)
+				if spawned.size() > 0:
+					_chunk_entities[chunk_pos] = spawned
 			
-			# Register streetlights from this chunk if a village spawned
-			_register_streetlights_for_chunk(task.chunk)
+			# Delegate streetlight registration responsibility to StreetlightService (SRP)
+			if is_instance_valid(_streetlight_service):
+				_streetlight_service.register_streetlights_for_chunk(task.chunk)
 			
 			# Safe spawn activation: Activate player once the home chunk is rendered
 			if chunk_pos == Vector3i(0, 0, 0) and is_instance_valid(player) and not player.get("is_active"):
@@ -220,64 +212,6 @@ func _activate_player_at_coord(spawn_y: float) -> void:
 	player.set("is_active", true)
 	print("[World] Home chunk loaded. Player activated safely.")
 
-func _spawn_entities_for_chunk(chunk: Chunk) -> void:
-	var chunk_pos := chunk.position
-	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
-	var entities_list: Array[CharacterBody3D] = []
-	
-	# Spawn a Villager and a Merchant if the chunk generated a rustic cabin
-	var has_house: bool = (abs(chunk_pos.x) + abs(chunk_pos.z)) % 3 == 2 and chunk_pos.y == 0
-	if has_house:
-		# Place the Villager safely above ground (Type 2 is VILLAGER)
-		var spawn_pos_global := chunk_offset + Vector3(7.5, 14.0, 5.5)
-		var villager = _entity_script.new(2, spawn_pos_global) as CharacterBody3D
-		add_child(villager)
-		entities_list.append(villager)
-		
-		# Place the Merchant on the side of the house (Type 3 is MERCHANT)
-		var merchant_pos_global := chunk_offset + Vector3(5.5, 14.0, 7.5)
-		var merchant = _entity_script.new(3, merchant_pos_global) as CharacterBody3D
-		add_child(merchant)
-		entities_list.append(merchant)
-		
-	# Spawn local animals (Pigs / Chickens) deterministically
-	var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2
-	if should_spawn_animal:
-		# Type 0 is PIG, Type 1 is CHICKEN
-		var animal_type_id: int = 0 if (chunk_pos.x + chunk_pos.z) % 2 == 0 else 1
-		var spawn_pos_global := chunk_offset + Vector3(8.5, 14.0, 8.5)
-		var animal = _entity_script.new(animal_type_id, spawn_pos_global) as CharacterBody3D
-		add_child(animal)
-		entities_list.append(animal)
-		
-	if entities_list.size() > 0:
-		_chunk_entities[chunk_pos] = entities_list
-
-func _register_streetlights_for_chunk(chunk: Chunk) -> void:
-	var chunk_pos := chunk.position
-	var has_house: bool = (abs(chunk_pos.x) + abs(chunk_pos.z)) % 3 == 2 and chunk_pos.y == 0
-	if not has_house:
-		return
-		
-	# The streetlight is placed procedurally inside the cabin chunk at local X=2, Z=10.
-	# We search for the STONE block (lantern) placed on top of the WOOD post (height 3)
-	var start_x := 2
-	var start_z := 10
-	var chunk_offset := Vector3i(chunk_pos * Chunk.SIZE)
-	
-	for y in range(1, Chunk.SIZE):
-		var block_type := chunk.get_block(start_x, y, start_z)
-		if block_type == BlockType.Type.STONE:
-			var below_block := chunk.get_block(start_x, y - 1, start_z)
-			if below_block == BlockType.Type.WOOD:
-				var global_lantern_pos := chunk_offset + Vector3i(start_x, y, start_z)
-				_streetlight_coords.append(global_lantern_pos)
-				
-				# Ensure correct state on load
-				if _streetlights_active:
-					set_block_globally(global_lantern_pos, BlockType.Type.GRASS)
-				break
-
 func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	if _pending_loading_chunks.has(chunk_pos):
 		_pending_loading_chunks.erase(chunk_pos)
@@ -295,15 +229,9 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 				entity.queue_free()
 		_chunk_entities.erase(chunk_pos)
 
-	# Clean active registered streetlights for this chunk
-	var chunk_offset := chunk_pos * Chunk.SIZE
-	var filtered_coords: Array[Vector3i] = []
-	for coord in _streetlight_coords:
-		var relative_pos := coord - chunk_offset
-		var is_inside := relative_pos.x >= 0 and relative_pos.x < Chunk.SIZE and relative_pos.z >= 0 and relative_pos.z < Chunk.SIZE
-		if not is_inside:
-			filtered_coords.append(coord)
-	_streetlight_coords = filtered_coords
+	# Delegate active streetlights cleanup responsibility to StreetlightService (SRP)
+	if is_instance_valid(_streetlight_service):
+		_streetlight_service.unregister_streetlights_for_chunk(chunk_pos)
 
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 	if is_instance_valid(chunk_node):
