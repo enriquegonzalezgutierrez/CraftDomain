@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player, 
-#              handling camera look, movements, RayCast targeting, inventory counts,
-#              and dynamic communication with the PlayerHUD hotbar selector.
+#              handling camera look, movements, RayCast targeting, inventory,
+#              and dynamic auto-saving upon pause.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -139,14 +139,18 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 
-	# Mouse lock handling
+	# Mouse lock & Auto-save handling
 	if Input.is_action_just_pressed("ui_cancel"):
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			
+			# Dynamic Auto-Save: Silently write player position and all world modifications to disk
+			if is_instance_valid(world_controller):
+				world_controller.save_all()
 		else:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-	# Quick Slot Selection mapping keys 1-6 directly to modern Hotbar Slots 0-5
+	# Quick Slot Selection
 	if Input.is_action_just_pressed("select_stone"):
 		active_build_type = BlockType.Type.STONE
 		is_item_selected = true

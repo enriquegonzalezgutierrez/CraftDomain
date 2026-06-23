@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain Aggregate Root representing the global voxel world, managing
-#              chunk storage, coordinates, and memory removal.
+#              chunk storage, coordinate systems, and block modification tracking.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldState.gd
 # ==============================================================================
@@ -10,6 +10,9 @@ extends RefCounted
 
 ## Dictionary storing chunks, mapping Vector3i (chunk coordinates) -> Chunk.
 var _chunks: Dictionary = {}
+
+## Tracker dictionary mapping Vector3i (chunk coordinates) -> Dictionary (local block coordinates -> BlockType.Type)
+var _chunk_modifications: Dictionary = {}
 
 ## Converts a global 3D coordinate to its corresponding chunk index coordinate.
 func global_to_chunk_pos(global_pos: Vector3i) -> Vector3i:
@@ -46,6 +49,21 @@ func remove_chunk(chunk_pos: Vector3i) -> void:
 	if _chunks.has(chunk_pos):
 		_chunks.erase(chunk_pos)
 
+## Returns the modification dictionary for a specific chunk (Returns empty if none).
+func get_chunk_modifications(chunk_pos: Vector3i) -> Dictionary:
+	if _chunk_modifications.has(chunk_pos):
+		return _chunk_modifications[chunk_pos]
+	return {}
+
+## Overwrites and applies a list of saved modifications to a chunk's voxel grid.
+func apply_chunk_modifications(chunk_pos: Vector3i, modifications: Dictionary) -> void:
+	_chunk_modifications[chunk_pos] = modifications
+	var chunk := get_chunk(chunk_pos)
+	if chunk != null:
+		for local_pos in modifications.keys():
+			var pos: Vector3i = local_pos
+			chunk.set_block(pos.x, pos.y, pos.z, modifications[local_pos])
+
 ## Queries any block in global world space coordinates.
 func get_block(global_pos: Vector3i) -> BlockType.Type:
 	var chunk_pos := global_to_chunk_pos(global_pos)
@@ -56,7 +74,7 @@ func get_block(global_pos: Vector3i) -> BlockType.Type:
 	var local_pos := global_to_local_pos(global_pos)
 	return chunk.get_block(local_pos.x, local_pos.y, local_pos.z)
 
-## Sets a block in global world space coordinates.
+## Sets a block in global world space coordinates and logs the modification.
 func set_block(global_pos: Vector3i, type: BlockType.Type) -> void:
 	var chunk_pos := global_to_chunk_pos(global_pos)
 	var chunk := get_chunk(chunk_pos)
@@ -68,3 +86,8 @@ func set_block(global_pos: Vector3i, type: BlockType.Type) -> void:
 		
 	var local_pos := global_to_local_pos(global_pos)
 	chunk.set_block(local_pos.x, local_pos.y, local_pos.z, type)
+	
+	# Log the modification delta
+	if not _chunk_modifications.has(chunk_pos):
+		_chunk_modifications[chunk_pos] = {}
+	_chunk_modifications[chunk_pos][local_pos] = type
