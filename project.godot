@@ -1,0 +1,32 @@
+; ==============================================================================
+; Project: CraftDomain
+; Description: Godot 4.6.3 project configuration file with main scene definition.
+; Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+; File: project.godot
+; ==============================================================================
+
+config_version=5
+
+[application]
+
+config/name="CraftDomain"
+config/features=PackedStringArray("4.6", "Forward Plus")
+run/main_scene="res://src/Core/Bootstrap/bootstrap.tscn"
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[physics]
+
+3d/physics_engine="GodotPhysics3D"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+textures/canvas_textures/default_texture_filter=0
+environment/defaults/default_clear_color=Color(0.53, 0.81, 0.92, 1)

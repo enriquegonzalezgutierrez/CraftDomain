@@ -1,0 +1,24 @@
+# ==============================================================================
+# Project: CraftDomain
+# Description: Git ignore configuration for Godot 4.6 projects.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: .gitignore
+# ==============================================================================
+
+# Godot-specific ignores
+.godot/
+*.translation
+
+# Editor-specific ignores
+.import/
+export_presets.cfg
+
+# Mono/C# specific (if added in the future)
+.mono/
+data_*/
+mono_crash*.log
+
+# System/OS files
+.DS_Store
+Thumbs.db
+*.tmp

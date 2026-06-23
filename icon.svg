@@ -1,0 +1,18 @@
+<!--
+==============================================================================
+Project: CraftDomain
+Description: Minimalist SVG icon representing a voxel cube for the project.
+Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+File: res://icon.svg
+==============================================================================
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+    <g transform="translate(64, 64)">
+        <!-- Top Face (Grass Light Green) -->
+        <polygon points="0,-45 40,-20 0,5 -40,-20" fill="#8bc34a" />
+        <!-- Left Face (Dirt Medium Green/Brown) -->
+        <polygon points="-40,-20 0,5 0,45 -40,20" fill="#689f38" />
+        <!-- Right Face (Dirt Dark Green/Brown) -->
+        <polygon points="0,5 40,-20 40,20 0,45" fill="#558b2f" />
+    </g>
+</svg>
