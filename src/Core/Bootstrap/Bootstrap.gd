@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
-#              instantiating the World, Player, and a beautiful Procedural Sky.
+#              handling dependency injection between the World and Player controllers.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -21,6 +21,7 @@ func _initialize_application() -> void:
 	_setup_environment()
 	_bootstrap_world()
 	_bootstrap_player()
+	_inject_dependencies()
 
 func _setup_environment() -> void:
 	# 1. Setup directional Sun light with shadows
@@ -78,3 +79,11 @@ func _bootstrap_player() -> void:
 	add_child(player_controller)
 	
 	print("[Bootstrap] Player controller loaded.")
+
+func _inject_dependencies() -> void:
+	print("[Bootstrap] Injecting dependencies...")
+	
+	# Inject the player dependency into the WorldController for real-time proximity tracking
+	world_controller.player = player_controller
+	
+	print("[Bootstrap] Dependency injection completed successfully.")

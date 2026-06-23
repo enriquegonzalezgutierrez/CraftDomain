@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player, 
 #              handling camera look, movements, crosshair canvas, RayCast targeting,
-#              left-click mining, and right-click block building.
+#              left-click mining, and right-click block building with Spawn Protection.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -17,6 +17,9 @@ const REACH_DISTANCE: float = 5.0
 
 # Physics gravity
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+
+# Spawn Protection: Player remains frozen until home chunk is generated
+var is_active: bool = false
 
 # Node references created via code
 var camera: Camera3D
@@ -68,12 +71,13 @@ func _setup_inputs() -> void:
 		InputMap.action_erase_events(action_name)
 		
 		var primary_event := InputEventKey.new()
-		primary_event.physical_keycode = primary_inputs[action_name]
+		# Swapped to keycode for universal platform/keyboard layout mapping
+		primary_event.keycode = primary_inputs[action_name]
 		InputMap.action_add_event(action_name, primary_event)
 		
 		if secondary_inputs.has(action_name):
 			var secondary_event := InputEventKey.new()
-			secondary_event.physical_keycode = secondary_inputs[action_name]
+			secondary_event.keycode = secondary_inputs[action_name]
 			InputMap.action_add_event(action_name, secondary_event)
 
 func _setup_player_geometry() -> void:
@@ -129,6 +133,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_rotation_input -= event.relative * MOUSE_SENSITIVITY
 
 func _physics_process(delta: float) -> void:
+	# Keep player frozen in place until activated by the WorldController
+	if not is_active:
+		velocity = Vector3.ZERO
+		return
+
 	# Mouse lock handling
 	if Input.is_action_just_pressed("ui_cancel"):
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:

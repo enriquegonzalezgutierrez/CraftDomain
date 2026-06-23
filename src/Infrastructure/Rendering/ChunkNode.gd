@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing a chunk using Godot's 
-#              native MultiMeshInstance3D with procedural block instance shading.
+#              native MultiMeshInstance3D with high-performance compound box shape collisions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -26,64 +26,43 @@ func _init(p_chunk: Chunk) -> void:
 	multimesh.use_colors = true
 	multimesh.mesh = BoxMesh.new() # Perfect native Godot 1x1x1 Cube
 
-## Updates the visible MultiMesh instances and physics collisions.
-func update_mesh() -> void:
-	# 1. Count how many solid blocks we need to render
-	var solid_count: int = 0
+## Sets up the MultiMesh rendering transforms and registers the pre-compiled compound box colliders.
+func setup_chunk_visuals(collision_transforms: Array[Transform3D]) -> void:
+	# 1. Gather all solid blocks and assign transforms
+	var solid_coords: Array[Vector3] = []
 	for x in range(Chunk.SIZE):
 		for y in range(Chunk.SIZE):
 			for z in range(Chunk.SIZE):
 				if BlockType.is_solid(chunk.get_block(x, y, z)):
-					solid_count += 1
-	
-	multimesh.instance_count = solid_count
-	
-	# Clear previous collisions
-	if is_instance_valid(_collision_body):
-		_collision_body.queue_free()
-		_collision_body = null
-		
-	if solid_count == 0:
-		return
-		
-	_collision_body = StaticBody3D.new()
-	_collision_body.name = "StaticCollisionBody"
-	add_child(_collision_body)
-	
+					solid_coords.append(Vector3(x, y, z))
+					
+	multimesh.instance_count = solid_coords.size()
 	_apply_material()
 	
-	# 2. Populate positions, colors, and physical colliders
-	var instance_index: int = 0
-	var box_shape := BoxShape3D.new() # Single shape reference shared for efficiency
-	
-	for x in range(Chunk.SIZE):
-		for y in range(Chunk.SIZE):
-			for z in range(Chunk.SIZE):
-				var block_type: BlockType.Type = chunk.get_block(x, y, z)
-				if not BlockType.is_solid(block_type):
-					continue
-					
-				var block_def: BlockDefinition = BlockLibrary.get_definition(block_type)
-				var local_pos := Vector3(x, y, z)
-				
-				# Place the perfect native cube instance (offsetting by 0.5 to center it)
-				var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
-				var inst_transform := Transform3D(Basis(), transform_pos)
-				multimesh.set_instance_transform(instance_index, inst_transform)
-				
-				# Apply a deterministic shading noise based on spatial coordinates
-				# This acts as a procedural pattern that makes individual blocks highly distinct.
-				var shade_noise: float = 0.9 + 0.1 * sin(float(x) * 1.4 + float(y) * 2.3 + float(z) * 3.7)
-				var shaded_color := block_def.color_top * shade_noise
-				multimesh.set_instance_color(instance_index, shaded_color)
-				
-				# 3. Add corresponding physics collider box
-				var collision_shape := CollisionShape3D.new()
-				collision_shape.shape = box_shape
-				collision_shape.position = transform_pos
-				_collision_body.add_child(collision_shape)
-				
-				instance_index += 1
+	for i in range(solid_coords.size()):
+		var local_pos := solid_coords[i]
+		var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
+		var inst_transform := Transform3D(Basis(), transform_pos)
+		multimesh.set_instance_transform(i, inst_transform)
+		
+		# Apply stylized shading variance
+		var block_def := BlockLibrary.get_definition(chunk.get_block(int(local_pos.x), int(local_pos.y), int(local_pos.z)))
+		var shade_noise: float = 0.9 + 0.1 * sin(local_pos.x * 1.4 + local_pos.y * 2.3 + local_pos.z * 3.7)
+		multimesh.set_instance_color(i, block_def.color_top * shade_noise)
+
+	# 2. Register pre-compiled compound box shapes directly into the physics server
+	if collision_transforms.size() > 0:
+		_collision_body = StaticBody3D.new()
+		_collision_body.name = "StaticCollisionBody"
+		add_child(_collision_body)
+		
+		var shared_box_shape := BoxShape3D.new() # Shared resource to save memory
+		
+		for t in collision_transforms:
+			# Create a unique shape owner for this block collider transform group
+			var owner_id := _collision_body.create_shape_owner(_collision_body)
+			_collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
+			_collision_body.shape_owner_set_transform(owner_id, t)
 
 func _apply_material() -> void:
 	var material := ORMMaterial3D.new()

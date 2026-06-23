@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain Aggregate Root representing the global voxel world, managing
-#              chunk storage and coordinate coordinate conversions.
+#              chunk storage, coordinates, and memory removal.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldState.gd
 # ==============================================================================
@@ -40,6 +40,11 @@ func get_chunk(chunk_pos: Vector3i) -> Chunk:
 ## Adds or updates a chunk in the state registry.
 func add_chunk(chunk: Chunk) -> void:
 	_chunks[chunk.position] = chunk
+
+## Removes a chunk from the registry to free system memory.
+func remove_chunk(chunk_pos: Vector3i) -> void:
+	if _chunks.has(chunk_pos):
+		_chunks.erase(chunk_pos)
 
 ## Queries any block in global world space coordinates.
 func get_block(global_pos: Vector3i) -> BlockType.Type:
