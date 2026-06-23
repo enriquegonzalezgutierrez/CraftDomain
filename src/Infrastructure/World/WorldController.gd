@@ -2,7 +2,8 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator that orchestrates the World State, 
 #              procedural generation, dynamic chunk loading, village houses,
-#              and passive animal/villager/merchant entity lifecycles.
+#              and passive animal/villager/merchant entity lifecycles with 
+#              zero main-thread rendering overhead.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -34,26 +35,11 @@ var _completed_tasks_queue: Array[GeneratedChunkTask] = []
 var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.2
 
-## Background calculation data structures (Thread-safe constants)
-const DIRECTIONS: Array[Vector3i] = [
-	Vector3i(0, 1, 0), Vector3i(0, -1, 0),
-	Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
-	Vector3i(0, 0, 1), Vector3i(0, 0, -1)
-]
-
-const FACE_VERTICES: Dictionary = {
-	Vector3i(0, 1, 0): [Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(0, 1, 0)], # TOP
-	Vector3i(0, -1, 0): [Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1)], # BOTTOM
-	Vector3i(1, 0, 0): [Vector3(1, 0, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(1, 0, 0)], # RIGHT
-	Vector3i(-1, 0, 0): [Vector3(0, 0, 0), Vector3(0, 1, 0), Vector3(0, 1, 1), Vector3(0, 0, 1)], # LEFT
-	Vector3i(0, 0, 1): [Vector3(0, 0, 1), Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 0, 1)], # FRONT
-	Vector3i(0, 0, -1): [Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(0, 1, 0), Vector3(0, 0, 0)]  # BACK
-}
-
-## Subclass containing the completed background generation results.
+## Subclass containing the completed background generation and rendering results.
 class GeneratedChunkTask:
 	var chunk: Chunk
-	var collision_transforms: Array[Transform3D]
+	var transforms: Array[Transform3D]
+	var colors: Array[Color]
 
 func _ready() -> void:
 	_initialize_systems()
@@ -114,22 +100,30 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	var chunk := Chunk.new(chunk_pos)
 	generator.generate_chunk(chunk)
 	
-	# 2. Pre-compile box shapes transforms in the background (Thread-safe)
-	var collision_transforms: Array[Transform3D] = []
+	# 2. Pre-compile visual/physical transforms and shaded colors in the background (Thread-safe)
+	var transforms: Array[Transform3D] = []
+	var colors: Array[Color] = []
 	
 	for x in range(Chunk.SIZE):
 		for y in range(Chunk.SIZE):
 			for z in range(Chunk.SIZE):
-				if BlockType.is_solid(chunk.get_block(x, y, z)):
+				var block_type: BlockType.Type = chunk.get_block(x, y, z)
+				if BlockType.is_solid(block_type):
 					var local_pos := Vector3(x, y, z)
 					# Offset by 0.5 to align precisely with the MultiMesh BoxMesh center
 					var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
-					collision_transforms.append(Transform3D(Basis(), transform_pos))
+					transforms.append(Transform3D(Basis(), transform_pos))
+					
+					# Pre-calculate block shading in the background thread
+					var block_def := BlockLibrary.get_definition(block_type)
+					var shade_noise: float = 0.9 + 0.1 * sin(local_pos.x * 1.4 + local_pos.y * 2.3 + local_pos.z * 3.7)
+					colors.append(block_def.color_top * shade_noise)
 						
 	# 3. Queue the task result
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
-	task_result.collision_transforms = collision_transforms
+	task_result.transforms = transforms
+	task_result.colors = colors
 	
 	_queue_mutex.lock()
 	_completed_tasks_queue.append(task_result)
@@ -153,8 +147,8 @@ func _render_completed_chunks_from_queue() -> void:
 			add_child(chunk_node)
 			_chunk_nodes[chunk_pos] = chunk_node
 			
-			# Send pre-compiled background physics transforms
-			chunk_node.setup_chunk_visuals(task.collision_transforms)
+			# Send pre-compiled background visual and physics data
+			chunk_node.setup_chunk_visuals(task.transforms, task.colors, task.transforms)
 			
 			# Spawn animals and villagers for this chunk dynamically
 			_spawn_entities_for_chunk(task.chunk)
@@ -181,8 +175,7 @@ func _spawn_entities_for_chunk(chunk: Chunk) -> void:
 		
 		# Place the Merchant on the side of the house (local coordinates x=5, z=7)
 		var merchant_pos_global := chunk_offset + Vector3(5.5, 14.0, 7.5)
-		var merchant := PassiveEntity.new(PassiveEntity.Type.VILLAGER, merchant_pos_global) # Reuse villager box geometry
-		merchant.name = "Entity_MERCHANT"
+		var merchant := PassiveEntity.new(PassiveEntity.Type.MERCHANT, merchant_pos_global)
 		add_child(merchant)
 		entities_list.append(merchant)
 		
@@ -229,15 +222,21 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	
 	# Recompile only that chunk's physical shape instantly on the main thread
 	if is_instance_valid(chunk_node):
-		var collision_transforms: Array[Transform3D] = []
+		var transforms: Array[Transform3D] = []
+		var colors: Array[Color] = []
 		
 		for x in range(Chunk.SIZE):
 			for y in range(Chunk.SIZE):
 				for z in range(Chunk.SIZE):
-					if BlockType.is_solid(chunk_node.chunk.get_block(x, y, z)):
+					var block_type: BlockType.Type = chunk_node.chunk.get_block(x, y, z)
+					if BlockType.is_solid(block_type):
 						var local_pos := Vector3(x, y, z)
 						var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
-						collision_transforms.append(Transform3D(Basis(), transform_pos))
+						transforms.append(Transform3D(Basis(), transform_pos))
+						
+						var block_def := BlockLibrary.get_definition(block_type)
+						var shade_noise: float = 0.9 + 0.1 * sin(local_pos.x * 1.4 + local_pos.y * 2.3 + local_pos.z * 3.7)
+						colors.append(block_def.color_top * shade_noise)
 		
-		# Set visual and physical updates
-		chunk_node.setup_chunk_visuals(collision_transforms)
+		# Set visual and physical updates (0ms main thread)
+		chunk_node.setup_chunk_visuals(transforms, colors, transforms)
