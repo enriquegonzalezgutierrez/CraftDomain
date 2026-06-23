@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player, 
-#              handling camera look, movements, RayCast targeting, and interactive
-#              Day/Night Pause Menu dynamic triggers.
+#              handling camera look, movements, RayCast targeting, inventory,
+#              and animated first-person 3D viewmodel tool-swapping.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -32,9 +32,11 @@ var camera: Camera3D
 var raycast: RayCast3D
 var world_controller: Node3D
 var hud: PlayerHUD
+var viewmodel: Node3D
 
 # Build inventory selection state (0 to 7 matches our 8 slots)
 var active_slot_index: int = 0
+var active_build_type: BlockType.Type = BlockType.Type.STONE
 var is_item_selected: bool = true # False if selecting currency/weapon
 
 # Internal rotation tracking
@@ -116,6 +118,11 @@ func _setup_player_geometry() -> void:
 	raycast.collide_with_bodies = true
 	camera.add_child(raycast)
 	
+	# 4. First-Person Animated Viewmodel setup (loosely typed to prevent compile locks)
+	var viewmodel_script: Script = load("res://src/Infrastructure/Player/PlayerViewModel.gd")
+	viewmodel = viewmodel_script.new() as Node3D
+	camera.add_child(viewmodel)
+	
 	# Initial safe spawn altitude (to fall onto the generated chunk)
 	position = Vector3(8.0, 16.0, 8.0)
 
@@ -149,14 +156,10 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 
-	# Mouse lock & Pause Menu handling
+	# Mouse lock & Auto-save handling
 	if Input.is_action_just_pressed("ui_cancel"):
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-			
-			# Trigger the glassmorphic Pause Menu overlay
-			if is_instance_valid(hud):
-				hud.toggle_pause_menu(true)
 			
 			# Dynamic Auto-Save: Silently write player position and all world modifications to disk
 			if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
@@ -168,38 +171,50 @@ func _physics_process(delta: float) -> void:
 				hud.toggle_pause_menu(false)
 
 	# Quick Slot Selection mapping keys 1-8 directly to modern Hotbar Slots 0-7
+	# Dynamic Tool Swapping: 1=Scroll, 2=Pickaxe, 3=Sword
 	if Input.is_action_just_pressed("select_stone"):
 		active_slot_index = 0
+		active_build_type = BlockType.Type.STONE
 		is_item_selected = true
 		hud.update_active_slot(0)
+		_set_viewmodel_tool(2) # Stone -> Pickaxe
 	elif Input.is_action_just_pressed("select_dirt"):
 		active_slot_index = 1
+		active_build_type = BlockType.Type.DIRT
 		is_item_selected = true
 		hud.update_active_slot(1)
+		_set_viewmodel_tool(2) # Dirt -> Pickaxe
 	elif Input.is_action_just_pressed("select_grass"):
 		active_slot_index = 2
+		active_build_type = BlockType.Type.GRASS
 		is_item_selected = true
 		hud.update_active_slot(2)
+		_set_viewmodel_tool(2) # Grass -> Pickaxe
 	elif Input.is_action_just_pressed("select_wood"):
 		active_slot_index = 3
 		is_item_selected = true
 		hud.update_active_slot(3)
+		_set_viewmodel_tool(1) # Wood -> Scroll (Blueprint)
 	elif Input.is_action_just_pressed("select_leaves"):
 		active_slot_index = 4
 		is_item_selected = true
 		hud.update_active_slot(4)
+		_set_viewmodel_tool(1) # Leaves -> Scroll (Blueprint)
 	elif Input.is_action_just_pressed("select_lava"):
 		active_slot_index = 5
 		is_item_selected = false
 		hud.update_active_slot(5)
+		_set_viewmodel_tool(1) # Lava -> Scroll (Blueprint)
 	elif Input.is_action_just_pressed("select_chicken"):
 		active_slot_index = 6
 		is_item_selected = false
 		hud.update_active_slot(6)
+		_set_viewmodel_tool(1) # Chicken -> Scroll (Blueprint)
 	elif Input.is_action_just_pressed("select_sword"):
 		active_slot_index = 7
 		is_item_selected = false
 		hud.update_active_slot(7)
+		_set_viewmodel_tool(3) # Sword -> Handheld Sword
 
 	# Block Mining & Placement Handlers
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and is_instance_valid(world_controller):
@@ -235,7 +250,17 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
+func _set_viewmodel_tool(tool_id: int) -> void:
+	if is_instance_valid(viewmodel) and viewmodel.has_method("switch_to_tool"):
+		viewmodel.call("switch_to_tool", tool_id)
+
+func _trigger_viewmodel_swing() -> void:
+	if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
+		viewmodel.call("play_swing_animation")
+
 func _mine_or_attack() -> void:
+	_trigger_viewmodel_swing() # Trigger dynamic 3D swing animation
+	
 	if not raycast.is_colliding():
 		return
 		
@@ -272,6 +297,8 @@ func _mine_or_attack() -> void:
 		print("[Player] Mined block at: ", block_coord)
 
 func _build_or_interact() -> void:
+	_trigger_viewmodel_swing() # Trigger dynamic 3D swing animation
+	
 	if not raycast.is_colliding():
 		return
 		
@@ -353,7 +380,7 @@ func _die_and_respawn() -> void:
 
 ## Public Inventory Synchronizer (ISP & DIP compliant): Writes values cleanly to the HUD
 func _sync_hud_counters() -> void:
-	if not is_instance_valid(hud) or not is_instance_valid(inventory):
+	if not is_instance_valid(hud):
 		return
 		
 	# Synchronize all 8 quick-slots counters directly with the HUD

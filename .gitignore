@@ -6,6 +6,8 @@
 # ==============================================================================
 
 # Godot-specific ignores
+CraftDomain.console.exe
+CraftDomain.exe
 .godot/
 *.translation
 

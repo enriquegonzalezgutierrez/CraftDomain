@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
 #              handling dynamic, decoupled dependency injection, soundtracks, 
-#              and safe main menu state reloading transitions.
+#              and safe bidirectional audio crossfading transitions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -120,7 +120,7 @@ func _on_start_game_requested() -> void:
 		
 	# 2. Transition soundtrack using professional 1.5s crossfading
 	if is_instance_valid(audio_service):
-		audio_service.play_world_music()
+		audio_service.crossfade_to_world()
 		
 	# 3. Bootstrap 3D World and Player
 	_bootstrap_world()
@@ -143,7 +143,7 @@ func return_to_main_menu() -> void:
 		
 	# 3. Fade soundtrack back to Main Menu music
 	if is_instance_valid(audio_service):
-		audio_service.play_menu_music()
+		audio_service.crossfade_to_menu()
 		
 	# 4. Reload starting Main Menu overlay
 	_load_main_menu()

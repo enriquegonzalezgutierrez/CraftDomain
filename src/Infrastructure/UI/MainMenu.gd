@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Infrastructure UI controller representing the main menu overlay,
 #              building containers, text styling, and custom buttons programmatically.
-#              Ensures full-screen viewport scaling and perfect alignment.
+#              Integrates the decoupled Settings Menu component cleanly.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MainMenu.gd
 # ==============================================================================
@@ -11,6 +11,8 @@ extends Control
 
 ## Emitted when the player clicks the "Play World" button.
 signal play_pressed
+
+var _settings_overlay: SettingsMenu
 
 func _ready() -> void:
 	# Stretch the root control node to fill the entire window viewport
@@ -67,12 +69,23 @@ func _ready() -> void:
 	play_btn.pressed.connect(_on_play_pressed)
 	box.add_child(play_btn)
 	
-	# Spacer 2
 	var spacer2 := Control.new()
 	spacer2.custom_minimum_size = Vector2(0, 12)
 	box.add_child(spacer2)
 	
-	# 6. Exit Button
+	# 6. Settings Button
+	var settings_btn := Button.new()
+	settings_btn.name = "SettingsButton"
+	settings_btn.text = "SETTINGS"
+	settings_btn.custom_minimum_size = Vector2(250, 48)
+	settings_btn.pressed.connect(_on_settings_pressed)
+	box.add_child(settings_btn)
+	
+	var spacer3 := Control.new()
+	spacer3.custom_minimum_size = Vector2(0, 12)
+	box.add_child(spacer3)
+	
+	# 7. Exit Button
 	var exit_btn := Button.new()
 	exit_btn.name = "ExitButton"
 	exit_btn.text = "EXIT GAME"
@@ -82,6 +95,17 @@ func _ready() -> void:
 
 func _on_play_pressed() -> void:
 	play_pressed.emit()
+
+func _on_settings_pressed() -> void:
+	# Instantiate and display the settings menu programmatically
+	_settings_overlay = SettingsMenu.new()
+	
+	# Remove the overlay cleanly when the user clicks 'BACK'
+	_settings_overlay.closed.connect(func() -> void:
+		if is_instance_valid(_settings_overlay):
+			_settings_overlay.queue_free()
+	)
+	add_child(_settings_overlay)
 
 func _on_exit_pressed() -> void:
 	get_tree().quit()

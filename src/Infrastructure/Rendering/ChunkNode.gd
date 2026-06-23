@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing a chunk using Godot's 
-#              native MultiMeshInstance3D, completely optimized with zero main-thread loops.
+#              native MultiMeshInstance3D with procedural 16x16 pixel textures.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -12,6 +12,7 @@ extends MultiMeshInstance3D
 var chunk: Chunk
 
 var _collision_body: StaticBody3D
+static var _procedural_pixel_texture: ImageTexture
 
 func _init(p_chunk: Chunk) -> void:
 	chunk = p_chunk
@@ -27,32 +28,55 @@ func _init(p_chunk: Chunk) -> void:
 	multimesh.mesh = BoxMesh.new() # Perfect native Godot 1x1x1 Cube
 
 ## Sets up the MultiMesh rendering transforms and registers the pre-compiled compound box colliders.
-## This function runs in 0ms on the main thread.
-func setup_chunk_visuals(visual_transforms: Array[Transform3D], visual_colors: Array[Color], collision_transforms: Array[Transform3D]) -> void:
+func setup_chunk_visuals(collision_transforms: Array[Transform3D], visual_colors: Array[Color], p_collision_transforms: Array[Transform3D]) -> void:
 	# 1. Apply pre-compiled visual transforms and colors directly to the GPU
-	multimesh.instance_count = visual_transforms.size()
+	multimesh.instance_count = collision_transforms.size()
 	_apply_material()
 	
-	for i in range(visual_transforms.size()):
-		multimesh.set_instance_transform(i, visual_transforms[i])
+	for i in range(collision_transforms.size()):
+		multimesh.set_instance_transform(i, collision_transforms[i])
 		multimesh.set_instance_color(i, visual_colors[i])
 
 	# 2. Register pre-compiled compound box shapes directly into the physics server
-	if collision_transforms.size() > 0:
+	if p_collision_transforms.size() > 0:
 		_collision_body = StaticBody3D.new()
 		_collision_body.name = "StaticCollisionBody"
 		add_child(_collision_body)
 		
 		var shared_box_shape := BoxShape3D.new() # Shared resource to save memory
 		
-		for t in collision_transforms:
+		for t in p_collision_transforms:
 			# Create a unique shape owner for this block collider transform group
 			var owner_id := _collision_body.create_shape_owner(_collision_body)
 			_collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
 			_collision_body.shape_owner_set_transform(owner_id, t)
 
 func _apply_material() -> void:
+	# Generate the static procedural 16x16 pixel-art texture once to save GPU memory
+	if _procedural_pixel_texture == null:
+		_generate_pixel_texture()
+		
 	var material := ORMMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
 	material.roughness = 0.95
+	
+	# Apply the pixelated retro texture (multiplied by our shaded block colors!)
+	material.albedo_texture = _procedural_pixel_texture
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST # Keeps pixels sharp
+	
 	material_override = material
+
+func _generate_pixel_texture() -> void:
+	# Programmatically generate a raw 16x16 pixel noise pattern
+	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	
+	# Seed the noise pattern deterministically
+	for x in range(16):
+		for y in range(16):
+			# Generate nice subtle contrast shading values
+			var shade_value: float = randf_range(0.82, 1.0)
+			img.set_pixel(x, y, Color(shade_value, shade_value, shade_value, 1.0))
+			
+	# Convert raw image to a high-contrast GPU ImageTexture
+	_procedural_pixel_texture = ImageTexture.create_from_image(img)
+	print("[ChunkNode] Procedural 16x16 retro-pixel texture compiled successfully.")

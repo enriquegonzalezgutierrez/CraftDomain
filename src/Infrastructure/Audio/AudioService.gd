@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure Audio Service managing programmatic soundtrack players,
-#              flawless signal-based looping, and cinematic crossfading transitions.
+#              flawless signal-based looping, and safe bidirectional crossfading transitions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Audio/AudioService.gd
 # ==============================================================================
@@ -13,6 +13,9 @@ const WORLD_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/world_music.mp3"
 
 var _menu_player: AudioStreamPlayer
 var _world_player: AudioStreamPlayer
+
+# Reference to active transition tweens to prevent overlapping fade glitches
+var _active_tween: Tween
 
 func _ready() -> void:
 	_initialize_players()
@@ -46,31 +49,34 @@ func _initialize_players() -> void:
 func _completed_tasks_queue_loop() -> void:
 	_world_player.finished.connect(_world_player.play)
 
-## Plays the Main Menu music with a smooth 1.5-second fade-in.
+## Plays the Main Menu music with a smooth 1.5-second fade-in on initial boot.
 func play_menu_music() -> void:
 	if not is_instance_valid(_menu_player):
 		return
 		
 	_menu_player.play()
 	
-	# Smooth fade-in tween
-	var tween := create_tween()
-	tween.tween_property(_menu_player, "volume_db", -6.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_active_tween = create_tween()
+	_active_tween.tween_property(_menu_player, "volume_db", -6.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 ## Transitions from Menu Music to World Music using a cinematic 1.5-second crossfade.
-func play_world_music() -> void:
+func crossfade_to_world() -> void:
 	if not is_instance_valid(_menu_player) or not is_instance_valid(_world_player):
 		return
+		
+	# Cancel any running fade tweens
+	if is_instance_valid(_active_tween):
+		_active_tween.kill()
 		
 	_world_player.play()
 	
 	# Crossfade: Fade-out menu player while fading-in world player in parallel
-	var crossfade_tween := create_tween().set_parallel(true)
-	crossfade_tween.tween_property(_menu_player, "volume_db", -80.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	crossfade_tween.tween_property(_world_player, "volume_db", -6.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_active_tween = create_tween().set_parallel(true)
+	_active_tween.tween_property(_menu_player, "volume_db", -80.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_active_tween.tween_property(_world_player, "volume_db", -6.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	
-	# Stop the menu player once it is fully silent using the correct Godot 4 tween_callback API
-	crossfade_tween.chain().tween_callback(func() -> void:
+	# Stop the menu player once it is fully silent to save CPU cycles
+	_active_tween.chain().tween_callback(func() -> void:
 		if is_instance_valid(_menu_player) and _menu_player.playing:
 			# Disconnect finished signal temporarily during a manual stop to prevent double triggers
 			_menu_player.finished.disconnect(_menu_player.play)
@@ -78,8 +84,35 @@ func play_world_music() -> void:
 			_menu_player.finished.connect(_menu_player.play) # Reconnect for future runs
 	)
 
+## Transitions from World Music back to the Menu Music using a cinematic 1.5-second crossfade.
+func crossfade_to_menu() -> void:
+	if not is_instance_valid(_menu_player) or not is_instance_valid(_world_player):
+		return
+		
+	# Cancel any running fade tweens
+	if is_instance_valid(_active_tween):
+		_active_tween.kill()
+		
+	_menu_player.play()
+	
+	# Crossfade: Fade-out world player while fading-in menu player in parallel
+	_active_tween = create_tween().set_parallel(true)
+	_active_tween.tween_property(_world_player, "volume_db", -80.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_active_tween.tween_property(_menu_player, "volume_db", -6.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	
+	# Stop the world player once it is fully silent
+	_active_tween.chain().tween_callback(func() -> void:
+		if is_instance_valid(_world_player) and _world_player.playing:
+			_world_player.finished.disconnect(_world_player.play)
+			_world_player.stop()
+			_world_player.finished.connect(_world_player.play)
+	)
+
 ## Silently stops all playing soundtracks instantly.
 func stop_all() -> void:
+	if is_instance_valid(_active_tween):
+		_active_tween.kill()
+		
 	if is_instance_valid(_menu_player) and _menu_player.playing:
 		_menu_player.stop()
 	if is_instance_valid(_world_player) and _world_player.playing:

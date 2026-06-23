@@ -1,18 +1,38 @@
 <!--
 ==============================================================================
 Project: CraftDomain
-Description: Minimalist SVG icon representing a voxel cube for the project.
+Description: High-end minimalist SVG icon representing an isometric voxel 
+             grass block with a crossed combat sword for the project icon.
 Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 File: res://icon.svg
 ==============================================================================
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+    <!-- Circular Shield Background (Dark Slate) -->
+    <circle cx="64" cy="64" r="58" fill="#14141a" stroke="#252530" stroke-width="4"/>
+    
     <g transform="translate(64, 64)">
-        <!-- Top Face (Grass Light Green) -->
-        <polygon points="0,-45 40,-20 0,5 -40,-20" fill="#8bc34a" />
-        <!-- Left Face (Dirt Medium Green/Brown) -->
-        <polygon points="-40,-20 0,5 0,45 -40,20" fill="#689f38" />
-        <!-- Right Face (Dirt Dark Green/Brown) -->
-        <polygon points="0,5 40,-20 40,20 0,45" fill="#558b2f" />
+        <!-- Crossed Sword (Rotated Background Layer) -->
+        <g transform="rotate(-45) translate(-10, -50)">
+			<!-- Blade (Iron Grey) -->
+			<rect x="6" y="0" width="8" height="60" fill="#e0e0e0" rx="2"/>
+			<rect x="10" y="0" width="4" height="60" fill="#cfd8dc" rx="1"/>
+			<!-- Guard (Wood Brown) -->
+			<rect x="0" y="60" width="20" height="6" fill="#8d6e63" rx="2"/>
+			<!-- Grip (Dark Oak) -->
+			<rect x="7" y="66" width="6" height="16" fill="#5d4037" rx="1"/>
+			<!-- Pommel -->
+			<rect x="5" y="82" width="10" height="6" fill="#8d6e63" rx="2"/>
+        </g>
+        
+        <!-- Isometric Voxel Block (Foreground Layer) -->
+        <g transform="translate(0, 5)">
+            <!-- Top Face (Grass Light Green) -->
+            <polygon points="0,-35 32,-16 0,3 -32,-16" fill="#8bc34a" />
+            <!-- Left Face (Dirt Medium Green/Brown) -->
+            <polygon points="-32,-16 0,3 0,35 -32,16" fill="#689f38" />
+            <!-- Right Face (Dirt Dark Green/Brown) -->
+            <polygon points="0,3 32,-16 32,16 0,35" fill="#558b2f" />
+        </g>
     </g>
 </svg>

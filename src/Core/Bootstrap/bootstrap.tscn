@@ -1,12 +1,6 @@
-; ==============================================================================
-; Project: CraftDomain
-; Description: Main scene file that loads the Bootstrap composition root.
-; Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-; File: res://src/Core/Bootstrap/bootstrap.tscn
-; ==============================================================================
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://cmkhu12vax4nw"]
 
-[ext_resource type="Script" path="res://src/Core/Bootstrap/Bootstrap.gd" id="1_bootstrap"]
+[ext_resource type="Script" uid="uid://chpgj63gotvfb" path="res://src/Core/Bootstrap/Bootstrap.gd" id="1_bootstrap"]
 
-[node name="Bootstrap" type="Node"]
+[node name="Bootstrap" type="Node" unique_id=1111121625]
 script = ExtResource("1_bootstrap")
