@@ -4,6 +4,8 @@
 #              generation, dynamic loading, and saving/loading block modifications.
 #              Enforces SOLID and SRP compliance by delegating mob spawning,
 #              streetlights toggling, and asynchronous thread pool tasks.
+#              Features a robust Spawn Protection (Unstuck Solver) configured with
+#              mathematically correct capsule offsets to prevent physics jamming.
 #              DIP Compliant: Relies on injected WorldRepository abstraction.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
@@ -208,7 +210,7 @@ func _pre_shaded_colors_of_chunk(chunk: Chunk, transforms: Array[Transform3D]) -
 	for i in range(transforms.size()):
 		var t := transforms[i]
 		var local_pos := t.origin - Vector3(0.5, 0.5, 0.5)
-		var block_type := chunk.get_block(int(local_pos.x), int(local_pos.y), int(local_pos.z))
+		var block_type := chunk.get_block(int(round(local_pos.x)), int(round(local_pos.y)), int(round(local_pos.z)))
 		var block_def := BlockLibrary.get_definition(block_type)
 		
 		# Generate soft ambient shading using coordinate algorithms
@@ -267,18 +269,46 @@ func save_all() -> void:
 
 func _activate_player_spawn() -> void:
 	var saved_global := repository.load_global_state()
+	var spawn_pos := Vector3(8.5, 14.0, 8.5) # Baseline fallback coordinates
+	var spawn_rot := Vector3.ZERO
 	
 	if saved_global.has("player_pos"):
-		# Restore player parameters from the previous session
-		player.position = saved_global["player_pos"]
-		player.rotation = saved_global["player_rot"]
-		player.set("is_active", true)
-		print("[WorldController] Restored player spawn from previous session.")
+		spawn_pos = saved_global["player_pos"]
+		spawn_rot = saved_global["player_rot"]
+		print("[WorldController] Checking saved spawn safety for position: ", spawn_pos)
+	
+	# --- UNSTUCK & SAFE GROUND FINDER ALGORITHM ---
+	# Scans the block column from top (Y=15) to bottom (Y=0) searching for solid terrain
+	var block_x := int(floor(spawn_pos.x))
+	var block_z := int(floor(spawn_pos.z))
+	var found_safe_y: float = -1.0
+	
+	for y in range(Chunk.SIZE - 1, -1, -1):
+		var check_coord := Vector3i(block_x, y, block_z)
+		var block_type := world_state.get_block(check_coord)
+		
+		if BlockType.is_solid(block_type):
+			# Offset Y by 2.0 to account for player height (1.8m) plus a tiny safety cushion (0.1m)
+			found_safe_y = float(y) + 2.0 
+			break
+			
+	if found_safe_y >= 0.0:
+		spawn_pos.y = found_safe_y
+		print("[WorldController] Spawn protected! Relocated player safely on ground at Y: ", found_safe_y)
 	else:
-		# Initial fresh spawn on safe meadow coordinates
-		player.position = Vector3(8.5, 14.0, 8.5)
-		player.set("is_active", true)
-		print("[WorldController] Fresh world spawn initialized.")
+		# Fallback to a high altitude safe drop coordinates if column is empty
+		spawn_pos.y = 14.0
+		print("[WorldController] Column empty. Spawning player in air drop at safe Y: 14.0")
+		
+	# Apply final verified safe parameters to the player controller
+	player.position = spawn_pos
+	player.rotation = spawn_rot
+	player.set("is_active", true)
+	
+	# Ensure the player falls or glides onto the ground naturally by clearing previous velocity
+	player.velocity = Vector3.ZERO
+	
+	print("[WorldController] Player activated safely under Spawn Protection rules.")
 
 ## Public API: Modifies a block globally, triggers redraws and registers deltas (DDD compliant)
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:

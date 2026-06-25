@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure controller node representing a chunk using Godot's 
+# Description: Infrastructure rendering node representing a chunk using Godot's
 #              native MultiMeshInstance3D with procedural 16x16 pixel textures.
+#              Restored to use the highly compatible and performant ORMMaterial3D
+#              to guarantee cross-platform color correctness.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
