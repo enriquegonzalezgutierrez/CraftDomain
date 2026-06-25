@@ -4,8 +4,9 @@
 #              generation, dynamic loading, and saving/loading block modifications.
 #              Enforces SOLID and SRP compliance by delegating mob spawning,
 #              streetlights toggling, and asynchronous thread pool tasks.
-#              Features a robust Spawn Protection (Unstuck Solver) configured with
-#              mathematically correct capsule offsets to prevent physics jamming.
+#              Features a robust Spawn Protection (Unstuck Solver) that resolves
+#              the target chunk coordinates, forcing horizontal Y=0 alignment.
+#              Sends pre-compiled transforms directly to the off-tree ChunkNode.
 #              DIP Compliant: Relies on injected WorldRepository abstraction.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
@@ -45,6 +46,9 @@ var _completed_tasks_queue: Array[GeneratedChunkTask] = []
 var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.2
 
+## Target chunk coordinate where the player is scheduled to spawn safely
+var _target_spawn_chunk_pos: Vector3i = Vector3i(0, 0, 0)
+
 ## Subclass containing the completed background generation and rendering results.
 class GeneratedChunkTask:
 	var chunk: Chunk
@@ -68,16 +72,40 @@ func _initialize_systems() -> void:
 	# Check if a saved world state exists via the injected abstraction
 	var saved_global := repository.load_global_state()
 	var active_seed: int
+	var spawn_pos := Vector3(8.5, 14.0, 8.5) # Fallback spawn
+	var spawn_rot := Vector3.ZERO
 	
 	if saved_global.has("seed"):
 		active_seed = saved_global["seed"]
 		print("[WorldController] Found saved game! Restoring seed: ", active_seed)
+		
+		if saved_global.has("player_pos"):
+			spawn_pos = saved_global["player_pos"]
+			spawn_rot = saved_global["player_rot"]
 	else:
 		randomize()
 		active_seed = randi()
 		print("[WorldController] No save found. Generating new world with unique Seed: ", active_seed)
 		
 	generator = WorldGenerator.new(active_seed)
+	
+	# Compute and lock the target spawn chunk pos
+	var block_pos := Vector3i(int(floor(spawn_pos.x)), int(floor(spawn_pos.y)), int(floor(spawn_pos.z)))
+	_target_spawn_chunk_calculation(block_pos)
+	
+	# Pre-position the player entity immediately to their target coords
+	# This forces the ChunkLoader to detect and load the surrounding target chunks first
+	if is_instance_valid(player):
+		player.position = spawn_pos
+		player.rotation = spawn_rot
+		print("[WorldController] Player pre-positioned at target coordinates: ", spawn_pos)
+
+func _target_spawn_chunk_calculation(block_pos: Vector3i) -> void:
+	_target_spawn_chunk_pos = world_state.global_to_chunk_pos(block_pos)
+	
+	# Force horizontal vertical Y=0 chunk coordination to match loader layout
+	_target_spawn_chunk_pos.y = 0
+	print("[WorldController] Calculated player destination spawn chunk at: ", _target_spawn_chunk_pos)
 
 func _process(delta: float) -> void:
 	if not is_instance_valid(player):
@@ -106,14 +134,12 @@ func _process_dynamic_world() -> void:
 		_request_asynchronous_chunk_load(chunk_pos)
 
 func _process_day_night_lighting() -> void:
-	# Locate the sibling CelestialService node dynamically
 	var celestial = get_parent().get_node_or_null("CelestialService")
 	if not is_instance_valid(celestial) or not celestial.has_method("is_night_time"):
 		return
 		
 	var is_night: bool = celestial.call("is_night_time")
 	
-	# Delegate light toggling responsibility to the StreetlightService (SRP)
 	if is_instance_valid(_streetlight_service):
 		_streetlight_service.update_streetlights_state(is_night)
 
@@ -177,30 +203,28 @@ func _render_completed_chunks_from_queue() -> void:
 			
 			world_state.add_chunk(task.chunk)
 			
-			# Construct native representation
 			var chunk_node := ChunkNode.new(task.chunk)
 			add_child(chunk_node)
 			_chunk_nodes[chunk_pos] = chunk_node
 			
-			# Send pre-compiled background physics and visual transformations
+			# Pass the pre-compiled transforms, colors, and compound collision transforms
 			chunk_node.setup_chunk_visuals(
 				task.transforms, 
 				_pre_shaded_colors_of_chunk(task.chunk, task.transforms), 
 				task.transforms
 			)
 			
-			# Delegate animal and villager spawning responsibility to MobSpawningService (SRP)
 			if is_instance_valid(_mob_spawning_service):
 				var spawned := _mob_spawning_service.spawn_mobs_for_chunk(task.chunk, self)
 				if spawned.size() > 0:
 					_chunk_entities[chunk_pos] = spawned
 			
-			# Delegate streetlight registration responsibility to StreetlightService (SRP)
 			if is_instance_valid(_streetlight_service):
 				_streetlight_service.register_streetlights_for_chunk(task.chunk)
 			
-			# Safe spawn activation: Activate player once the home chunk is rendered
-			if chunk_pos == Vector3i(0, 0, 0) and is_instance_valid(player) and not player.get("is_active"):
+			# --- SECURE SPAWN SYNCHRONIZATION ---
+			# Only activate player spawn once their specific target destination chunk is fully loaded and rendered
+			if chunk_pos == _target_spawn_chunk_pos and is_instance_valid(player) and not player.get("is_active"):
 				_activate_player_spawn()
 
 func _pre_shaded_colors_of_chunk(chunk: Chunk, transforms: Array[Transform3D]) -> Array[Color]:
@@ -213,7 +237,6 @@ func _pre_shaded_colors_of_chunk(chunk: Chunk, transforms: Array[Transform3D]) -
 		var block_type := chunk.get_block(int(round(local_pos.x)), int(round(local_pos.y)), int(round(local_pos.z)))
 		var block_def := BlockLibrary.get_definition(block_type)
 		
-		# Generate soft ambient shading using coordinate algorithms
 		var shade_noise: float = 0.9 + 0.1 * sin(local_pos.x * 1.4 + local_pos.y * 2.3 + local_pos.z * 3.7)
 		colors[i] = block_def.color_top * shade_noise
 		
@@ -224,12 +247,10 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		_pending_loading_chunks.erase(chunk_pos)
 		return
 
-	# Write modifications to disk on unload dynamically
 	var modifications := world_state.get_chunk_modifications(chunk_pos)
 	if modifications.size() > 0:
 		repository.save_chunk_modifications(chunk_pos, modifications)
 
-	# Clean up entities spawned inside this chunk region
 	if _chunk_entities.has(chunk_pos):
 		var entities: Array = _chunk_entities[chunk_pos]
 		for entity in entities:
@@ -237,11 +258,9 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 				entity.queue_free()
 		_chunk_entities.erase(chunk_pos)
 
-	# Clean up streetlight coordinates via service
 	if is_instance_valid(_streetlight_service):
 		_streetlight_service.unregister_streetlights_for_chunk(chunk_pos)
 
-	# Free rendering nodes from scene tree
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 	if is_instance_valid(chunk_node):
 		chunk_node.queue_free()
@@ -249,16 +268,13 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	_chunk_nodes.erase(chunk_pos)
 	world_state.remove_chunk(chunk_pos)
 
-## Public API: Performs a clean save of all active chunks and player metadata (DIP/SRP)
 func save_all() -> void:
 	print("[WorldController] Executing clean save operations...")
 	
-	# 1. Save modified chunks data
 	for chunk_pos in world_state._chunk_modifications.keys():
 		var modifications: Dictionary = world_state.get_chunk_modifications(chunk_pos)
 		repository.save_chunk_modifications(chunk_pos, modifications)
 		
-	# 2. Save player coordinates and camera angles cleanly
 	if is_instance_valid(player):
 		repository.save_global_state(
 			player.global_position, 
@@ -268,19 +284,10 @@ func save_all() -> void:
 	print("[WorldController] All data serialized and saved successfully.")
 
 func _activate_player_spawn() -> void:
-	var saved_global := repository.load_global_state()
-	var spawn_pos := Vector3(8.5, 14.0, 8.5) # Baseline fallback coordinates
-	var spawn_rot := Vector3.ZERO
-	
-	if saved_global.has("player_pos"):
-		spawn_pos = saved_global["player_pos"]
-		spawn_rot = saved_global["player_rot"]
-		print("[WorldController] Checking saved spawn safety for position: ", spawn_pos)
-	
 	# --- UNSTUCK & SAFE GROUND FINDER ALGORITHM ---
-	# Scans the block column from top (Y=15) to bottom (Y=0) searching for solid terrain
-	var block_x := int(floor(spawn_pos.x))
-	var block_z := int(floor(spawn_pos.z))
+	# Executed over a fully loaded chunk structure, guaranteed to find solid terrain
+	var block_x := int(floor(player.position.x))
+	var block_z := int(floor(player.position.z))
 	var found_safe_y: float = -1.0
 	
 	for y in range(Chunk.SIZE - 1, -1, -1):
@@ -293,24 +300,17 @@ func _activate_player_spawn() -> void:
 			break
 			
 	if found_safe_y >= 0.0:
-		spawn_pos.y = found_safe_y
+		player.position.y = found_safe_y
 		print("[WorldController] Spawn protected! Relocated player safely on ground at Y: ", found_safe_y)
 	else:
-		# Fallback to a high altitude safe drop coordinates if column is empty
-		spawn_pos.y = 14.0
+		player.position.y = 14.0
 		print("[WorldController] Column empty. Spawning player in air drop at safe Y: 14.0")
 		
-	# Apply final verified safe parameters to the player controller
-	player.position = spawn_pos
-	player.rotation = spawn_rot
 	player.set("is_active", true)
-	
-	# Ensure the player falls or glides onto the ground naturally by clearing previous velocity
 	player.velocity = Vector3.ZERO
 	
 	print("[WorldController] Player activated safely under Spawn Protection rules.")
 
-## Public API: Modifies a block globally, triggers redraws and registers deltas (DDD compliant)
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	world_state.set_block(global_pos, type)
 	
@@ -326,8 +326,7 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 						var local_pos := Vector3(x, y, z)
 						var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
 						collision_transforms.append(Transform3D(Basis(), transform_pos))
-		
-		# Perform immediate redraw and physics compilation on the main thread
+						
 		chunk_node.setup_chunk_visuals(
 			collision_transforms, 
 			_pre_shaded_colors_of_chunk(chunk_node.chunk, collision_transforms), 

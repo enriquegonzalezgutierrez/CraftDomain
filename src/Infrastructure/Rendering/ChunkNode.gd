@@ -2,8 +2,9 @@
 # Project: CraftDomain
 # Description: Infrastructure rendering node representing a chunk using Godot's
 #              native MultiMeshInstance3D with procedural 16x16 pixel textures.
-#              Restored to use the highly compatible and performant ORMMaterial3D
-#              to guarantee cross-platform color correctness.
+#              Assembles a compound BoxShape3D collision structure off-tree
+#              before registering it in a single atomic main-thread operation,
+#              preventing both physics stutters and triangle-seam snagging bugs.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -39,19 +40,32 @@ func setup_chunk_visuals(collision_transforms: Array[Transform3D], visual_colors
 		multimesh.set_instance_transform(i, collision_transforms[i])
 		multimesh.set_instance_color(i, visual_colors[i])
 
-	# 2. Register pre-compiled compound box shapes directly into the physics server
+	# 2. --- HIGH PERFORMANCE OFF-TREE ASSEMBLY ---
+	# Assembles all shape owners while the node is detached from the active SceneTree.
+	# Once completed, it is flushed in a single atomic step to prevent thread stalling.
 	if p_collision_transforms.size() > 0:
-		_collision_body = StaticBody3D.new()
-		_collision_body.name = "StaticCollisionBody"
-		add_child(_collision_body)
+		var collision_body := StaticBody3D.new()
+		collision_body.name = "StaticCollisionBody"
 		
 		var shared_box_shape := BoxShape3D.new() # Shared resource to save memory
 		
 		for t in p_collision_transforms:
-			# Create a unique shape owner for this block collider transform group
-			var owner_id := _collision_body.create_shape_owner(_collision_body)
-			_collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
-			_collision_body.shape_owner_set_transform(owner_id, t)
+			var local_pos := t.origin - Vector3(0.5, 0.5, 0.5)
+			var block_x := int(round(local_pos.x))
+			var block_y := int(round(local_pos.y))
+			var block_z := int(round(local_pos.z))
+			
+			var block_type_id: int = chunk.get_block(block_x, block_y, block_z)
+			
+			# Ensure we only build colliders for solid blocks
+			if BlockType.is_solid(block_type_id):
+				var owner_id := collision_body.create_shape_owner(collision_body)
+				collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
+				collision_body.shape_owner_set_transform(owner_id, t)
+				
+		# Attach the fully built physical body to the scene tree in a single step
+		_collision_body = collision_body
+		add_child(_collision_body)
 
 func _apply_material() -> void:
 	# Generate the static procedural 16x16 pixel-art texture once to save GPU memory
