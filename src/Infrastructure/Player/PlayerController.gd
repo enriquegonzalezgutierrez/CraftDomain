@@ -4,6 +4,8 @@
 #              Responsible for camera control, movement physics, RayCast targeting,
 #              animated viewmodels, and pause inputs. Uses composition to hold
 #              a pure Domain VoxelEntity for survival and health rules.
+#              Position overwriting has been completely removed to preserve
+#              restored coordinate metrics loaded by the WorldController save system.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -133,8 +135,8 @@ func _setup_player_geometry() -> void:
 	viewmodel = viewmodel_script.new() as Node3D
 	camera.add_child(viewmodel)
 	
-	# Initial safe spawn altitude
-	position = Vector3(8.0, 16.0, 8.0)
+	# CRITICAL FIX: The hardcoded position assignment has been completely removed from here.
+	# The PlayerController now correctly preserves restored coordinates applied on startup.
 
 func _setup_hud() -> void:
 	inventory = InventoryComponent.new()
