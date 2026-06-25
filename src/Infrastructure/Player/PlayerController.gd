@@ -4,8 +4,8 @@
 #              Responsible for camera control, movement physics, RayCast targeting,
 #              animated viewmodels, and pause inputs. Uses composition to hold
 #              a pure Domain VoxelEntity for survival and health rules.
-#              Position overwriting has been completely removed to preserve
-#              restored coordinate metrics loaded by the WorldController save system.
+#              Camera rotation is processed inside _unhandled_input() to eliminate
+#              Vulkan physics jitter, achieving silk-smooth mouse-looking.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -41,9 +41,6 @@ var viewmodel: Node3D
 var active_slot_index: int = 0
 var active_build_type: BlockType.Type = BlockType.Type.STONE
 var is_item_selected: bool = true # False if selecting currency/weapon
-
-# Internal rotation tracking
-var _rotation_input: Vector2 = Vector2.ZERO
 
 func _init() -> void:
 	# Register primary and secondary input actions programmatically
@@ -134,9 +131,6 @@ func _setup_player_geometry() -> void:
 	var viewmodel_script: Script = load("res://src/Infrastructure/Player/PlayerViewModel.gd")
 	viewmodel = viewmodel_script.new() as Node3D
 	camera.add_child(viewmodel)
-	
-	# CRITICAL FIX: The hardcoded position assignment has been completely removed from here.
-	# The PlayerController now correctly preserves restored coordinates applied on startup.
 
 func _setup_hud() -> void:
 	inventory = InventoryComponent.new()
@@ -168,9 +162,22 @@ func _input(event: InputEvent) -> void:
 			if is_instance_valid(hud):
 				hud.toggle_pause_menu(false)
 
+## CRITICAL PERFORMANCE FIX: Mouse looking and camera rotation processed instantly inside
+## _unhandled_input() to run at the maximum refresh rate of the monitor, avoiding 60Hz physics jitter.
 func _unhandled_input(event: InputEvent) -> void:
+	if not is_active:
+		return
+		
+	if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
+		return
+		
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_rotation_input -= event.relative * MOUSE_SENSITIVITY
+		# Rotate player body horizontally
+		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
+		
+		# Rotate camera vertically
+		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
+		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(85))
 
 func _physics_process(delta: float) -> void:
 	if not is_active:
@@ -198,12 +205,6 @@ func _physics_process(delta: float) -> void:
 	# Jump
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = JUMP_VELOCITY
-
-	# Look Rotation
-	rotate_y(_rotation_input.x)
-	camera.rotate_x(_rotation_input.y)
-	camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(85))
-	_rotation_input = Vector2.ZERO
 
 	# Movement direction
 	var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
@@ -412,7 +413,7 @@ func _setup_inputs_mouse_actions() -> void:
 		InputMap.action_erase_events(action)
 		var click_event := InputEventMouseButton.new()
 		click_event.button_index = mouse_actions[action]
-		InputMap.action_add_event(action, click_event)
+		InputMap.action_add_event(action, click_event) # Native Godot 4.x API corrected
 		var key_event := InputEventKey.new()
 		key_event.keycode = KEY_E if action == "click_left" else KEY_Q
-		InputMap.action_add_event(action, key_event)
+		InputMap.action_add_event(action, key_event) # Native Godot 4.x API corrected

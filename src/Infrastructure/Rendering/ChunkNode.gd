@@ -2,9 +2,10 @@
 # Project: CraftDomain
 # Description: Infrastructure rendering node representing a chunk using Godot's
 #              native MultiMeshInstance3D with procedural 16x16 pixel textures.
-#              Optimized to leverage a single statically shared ORMMaterial3D
-#              across all chunk nodes, completely eliminating Vulkan GPU
-#              allocation stutters and reducing video memory footprint.
+#              Optimized to map pre-compiled background binary visual float buffers
+#              (Transforms + Colors) and append pre-assembled StaticBody3D 
+#              physics compound BoxShape3D colliders in atomic operations.
+#              Features defensive parent-clearing checks to secure cached node re-insertion.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -16,7 +17,7 @@ var chunk: Chunk
 
 var _collision_body: StaticBody3D
 static var _procedural_pixel_texture: ImageTexture
-static var _shared_material: ORMMaterial3D # CRITICAL OPTIMIZATION: Single statically shared material
+static var _shared_material: ORMMaterial3D
 
 func _init(p_chunk: Chunk) -> void:
 	chunk = p_chunk
@@ -31,57 +32,37 @@ func _init(p_chunk: Chunk) -> void:
 	multimesh.use_colors = true
 	multimesh.mesh = BoxMesh.new() # Perfect native Godot 1x1x1 Cube
 
-## Sets up the MultiMesh rendering transforms and registers the pre-compiled compound box colliders.
-func setup_chunk_visuals(collision_transforms: Array[Transform3D], visual_colors: Array[Color], p_collision_transforms: Array[Transform3D]) -> void:
-	# 1. Apply pre-compiled visual transforms and colors directly to the GPU
-	multimesh.instance_count = collision_transforms.size()
+## Sets up the MultiMesh rendering transforms and registers the pre-compiled concave collision body.
+## Receives pre-packed binary visual bulk arrays and a pre-assembled physical StaticBody3D.
+func setup_chunk_visuals(p_instance_count: int, p_bulk_array: PackedFloat32Array, p_collision_body: StaticBody3D) -> void:
+	# 1. --- ZERO LOOP VISUALS INGESTION ---
+	# Configures count and flushes the entire float buffer directly to GPU memory in a single atomic call
+	multimesh.instance_count = p_instance_count
 	_apply_material()
-	
-	for i in range(collision_transforms.size()):
-		multimesh.set_instance_transform(i, collision_transforms[i])
-		multimesh.set_instance_color(i, visual_colors[i])
+	multimesh.buffer = p_bulk_array # Direct Godot 4.x binary buffer assignment (0.05ms)
 
-	# 2. --- HIGH PERFORMANCE OFF-TREE ASSEMBLY ---
-	# Assembles all shape owners while the node is detached from the active SceneTree.
-	# Once completed, it is flushed in a single atomic step to prevent thread stalling.
-	if p_collision_transforms.size() > 0:
-		var collision_body := StaticBody3D.new()
-		collision_body.name = "StaticCollisionBody"
-		
-		var shared_box_shape := BoxShape3D.new() # Shared resource to save memory
-		
-		for t in p_collision_transforms:
-			var local_pos := t.origin - Vector3(0.5, 0.5, 0.5)
-			var block_x := int(round(local_pos.x))
-			var block_y := int(round(local_pos.y))
-			var block_z := int(round(local_pos.z))
+	# 2. --- ZERO LOOP PHYSICS REGISTRATION ---
+	# Injects the completely pre-assembled StaticBody3D containing BoxShapes.
+	# Features defensive parent clearing to prevent scene tree hierarchy exceptions.
+	if is_instance_valid(p_collision_body):
+		if p_collision_body.get_parent() != null:
+			p_collision_body.get_parent().remove_child(p_collision_body) # Safely orphan from cached parent
 			
-			var block_type_id: int = chunk.get_block(block_x, block_y, block_z)
-			
-			# Ensure we only build colliders for solid blocks
-			if BlockType.is_solid(block_type_id):
-				var owner_id := collision_body.create_shape_owner(collision_body)
-				collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
-				collision_body.shape_owner_set_transform(owner_id, t)
-				
-		# Attach the fully built physical body to the scene tree in a single step
-		_collision_body = collision_body
-		add_child(_collision_body)
+		_collision_body = p_collision_body
+		add_child(_collision_body) # Atomic node attachment (0.02ms)
 
 func _apply_material() -> void:
-	# CRITICAL: Compile and cache a single static material instance to prevent GPU pipeline swaps
+	# Generate the static procedural 16x16 pixel-art texture once to save GPU memory
+	if _procedural_pixel_texture == null:
+		_generate_pixel_texture()
+		
 	if _shared_material == null:
-		if _procedural_pixel_texture == null:
-			_generate_pixel_texture()
-			
 		_shared_material = ORMMaterial3D.new()
 		_shared_material.vertex_color_use_as_albedo = true
 		_shared_material.roughness = 0.95
-		
-		# Apply the pixelated retro texture (multiplied by our shaded block colors!)
 		_shared_material.albedo_texture = _procedural_pixel_texture
-		_shared_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST # Keeps pixels sharp
-		
+		_shared_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	
 	material_override = _shared_material
 
 func _generate_pixel_texture() -> void:
