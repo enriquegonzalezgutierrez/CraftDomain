@@ -1,13 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a passive entity,
-#              inheriting from VoxelEntity, running wandering AI, and executing
-#              trades through the segregated IInventory interface.
+# Description: Infrastructure physics controller node representing a passive entity.
+#              Acts as an Infrastructure Wrapper that uses Composition to hold
+#              a pure Domain VoxelEntity. Executes trades through the segregated 
+#              IInventory interface.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
 class_name PassiveEntity
-extends VoxelEntity
+extends CharacterBody3D
 
 ## Entity Type definitions.
 enum Type {
@@ -25,6 +26,9 @@ const JUMP_VELOCITY: float = 5.0
 var entity_type: Type
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
+# Domain Model Composition (DDD)
+var domain_entity: VoxelEntity
+
 # AI logic timers
 var _wander_timer: float = 0.0
 var _wander_direction: Vector3 = Vector3.ZERO
@@ -34,6 +38,12 @@ func _init(p_type: Type, spawn_pos: Vector3) -> void:
 	entity_type = p_type
 	position = spawn_pos
 	name = "Entity_%s" % Type.keys()[entity_type]
+	
+	# Instantiate pure domain model and subscribe to its Domain Events
+	# (Passive entities have 1 health by default, they die in 1 hit)
+	domain_entity = VoxelEntity.new(1)
+	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
+	domain_entity.died.connect(_on_domain_entity_died)
 
 func _ready() -> void:
 	_build_visual_representation()
@@ -79,23 +89,23 @@ func _build_visual_representation() -> void:
 		Type.CHICKEN:
 			_create_box(visual_root, Vector3(0.3, 0.3, 0.4), Vector3(0, 0.3, 0), Color(0.95, 0.95, 0.95)) # Body
 			_create_box(visual_root, Vector3(0.18, 0.22, 0.18), Vector3(0, 0.5, -0.2), Color(0.95, 0.95, 0.95)) # Head
-			_create_box(visual_root, Vector3(0.15, 0.08, 0.12), Vector3(0, 0.5, -0.32), Color(1.0, 0.6, 0.0)) # Beak (Yellow)
-			_create_box(visual_root, Vector3(0.06, 0.1, 0.06), Vector3(0, 0.4, -0.2), Color(0.9, 0.1, 0.1)) # Wattle (Red)
-			# Legs (Yellow thin boxes)
+			_create_box(visual_root, Vector3(0.15, 0.08, 0.12), Vector3(0, 0.5, -0.32), Color(1.0, 0.6, 0.0)) # Beak
+			_create_box(visual_root, Vector3(0.06, 0.1, 0.06), Vector3(0, 0.4, -0.2), Color(0.9, 0.1, 0.1)) # Wattle
+			# Legs
 			_create_box(visual_root, Vector3(0.05, 0.15, 0.05), Vector3(-0.08, 0.075, 0), Color(1.0, 0.6, 0.0))
 			_create_box(visual_root, Vector3(0.05, 0.15, 0.05), Vector3(0.08, 0.075, 0), Color(1.0, 0.6, 0.0))
 			
 		Type.VILLAGER:
-			_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.35, 0.22, 0.15)) # Robe (Brown)
-			_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.95, 0.75, 0.65)) # Head (Skin)
+			_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.35, 0.22, 0.15)) # Robe
+			_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.95, 0.75, 0.65)) # Head
 			_create_box(visual_root, Vector3(0.08, 0.18, 0.1), Vector3(0, 1.05, -0.2), Color(0.85, 0.65, 0.55)) # Nose
 			_create_box(visual_root, Vector3(0.5, 0.15, 0.2), Vector3(0, 0.65, -0.18), Color(0.25, 0.15, 0.1)) # Folded Arms
 
 		Type.MERCHANT:
-			_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.45, 0.15, 0.6)) # Robe (Purple)
-			_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.95, 0.75, 0.65)) # Head (Skin)
+			_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.45, 0.15, 0.6)) # Robe
+			_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.95, 0.75, 0.65)) # Head
 			_create_box(visual_root, Vector3(0.08, 0.18, 0.1), Vector3(0, 1.05, -0.2), Color(0.85, 0.65, 0.55)) # Nose
-			_create_box(visual_root, Vector3(0.5, 0.15, 0.2), Vector3(0, 0.65, -0.18), Color(0.85, 0.6, 0.15)) # Folded Arms (Golden)
+			_create_box(visual_root, Vector3(0.5, 0.15, 0.2), Vector3(0, 0.65, -0.18), Color(0.85, 0.6, 0.15)) # Folded Arms
 
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> void:
 	var mesh_instance := MeshInstance3D.new()
@@ -111,8 +121,32 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	
 	parent.add_child(mesh_instance)
 
-## Polymorphic LSP Override: Processes direct trading using the segregated IInventory interface.
+## Infrastructure Method: Receives combat interaction, applies physics, and delegates logic to Domain.
+func take_damage(amount: int, knockback_force: Vector3) -> void:
+	if domain_entity.is_dead:
+		return
+		
+	# 1. Apply infrastructure physical knockback
+	velocity += knockback_force
+	
+	# 2. Delegate purely logical health reduction to Domain
+	domain_entity.take_damage(amount)
+
+## Infrastructure Event Handler: Reacts to the Domain Event
+func _on_domain_entity_took_damage(_amount: int) -> void:
+	# Passive entities don't flash red, but they jump when hit
+	velocity.y = JUMP_VELOCITY
+
+## Infrastructure Event Handler: Reacts to the Domain Event
+func _on_domain_entity_died() -> void:
+	print("[PassiveEntity] Entity died.")
+	queue_free() # Passive entities disappear instantly for simplicity
+
+## Processes direct trading using the segregated IInventory interface.
 func interact(player: CharacterBody3D) -> void:
+	if entity_type != Type.MERCHANT:
+		return # Only merchants can trade
+		
 	# Make the merchant look at the player during interaction
 	var look_direction: Vector3 = (player.global_position - global_position).normalized()
 	look_direction.y = 0 # Lock pitch
@@ -151,6 +185,9 @@ func interact(player: CharacterBody3D) -> void:
 		print("[Merchant] Hmmm? Bring me a Bucket of Lava (Slot 5) to trade for my Lava-Fried Chicken!")
 
 func _physics_process(delta: float) -> void:
+	if domain_entity.is_dead:
+		return
+		
 	# 1. Apply gravity
 	if not is_on_floor():
 		velocity.y -= gravity * delta

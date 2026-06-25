@@ -3,6 +3,7 @@
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications,
 #              fully compliant with SOLID and SRP by delegating life and lighting.
+#              DIP Compliant: Relies on injected WorldRepository abstraction.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -13,6 +14,8 @@ extends Node3D
 var world_state: WorldState
 var generator: WorldGenerator
 var loader_service: ChunkLoaderService
+
+## Dependency-injected repository abstraction (DIP compliant)
 var repository: WorldRepository
 
 ## Dependency-injected player reference.
@@ -45,11 +48,12 @@ class GeneratedChunkTask:
 	var transforms: Array[Transform3D]
 
 func _ready() -> void:
+	# Enforce Dependency Injection contract
+	assert(repository != null, "[WorldController] Fatal: WorldRepository must be injected before _ready()!")
+	
 	_initialize_systems()
 
 func _initialize_systems() -> void:
-	# Initialize concrete infrastructure file repository
-	repository = DiskWorldRepository.new()
 	world_state = WorldState.new()
 	loader_service = ChunkLoaderService.new()
 	_queue_mutex = Mutex.new()
@@ -58,7 +62,7 @@ func _initialize_systems() -> void:
 	_mob_spawning_service = MobSpawningService.new()
 	_streetlight_service = StreetlightService.new(self, world_state)
 	
-	# Check if a saved world state exists on disk
+	# Check if a saved world state exists via the injected abstraction
 	var saved_global := repository.load_global_state()
 	var active_seed: int
 	
@@ -127,7 +131,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	var chunk := Chunk.new(chunk_pos)
 	generator.generate_chunk(chunk)
 	
-	# 2. Asynchronous Load Integration: Query and apply any saved block edits from disk
+	# 2. Asynchronous Load Integration: Query and apply any saved block edits from abstraction
 	var saved_edits := repository.load_chunk_modifications(chunk_pos)
 	if saved_edits.size() > 0:
 		for local_pos in saved_edits.keys():
@@ -244,12 +248,12 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 func save_all() -> void:
 	print("[WorldController] Executing manual save of all world state elements...")
 	
-	# 1. Save all active chunk modifications to their respective disk JSONs
+	# 1. Save all active chunk modifications via abstraction
 	for chunk_pos in world_state._chunk_modifications.keys():
 		var modifications: Dictionary = world_state.get_chunk_modifications(chunk_pos)
 		repository.save_chunk_modifications(chunk_pos, modifications)
 		
-	# 2. Save global metadata (seed, position, look direction)
+	# 2. Save global metadata (seed, position, look direction) via abstraction
 	if is_instance_valid(player):
 		repository.save_global_state(
 			player.global_position, 

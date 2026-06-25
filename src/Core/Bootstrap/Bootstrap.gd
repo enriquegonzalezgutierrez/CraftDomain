@@ -16,6 +16,9 @@ var player_controller: CharacterBody3D
 var audio_service: AudioService
 var celestial_service: Node
 
+## Shared infrastructure dependencies injected across the app
+var world_repository: WorldRepository
+
 ## Environmental nodes stored for dependency injection
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
@@ -26,10 +29,16 @@ func _ready() -> void:
 func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
 	
+	_setup_persistence()
 	_setup_environment()
 	_setup_celestial()
 	_setup_audio()
 	_load_main_menu()
+
+func _setup_persistence() -> void:
+	print("[Bootstrap] Setting up global persistence layer...")
+	# Concrete implementation is chosen here (Composition Root)
+	world_repository = DiskWorldRepository.new()
 
 func _setup_environment() -> void:
 	# 1. Setup directional Sun light with shadows
@@ -73,7 +82,6 @@ func _setup_environment() -> void:
 func _setup_celestial() -> void:
 	print("[Bootstrap] Initializing Celestial Day/Night Cycle Service...")
 	
-	# Dynamically load the Celestial Service class to prevent compilation caching locks
 	var celestial_script: Script = load("res://src/Infrastructure/Celestial/CelestialService.gd")
 	celestial_service = celestial_script.new() as Node
 	celestial_service.name = "CelestialService"
@@ -88,23 +96,19 @@ func _setup_celestial() -> void:
 func _setup_audio() -> void:
 	print("[Bootstrap] Initializing Audio Service...")
 	
-	# Instantiate and register the audio presentation service
 	audio_service = AudioService.new()
 	add_child(audio_service)
 	
-	# Fade-in the main menu background music
 	audio_service.play_menu_music()
 
 func _load_main_menu() -> void:
 	print("[Bootstrap] Loading Main Menu...")
 	
-	# Ensure the mouse cursor is visible to interact with buttons
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	
 	main_menu = MainMenu.new()
 	main_menu.name = "MainMenu"
 	
-	# Connect to UI signal using event-driven delegation
 	main_menu.play_pressed.connect(_on_start_game_requested)
 	add_child(main_menu)
 	
@@ -118,70 +122,65 @@ func _on_start_game_requested() -> void:
 		main_menu.queue_free()
 		main_menu = null
 		
-	# 2. Transition soundtrack using professional 1.5s crossfading
+	# 2. Transition soundtrack
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_world()
 		
-	# 3. Bootstrap 3D World and Player
+	# 3. Instantiate, Inject, and THEN Add to Scene Tree (Safe Lifecycle)
 	_bootstrap_world()
 	_bootstrap_player()
 	_inject_dependencies()
+	
+	# Now that dependencies are safely injected, we add them to the tree.
+	# This triggers _ready() on the World and Player safely.
+	add_child(world_controller)
+	add_child(player_controller)
 
 ## Public API: Safely unloads the active 3D world/player and reloads the Main Menu
 func return_to_main_menu() -> void:
 	print("[Bootstrap] Unloading gameplay state...")
 	
-	# 1. Unload Player Controller
 	if is_instance_valid(player_controller):
 		player_controller.queue_free()
 		player_controller = null
 		
-	# 2. Unload World Controller
 	if is_instance_valid(world_controller):
 		world_controller.queue_free()
 		world_controller = null
 		
-	# 3. Fade soundtrack back to Main Menu music
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_menu()
 		
-	# 4. Reload starting Main Menu overlay
 	_load_main_menu()
 	print("[Bootstrap] Returned to main menu safely.")
 
 func _bootstrap_world() -> void:
 	print("[Bootstrap] Instantiating World controller...")
-	
-	# Dynamically load the controller class to bypass compile dependency checks
 	var controller_script: Script = load("res://src/Infrastructure/World/WorldController.gd")
 	world_controller = controller_script.new() as Node3D
 	world_controller.name = "World"
-	add_child(world_controller)
-	
-	print("[Bootstrap] World controller loaded.")
+	# Notice: add_child() removed from here.
 
 func _bootstrap_player() -> void:
 	print("[Bootstrap] Instantiating Player controller...")
-	
-	# Dynamically load the player class to bypass compile dependency checks
 	var player_script: Script = load("res://src/Infrastructure/Player/PlayerController.gd")
 	player_controller = player_script.new() as CharacterBody3D
 	player_controller.name = "Player"
-	add_child(player_controller)
-	
-	print("[Bootstrap] Player controller loaded.")
+	# Notice: add_child() removed from here.
 
 func _inject_dependencies() -> void:
 	print("[Bootstrap] Injecting dependencies dynamically...")
-	
-	# Use dynamic safe property binding to fully bypass circular compile-time errors
 	if is_instance_valid(world_controller) and is_instance_valid(player_controller):
+		
+		# INJECT REPOSITORY (DIP compliance)
+		world_controller.set("repository", world_repository)
+		
+		# Inject controller cross-references
 		world_controller.set("player", player_controller)
 		player_controller.set("world_controller", world_controller)
 		
-		# Locate and inject world_controller reference into the Player's HUD
-		var hud_node: Control = player_controller.get_node_or_null("HUD")
-		if is_instance_valid(hud_node):
-			hud_node.set("world_controller", world_controller)
+		# The HUD node is not injected manually here anymore because PlayerController's
+		# _ready() hasn't run yet. PlayerController._setup_hud() will now automatically
+		# pass the already-injected world_controller directly to the HUD during its own _ready().
 			
 	print("[Bootstrap] Dynamic dependency injection completed successfully.")

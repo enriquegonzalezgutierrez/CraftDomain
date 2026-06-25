@@ -1,13 +1,13 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a hostile zombie,
-#              inheriting from VoxelEntity, running player-chasing AI, and managing
-#              combat damage through polymorphic contracts.
+# Description: Infrastructure physics controller node representing a hostile zombie.
+#              Acts as an Infrastructure Wrapper that uses Composition to hold
+#              a pure Domain VoxelEntity, reacting to Domain Events (Signals).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
 class_name HostileEntity
-extends VoxelEntity
+extends CharacterBody3D
 
 # Combat configurations
 const SPEED: float = 2.2
@@ -17,8 +17,9 @@ const ATTACK_RANGE: float = 1.2
 
 # Physics and state
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-var health: int = 3
-var is_dead: bool = false
+
+# Domain Model Composition (DDD)
+var domain_entity: VoxelEntity
 
 # Sibling node references (loosely typed to prevent compile loops)
 var player: CharacterBody3D
@@ -28,10 +29,16 @@ var _visual_materials: Array[ORMMaterial3D] = []
 var _wander_timer: float = 0.0
 var _wander_direction: Vector3 = Vector3.ZERO
 var _is_chasing: bool = false
+var _is_wandering: bool = false
 
 func _init(spawn_pos: Vector3) -> void:
 	position = spawn_pos
 	name = "Entity_ZOMBIE"
+	
+	# Instantiate pure domain model and subscribe to its Domain Events
+	domain_entity = VoxelEntity.new(3)
+	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
+	domain_entity.died.connect(_on_domain_entity_died)
 
 func _ready() -> void:
 	_build_visual_representation()
@@ -59,10 +66,10 @@ func _build_visual_representation() -> void:
 	add_child(visual_root)
 	
 	# Create Zombie Box Composition (Rotated forward along -Z)
-	_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.15, 0.35, 0.15)) # Torso (Dark green)
-	_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.25, 0.6, 0.25)) # Head (Bright green)
-	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(-0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) # Left arm (Extended)
-	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) # Right arm (Extended)
+	_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.15, 0.35, 0.15)) # Torso
+	_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.25, 0.6, 0.25)) # Head
+	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(-0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) # Left arm
+	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) # Right arm
 	# Legs
 	_create_box(visual_root, Vector3(0.15, 0.45, 0.15), Vector3(-0.1, 0.225, 0), Color(0.1, 0.1, 0.25)) # Blue trousers
 	_create_box(visual_root, Vector3(0.15, 0.45, 0.15), Vector3(0.1, 0.225, 0), Color(0.1, 0.1, 0.25))
@@ -82,22 +89,21 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	
 	parent.add_child(mesh_instance)
 
-## Polymorphic LSP Override: Receives combat damage, processes knockback and emission flash.
+## Infrastructure Method: Receives combat interaction, applies physics, and delegates logic to Domain.
 func take_damage(amount: int, knockback_force: Vector3) -> void:
-	if is_dead:
+	if domain_entity.is_dead:
 		return
 		
-	health -= amount
-	print("[Zombie] Groaan! Took damage! Health remaining: ", health)
-	
-	# Apply physical knockback impulse
+	# 1. Apply infrastructure physical knockback
 	velocity += knockback_force
 	
-	# Visual feedback: Flash red dynamically
+	# 2. Delegate purely logical health reduction to Domain
+	domain_entity.take_damage(amount)
+
+## Infrastructure Event Handler: Reacts to the Domain Event
+func _on_domain_entity_took_damage(_amount: int) -> void:
+	print("[Zombie] Groaan! Took damage! Health remaining: ", domain_entity.health)
 	_flash_red()
-	
-	if health <= 0:
-		_die()
 
 func _flash_red() -> void:
 	for mat in _visual_materials:
@@ -110,8 +116,8 @@ func _flash_red() -> void:
 			mat.emission_enabled = false
 	)
 
-func _die() -> void:
-	is_dead = true
+## Infrastructure Event Handler: Reacts to the Domain Event
+func _on_domain_entity_died() -> void:
 	print("[Zombie] Blegh... Zombie died.")
 	
 	# Play a quick spinning/falling animation before deleting
@@ -126,7 +132,7 @@ func _die() -> void:
 	)
 
 func _physics_process(delta: float) -> void:
-	if is_dead:
+	if domain_entity.is_dead:
 		return
 
 	# Apply gravity
@@ -192,12 +198,11 @@ func _process_ai_intelligence(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0, SPEED)
 		velocity.z = move_toward(velocity.z, 0, SPEED)
 
-	move_and_slide()
-
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		# Calculate knockback vector pointing directly away from the zombie
 		var bite_knockback: Vector3 = (player.global_position - global_position).normalized() * 4.5
 		bite_knockback.y = 2.0 # Throw the player upward slightly
 		
-		player.call("take_damage", 1, bite_knockback)
+		if player.has_method("take_damage"):
+			player.call("take_damage", 1, bite_knockback)
