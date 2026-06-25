@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI controller managing a modern, glassmorphic HUD.
-#              UPDATED: Added an animated, professional fade-out Loading Screen
-#              to provide immediate user feedback on world load.
+#              UPDATED: Removed the synchronous save_all() call from the exit
+#              handler to prevent main thread freeze.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -507,10 +507,8 @@ func _process(delta: float) -> void:
 	# Synchronize active Loading Screen animations and handle dismissal smoothly
 	if is_instance_valid(loading_overlay):
 		if is_instance_valid(loading_spinner):
-			# Rotate the loading spinner procedurally
 			loading_spinner.rotation += delta * 6.0
 			
-		# Cycle the loading status dots dynamically
 		if is_instance_valid(loading_status):
 			var elapsed := Time.get_ticks_msec() / 1000.0
 			var dot_count := int(floor(elapsed * 2.0)) % 4
@@ -519,15 +517,14 @@ func _process(delta: float) -> void:
 				dots += "."
 			loading_status.text = "GENERATING PROCEDURAL WORLD" + dots
 			
-		# DISMISS CHECK: Smoothly fade out when player spawn completes
-		if is_instance_valid(player) and player.get("is_active"):
-			var fade_tween := create_tween()
-			fade_tween.tween_property(loading_overlay, "modulate:a", 0.0, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-			fade_tween.tween_callback(func() -> void:
-				if is_instance_valid(loading_overlay):
-					loading_overlay.queue_free()
-					loading_overlay = null
-			)
+			if is_instance_valid(player) and player.get("is_active"):
+				var fade_tween := create_tween()
+				fade_tween.tween_property(loading_overlay, "modulate:a", 0.0, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+				fade_tween.tween_callback(func() -> void:
+					if is_instance_valid(loading_overlay):
+						loading_overlay.queue_free()
+						loading_overlay = null
+				)
 		
 	# Synchronize active Navigation & GPS data
 	if is_instance_valid(player) and is_instance_valid(world_controller):
@@ -585,9 +582,10 @@ func _on_settings_closed() -> void:
 	if is_instance_valid(_settings_overlay):
 		_settings_overlay.queue_free()
 
+## FIXED: Removed the direct world_controller.save_all() call.
+## Now we just trigger return_to_main_menu() directly.
 func _on_quit_pressed() -> void:
-	if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
-		world_controller.call("save_all")
+	print("[PlayerHUD] Quit requested. Triggering safe return transition...")
 	var bootstrap = get_node_or_null("/root/Bootstrap")
 	if is_instance_valid(bootstrap) and bootstrap.has_method("return_to_main_menu"):
 		bootstrap.call("return_to_main_menu")

@@ -4,6 +4,8 @@
 #              handling dynamic, decoupled dependency injection, soundtracks, 
 #              safe audio crossfades, and dynamic OCP-compliant registrations
 #              for both Biome Strategies and Structure Blueprints.
+#              UPDATED: Added secure save_all() pipeline execution on the main
+#              thread *after* drawing the loading screen to prevent freezes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -160,9 +162,25 @@ func _on_start_game_requested() -> void:
 	add_child(player_controller)
 
 ## Public API: Safely unloads the active 3D world/player and reloads the Main Menu
+## FIXED: Performs the heavy save_all() call AFTER drawing the Loading Screen to bypass freezes.
 func return_to_main_menu() -> void:
-	print("[Bootstrap] Unloading gameplay state...")
+	print("[Bootstrap] Unloading gameplay state safely...")
 	
+	# 1. Instantiate the temporary unload screen immediately
+	var unload_screen := _create_unload_loading_screen()
+	add_child(unload_screen)
+	
+	# 2. Wait 1 frame to let Godot draw the loading screen before blocking de-allocation starts
+	await get_tree().process_frame
+	
+	# 3. Execute disk saving safely while the loading screen is visible!
+	if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
+		world_controller.call("save_all")
+		
+	# Wait 1 more frame to flush disk saves safely
+	await get_tree().process_frame
+	
+	# 4. Perform asynchronous-deferred garbage collection unloading
 	if is_instance_valid(player_controller):
 		player_controller.queue_free()
 		player_controller = null
@@ -174,8 +192,47 @@ func return_to_main_menu() -> void:
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_menu()
 		
+	# Defer reloading the Main Menu slightly to allow clean de-allocations
+	await get_tree().create_timer(0.15).timeout
 	_load_main_menu()
-	print("[Bootstrap] Returned to main menu safely.")
+	
+	# 5. Smoothly fade out the unloading screen to reveal the Main Menu
+	var fade_tween := create_tween()
+	fade_tween.tween_property(unload_screen, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	fade_tween.tween_callback(unload_screen.queue_free)
+	
+	print("[Bootstrap] Returned to main menu safely with complete transition.")
+
+## Programmatically designs a transition loading screen
+func _create_unload_loading_screen() -> Panel:
+	var panel := Panel.new()
+	panel.name = "UnloadLoadingScreen"
+	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.04, 0.06, 1.0)
+	panel.add_theme_stylebox_override("panel", style)
+	
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	panel.add_child(center)
+	
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_child(vbox)
+	
+	var title := Label.new()
+	title.text = "SAVING & UNLOADING WORLD..."
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ts := LabelSettings.new()
+	ts.font_size = 28
+	ts.font_color = Color(1.0, 0.85, 0.2)
+	ts.outline_size = 6
+	ts.outline_color = Color.BLACK
+	title.label_settings = ts
+	vbox.add_child(title)
+	
+	return panel
 
 func _bootstrap_world() -> void:
 	print("[Bootstrap] Instantiating World controller...")
