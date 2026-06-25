@@ -2,8 +2,8 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications.
-#              FIXED: Synchronized player spawn to wait for BOTH vertical chunks (Y=0 and Y=1)
-#              to load completely, preventing players from being buried inside mountains.
+#              FIXED: Moved StaticBody3D collision shape registration to the main
+#              thread, completely resolving player & NPC clipping/fall-through bugs.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -58,7 +58,6 @@ class GeneratedChunkTask:
 	var chunk: Chunk
 	var instance_count: int
 	var multimesh_bulk_array: PackedFloat32Array
-	var collision_body: StaticBody3D 
 	var visual_colors: Array[Color]
 	var transforms: Array[Transform3D]
 
@@ -163,6 +162,8 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 	_pending_loading_chunks[chunk_pos] = true
 	WorkerThreadPool.add_task(_background_generate_chunk_task.bind(chunk_pos))
 
+## Background Thread: Operates heavy procedural calculations.
+## Thread-Safety Fix: Removed physical body allocations to keep it purely mathematical.
 func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	# 1. Procedural generation (Polymorphic OCP call)
 	var chunk := Chunk.new(chunk_pos)
@@ -185,24 +186,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 					var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
 					collision_transforms.append(Transform3D(Basis(), transform_pos))
 	
-	# 4. Asynchronous off-thread physical assembly
-	var collision_body := StaticBody3D.new()
-	collision_body.name = "StaticCollisionBody"
-	var shared_box_shape := BoxShape3D.new()
-	
-	for t in collision_transforms:
-		var local_pos := t.origin - Vector3(0.5, 0.5, 0.5)
-		var block_x := int(round(local_pos.x))
-		var block_y := int(round(local_pos.y))
-		var block_z := int(round(local_pos.z))
-		var block_type_id: int = chunk.get_block(block_x, block_y, block_z)
-		
-		if BlockType.is_solid(block_type_id):
-			var owner_id := collision_body.create_shape_owner(collision_body)
-			collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
-			collision_body.shape_owner_set_transform(owner_id, t)
-				
-	# 5. Background ambient shading
+	# 4. Background ambient shading
 	var visual_colors: Array[Color] = []
 	visual_colors.resize(collision_transforms.size())
 	
@@ -217,7 +201,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 		var shade_noise: float = 0.9 + 0.1 * sin(float(block_x) * 1.4 + float(block_y) * 2.3 + float(block_z) * 3.7)
 		visual_colors[i] = block_def.color_top * shade_noise
 	
-	# 6. Advanced binary bulk visual array compilation
+	# 5. Advanced binary bulk visual array compilation
 	var bulk_array := PackedFloat32Array()
 	bulk_array.resize(collision_transforms.size() * 16)
 	
@@ -242,12 +226,11 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 		bulk_array[offset + 14] = c.b
 		bulk_array[offset + 15] = c.a
 						
-	# 7. Queue the task result
+	# 6. Queue the task result
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.instance_count = collision_transforms.size()
 	task_result.multimesh_bulk_array = bulk_array
-	task_result.collision_body = collision_body
 	task_result.visual_colors = visual_colors
 	task_result.transforms = collision_transforms
 	
@@ -257,13 +240,11 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	
 	if _chunk_task_cache.size() > CACHE_SIZE_LIMIT:
 		var oldest_key = _chunk_task_cache.keys()[0]
-		var oldest_task: GeneratedChunkTask = _chunk_task_cache[oldest_key]
-		if is_instance_valid(oldest_task.collision_body):
-			oldest_task.collision_body.queue_free()
 		_chunk_task_cache.erase(oldest_key)
 		
 	_queue_mutex.unlock()
 
+## Main Thread: Safe, stutter-free physical body and visual node instantiation.
 func _render_completed_chunks_from_queue() -> void:
 	var task: GeneratedChunkTask = null
 	
@@ -284,10 +265,20 @@ func _render_completed_chunks_from_queue() -> void:
 			add_child(chunk_node)
 			_chunk_nodes[chunk_pos] = chunk_node
 			
+			# Thread-Safety Fix: Instantiate and register the StaticBody3D on the main thread safely!
+			var collision_body := StaticBody3D.new()
+			collision_body.name = "StaticCollisionBody"
+			var shared_box_shape := BoxShape3D.new()
+			
+			for t in task.transforms:
+				var owner_id := collision_body.create_shape_owner(collision_body)
+				collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
+				collision_body.shape_owner_set_transform(owner_id, t)
+			
 			chunk_node.setup_chunk_visuals(
 				task.instance_count, 
 				task.multimesh_bulk_array, 
-				task.collision_body
+				collision_body
 			)
 			
 			if is_instance_valid(_mob_spawning_service):
@@ -298,8 +289,7 @@ func _render_completed_chunks_from_queue() -> void:
 			if is_instance_valid(_streetlight_service):
 				_streetlight_service.register_streetlights_for_chunk(task.chunk)
 			
-			# FIXED: Sincronización vertical de aparición.
-			# Espera a que AMBOS chunks (Y=0 y Y=1) estén cargados antes de posicionar al jugador.
+			# Spawn synchronization
 			if is_instance_valid(player) and not player.get("is_active"):
 				var spawn_chunk_pos_0 := Vector3i(_target_spawn_chunk_pos.x, 0, _target_spawn_chunk_pos.z)
 				var spawn_chunk_pos_1 := Vector3i(_target_spawn_chunk_pos.x, 1, _target_spawn_chunk_pos.z)
