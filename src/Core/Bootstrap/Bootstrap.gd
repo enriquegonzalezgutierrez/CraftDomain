@@ -2,7 +2,8 @@
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
 #              handling dynamic, decoupled dependency injection, soundtracks, 
-#              safe audio crossfades, and dynamic OCP-compliant biome registrations.
+#              safe audio crossfades, and dynamic OCP-compliant registrations
+#              for both Biome Strategies and Structure Blueprints.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -29,7 +30,8 @@ func _ready() -> void:
 func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
 	
-	_setup_biomes() # CRITICAL OCP STEP: Registers biome strategies dynamically on startup
+	_setup_biomes()      # Register 10 biome strategies dynamically
+	_setup_structures()  # Register 9 architecture blueprints dynamically
 	_setup_persistence()
 	_setup_environment()
 	_setup_celestial()
@@ -38,8 +40,6 @@ func _initialize_application() -> void:
 
 func _setup_biomes() -> void:
 	print("[Bootstrap] Registering procedural biome strategies dynamically...")
-	
-	# Dynamically inject the 10 concrete biome strategy blueprints into the registry (OCP compliant)
 	BiomeService.register_biome(BayOfSailsBiome.new())
 	BiomeService.register_biome(WarpPlateauBiome.new())
 	BiomeService.register_biome(GoldenBazaarBiome.new())
@@ -50,12 +50,23 @@ func _setup_biomes() -> void:
 	BiomeService.register_biome(NeonRuinsBiome.new())
 	BiomeService.register_biome(SwampOfSighsBiome.new())
 	BiomeService.register_biome(CloudKingdomBiome.new())
-	
 	print("[Bootstrap] Dynamic biome strategies registered successfully.")
+
+func _setup_structures() -> void:
+	print("[Bootstrap] Registering procedural structure blueprints dynamically...")
+	StructureLibrary.register_blueprint(OakTreeBlueprint.new())       # ID 1
+	StructureLibrary.register_blueprint(RedwoodTreeBlueprint.new())   # ID 2
+	StructureLibrary.register_blueprint(GiantMushroomBlueprint.new()) # ID 3
+	StructureLibrary.register_blueprint(WarpPipeBlueprint.new())      # ID 4
+	StructureLibrary.register_blueprint(MinePillarBlueprint.new())    # ID 5
+	StructureLibrary.register_blueprint(IceTempleBlueprint.new())     # ID 6
+	StructureLibrary.register_blueprint(NeonPyramidBlueprint.new())   # ID 7
+	StructureLibrary.register_blueprint(MarketCabinBlueprint.new())   # ID 8
+	StructureLibrary.register_blueprint(HarborPierBlueprint.new())    # ID 9
+	print("[Bootstrap] Dynamic structure blueprints registered successfully.")
 
 func _setup_persistence() -> void:
 	print("[Bootstrap] Setting up global persistence layer...")
-	# Concrete implementation is chosen here (Composition Root)
 	world_repository = DiskWorldRepository.new()
 
 func _setup_environment() -> void:
