@@ -1,7 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI controller managing a modern, glassmorphic HUD.
-#              UPDATED: Added game clock display inside the GPS Panel header.
+#              UPDATED: Added an animated, professional fade-out Loading Screen
+#              to provide immediate user feedback on world load.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -26,6 +27,10 @@ var compass_directory_label: Label
 
 # UX Overlays
 var damage_overlay: ColorRect
+var loading_overlay: Panel
+var loading_spinner: Label
+var loading_status: Label
+
 var _pause_overlay: Panel
 var _settings_overlay: Control
 
@@ -59,6 +64,10 @@ func _ready() -> void:
 	_setup_navigation_gps_panel()
 	_setup_pause_menu()
 	
+	# Instantiate loading screen immediately if player is not fully active yet
+	if is_instance_valid(player) and not player.get("is_active"):
+		_setup_loading_screen()
+	
 	if is_instance_valid(player) and player.has_method("_sync_hud_counters"):
 		player.call("_sync_hud_counters")
 
@@ -69,6 +78,79 @@ func _setup_damage_overlay() -> void:
 	damage_overlay.color = Color(0.8, 0.0, 0.0, 0.0)
 	damage_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(damage_overlay)
+
+## Programmatically builds a gorgeous dark commercial loading screen overlay
+func _setup_loading_screen() -> void:
+	loading_overlay = Panel.new()
+	loading_overlay.name = "LoadingOverlay"
+	loading_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.04, 0.06, 1.0) # Solid background
+	loading_overlay.add_theme_stylebox_override("panel", style)
+	add_child(loading_overlay)
+	
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	loading_overlay.add_child(center)
+	
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_child(vbox)
+	
+	# Title
+	var title := Label.new()
+	title.text = "CRAFT DOMAIN"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ts := LabelSettings.new()
+	ts.font_size = 46
+	ts.font_color = Color(1.0, 0.85, 0.2)
+	ts.outline_size = 8
+	ts.outline_color = Color.BLACK
+	title.label_settings = ts
+	vbox.add_child(title)
+	
+	vbox.add_child(_create_spacer(10))
+	
+	# Animated status label
+	loading_status = Label.new()
+	loading_status.text = "GENERATING PROCEDURAL WORLD..."
+	loading_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ss := LabelSettings.new()
+	ss.font_size = 16
+	ss.font_color = Color(0.9, 0.9, 0.95)
+	loading_status.label_settings = ss
+	vbox.add_child(loading_status)
+	
+	vbox.add_child(_create_spacer(20))
+	
+	# Programmatic visual spinner
+	loading_spinner = Label.new()
+	loading_spinner.text = "◐"
+	loading_spinner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	loading_spinner.pivot_offset = Vector2(10, 10)
+	var sp_style := LabelSettings.new()
+	sp_style.font_size = 36
+	sp_style.font_color = Color(1.0, 0.85, 0.2)
+	loading_spinner.label_settings = sp_style
+	vbox.add_child(loading_spinner)
+	
+	vbox.add_child(_create_spacer(45))
+	
+	# Gameplay hint card
+	var tip := Label.new()
+	tip.text = "PRO-TIP: Check your compass at the top of the HUD. Walk towards the orange radar pixels to discover village settlements!"
+	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var tp := LabelSettings.new()
+	tp.font_size = 11
+	tp.font_color = Color(0.65, 0.65, 0.7)
+	tip.label_settings = tp
+	vbox.add_child(tip)
+
+func _create_spacer(height: int) -> Control:
+	var s := Control.new()
+	s.custom_minimum_size = Vector2(0, height)
+	return s
 
 func _setup_crosshair() -> void:
 	var crosshair := Control.new()
@@ -418,15 +500,40 @@ func _setup_pause_menu() -> void:
 	_pause_overlay.visible = false
 	add_child(_pause_overlay)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if is_instance_valid(minimap):
 		minimap.queue_redraw()
+		
+	# Synchronize active Loading Screen animations and handle dismissal smoothly
+	if is_instance_valid(loading_overlay):
+		if is_instance_valid(loading_spinner):
+			# Rotate the loading spinner procedurally
+			loading_spinner.rotation += delta * 6.0
+			
+		# Cycle the loading status dots dynamically
+		if is_instance_valid(loading_status):
+			var elapsed := Time.get_ticks_msec() / 1000.0
+			var dot_count := int(floor(elapsed * 2.0)) % 4
+			var dots := ""
+			for j in range(dot_count):
+				dots += "."
+			loading_status.text = "GENERATING PROCEDURAL WORLD" + dots
+			
+		# DISMISS CHECK: Smoothly fade out when player spawn completes
+		if is_instance_valid(player) and player.get("is_active"):
+			var fade_tween := create_tween()
+			fade_tween.tween_property(loading_overlay, "modulate:a", 0.0, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			fade_tween.tween_callback(func() -> void:
+				if is_instance_valid(loading_overlay):
+					loading_overlay.queue_free()
+					loading_overlay = null
+			)
 		
 	# Synchronize active Navigation & GPS data
 	if is_instance_valid(player) and is_instance_valid(world_controller):
 		var p_pos := player.global_position
 		
-		# UPDATED: Retrieve the celestial clock HH:MM string from CelestialService dynamically!
+		# Retrieve the celestial clock HH:MM string from CelestialService dynamically!
 		var time_str: String = "06:00"
 		var celestial = get_parent().get_parent().get_node_or_null("CelestialService")
 		if is_instance_valid(celestial) and celestial.has_method("get_formatted_time"):

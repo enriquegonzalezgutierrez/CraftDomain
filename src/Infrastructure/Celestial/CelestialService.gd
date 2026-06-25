@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              dynamic SunLight rotation, and procedural sky color transitions.
-#              UPDATED: Added get_formatted_time() API to format float time into HH:MM.
+#              FIXED: Resolved integer division warning inside get_formatted_time().
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
@@ -110,8 +110,9 @@ func is_night_time() -> bool:
 	return _current_time < 0.2 or _current_time > 0.8
 
 ## Public API: Converts the internal 0..1 timeline into a formatted digital 24h clock string (HH:MM)
+## FIXED: Casted total_minutes to float divisor to prevent GDScript compiler Integer Division Warnings.
 func get_formatted_time() -> String:
 	var total_minutes := int(floor(_current_time * 1440.0))
-	var hours := int(total_minutes / 60)
+	var hours := int(float(total_minutes) / 60.0)
 	var minutes := int(total_minutes % 60)
 	return "%02d:%02d" % [hours, minutes]
