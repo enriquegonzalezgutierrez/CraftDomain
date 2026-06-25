@@ -1,11 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI controller managing a modern, glassmorphic HUD.
-#              Features a perfect circular Minimap utilizing real-time regional
-#              biome colors, a target crosshair, centered hotbar, top-left health,
-#              and a newly added Top-Center GPS Navigation & Compass card.
-#              Fully typed statically inside inline scripts to prevent compile warnings.
-#              Uses profile.biome_id to fetch color codes under the OCP design.
+#              UX IMPROVED: Added Damage screen flash, Animated Hotbar scaling, 
+#              and a modernized precision crosshair.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -13,7 +10,7 @@ class_name PlayerHUD
 extends Control
 
 ## Dependencies injected by the parent controller
-var player: PlayerController
+var player: CharacterBody3D
 var world_controller: Node3D
 
 # Inner UI nodes created dynamically
@@ -28,41 +25,51 @@ var gps_coords_label: Label
 var gps_biome_label: Label
 var compass_directory_label: Label
 
-# Pause & Settings Menu Overlays
+# UX Overlays
+var damage_overlay: ColorRect
 var _pause_overlay: Panel
-var _settings_overlay: SettingsMenu
+var _settings_overlay: Control
 
 # Modern 8-Slot Hotbar items mapping
 const HOTBAR_ITEMS = ["Stone", "Dirt", "Grass", "Wood", "Leaves", "Lava", "Chicken", "Sword"]
 
 # Dictionary mapping Biomes to user-friendly Names and UI Colors
 const BIOME_UI_DATA = {
-	0: {"name": "Bay of Sails (Spawn Ocean)", "color": Color(0.12, 0.55, 0.82)}, # BAY_OF_SAILS
-	1: {"name": "Warp Plateau (Mario Steps)", "color": Color(0.38, 0.85, 0.28)}, # WARP_PLATEAU
-	2: {"name": "Golden Bazaar (Village Plains)", "color": Color(0.92, 0.85, 0.35)}, # GOLDEN_BAZAAR
-	3: {"name": "Craggy Peaks & Caves", "color": Color(0.48, 0.48, 0.48)}, # CRAGGY_MINES
-	4: {"name": "Frostbite Glaciers (North Cap)", "color": Color(0.98, 0.98, 0.98)}, # FROSTBITE_GLACIERS
-	5: {"name": "Whispering Redwood Forest", "color": Color(0.18, 0.45, 0.15)}, # REDWOOD_FOREST
-	6: {"name": "Red Sandstone Canyons", "color": Color(0.85, 0.38, 0.22)}, # RED_BADLANDS
-	7: {"name": "Neon ruins (Cyber Ruins)", "color": Color(0.0, 0.85, 0.85)}, # NEON_RUINS
-	8: {"name": "Swamp of Sighs (Mist Bay)", "color": Color(0.28, 0.22, 0.15)}, # SWAMP_OF_SIGHS
-	9: {"name": "Cloud Kingdom (Floating Isles)", "color": Color(1.0, 1.0, 1.0)}  # CLOUD_KINGDOM
+	0: {"name": "Bay of Sails (Spawn Ocean)", "color": Color(0.12, 0.55, 0.82)},
+	1: {"name": "Warp Plateau (Mario Steps)", "color": Color(0.38, 0.85, 0.28)},
+	2: {"name": "Golden Bazaar (Village Plains)", "color": Color(0.92, 0.85, 0.35)},
+	3: {"name": "Craggy Peaks & Caves", "color": Color(0.48, 0.48, 0.48)},
+	4: {"name": "Frostbite Glaciers (North Cap)", "color": Color(0.98, 0.98, 0.98)},
+	5: {"name": "Whispering Redwood Forest", "color": Color(0.18, 0.45, 0.15)},
+	6: {"name": "Red Sandstone Canyons", "color": Color(0.85, 0.38, 0.22)},
+	7: {"name": "Neon Ruins (Cyber Basin)", "color": Color(0.0, 0.85, 0.85)},
+	8: {"name": "Swamp of Sighs (Mist Bay)", "color": Color(0.28, 0.22, 0.15)},
+	9: {"name": "Cloud Kingdom (Floating Isles)", "color": Color(1.0, 1.0, 1.0)}
 }
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
+	_setup_damage_overlay() # Needs to be at the back (drawn first)
 	_setup_crosshair()
 	_setup_minimap()
 	_setup_hotbar()
 	_setup_inventory_display()
 	_setup_health_display()
-	_setup_navigation_gps_panel() # New commercial UX feature
+	_setup_navigation_gps_panel()
 	_setup_pause_menu()
 	
 	if is_instance_valid(player) and player.has_method("_sync_hud_counters"):
 		player.call("_sync_hud_counters")
+
+func _setup_damage_overlay() -> void:
+	damage_overlay = ColorRect.new()
+	damage_overlay.name = "DamageOverlay"
+	damage_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	damage_overlay.color = Color(0.8, 0.0, 0.0, 0.0) # Transparent red by default
+	damage_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(damage_overlay)
 
 func _setup_crosshair() -> void:
 	var crosshair := Control.new()
@@ -71,7 +78,27 @@ func _setup_crosshair() -> void:
 	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	var draw_script := GDScript.new()
-	draw_script.source_code = "extends Control\nfunc _draw() -> void:\n\tvar center := get_viewport_rect().size / 2.0\n\tdraw_line(center - Vector2(4, 0), center + Vector2(4, 0), Color(1,1,1,0.8), 2.0)\n\tdraw_line(center - Vector2(0, 4), center + Vector2(0, 4), Color(1,1,1,0.8), 2.0)\n"
+	var code := """extends Control
+func _draw() -> void:
+	var center := get_viewport_rect().size / 2.0
+	var col := Color(1, 1, 1, 0.85)
+	var shadow := Color(0, 0, 0, 0.5)
+	
+	# Draw shadow outline for better visibility against light blocks
+	draw_circle(center, 3.0, shadow)
+	draw_line(center - Vector2(8, 0), center - Vector2(3, 0), shadow, 3.0)
+	draw_line(center + Vector2(3, 0), center + Vector2(8, 0), shadow, 3.0)
+	draw_line(center - Vector2(0, 8), center - Vector2(0, 3), shadow, 3.0)
+	draw_line(center + Vector2(0, 3), center + Vector2(0, 8), shadow, 3.0)
+
+	# Draw main white crosshair
+	draw_circle(center, 1.5, col)
+	draw_line(center - Vector2(7, 0), center - Vector2(4, 0), col, 2.0)
+	draw_line(center + Vector2(4, 0), center + Vector2(7, 0), col, 2.0)
+	draw_line(center - Vector2(0, 7), center - Vector2(0, 4), col, 2.0)
+	draw_line(center + Vector2(0, 4), center + Vector2(0, 7), col, 2.0)
+"""
+	draw_script.source_code = code
 	draw_script.reload()
 	crosshair.set_script(draw_script)
 	add_child(crosshair)
@@ -118,7 +145,6 @@ func _setup_minimap() -> void:
 		"\tvar size_dim: float = 150.0",
 		"\tvar center: Vector2 = Vector2(size_dim / 2.0, size_dim / 2.0)",
 		"\t",
-		"\t# Real-time scan of 10 biome quadrants surrounding the player's coordinate",
 		"\tvar player_pos: Vector3 = hud.player.global_position",
 		"\tvar grid_radius: int = 4",
 		"\tvar step_size: float = 16.0",
@@ -128,20 +154,15 @@ func _setup_minimap() -> void:
 		"\t\t\tvar sample_x: int = int(round(player_pos.x)) + (x * 16)",
 		"\t\t\tvar sample_z: int = int(round(player_pos.z)) + (z * 16)",
 		"\t\t\t",
-		"\t\t\t# Query the Domain BiomeService directly for visual color coordination",
 		"\t\t\tvar profile = BiomeService.evaluate_coordinate(sample_x, sample_z, hud.world_controller.generator._terrain_noise)",
-		"\t\t\t# CRITICAL OCP FIX: Access 'profile.biome_id' instead of the deprecated 'profile.biome'",
 		"\t\t\tvar biome_color: Color = hud.BIOME_UI_DATA[profile.biome_id][\"color\"]",
 		"\t\t\t",
-		"\t\t\t# Offset grid elements to center around the active yellow arrow",
 		"\t\t\tvar draw_pos: Vector2 = center + Vector2(float(x), float(z)) * step_size - Vector2(step_size / 2.0, step_size / 2.0)",
 		"\t\t\tvar rect_target := Rect2(draw_pos, Vector2(step_size - 1.0, step_size - 1.0))",
 		"\t\t\t",
-		"\t\t\t# Enforce radial hardware clipping boundaries",
 		"\t\t\tif draw_pos.distance_to(center) < size_dim / 2.0 - 5.0:",
 		"\t\t\t\tdraw_rect(rect_target, biome_color, true)",
 		"\t",
-		"\t# 2. Draw yellow navigation arrow pointing dynamically towards camera orientation",
 		"\tvar arrow_vertices := PackedVector2Array([",
 		"\t\tcenter + Vector2(0, -8),",
 		"\t\tcenter + Vector2(-5, 6),",
@@ -252,6 +273,9 @@ func _setup_hotbar() -> void:
 		slot.name = "Slot_%d" % i
 		slot.custom_minimum_size = Vector2(60, 60)
 		
+		# Set pivot to center so the Tween scale animation grows outward naturally
+		slot.pivot_offset = Vector2(30, 30) 
+		
 		var slot_style := StyleBoxFlat.new()
 		slot_style.set_corner_radius_all(8)
 		slot_style.bg_color = Color(0.15, 0.15, 0.15, 0.6)
@@ -291,7 +315,6 @@ func _setup_inventory_display() -> void:
 	style.outline_color = Color.BLACK
 	inventory_label.label_settings = style
 	add_child(inventory_label)
-	_update_inventory_display()
 
 func _setup_health_display() -> void:
 	var health_bg := Panel.new()
@@ -404,11 +427,8 @@ func _process(_delta: float) -> void:
 	# Synchronize active Navigation & GPS data
 	if is_instance_valid(player) and is_instance_valid(world_controller):
 		var p_pos := player.global_position
-		
-		# 1. Update Coordinates
 		gps_coords_label.text = "[ X: %d  ·  Y: %d  ·  Z: %d ]" % [int(round(p_pos.x)), int(round(p_pos.y)), int(round(p_pos.z))]
 		
-		# 2. Query Biome directly to show the current active region name
 		var profile = BiomeService.evaluate_coordinate(
 			int(round(p_pos.x)), 
 			int(round(p_pos.z)), 
@@ -416,16 +436,21 @@ func _process(_delta: float) -> void:
 		)
 		gps_biome_label.text = "REGION: %s" % BIOME_UI_DATA[profile.biome_id]["name"].to_upper()
 		
-		# 3. Dynamic directional Directory Compass
 		compass_directory_label.text = "[N] Polar Ice: %dm  |  [E] Village Bazaar: %dm  |  [S] Mario Hills: %dm" % [
 			int(abs(p_pos.z - (-500.0))),
 			int(abs(p_pos.x - 3000.0)),
 			int(abs(p_pos.z - 300.0))
 		]
 
-func _update_inventory_display() -> void:
-	if is_instance_valid(player):
-		update_active_slot(0)
+## API Hooked by PlayerController to give immersive visual combat feedback
+func flash_damage_screen() -> void:
+	if not is_instance_valid(damage_overlay):
+		return
+	
+	# Quickly flash a translucent red overlay using a Tween
+	var tween := create_tween()
+	tween.tween_property(damage_overlay, "color", Color(0.8, 0.0, 0.0, 0.35), 0.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(damage_overlay, "color", Color(0.8, 0.0, 0.0, 0.0), 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 
 func toggle_pause_menu(p_visible: bool) -> void:
 	if is_instance_valid(_pause_overlay):
@@ -439,15 +464,18 @@ func _on_resume_pressed() -> void:
 	toggle_pause_menu(false)
 
 func _on_settings_pressed() -> void:
-	_settings_overlay = SettingsMenu.new()
-	_settings_overlay.closed.connect(func() -> void:
-		if is_instance_valid(_settings_overlay):
-			_settings_overlay.queue_free()
-	)
-	add_child(_settings_overlay)
+	# Note: Need to load settings menu component via script injection for safe reference
+	var sm_script: Script = load("res://src/Infrastructure/UI/SettingsMenu.gd")
+	if sm_script != null:
+		_settings_overlay = sm_script.new() as Control
+		_settings_overlay.connect("closed", Callable(self, "_on_settings_closed"))
+		add_child(_settings_overlay)
+
+func _on_settings_closed() -> void:
+	if is_instance_valid(_settings_overlay):
+		_settings_overlay.queue_free()
 
 func _on_quit_pressed() -> void:
-	print("[PlayerHUD] Quit requested. Saving progress and returning to menu...")
 	if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
 		world_controller.call("save_all")
 	var bootstrap = get_node_or_null("/root/Bootstrap")
@@ -458,10 +486,12 @@ func update_active_slot(active_index: int) -> void:
 	for i in range(hotbar_slots.size()):
 		var slot: Panel = hotbar_slots[i]
 		var style: StyleBoxFlat = slot.get_theme_stylebox("panel")
-		if style == null:
-			continue
+		if style == null: continue
+			
+		var tween := create_tween()
 			
 		if i == active_index:
+			# Highlight and actively scale UP the selected slot for strong UX
 			style.bg_color = Color(0.25, 0.25, 0.25, 0.8)
 			style.border_width_left = 3
 			style.border_width_top = 3
@@ -469,15 +499,20 @@ func update_active_slot(active_index: int) -> void:
 			style.border_width_bottom = 3
 			style.border_color = Color(1.0, 0.85, 0.2)
 			
+			tween.tween_property(slot, "scale", Vector2(1.15, 1.15), 0.1).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+			
 			if is_instance_valid(inventory_label):
 				inventory_label.text = "[ %s ]" % HOTBAR_ITEMS[i].to_upper()
 		else:
+			# Dim and scale down unselected slots
 			style.bg_color = Color(0.12, 0.12, 0.12, 0.5)
 			style.border_width_left = 1
 			style.border_width_top = 1
 			style.border_width_right = 1
 			style.border_width_bottom = 1
 			style.border_color = Color(0.2, 0.2, 0.2, 0.4)
+			
+			tween.tween_property(slot, "scale", Vector2(1.0, 1.0), 0.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 func update_slot_quantity(slot_index: int, item_name: String, quantity: int) -> void:
 	if slot_index >= 0 and slot_index < hotbar_slots.size():

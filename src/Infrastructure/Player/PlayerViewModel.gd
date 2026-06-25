@@ -1,8 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure Presentation service that programmatically constructs
-#              3D handheld tool models out of colored boxes and executes smooth
-#              first-person swinging animations.
+#              3D handheld tool models out of colored boxes.
+#              UX IMPROVED: Added dynamic idle breathing and movement-based bobbing
+#              to make the first-person perspective feel highly immersive and alive.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerViewModel.gd
 # ==============================================================================
@@ -23,6 +24,10 @@ var _is_swinging: bool = false
 # Internal mesh container nodes
 var _tool_root: Node3D
 
+# Viewmodel animation and bobbing trackers
+var _bob_time: float = 0.0
+var _idle_time: float = 0.0
+
 # Original baseline position offset relative to the Camera (Bottom-Right of screen)
 const BASELINE_POSITION := Vector3(0.32, -0.38, -0.52)
 const BASELINE_ROTATION := Vector3(deg_to_rad(10), deg_to_rad(20), deg_to_rad(-5))
@@ -38,6 +43,46 @@ func _ready() -> void:
 	
 	# Start with Scroll by default
 	switch_to_tool(ToolType.SCROLL)
+
+func _process(delta: float) -> void:
+	if _is_swinging:
+		return # Do not apply bobbing math while a swing animation tween is active
+		
+	# 1. Obtain the player controller dynamically (Camera3D -> CharacterBody3D)
+	var player = get_parent().get_parent() as CharacterBody3D
+	
+	if is_instance_valid(player):
+		# Calculate lateral movement speed (ignore vertical falling/jumping velocity)
+		var flat_velocity := Vector2(player.velocity.x, player.velocity.z)
+		var speed: float = flat_velocity.length()
+		var is_moving: bool = speed > 0.5 and player.is_on_floor()
+		
+		# 2. Dynamic Bobbing Math
+		var target_pos := BASELINE_POSITION
+		
+		if is_moving:
+			# Fast, rhythmic bouncing tied to movement speed
+			_bob_time += delta * speed * 1.8
+			
+			# Explicitly type variables as floats to satisfy Godot's static analyzer
+			var bob_offset_x: float = cos(_bob_time) * 0.015
+			var bob_offset_y: float = abs(sin(_bob_time)) * 0.02 - 0.01
+			
+			target_pos += Vector3(bob_offset_x, bob_offset_y, 0.0)
+		else:
+			# Subtle, slow breathing floating effect when standing still
+			_idle_time += delta * 1.5
+			
+			var idle_offset_y: float = sin(_idle_time) * 0.008
+			var idle_offset_x: float = cos(_idle_time * 0.5) * 0.004
+			
+			target_pos += Vector3(idle_offset_x, idle_offset_y, 0.0)
+			
+			# Gradually reset the walking bob phase to prevent snapping
+			_bob_time = lerp(_bob_time, 0.0, delta * 5.0)
+
+		# 3. Smoothly interpolate position for buttery smooth rendering
+		position = position.lerp(target_pos, delta * 12.0)
 
 ## Programmatically swaps active handheld visual meshes instantly.
 func switch_to_tool(new_tool: ToolType) -> void:
@@ -77,7 +122,7 @@ func play_swing_animation() -> void:
 	swing_tween.tween_property(self, "rotation", BASELINE_ROTATION, 0.09).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	swing_tween.tween_property(self, "position", BASELINE_POSITION, 0.09).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	
-	# Reset state
+	# Reset state allowing the _process bobbing to take over again
 	swing_tween.chain().tween_callback(func() -> void:
 		_is_swinging = false
 	)
