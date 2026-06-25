@@ -2,9 +2,9 @@
 # Project: CraftDomain
 # Description: Infrastructure rendering node representing a chunk using Godot's
 #              native MultiMeshInstance3D with procedural 16x16 pixel textures.
-#              Assembles a compound BoxShape3D collision structure off-tree
-#              before registering it in a single atomic main-thread operation,
-#              preventing both physics stutters and triangle-seam snagging bugs.
+#              Optimized to leverage a single statically shared ORMMaterial3D
+#              across all chunk nodes, completely eliminating Vulkan GPU
+#              allocation stutters and reducing video memory footprint.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -16,6 +16,7 @@ var chunk: Chunk
 
 var _collision_body: StaticBody3D
 static var _procedural_pixel_texture: ImageTexture
+static var _shared_material: ORMMaterial3D # CRITICAL OPTIMIZATION: Single statically shared material
 
 func _init(p_chunk: Chunk) -> void:
 	chunk = p_chunk
@@ -68,19 +69,20 @@ func setup_chunk_visuals(collision_transforms: Array[Transform3D], visual_colors
 		add_child(_collision_body)
 
 func _apply_material() -> void:
-	# Generate the static procedural 16x16 pixel-art texture once to save GPU memory
-	if _procedural_pixel_texture == null:
-		_generate_pixel_texture()
+	# CRITICAL: Compile and cache a single static material instance to prevent GPU pipeline swaps
+	if _shared_material == null:
+		if _procedural_pixel_texture == null:
+			_generate_pixel_texture()
+			
+		_shared_material = ORMMaterial3D.new()
+		_shared_material.vertex_color_use_as_albedo = true
+		_shared_material.roughness = 0.95
 		
-	var material := ORMMaterial3D.new()
-	material.vertex_color_use_as_albedo = true
-	material.roughness = 0.95
-	
-	# Apply the pixelated retro texture (multiplied by our shaded block colors!)
-	material.albedo_texture = _procedural_pixel_texture
-	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST # Keeps pixels sharp
-	
-	material_override = material
+		# Apply the pixelated retro texture (multiplied by our shaded block colors!)
+		_shared_material.albedo_texture = _procedural_pixel_texture
+		_shared_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST # Keeps pixels sharp
+		
+	material_override = _shared_material
 
 func _generate_pixel_texture() -> void:
 	# Programmatically generate a raw 16x16 pixel noise pattern
