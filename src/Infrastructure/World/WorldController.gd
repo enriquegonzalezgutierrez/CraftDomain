@@ -2,9 +2,11 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications.
-#              Optimized to pre-compile transforms and ambient shading off-thread.
-#              Features an LRU-style Chunk Task Cache storing pre-calculated
-#              chunk geometries, enabling instant rendering upon backtracking.
+#              Enforces SOLID and SRP compliance by delegating mob spawning,
+#              streetlights toggling, and asynchronous thread pool tasks.
+#              Features a robust Spawn Protection (Unstuck Solver) with UNIFIED
+#              target spawn chunk coordinates calculation (always forcing Y=0)
+#              for both fresh worlds and restored sessions to prevent freeze bugs.
 #              DIP Compliant: Relies on injected WorldRepository abstraction.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
@@ -94,10 +96,9 @@ func _initialize_systems() -> void:
 		
 	generator = WorldGenerator.new(active_seed)
 	
-	# Compute and lock the target spawn chunk pos
+	# CRITICAL UNIFICATION: Both fresh spawns and saved games calculate chunk pos via the same OCP method
 	var block_pos := Vector3i(int(floor(spawn_pos.x)), int(floor(spawn_pos.y)), int(floor(spawn_pos.z)))
-	_target_spawn_chunk_pos = world_state.global_to_chunk_pos(block_pos)
-	print("[WorldController] Target spawn chunk identified at: ", _target_spawn_chunk_pos)
+	_target_spawn_chunk_calculation(block_pos)
 	
 	# Pre-position the player entity immediately to their target coords
 	if is_instance_valid(player):
@@ -107,6 +108,8 @@ func _initialize_systems() -> void:
 
 func _target_spawn_chunk_calculation(block_pos: Vector3i) -> void:
 	_target_spawn_chunk_pos = world_state.global_to_chunk_pos(block_pos)
+	
+	# Force horizontal vertical Y=0 chunk coordination to match loader layout
 	_target_spawn_chunk_pos.y = 0
 	print("[WorldController] Calculated player destination spawn chunk at: ", _target_spawn_chunk_pos)
 
@@ -253,6 +256,7 @@ func _append_culled_collision_faces(chunk: Chunk, x: int, y: int, z: int, faces:
 		Vector3i(0, 0, -1): "BACK"
 	}
 	
+	# Statically typing the loop variable 'offset' as Vector3i to enforce compile-time type safety
 	for offset: Vector3i in dirs:
 		var nx: int = x + offset.x
 		var ny: int = y + offset.y
@@ -346,6 +350,7 @@ func _render_completed_chunks_from_queue() -> void:
 				_streetlight_service.register_streetlights_for_chunk(task.chunk)
 			
 			# --- SECURE SPAWN SYNCHRONIZATION ---
+			# Only activate player spawn once their specific target destination chunk is fully loaded and rendered
 			if chunk_pos == _target_spawn_chunk_pos and is_instance_valid(player) and not player.get("is_active"):
 				_activate_player_spawn()
 
@@ -354,9 +359,9 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		_pending_loading_chunks.erase(chunk_pos)
 		return
 
-	var modifications := world_state.get_chunk_modifications(chunk_pos)
-	if modifications.size() > 0:
-		repository.save_chunk_modifications(chunk_pos, modifications)
+	# Sessional synchronous disk I/O has been completely removed.
+	# Block modifications are cached in RAM (WorldState) during walk-through,
+	# and only written to disk in a single step upon 'save_all' triggers.
 
 	if _chunk_entities.has(chunk_pos):
 		var entities: Array = _chunk_entities[chunk_pos]
@@ -392,6 +397,7 @@ func save_all() -> void:
 
 func _activate_player_spawn() -> void:
 	# --- UNSTUCK & SAFE GROUND FINDER ALGORITHM ---
+	# Executed over a fully loaded chunk structure, guaranteed to find solid terrain
 	var block_x := int(floor(player.position.x))
 	var block_z := int(floor(player.position.z))
 	var found_safe_y: float = -1.0
@@ -451,7 +457,7 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 			var block_z := int(round(local_pos.z))
 			var block_type_at := chunk_node.chunk.get_block(block_x, block_y, block_z)
 			var block_def := BlockLibrary.get_definition(block_type_at)
-			var shade_noise: float = 0.9 + 0.1 * sin(float(block_x) * 1.4 + float(block_y) * 2.3 + float(block_z) * 3.7)
+			var shade_noise: float = 0.9 + 0.1 * sin(local_pos.x * 1.4 + local_pos.y * 2.3 + local_pos.z * 3.7)
 			visual_colors[i] = block_def.color_top * shade_noise
 			
 		chunk_node.setup_chunk_visuals(

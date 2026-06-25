@@ -1,81 +1,90 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Domain Service responsible for analyzing macro-scale noise to
-#              classify biomes and procedurally select landmark spawn coordinates.
+# Description: Domain Service acting as a Registry and Router for voxel biomes.
+#              Provides dynamic registration (OCP compliant) and delegates
+#              topography and styling calculations to concrete IBiome strategies,
+#              closing this class to future modifications.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BiomeService.gd
 # ==============================================================================
 class_name BiomeService
 extends RefCounted
 
-## Supported Biomes
-enum BiomeType {
-	OCEAN,
-	PLAINS,
-	MOUNTAIN
-}
+## Dynamic registry mapping unique Biome IDs to their concrete IBiome strategies
+static var _biomes: Dictionary = {}
 
-## Supported Architectural Landmarks
-enum LandmarkType {
-	NONE,
-	PORT,       # Spawns near water basins
-	VILLAGE,    # Spawns in groups across flat plains
-	CASTLE      # Spawns on high mountain peaks
-}
+## Fallback biome used when an unregistered ID is requested
+static var _default_biome: IBiome
 
-## Coordinates classification output structure
+## Structure used to transport the compiled evaluation metrics across layers
 class BiomeProfile:
-	var biome: BiomeType
+	var biome_id: int
 	var base_height: int
-	var landmark: LandmarkType
+	var landmark_id: int
 
-## Computes the exact biome and structural profile for any global coordinate.
-static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: FastNoiseLite, biome_noise: FastNoiseLite) -> BiomeProfile:
+## Static registry API: Registers a concrete biome strategy at runtime.
+## This allows adding any number of new biomes without ever modifying this file (Strict OCP).
+static func register_biome(biome: IBiome) -> void:
+	if biome == null:
+		return
+		
+	_biomes[biome.get_biome_id()] = biome
+	print("[BiomeService] Dynamic Biome registered: [ID %d] %s" % [biome.get_biome_id(), biome.get_biome_name()])
+	
+	# Set the first registered biome as the safety fallback
+	if _default_biome == null:
+		_default_biome = biome
+
+## Public API: Retrieves a registered biome strategy by its ID.
+static func get_biome(biome_id: int) -> IBiome:
+	if _biomes.has(biome_id):
+		return _biomes[biome_id] as IBiome
+	return _default_biome
+
+## Evaluates any global coordinate and returns its mapped biome profile.
+## Sector routing is calculated mathematically, delegating detailed properties to registered strategies.
+static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: FastNoiseLite) -> BiomeProfile:
 	var profile := BiomeProfile.new()
 	
-	# 1. Sample large-scale biome noise [-1..1] (frequency 0.005)
-	var b_noise: float = biome_noise.get_noise_2d(float(global_x), float(global_z))
+	# 1. Determine the geographical sector ID for this coordinate
+	profile.biome_id = _calculate_sector_biome_id(global_x, global_z)
 	
-	# 2. Classify Biome
-	if b_noise < -0.25:
-		profile.biome = BiomeType.OCEAN
-	elif b_noise < 0.4:
-		profile.biome = BiomeType.PLAINS
-	else:
-		profile.biome = BiomeType.MOUNTAIN
-		
-	# 3. Sample primary terrain noise and compute height limits based on Biome rules
-	var t_noise: float = terrain_noise.get_noise_2d(float(global_x), float(global_z))
+	# 2. Fetch the corresponding registered strategy
+	var biome := get_biome(profile.biome_id)
 	
-	match profile.biome:
-		BiomeType.OCEAN:
-			# Flat, low-lying water basin
-			profile.base_height = int(3.0 + (t_noise + 1.0) * 1.5)
-		BiomeType.PLAINS:
-			# Smooth, horizontal meadows
-			profile.base_height = int(5.0 + (t_noise + 1.0) * 2.0)
-		BiomeType.MOUNTAIN:
-			# Majestic craggy peaks
-			profile.base_height = int(8.0 + (t_noise + 1.0) * 8.0)
-			
-	# 4. Determine Landmark Spawning (Rare, organic density checks instead of rigid grids)
-	profile.landmark = LandmarkType.NONE
+	# 3. Delegate computations to the strategy (Strict OCP and SRP)
+	var noise_val: float = terrain_noise.get_noise_2d(float(global_x), float(global_z))
+	profile.base_height = biome.get_base_height(noise_val)
 	
-	# Generate a deterministic pseudo-random factor for this specific coordinate
+	# 4. Delegate deterministic landmark evaluation
 	var spawn_hash: int = abs(global_x * 73856093 ^ global_z * 19349663)
+	profile.landmark_id = biome.get_landmark_type(spawn_hash, profile.base_height)
 	
-	match profile.biome:
-		BiomeType.OCEAN:
-			# Ports: Rare spawn on sandy shore borders (height around 4 or 5)
-			if profile.base_height == 4 and spawn_hash % 250 == 42:
-				profile.landmark = LandmarkType.PORT
-		BiomeType.PLAINS:
-			# Villages: Rare clustered spawns across flat meadows
-			if spawn_hash % 300 == 13:
-				profile.landmark = LandmarkType.VILLAGE
-		BiomeType.MOUNTAIN:
-			# Castles: Extremely rare spawns on high mountain peaks (height >= 14)
-			if profile.base_height >= 14 and spawn_hash % 400 == 7:
-				profile.landmark = LandmarkType.CASTLE
-				
 	return profile
+
+## Private helper mapping coordinates to sectors. 
+## Centered region, North Polar Caps, and 8 radial cardinal slices.
+static func _calculate_sector_biome_id(global_x: int, global_z: int) -> int:
+	var gx := float(global_x)
+	var gz := float(global_z)
+	var distance: float = sqrt(gx * gx + gz * gz)
+	var angle: float = atan2(gz, gx)
+	
+	if distance < 120.0:
+		return 0 # BAY_OF_SAILS (Center)
+	elif global_z < -450.0 and abs(global_x) < 200.0:
+		return 4 # FROSTBITE_GLACIERS (Far North Cap)
+	elif angle > -0.25 and angle < 0.25 and distance >= 120.0:
+		return 2 # GOLDEN_BAZAAR (East Plain Corridor)
+	elif angle >= 0.25 and angle < 1.25 and distance >= 120.0:
+		return 5 # REDWOOD_FOREST (South-East Canopy)
+	elif angle >= 1.25 or angle < -2.25:
+		return 1 # WARP_PLATEAU (South Mario Steps)
+	elif angle < -1.25 and angle >= -2.25:
+		return 6 # RED_BADLANDS (South-West Terraces)
+	elif angle >= -1.25 and angle < -0.25 and distance >= 200.0:
+		return 7 # NEON_RUINS (North-East Obsidian Ruins)
+	elif angle >= -1.25 and angle < -0.25:
+		return 8 # SWAMP_OF_SIGHS (North-West Mud Valleys)
+	else:
+		return 3 # CRAGGY_MINES (Default North Mountains)

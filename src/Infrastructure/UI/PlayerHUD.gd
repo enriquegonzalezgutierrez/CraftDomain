@@ -1,10 +1,11 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure UI controller managing a modern, glassmorphic HUD
-#              comprising a perfect circular Minimap with native hardware clipping,
-#              a sleek crosshair, a centered hotbar, a top-left health card,
-#              and a programmatically built interactive Pause/Quit menu overlay.
-#              100% responsive layout across all resolutions.
+# Description: Infrastructure UI controller managing a modern, glassmorphic HUD.
+#              Features a perfect circular Minimap utilizing real-time regional
+#              biome colors, a target crosshair, centered hotbar, top-left health,
+#              and a newly added Top-Center GPS Navigation & Compass card.
+#              Fully typed statically inside inline scripts to prevent compile warnings.
+#              Uses profile.biome_id to fetch color codes under the OCP design.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -21,6 +22,12 @@ var inventory_label: Label
 var health_label: Label
 var hotbar_slots: Array[Panel] = []
 
+# Navigation UI Nodes
+var gps_panel: Panel
+var gps_coords_label: Label
+var gps_biome_label: Label
+var compass_directory_label: Label
+
 # Pause & Settings Menu Overlays
 var _pause_overlay: Panel
 var _settings_overlay: SettingsMenu
@@ -28,8 +35,21 @@ var _settings_overlay: SettingsMenu
 # Modern 8-Slot Hotbar items mapping
 const HOTBAR_ITEMS = ["Stone", "Dirt", "Grass", "Wood", "Leaves", "Lava", "Chicken", "Sword"]
 
+# Dictionary mapping Biomes to user-friendly Names and UI Colors
+const BIOME_UI_DATA = {
+	0: {"name": "Bay of Sails (Spawn Ocean)", "color": Color(0.12, 0.55, 0.82)}, # BAY_OF_SAILS
+	1: {"name": "Warp Plateau (Mario Steps)", "color": Color(0.38, 0.85, 0.28)}, # WARP_PLATEAU
+	2: {"name": "Golden Bazaar (Village Plains)", "color": Color(0.92, 0.85, 0.35)}, # GOLDEN_BAZAAR
+	3: {"name": "Craggy Peaks & Caves", "color": Color(0.48, 0.48, 0.48)}, # CRAGGY_MINES
+	4: {"name": "Frostbite Glaciers (North Cap)", "color": Color(0.98, 0.98, 0.98)}, # FROSTBITE_GLACIERS
+	5: {"name": "Whispering Redwood Forest", "color": Color(0.18, 0.45, 0.15)}, # REDWOOD_FOREST
+	6: {"name": "Red Sandstone Canyons", "color": Color(0.85, 0.38, 0.22)}, # RED_BADLANDS
+	7: {"name": "Neon ruins (Cyber Ruins)", "color": Color(0.0, 0.85, 0.85)}, # NEON_RUINS
+	8: {"name": "Swamp of Sighs (Mist Bay)", "color": Color(0.28, 0.22, 0.15)}, # SWAMP_OF_SIGHS
+	9: {"name": "Cloud Kingdom (Floating Isles)", "color": Color(1.0, 1.0, 1.0)}  # CLOUD_KINGDOM
+}
+
 func _ready() -> void:
-	# Stretch HUD to cover the full viewport
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
@@ -38,9 +58,9 @@ func _ready() -> void:
 	_setup_hotbar()
 	_setup_inventory_display()
 	_setup_health_display()
+	_setup_navigation_gps_panel() # New commercial UX feature
 	_setup_pause_menu()
 	
-	# Safe startup synchronization
 	if is_instance_valid(player) and player.has_method("_sync_hud_counters"):
 		player.call("_sync_hud_counters")
 
@@ -95,29 +115,33 @@ func _setup_minimap() -> void:
 		"func _draw() -> void:",
 		"\tif not is_instance_valid(hud) or not is_instance_valid(hud.player) or not is_instance_valid(hud.world_controller):",
 		"\t\treturn",
-		"\tvar size_pixels := size.x",
-		"\tvar center := size / 2.0",
-		"\tvar radius_limit: float = size_pixels / 2.0 - 5.0",
-		"\tdraw_circle(center, radius_limit, Color(0.08, 0.08, 0.08, 0.75))",
-		"\tvar world_state = hud.world_controller.world_state",
-		"\tvar p_block_pos := Vector3i(floor(hud.player.global_position.x), 0, floor(hud.player.global_position.z))",
-		"\tvar center_chunk_pos: Vector3i = world_state.global_to_chunk_pos(p_block_pos)",
-		"\tvar scale_factor: float = (size_pixels - 20) / 5.0",
-		"\tfor x in range(-2, 3):",
-		"\t\tfor z in range(-2, 3):",
-		"\t\t\tvar target_pos := Vector3i(center_chunk_pos.x + x, 0, center_chunk_pos.z + z)",
-		"\t\t\tvar chunk = world_state.get_chunk(target_pos)",
-		"\t\t\tif chunk == null:",
-		"\t\t\t\tcontinue",
-		"\t\t\tvar draw_pos := center + Vector2(x, z) * scale_factor - Vector2(scale_factor / 2.0, scale_factor / 2.0)",
-		"\t\t\tvar block_center := draw_pos + Vector2(scale_factor / 2.0, scale_factor / 2.0)",
-		"\t\t\tif block_center.distance_to(center) > radius_limit:",
-		"\t\t\t\tcontinue",
-		"\t\t\tvar is_village: bool = (abs(target_pos.x) + abs(target_pos.z)) % 3 == 2",
-		"\t\t\tvar chunk_color := Color(0.4, 0.75, 0.3)",
-		"\t\t\tif is_village:",
-		"\t\t\t\tchunk_color = Color(1.0, 0.45, 0.0)",
-		"\t\t\tdraw_rect(Rect2(draw_pos, Vector2(scale_factor - 2, scale_factor - 2)), chunk_color, true)",
+		"\tvar size_dim: float = 150.0",
+		"\tvar center: Vector2 = Vector2(size_dim / 2.0, size_dim / 2.0)",
+		"\t",
+		"\t# Real-time scan of 10 biome quadrants surrounding the player's coordinate",
+		"\tvar player_pos: Vector3 = hud.player.global_position",
+		"\tvar grid_radius: int = 4",
+		"\tvar step_size: float = 16.0",
+		"\t",
+		"\tfor x in range(-grid_radius, grid_radius + 1):",
+		"\t\tfor z in range(-grid_radius, grid_radius + 1):",
+		"\t\t\tvar sample_x: int = int(round(player_pos.x)) + (x * 16)",
+		"\t\t\tvar sample_z: int = int(round(player_pos.z)) + (z * 16)",
+		"\t\t\t",
+		"\t\t\t# Query the Domain BiomeService directly for visual color coordination",
+		"\t\t\tvar profile = BiomeService.evaluate_coordinate(sample_x, sample_z, hud.world_controller.generator._terrain_noise)",
+		"\t\t\t# CRITICAL OCP FIX: Access 'profile.biome_id' instead of the deprecated 'profile.biome'",
+		"\t\t\tvar biome_color: Color = hud.BIOME_UI_DATA[profile.biome_id][\"color\"]",
+		"\t\t\t",
+		"\t\t\t# Offset grid elements to center around the active yellow arrow",
+		"\t\t\tvar draw_pos: Vector2 = center + Vector2(float(x), float(z)) * step_size - Vector2(step_size / 2.0, step_size / 2.0)",
+		"\t\t\tvar rect_target := Rect2(draw_pos, Vector2(step_size - 1.0, step_size - 1.0))",
+		"\t\t\t",
+		"\t\t\t# Enforce radial hardware clipping boundaries",
+		"\t\t\tif draw_pos.distance_to(center) < size_dim / 2.0 - 5.0:",
+		"\t\t\t\tdraw_rect(rect_target, biome_color, true)",
+		"\t",
+		"\t# 2. Draw yellow navigation arrow pointing dynamically towards camera orientation",
 		"\tvar arrow_vertices := PackedVector2Array([",
 		"\t\tcenter + Vector2(0, -8),",
 		"\t\tcenter + Vector2(-5, 6),",
@@ -126,15 +150,74 @@ func _setup_minimap() -> void:
 		"\tvar angle: float = -hud.player.rotation.y",
 		"\tvar rotated_vertices := PackedVector2Array()",
 		"\tfor vertex in arrow_vertices:",
-		"\t\tvar relative_vec := vertex - center",
-		"\t\tvar rotated_vec := relative_vec.rotated(angle)",
+		"\t\tvar relative_vec: Vector2 = vertex - center",
+		"\t\tvar rotated_vec: Vector2 = relative_vec.rotated(angle)",
 		"\t\trotated_vertices.append(center + rotated_vec)",
-		"\tdraw_colored_polygon(rotated_vertices, Color(1.0, 0.9, 0.0))"
+		"\tdraw_colored_polygon(rotated_vertices, Color(1.0, 0.85, 0.1))"
 	]
 	minimap_script.source_code = "\n".join(code_lines)
 	minimap_script.reload()
 	minimap.set_script(minimap_script)
 	minimap.set("hud", self)
+
+func _setup_navigation_gps_panel() -> void:
+	gps_panel = Panel.new()
+	gps_panel.name = "GPSPanel"
+	gps_panel.custom_minimum_size = Vector2(460, 85)
+	gps_panel.size = Vector2(460, 85)
+	gps_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	gps_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	gps_panel.offset_top = 20
+	gps_panel.offset_left = -230
+	gps_panel.offset_right = 230
+	
+	var style := StyleBoxFlat.new()
+	style.set_corner_radius_all(10)
+	style.bg_color = Color(0.08, 0.08, 0.1, 0.6)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.3, 0.3, 0.35, 0.7)
+	style.shadow_size = 5
+	style.shadow_color = Color(0, 0, 0, 0.3)
+	gps_panel.add_theme_stylebox_override("panel", style)
+	add_child(gps_panel)
+	
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	gps_panel.add_child(vbox)
+	
+	gps_coords_label = Label.new()
+	gps_coords_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ls_coords := LabelSettings.new()
+	ls_coords.font_size = 14
+	ls_coords.font_color = Color(1.0, 0.85, 0.1)
+	ls_coords.outline_size = 3
+	ls_coords.outline_color = Color.BLACK
+	gps_coords_label.label_settings = ls_coords
+	vbox.add_child(gps_coords_label)
+	
+	gps_biome_label = Label.new()
+	gps_biome_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ls_biome := LabelSettings.new()
+	ls_biome.font_size = 15
+	ls_biome.font_color = Color(0.9, 0.95, 1.0)
+	ls_biome.outline_size = 3
+	ls_biome.outline_color = Color.BLACK
+	gps_biome_label.label_settings = ls_biome
+	vbox.add_child(gps_biome_label)
+	
+	compass_directory_label = Label.new()
+	compass_directory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ls_compass := LabelSettings.new()
+	ls_compass.font_size = 11
+	ls_compass.font_color = Color(0.7, 0.8, 0.9)
+	ls_compass.outline_size = 2
+	ls_compass.outline_color = Color.BLACK
+	compass_directory_label.label_settings = ls_compass
+	vbox.add_child(compass_directory_label)
 
 func _setup_hotbar() -> void:
 	var hotbar_bg := Panel.new()
@@ -198,8 +281,8 @@ func _setup_inventory_display() -> void:
 	inventory_label.name = "InventoryLabel"
 	inventory_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	inventory_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	inventory_label.grow_vertical = Control.GROW_DIRECTION_BEGIN # Grow UPWARDS
-	inventory_label.offset_bottom = -110 # Placed safely above the hotbar panel margin
+	inventory_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	inventory_label.offset_bottom = -110
 	inventory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	
 	var style := LabelSettings.new()
@@ -211,7 +294,6 @@ func _setup_inventory_display() -> void:
 	_update_inventory_display()
 
 func _setup_health_display() -> void:
-	# 1. Glassmorphic HP container Panel placed cleanly in the Top-Left corner
 	var health_bg := Panel.new()
 	health_bg.name = "HealthBackground"
 	health_bg.custom_minimum_size = Vector2(160, 45)
@@ -222,21 +304,19 @@ func _setup_health_display() -> void:
 	health_bg.offset_left = 20
 	health_bg.offset_top = 20
 	
-	# Match the main HUD glassmorphism style
 	var style := StyleBoxFlat.new()
 	style.set_corner_radius_all(8)
-	style.bg_color = Color(0.12, 0.12, 0.12, 0.5) # Translucent dark glass
+	style.bg_color = Color(0.12, 0.12, 0.12, 0.5)
 	style.border_width_left = 2
 	style.border_width_top = 2
 	style.border_width_right = 2
 	style.border_width_bottom = 2
-	style.border_color = Color(0.25, 0.25, 0.25, 0.8) # Grey rim
+	style.border_color = Color(0.25, 0.25, 0.25, 0.8)
 	style.shadow_size = 4
 	style.shadow_color = Color(0, 0, 0, 0.2)
 	health_bg.add_theme_stylebox_override("panel", style)
 	add_child(health_bg)
 	
-	# 2. HP Hearts Label centered perfectly inside the Panel
 	health_label = Label.new()
 	health_label.name = "HealthLabel"
 	health_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -247,7 +327,7 @@ func _setup_health_display() -> void:
 	
 	var label_style := LabelSettings.new()
 	label_style.font_size = 18
-	label_style.font_color = Color(0.95, 0.15, 0.15) # Heart red
+	label_style.font_color = Color(0.95, 0.15, 0.15)
 	label_style.outline_size = 4
 	label_style.outline_color = Color.BLACK
 	health_label.label_settings = label_style
@@ -288,7 +368,6 @@ func _setup_pause_menu() -> void:
 	spacer.custom_minimum_size = Vector2(0, 30)
 	box.add_child(spacer)
 	
-	# Resume Button
 	var resume_btn := Button.new()
 	resume_btn.text = "RESUME GAME"
 	resume_btn.custom_minimum_size = Vector2(250, 48)
@@ -299,7 +378,6 @@ func _setup_pause_menu() -> void:
 	spacer2.custom_minimum_size = Vector2(0, 12)
 	box.add_child(spacer2)
 	
-	# Settings Button
 	var settings_btn := Button.new()
 	settings_btn.text = "SETTINGS"
 	settings_btn.custom_minimum_size = Vector2(250, 48)
@@ -310,7 +388,6 @@ func _setup_pause_menu() -> void:
 	spacer3.custom_minimum_size = Vector2(0, 12)
 	box.add_child(spacer3)
 	
-	# Quit Button
 	var quit_btn := Button.new()
 	quit_btn.text = "QUIT TO MAIN MENU"
 	quit_btn.custom_minimum_size = Vector2(250, 48)
@@ -323,6 +400,28 @@ func _setup_pause_menu() -> void:
 func _process(_delta: float) -> void:
 	if is_instance_valid(minimap):
 		minimap.queue_redraw()
+		
+	# Synchronize active Navigation & GPS data
+	if is_instance_valid(player) and is_instance_valid(world_controller):
+		var p_pos := player.global_position
+		
+		# 1. Update Coordinates
+		gps_coords_label.text = "[ X: %d  ·  Y: %d  ·  Z: %d ]" % [int(round(p_pos.x)), int(round(p_pos.y)), int(round(p_pos.z))]
+		
+		# 2. Query Biome directly to show the current active region name
+		var profile = BiomeService.evaluate_coordinate(
+			int(round(p_pos.x)), 
+			int(round(p_pos.z)), 
+			world_controller.generator._terrain_noise
+		)
+		gps_biome_label.text = "REGION: %s" % BIOME_UI_DATA[profile.biome_id]["name"].to_upper()
+		
+		# 3. Dynamic directional Directory Compass
+		compass_directory_label.text = "[N] Polar Ice: %dm  |  [E] Village Bazaar: %dm  |  [S] Mario Hills: %dm" % [
+			int(abs(p_pos.z - (-500.0))),
+			int(abs(p_pos.x - 3000.0)),
+			int(abs(p_pos.z - 300.0))
+		]
 
 func _update_inventory_display() -> void:
 	if is_instance_valid(player):
@@ -332,7 +431,6 @@ func toggle_pause_menu(p_visible: bool) -> void:
 	if is_instance_valid(_pause_overlay):
 		_pause_overlay.visible = p_visible
 		
-	# Ensure settings menu is closed if unpausing
 	if not p_visible and is_instance_valid(_settings_overlay):
 		_settings_overlay.queue_free()
 
@@ -341,7 +439,6 @@ func _on_resume_pressed() -> void:
 	toggle_pause_menu(false)
 
 func _on_settings_pressed() -> void:
-	# Instantiate and display the settings menu programmatically
 	_settings_overlay = SettingsMenu.new()
 	_settings_overlay.closed.connect(func() -> void:
 		if is_instance_valid(_settings_overlay):

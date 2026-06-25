@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
 #              handling dynamic, decoupled dependency injection, soundtracks, 
-#              and safe bidirectional audio crossfading transitions.
+#              safe audio crossfades, and dynamic OCP-compliant biome registrations.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -29,11 +29,29 @@ func _ready() -> void:
 func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
 	
+	_setup_biomes() # CRITICAL OCP STEP: Registers biome strategies dynamically on startup
 	_setup_persistence()
 	_setup_environment()
 	_setup_celestial()
 	_setup_audio()
 	_load_main_menu()
+
+func _setup_biomes() -> void:
+	print("[Bootstrap] Registering procedural biome strategies dynamically...")
+	
+	# Dynamically inject the 10 concrete biome strategy blueprints into the registry (OCP compliant)
+	BiomeService.register_biome(BayOfSailsBiome.new())
+	BiomeService.register_biome(WarpPlateauBiome.new())
+	BiomeService.register_biome(GoldenBazaarBiome.new())
+	BiomeService.register_biome(CraggyMinesBiome.new())
+	BiomeService.register_biome(FrostbiteGlaciersBiome.new())
+	BiomeService.register_biome(RedwoodForestBiome.new())
+	BiomeService.register_biome(RedBadlandsBiome.new())
+	BiomeService.register_biome(NeonRuinsBiome.new())
+	BiomeService.register_biome(SwampOfSighsBiome.new())
+	BiomeService.register_biome(CloudKingdomBiome.new())
+	
+	print("[Bootstrap] Dynamic biome strategies registered successfully.")
 
 func _setup_persistence() -> void:
 	print("[Bootstrap] Setting up global persistence layer...")
@@ -55,8 +73,6 @@ func _setup_environment() -> void:
 	world_environment.name = "WorldEnvironment"
 	
 	var environment := Environment.new()
-	
-	# Set background mode to Sky
 	environment.background_mode = Environment.BG_SKY
 	
 	var sky := Sky.new()
@@ -70,8 +86,6 @@ func _setup_environment() -> void:
 	
 	sky.sky_material = sky_material
 	environment.sky = sky
-	
-	# Soft ambient lighting derived directly from the Sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	
 	world_environment.environment = environment
@@ -131,8 +145,6 @@ func _on_start_game_requested() -> void:
 	_bootstrap_player()
 	_inject_dependencies()
 	
-	# Now that dependencies are safely injected, we add them to the tree.
-	# This triggers _ready() on the World and Player safely.
 	add_child(world_controller)
 	add_child(player_controller)
 
@@ -159,28 +171,18 @@ func _bootstrap_world() -> void:
 	var controller_script: Script = load("res://src/Infrastructure/World/WorldController.gd")
 	world_controller = controller_script.new() as Node3D
 	world_controller.name = "World"
-	# Notice: add_child() removed from here.
 
 func _bootstrap_player() -> void:
 	print("[Bootstrap] Instantiating Player controller...")
 	var player_script: Script = load("res://src/Infrastructure/Player/PlayerController.gd")
 	player_controller = player_script.new() as CharacterBody3D
 	player_controller.name = "Player"
-	# Notice: add_child() removed from here.
 
 func _inject_dependencies() -> void:
 	print("[Bootstrap] Injecting dependencies dynamically...")
 	if is_instance_valid(world_controller) and is_instance_valid(player_controller):
-		
-		# INJECT REPOSITORY (DIP compliance)
 		world_controller.set("repository", world_repository)
-		
-		# Inject controller cross-references
 		world_controller.set("player", player_controller)
 		player_controller.set("world_controller", world_controller)
-		
-		# The HUD node is not injected manually here anymore because PlayerController's
-		# _ready() hasn't run yet. PlayerController._setup_hud() will now automatically
-		# pass the already-injected world_controller directly to the HUD during its own _ready().
 			
 	print("[Bootstrap] Dynamic dependency injection completed successfully.")
