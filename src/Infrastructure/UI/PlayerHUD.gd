@@ -1,8 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI controller managing a modern, glassmorphic HUD.
-#              UX IMPROVED: Added Damage screen flash, Animated Hotbar scaling, 
-#              and a modernized precision crosshair.
+#              UPDATED: Added game clock display inside the GPS Panel header.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -51,7 +50,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
-	_setup_damage_overlay() # Needs to be at the back (drawn first)
+	_setup_damage_overlay()
 	_setup_crosshair()
 	_setup_minimap()
 	_setup_hotbar()
@@ -67,7 +66,7 @@ func _setup_damage_overlay() -> void:
 	damage_overlay = ColorRect.new()
 	damage_overlay.name = "DamageOverlay"
 	damage_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	damage_overlay.color = Color(0.8, 0.0, 0.0, 0.0) # Transparent red by default
+	damage_overlay.color = Color(0.8, 0.0, 0.0, 0.0)
 	damage_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(damage_overlay)
 
@@ -84,14 +83,12 @@ func _draw() -> void:
 	var col := Color(1, 1, 1, 0.85)
 	var shadow := Color(0, 0, 0, 0.5)
 	
-	# Draw shadow outline for better visibility against light blocks
 	draw_circle(center, 3.0, shadow)
 	draw_line(center - Vector2(8, 0), center - Vector2(3, 0), shadow, 3.0)
 	draw_line(center + Vector2(3, 0), center + Vector2(8, 0), shadow, 3.0)
 	draw_line(center - Vector2(0, 8), center - Vector2(0, 3), shadow, 3.0)
 	draw_line(center + Vector2(0, 3), center + Vector2(0, 8), shadow, 3.0)
 
-	# Draw main white crosshair
 	draw_circle(center, 1.5, col)
 	draw_line(center - Vector2(7, 0), center - Vector2(4, 0), col, 2.0)
 	draw_line(center + Vector2(4, 0), center + Vector2(7, 0), col, 2.0)
@@ -315,6 +312,7 @@ func _setup_inventory_display() -> void:
 	style.outline_color = Color.BLACK
 	inventory_label.label_settings = style
 	add_child(inventory_label)
+	_update_inventory_display()
 
 func _setup_health_display() -> void:
 	var health_bg := Panel.new()
@@ -427,7 +425,19 @@ func _process(_delta: float) -> void:
 	# Synchronize active Navigation & GPS data
 	if is_instance_valid(player) and is_instance_valid(world_controller):
 		var p_pos := player.global_position
-		gps_coords_label.text = "[ X: %d  ·  Y: %d  ·  Z: %d ]" % [int(round(p_pos.x)), int(round(p_pos.y)), int(round(p_pos.z))]
+		
+		# UPDATED: Retrieve the celestial clock HH:MM string from CelestialService dynamically!
+		var time_str: String = "06:00"
+		var celestial = get_parent().get_parent().get_node_or_null("CelestialService")
+		if is_instance_valid(celestial) and celestial.has_method("get_formatted_time"):
+			time_str = celestial.call("get_formatted_time")
+			
+		gps_coords_label.text = "[ X: %d  ·  Y: %d  ·  Z: %d ]   ·   [ %s ]" % [
+			int(round(p_pos.x)), 
+			int(round(p_pos.y)), 
+			int(round(p_pos.z)),
+			time_str
+		]
 		
 		var profile = BiomeService.evaluate_coordinate(
 			int(round(p_pos.x)), 
@@ -442,15 +452,9 @@ func _process(_delta: float) -> void:
 			int(abs(p_pos.z - 300.0))
 		]
 
-## API Hooked by PlayerController to give immersive visual combat feedback
-func flash_damage_screen() -> void:
-	if not is_instance_valid(damage_overlay):
-		return
-	
-	# Quickly flash a translucent red overlay using a Tween
-	var tween := create_tween()
-	tween.tween_property(damage_overlay, "color", Color(0.8, 0.0, 0.0, 0.35), 0.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.tween_property(damage_overlay, "color", Color(0.8, 0.0, 0.0, 0.0), 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+func _update_inventory_display() -> void:
+	if is_instance_valid(player):
+		update_active_slot(0)
 
 func toggle_pause_menu(p_visible: bool) -> void:
 	if is_instance_valid(_pause_overlay):
@@ -464,7 +468,6 @@ func _on_resume_pressed() -> void:
 	toggle_pause_menu(false)
 
 func _on_settings_pressed() -> void:
-	# Note: Need to load settings menu component via script injection for safe reference
 	var sm_script: Script = load("res://src/Infrastructure/UI/SettingsMenu.gd")
 	if sm_script != null:
 		_settings_overlay = sm_script.new() as Control
@@ -491,7 +494,6 @@ func update_active_slot(active_index: int) -> void:
 		var tween := create_tween()
 			
 		if i == active_index:
-			# Highlight and actively scale UP the selected slot for strong UX
 			style.bg_color = Color(0.25, 0.25, 0.25, 0.8)
 			style.border_width_left = 3
 			style.border_width_top = 3
@@ -504,7 +506,6 @@ func update_active_slot(active_index: int) -> void:
 			if is_instance_valid(inventory_label):
 				inventory_label.text = "[ %s ]" % HOTBAR_ITEMS[i].to_upper()
 		else:
-			# Dim and scale down unselected slots
 			style.bg_color = Color(0.12, 0.12, 0.12, 0.5)
 			style.border_width_left = 1
 			style.border_width_top = 1

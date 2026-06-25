@@ -2,14 +2,15 @@
 # Project: CraftDomain
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              dynamic SunLight rotation, and procedural sky color transitions.
+#              UPDATED: Added get_formatted_time() API to format float time into HH:MM.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Audio/CelestialService.gd (Save in Celestial directory)
+# File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
 class_name CelestialService
 extends Node
 
-## Speed of time progression (Multiplier: 1.0 is real-time, 60.0 is 24x faster)
-var time_speed: float = 40.0
+## Speed of time progression (72.0 multiplier makes a full day last exactly 20 minutes)
+var time_speed: float = 72.0
 
 # Dependencies injected by Bootstrap
 var sun_light: DirectionalLight3D
@@ -45,11 +46,14 @@ func _update_sun_rotation() -> void:
 	if not is_instance_valid(sun_light):
 		return
 		
-	# Map time [0..1] to a 360-degree rotation angle around X axis
+	# Map time [0..1] to a 360-degree rotation angle around X axis (elevation)
 	var angle_rad: float = (_current_time * TAU) - (PI / 2.0)
 	
 	# Rotate the SunLight node dynamically
 	sun_light.rotation.x = angle_rad
+	
+	# Add a static 35-degree tilted azimuth orbit (Y-axis)
+	sun_light.rotation.y = deg_to_rad(35)
 	
 	# Turn off shadows and reduce light intensity when the sun is below the horizon (night)
 	var is_night: bool = _current_time < 0.2 || _current_time > 0.8
@@ -104,3 +108,10 @@ func _update_sky_atmosphere() -> void:
 ## Public helper: Returns true if it is currently nighttime
 func is_night_time() -> bool:
 	return _current_time < 0.2 or _current_time > 0.8
+
+## Public API: Converts the internal 0..1 timeline into a formatted digital 24h clock string (HH:MM)
+func get_formatted_time() -> String:
+	var total_minutes := int(floor(_current_time * 1440.0))
+	var hours := int(total_minutes / 60)
+	var minutes := int(total_minutes % 60)
+	return "%02d:%02d" % [hours, minutes]
