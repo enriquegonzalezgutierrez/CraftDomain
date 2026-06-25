@@ -2,8 +2,9 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications.
-#              FIXED: Moved StaticBody3D collision shape registration to the main
-#              thread, completely resolving player & NPC clipping/fall-through bugs.
+#              FIXED: Synchronized Mob Spawning to wait until both vertical chunk 
+#              layers (Y=0 and Y=1) are fully rendered, completely stopping NPCs
+#              from spawning trapped underground in high-altitude zones.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -31,7 +32,7 @@ var _chunk_nodes: Dictionary = {}
 ## Tracking dictionary to prevent initiating duplicate load threads: Vector3i -> bool
 var _pending_loading_chunks: Dictionary = {}
 
-## Tracking map for entities spawned within specific chunks: Vector3i -> Array[CharacterBody3D]
+## Tracking map for entities spawned within specific chunk columns: Vector3i (y=0) -> Array[CharacterBody3D]
 var _chunk_entities: Dictionary = {}
 
 ## Thread safety sync structures
@@ -163,7 +164,6 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 	WorkerThreadPool.add_task(_background_generate_chunk_task.bind(chunk_pos))
 
 ## Background Thread: Operates heavy procedural calculations.
-## Thread-Safety Fix: Removed physical body allocations to keep it purely mathematical.
 func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	# 1. Procedural generation (Polymorphic OCP call)
 	var chunk := Chunk.new(chunk_pos)
@@ -281,20 +281,30 @@ func _render_completed_chunks_from_queue() -> void:
 				collision_body
 			)
 			
-			if is_instance_valid(_mob_spawning_service):
-				var spawned := _mob_spawning_service.spawn_mobs_for_chunk(task.chunk, self)
-				if spawned.size() > 0:
-					_chunk_entities[chunk_pos] = spawned
+			# FIXED: Synchronized Mob Spawning
+			# Only trigger spawning once both vertical chunks (Y=0 and Y=1) for this column have loaded.
+			# This guarantees that the global scanning algorithm finds the true heightmap surface.
+			var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
+			var spawn_chunk_pos_0 := Vector3i(chunk_pos.x, 0, chunk_pos.z)
+			var spawn_chunk_pos_1 := Vector3i(chunk_pos.x, 1, chunk_pos.z)
+			
+			if _chunk_nodes.has(spawn_chunk_pos_0) and _chunk_nodes.has(spawn_chunk_pos_1):
+				if not _chunk_entities.has(col_pos) and is_instance_valid(_mob_spawning_service):
+					# Fetch the baseline chunk data to calculate deterministic houses, but scan with world_state
+					var chunk_0 = _chunk_nodes[spawn_chunk_pos_0].chunk
+					var spawned := _mob_spawning_service.spawn_mobs_for_chunk(chunk_0, self, world_state)
+					if spawned.size() > 0:
+						_chunk_entities[col_pos] = spawned
 			
 			if is_instance_valid(_streetlight_service):
 				_streetlight_service.register_streetlights_for_chunk(task.chunk)
 			
 			# Spawn synchronization
 			if is_instance_valid(player) and not player.get("is_active"):
-				var spawn_chunk_pos_0 := Vector3i(_target_spawn_chunk_pos.x, 0, _target_spawn_chunk_pos.z)
-				var spawn_chunk_pos_1 := Vector3i(_target_spawn_chunk_pos.x, 1, _target_spawn_chunk_pos.z)
+				var spawn_chunk_pos_0_p := Vector3i(_target_spawn_chunk_pos.x, 0, _target_spawn_chunk_pos.z)
+				var spawn_chunk_pos_1_p := Vector3i(_target_spawn_chunk_pos.x, 1, _target_spawn_chunk_pos.z)
 				
-				if _chunk_nodes.has(spawn_chunk_pos_0) and _chunk_nodes.has(spawn_chunk_pos_1):
+				if _chunk_nodes.has(spawn_chunk_pos_0_p) and _chunk_nodes.has(spawn_chunk_pos_1_p):
 					_activate_player_spawn()
 
 func _unload_chunk_node(chunk_pos: Vector3i) -> void:
@@ -302,12 +312,14 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		_pending_loading_chunks.erase(chunk_pos)
 		return
 
-	if _chunk_entities.has(chunk_pos):
-		var entities: Array = _chunk_entities[chunk_pos]
+	# FIXED: Unloads spawned entities safely based on horizontal column positions to prevent memory leaks
+	var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
+	if _chunk_entities.has(col_pos):
+		var entities: Array = _chunk_entities[col_pos]
 		for entity in entities:
 			if is_instance_valid(entity):
 				entity.queue_free()
-		_chunk_entities.erase(chunk_pos)
+		_chunk_entities.erase(col_pos)
 
 	if is_instance_valid(_streetlight_service):
 		_streetlight_service.unregister_streetlights_for_chunk(chunk_pos)
