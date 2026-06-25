@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player.
-#              FIXED: Robust RayCast normal offset math to ensure perfect voxel building.
-#              UX IMPROVED: Added a 3D target highlight cube and Mouse Wheel hotbar scrolling.
+#              FIXED: Added raycast.add_exception(self) to prevent self-collision,
+#              fully unlocking the block-building and mining mechanics!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -109,6 +109,10 @@ func _setup_player_geometry() -> void:
 	raycast.target_position = Vector3(0, 0, -REACH_DISTANCE)
 	raycast.collide_with_areas = false
 	raycast.collide_with_bodies = true
+	
+	# CRITICAL PHYSICS FIX: Exclude the player's own collision capsule from the raycast!
+	raycast.add_exception(self) 
+	
 	camera.add_child(raycast)
 	
 	# 4. Viewmodel Setup
@@ -116,22 +120,22 @@ func _setup_player_geometry() -> void:
 	viewmodel = viewmodel_script.new() as Node3D
 	camera.add_child(viewmodel)
 	
-	# 5. UX Voxel Highlighter setup (A translucent block that snaps to the grid)
+	# 5. UX Voxel Highlighter setup
 	highlight_mesh = MeshInstance3D.new()
 	highlight_mesh.name = "TargetHighlight"
 	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(1.02, 1.02, 1.02) # Slightly larger than 1 to prevent Z-fighting
+	box_mesh.size = Vector3(1.02, 1.02, 1.02)
 	highlight_mesh.mesh = box_mesh
 	
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(1.0, 1.0, 1.0, 0.15) # Ghostly white
+	mat.albedo_color = Color(1.0, 1.0, 1.0, 0.15)
 	mat.emission_enabled = true
 	mat.emission = Color(1.0, 1.0, 1.0)
 	mat.emission_energy_multiplier = 0.5
 	box_mesh.material = mat
 	
-	highlight_mesh.top_level = true # Make it independent of player rotation
+	highlight_mesh.top_level = true
 	highlight_mesh.visible = false
 	add_child(highlight_mesh)
 
@@ -214,9 +218,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 func _update_target_highlight() -> void:
-	# Snaps the glowing cube exactly over the targeted block
 	if is_instance_valid(highlight_mesh) and raycast.is_colliding():
-		# Use -0.5 normal offset to find the exact block *inside* the geometry
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
 		var target_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
 		
@@ -281,7 +283,6 @@ func _mine_or_attack() -> void:
 
 	# Mining Logic
 	if is_instance_valid(world_controller):
-		# We subtract 0.5 from the normal to guarantee we are mathematically inside the block to destroy
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
 		var block_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
 		
@@ -316,7 +317,7 @@ func _build_or_interact() -> void:
 			_sync_hud_counters()
 		return
 
-	# FIXED BUILDING LOGIC: We ADD 0.5 to the normal to ensure we step into the adjacent empty grid cell!
+	# Building Logic
 	if is_item_selected and is_instance_valid(world_controller) and is_instance_valid(inventory):
 		var inv_comp := inventory as InventoryComponent
 		var build_type: BlockType.Type = inv_comp.get_slot_build_type(active_slot_index)
@@ -344,7 +345,7 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 	if is_instance_valid(hud):
 		hud.update_health_display(domain_entity.health)
 		if hud.has_method("flash_damage_screen"):
-			hud.call("flash_damage_screen") # Hooking into new UX effect
+			hud.call("flash_damage_screen")
 
 func _on_domain_entity_died() -> void:
 	domain_entity.health = 3

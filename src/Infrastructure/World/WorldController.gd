@@ -2,12 +2,8 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications.
-#              Enforces SOLID and SRP compliance by delegating mob spawning,
-#              streetlights toggling, and asynchronous thread pool tasks.
-#              IMplements Bi-directional Frame Throttling: Balances the CPU frame
-#              budget by strictly loading OR unloading exactly ONE chunk per frame,
-#              eliminating Garbage Collection (queue_free) physics stutters.
-#              DIP Compliant: Relies on injected WorldRepository abstraction.
+#              FIXED: Synchronized player spawn to wait for BOTH vertical chunks (Y=0 and Y=1)
+#              to load completely, preventing players from being buried inside mountains.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -43,16 +39,19 @@ var _queue_mutex: Mutex
 var _completed_tasks_queue: Array[GeneratedChunkTask] = []
 var _unload_queue: Array[Vector3i] = [] # CRITICAL: Unload task queue for frame throttling
 
-## Throttling timer variables to avoid running distance checks on every single frame
+## Throttling timer variables
 var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.2
 
 ## Target chunk coordinate where the player is scheduled to spawn safely
 var _target_spawn_chunk_pos: Vector3i = Vector3i(0, 0, 0)
 
-# --- CHUNK TASK CACHE SYSTEM (Strict Memory-efficient LRU) ---
+# --- CHUNK TASK CACHE SYSTEM (Memory-efficient LRU) ---
 var _chunk_task_cache: Dictionary = {}
-const CACHE_SIZE_LIMIT: int = 64 # Cache up to 64 recently processed chunks in RAM
+const CACHE_SIZE_LIMIT: int = 64 
+
+# --- PERSISTENT INVENTORY CACHE ---
+var _loaded_inventory_data: Array = []
 
 ## Subclass containing the completed background generation and rendering results.
 class GeneratedChunkTask:
@@ -86,6 +85,9 @@ func _initialize_systems() -> void:
 		if saved_global.has("player_pos"):
 			spawn_pos = saved_global["player_pos"]
 			spawn_rot = saved_global["player_rot"]
+		# Extract inventory if present in save file
+		if saved_global.has("inventory"):
+			_loaded_inventory_data = saved_global["inventory"]
 	else:
 		randomize()
 		active_seed = randi()
@@ -114,9 +116,7 @@ func _process(delta: float) -> void:
 		_process_dynamic_world()
 		_process_day_night_lighting()
 		
-	# --- PERFECT FRAME BUDGET DISTRIBUTION ---
-	# To maintain 60+ FPS, we either unload ONE chunk OR load ONE chunk per frame.
-	# This absolutely prevents physics BVH destruction/creation stutters.
+	# Framework frame-throttling allocation
 	if _unload_queue.size() > 0:
 		var chunk_to_unload := _unload_queue.pop_front() as Vector3i
 		_unload_chunk_node(chunk_to_unload)
@@ -134,7 +134,6 @@ func _process_dynamic_world() -> void:
 			_unload_queue.append(chunk_pos)
 		
 	for chunk_pos in task.to_load:
-		# If a chunk is scheduled to be unloaded but the player turned back, cancel the unload!
 		if _unload_queue.has(chunk_pos):
 			_unload_queue.erase(chunk_pos)
 		else:
@@ -186,7 +185,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 					var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
 					collision_transforms.append(Transform3D(Basis(), transform_pos))
 	
-	# 4. --- ASYNCHRONOUS OFF-THREAD PHYSICAL ASSEMBLY ---
+	# 4. Asynchronous off-thread physical assembly
 	var collision_body := StaticBody3D.new()
 	collision_body.name = "StaticCollisionBody"
 	var shared_box_shape := BoxShape3D.new()
@@ -214,11 +213,11 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 		var block_y := int(round(local_pos.y))
 		var block_z := int(round(local_pos.z))
 		var block_type := chunk.get_block(block_x, block_y, block_z)
-		var block_def := BlockLibrary.get_definition(block_type)
+		var block_def: BlockDefinition = BlockLibrary.get_definition(block_type)
 		var shade_noise: float = 0.9 + 0.1 * sin(float(block_x) * 1.4 + float(block_y) * 2.3 + float(block_z) * 3.7)
 		visual_colors[i] = block_def.color_top * shade_noise
 	
-	# 6. --- ADVANCED BINARY BULK VISUAL ARRAY COMPILATION ---
+	# 6. Advanced binary bulk visual array compilation
 	var bulk_array := PackedFloat32Array()
 	bulk_array.resize(collision_transforms.size() * 16)
 	
@@ -299,8 +298,14 @@ func _render_completed_chunks_from_queue() -> void:
 			if is_instance_valid(_streetlight_service):
 				_streetlight_service.register_streetlights_for_chunk(task.chunk)
 			
-			if chunk_pos == _target_spawn_chunk_pos and is_instance_valid(player) and not player.get("is_active"):
-				_activate_player_spawn()
+			# FIXED: Sincronización vertical de aparición.
+			# Espera a que AMBOS chunks (Y=0 y Y=1) estén cargados antes de posicionar al jugador.
+			if is_instance_valid(player) and not player.get("is_active"):
+				var spawn_chunk_pos_0 := Vector3i(_target_spawn_chunk_pos.x, 0, _target_spawn_chunk_pos.z)
+				var spawn_chunk_pos_1 := Vector3i(_target_spawn_chunk_pos.x, 1, _target_spawn_chunk_pos.z)
+				
+				if _chunk_nodes.has(spawn_chunk_pos_0) and _chunk_nodes.has(spawn_chunk_pos_1):
+					_activate_player_spawn()
 
 func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	if _pending_loading_chunks.has(chunk_pos):
@@ -321,7 +326,7 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	if is_instance_valid(chunk_node):
 		var body := chunk_node.get_node_or_null("StaticCollisionBody")
 		if is_instance_valid(body):
-			chunk_node.remove_child(body) # Preserve body for cache
+			chunk_node.remove_child(body)
 		chunk_node.queue_free()
 		
 	_chunk_nodes.erase(chunk_pos)
@@ -334,10 +339,18 @@ func save_all() -> void:
 		repository.save_chunk_modifications(chunk_pos, modifications)
 		
 	if is_instance_valid(player):
+		# Gather the player's actual inventory quantities before executing save serialization
+		var inv_quantities: Array = []
+		var inventory = player.get("inventory")
+		if is_instance_valid(inventory):
+			for i in range(8):
+				inv_quantities.append(inventory.get_slot_quantity(i))
+				
 		repository.save_global_state(
 			player.global_position, 
 			player.rotation, 
-			generator._terrain_noise.seed
+			generator._terrain_noise.seed,
+			inv_quantities # Persists active slot quantities
 		)
 	print("[WorldController] All data serialized and saved successfully.")
 
@@ -346,7 +359,9 @@ func _activate_player_spawn() -> void:
 	var block_z := int(floor(player.position.z))
 	var found_safe_y: float = -1.0
 	
-	for y in range(Chunk.SIZE - 1, -1, -1):
+	# Scan loop from 31 down to 0 (the complete world vertical limit)
+	# This guarantees the player is always spawned on top of the ground, never underground.
+	for y in range(31, -1, -1):
 		var check_coord := Vector3i(block_x, y, block_z)
 		var block_type := world_state.get_block(check_coord)
 		
@@ -359,82 +374,122 @@ func _activate_player_spawn() -> void:
 	else:
 		player.position.y = 14.0
 		
+	# Restore saved inventory quantities safely on player activation
+	_restore_player_inventory()
+	
 	player.set("is_active", true)
 	player.velocity = Vector3.ZERO
 
+## Safely reads loaded file arrays and synchronizes inventory slots
+func _restore_player_inventory() -> void:
+	if _loaded_inventory_data.size() > 0 and is_instance_valid(player):
+		var inventory = player.get("inventory")
+		if is_instance_valid(inventory):
+			print("[WorldController] Restoring saved player inventory...")
+			for i in range(min(_loaded_inventory_data.size(), 8)):
+				var current_qty: int = inventory.get_slot_quantity(i)
+				var target_qty: int = int(_loaded_inventory_data[i])
+				inventory.modify_slot_quantity(i, target_qty - current_qty)
+			player.call("_sync_hud_counters")
+
+## Places/Deletes a block globally and forces a visual refresh.
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
+	# 1. Update logical world state
 	world_state.set_block(global_pos, type)
+	
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 	
-	if is_instance_valid(chunk_node):
-		var collision_transforms: Array[Transform3D] = []
-		for x in range(Chunk.SIZE):
-			for y in range(Chunk.SIZE):
-				for z in range(Chunk.SIZE):
-					if BlockType.is_solid(chunk_node.chunk.get_block(x, y, z)):
-						var local_pos := Vector3(x, y, z)
-						var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
-						collision_transforms.append(Transform3D(Basis(), transform_pos))
-						
-		var visual_colors: Array[Color] = []
-		visual_colors.resize(collision_transforms.size())
-		for i in range(collision_transforms.size()):
-			var t := collision_transforms[i]
-			var local_pos := t.origin - Vector3(0.5, 0.5, 0.5)
-			var block_x := int(round(local_pos.x))
-			var block_y := int(round(local_pos.y))
-			var block_z := int(round(local_pos.z))
-			var block_type_at := chunk_node.chunk.get_block(block_x, block_y, block_z)
-			var block_def := BlockLibrary.get_definition(block_type_at)
-			var shade_noise: float = 0.9 + 0.1 * sin(float(block_x) * 1.4 + float(block_y) * 2.3 + float(block_z) * 3.7)
-			visual_colors[i] = block_def.color_top * shade_noise
+	# SELF-HEALING HOOK: If the visual chunk node does not exist, force load it immediately on the main thread!
+	if not is_instance_valid(chunk_node):
+		var chunk := world_state.get_chunk(chunk_pos)
+		if chunk == null:
+			chunk = Chunk.new(chunk_pos)
+			generator.generate_chunk(chunk)
 			
-		var bulk_array := PackedFloat32Array()
-		bulk_array.resize(collision_transforms.size() * 16)
-		for i in range(collision_transforms.size()):
-			var t := collision_transforms[i]
-			var c := visual_colors[i]
-			var offset := i * 16
-			bulk_array[offset + 0] = t.basis.x.x
-			bulk_array[offset + 1] = t.basis.y.x
-			bulk_array[offset + 2] = t.basis.z.x
-			bulk_array[offset + 3] = t.origin.x
-			bulk_array[offset + 4] = t.basis.x.y
-			bulk_array[offset + 5] = t.basis.y.y
-			bulk_array[offset + 6] = t.basis.z.y
-			bulk_array[offset + 7] = t.origin.y
-			bulk_array[offset + 8] = t.basis.x.z
-			bulk_array[offset + 9] = t.basis.y.z
-			bulk_array[offset + 10] = t.basis.z.z
-			bulk_array[offset + 11] = t.origin.z
-			bulk_array[offset + 12] = c.r
-			bulk_array[offset + 13] = c.g
-			bulk_array[offset + 14] = c.b
-			bulk_array[offset + 15] = c.a
+			# Load any existing saved edits on disk for this chunk
+			var saved_edits := repository.load_chunk_modifications(chunk_pos)
+			if saved_edits.size() > 0:
+				for local_pos in saved_edits.keys():
+					chunk.set_block(local_pos.x, local_pos.y, local_pos.z, saved_edits[local_pos])
+					
+			world_state.add_chunk(chunk)
 			
-		var collision_body := StaticBody3D.new()
-		collision_body.name = "StaticCollisionBody"
-		var shared_box_shape := BoxShape3D.new()
-		for t in collision_transforms:
-			var owner_id := collision_body.create_shape_owner(collision_body)
-			collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
-			collision_body.shape_owner_set_transform(owner_id, t)
-			
-		var old_body := chunk_node.get_node_or_null("StaticCollisionBody")
-		if is_instance_valid(old_body):
-			chunk_node.remove_child(old_body)
-			old_body.queue_free()
-			
-		chunk_node.setup_chunk_visuals(
-			collision_transforms.size(), 
-			bulk_array, 
-			collision_body
-		)
+		# Instantiate visual chunk node on the main thread instantly
+		chunk_node = ChunkNode.new(chunk)
+		add_child(chunk_node)
+		_chunk_nodes[chunk_pos] = chunk_node
+	
+	# 2. Rebuild visuals for the target chunk node
+	var collision_transforms: Array[Transform3D] = []
+	for x in range(Chunk.SIZE):
+		for y in range(Chunk.SIZE):
+			for z in range(Chunk.SIZE):
+				var check_b: BlockType.Type = chunk_node.chunk.get_block(x, y, z)
+				if BlockType.is_solid(check_b):
+					var local_pos := Vector3(x, y, z)
+					var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
+					collision_transforms.append(Transform3D(Basis(), transform_pos))
+					
+	var visual_colors: Array[Color] = []
+	visual_colors.resize(collision_transforms.size())
+	for i in range(collision_transforms.size()):
+		var t := collision_transforms[i]
+		var local_pos := t.origin - Vector3(0.5, 0.5, 0.5)
+		var block_x := int(round(local_pos.x))
+		var block_y := int(round(local_pos.y))
+		var block_z := int(round(local_pos.z))
+		var block_type_at := chunk_node.chunk.get_block(block_x, block_y, block_z)
+		var block_def := BlockLibrary.get_definition(block_type_at)
+		var shade_noise: float = 0.9 + 0.1 * sin(float(block_x) * 1.4 + float(block_y) * 2.3 + float(block_z) * 3.7)
+		visual_colors[i] = block_def.color_top * shade_noise
 		
-		if _chunk_task_cache.has(chunk_pos):
-			var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos]
-			cached_task.transforms = collision_transforms
-			cached_task.visual_colors = visual_colors
-			cached_task.collision_body = collision_body
-			cached_task.multimesh_bulk_array = bulk_array
+	var bulk_array := PackedFloat32Array()
+	bulk_array.resize(collision_transforms.size() * 16)
+	for i in range(collision_transforms.size()):
+		var t := collision_transforms[i]
+		var c := visual_colors[i]
+		var offset := i * 16
+		bulk_array[offset + 0] = t.basis.x.x
+		bulk_array[offset + 1] = t.basis.y.x
+		bulk_array[offset + 2] = t.basis.z.x
+		bulk_array[offset + 3] = t.origin.x
+		bulk_array[offset + 4] = t.basis.x.y
+		bulk_array[offset + 5] = t.basis.y.y
+		bulk_array[offset + 6] = t.basis.z.y
+		bulk_array[offset + 7] = t.origin.y
+		bulk_array[offset + 8] = t.basis.x.z
+		bulk_array[offset + 9] = t.basis.y.z
+		bulk_array[offset + 10] = t.basis.z.z
+		bulk_array[offset + 11] = t.origin.z
+		bulk_array[offset + 12] = c.r
+		bulk_array[offset + 13] = c.g
+		bulk_array[offset + 14] = c.b
+		bulk_array[offset + 15] = c.a
+		
+	var collision_body := StaticBody3D.new()
+	collision_body.name = "StaticCollisionBody"
+	var shared_box_shape := BoxShape3D.new()
+	for t in collision_transforms:
+		var owner_id := collision_body.create_shape_owner(collision_body)
+		collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
+		collision_body.shape_owner_set_transform(owner_id, t)
+		
+	var old_body := chunk_node.get_node_or_null("StaticCollisionBody")
+	if is_instance_valid(old_body):
+		chunk_node.remove_child(old_body)
+		old_body.queue_free()
+		
+	chunk_node.setup_chunk_visuals(
+		collision_transforms.size(), 
+		bulk_array, 
+		collision_body
+	)
+	
+	# Synchronize the task cache
+	if _chunk_task_cache.has(chunk_pos):
+		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos]
+		cached_task.transforms = collision_transforms
+		cached_task.visual_colors = visual_colors
+		cached_task.collision_body = collision_body
+		cached_task.multimesh_bulk_array = bulk_array

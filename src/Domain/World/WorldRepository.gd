@@ -3,6 +3,8 @@
 # Description: Pure Domain Repository Interface defining the storage contract 
 #              for world chunks and player persistence, keeping domain logic
 #              independent of disk serialization methods.
+#              UPDATED: Added contracts to support saving and loading player 
+#              inventory quantities to prevent resets upon restart.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldRepository.gd
 # ==============================================================================
@@ -20,12 +22,13 @@ func load_chunk_modifications(_chunk_pos: Vector3i) -> Dictionary:
 	assert(false, "[WorldRepository] load_chunk_modifications() must be implemented by concrete subclass.")
 	return {}
 
-## Abstract contract: Saves global metadata (player coordinate, rotation, and world seed).
-func save_global_state(_player_pos: Vector3, _player_rot: Vector3, _seed_val: int) -> void:
+## Abstract contract: Saves global metadata (coordinates, rotation, world seed, and inventory state).
+## Added support for raw inventory quantities array.
+func save_global_state(_player_pos: Vector3, _player_rot: Vector3, _seed_val: int, _inventory_quantities: Array = []) -> void:
 	assert(false, "[WorldRepository] save_global_state() must be implemented by concrete subclass.")
 
 ## Abstract contract: Loads global metadata.
-## Returns a dictionary containing 'player_pos', 'player_rot', and 'seed'.
+## Returns a dictionary containing 'player_pos', 'player_rot', 'seed', and 'inventory_quantities'.
 func load_global_state() -> Dictionary:
 	assert(false, "[WorldRepository] load_global_state() must be implemented by concrete subclass.")
 	return {}

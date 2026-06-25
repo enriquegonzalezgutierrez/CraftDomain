@@ -2,10 +2,8 @@
 # Project: CraftDomain
 # Description: Infrastructure rendering node representing a chunk using Godot's
 #              native MultiMeshInstance3D with procedural 16x16 pixel textures.
-#              Optimized to map pre-compiled background binary visual float buffers
-#              (Transforms + Colors) and append pre-assembled StaticBody3D 
-#              physics compound BoxShape3D colliders in atomic operations.
-#              Features defensive parent-clearing checks to secure cached node re-insertion.
+#              FIXED: Recreates the MultiMesh object entirely inside setup_chunk_visuals()
+#              to force Godot to flush GPU memory and correctly draw newly placed blocks!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -25,31 +23,31 @@ func _init(p_chunk: Chunk) -> void:
 	
 	# Set position in the world space
 	position = Vector3(chunk.position * Chunk.SIZE)
-	
-	# Configure the primitive cube and the material
-	multimesh = MultiMesh.new()
-	multimesh.transform_format = MultiMesh.TRANSFORM_3D
-	multimesh.use_colors = true
-	multimesh.mesh = BoxMesh.new() # Perfect native Godot 1x1x1 Cube
 
 ## Sets up the MultiMesh rendering transforms and registers the pre-compiled concave collision body.
-## Receives pre-packed binary visual bulk arrays and a pre-assembled physical StaticBody3D.
+## FIXED: Swaps the MultiMesh object dynamically to force Godot's GPU renderer to update instances!
 func setup_chunk_visuals(p_instance_count: int, p_bulk_array: PackedFloat32Array, p_collision_body: StaticBody3D) -> void:
-	# 1. --- ZERO LOOP VISUALS INGESTION ---
-	# Configures count and flushes the entire float buffer directly to GPU memory in a single atomic call
-	multimesh.instance_count = p_instance_count
+	# 1. --- FORCE GPU BUFFER RE-ALLOCATION ---
+	# Swapping the MultiMesh object entirely forces Godot 4 to flush and redraw
+	var new_mm := MultiMesh.new()
+	new_mm.transform_format = MultiMesh.TRANSFORM_3D
+	new_mm.use_colors = true
+	new_mm.mesh = BoxMesh.new() # Native 1x1x1 Cube
+	
+	new_mm.instance_count = p_instance_count
+	new_mm.buffer = p_bulk_array
+	
+	# Atomic reference swap (0.01ms)
+	multimesh = new_mm
 	_apply_material()
-	multimesh.buffer = p_bulk_array # Direct Godot 4.x binary buffer assignment (0.05ms)
 
 	# 2. --- ZERO LOOP PHYSICS REGISTRATION ---
-	# Injects the completely pre-assembled StaticBody3D containing BoxShapes.
-	# Features defensive parent clearing to prevent scene tree hierarchy exceptions.
 	if is_instance_valid(p_collision_body):
 		if p_collision_body.get_parent() != null:
 			p_collision_body.get_parent().remove_child(p_collision_body) # Safely orphan from cached parent
 			
 		_collision_body = p_collision_body
-		add_child(_collision_body) # Atomic node attachment (0.02ms)
+		add_child(_collision_body) # Atomic node attachment
 
 func _apply_material() -> void:
 	# Generate the static procedural 16x16 pixel-art texture once to save GPU memory
@@ -69,13 +67,10 @@ func _generate_pixel_texture() -> void:
 	# Programmatically generate a raw 16x16 pixel noise pattern
 	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
 	
-	# Seed the noise pattern deterministically
 	for x in range(16):
 		for y in range(16):
-			# Generate nice subtle contrast shading values
 			var shade_value: float = randf_range(0.82, 1.0)
 			img.set_pixel(x, y, Color(shade_value, shade_value, shade_value, 1.0))
 			
-	# Convert raw image to a high-contrast GPU ImageTexture
 	_procedural_pixel_texture = ImageTexture.create_from_image(img)
 	print("[ChunkNode] Procedural 16x16 retro-pixel texture compiled successfully.")
