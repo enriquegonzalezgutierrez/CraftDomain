@@ -2,8 +2,8 @@
 # Project: CraftDomain
 # Description: Infrastructure physics controller node representing a passive entity.
 #              Acts as an Infrastructure Wrapper that uses Composition to hold
-#              a pure Domain VoxelEntity. Executes trades through the segregated 
-#              IInventory interface.
+#              a pure Domain VoxelEntity. Executes trades by delegating transaction
+#              rules to the domain TradingService.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -164,12 +164,9 @@ func interact(player: CharacterBody3D) -> void:
 	if is_instance_valid(inventory) and is_instance_valid(player_hud):
 		# Verify if player is holding Lava Buckets (Slot 5)
 		if active_slot == 5:
-			# Verify if player has at least 1 Lava Bucket
-			if inventory.can_modify_slot_quantity(5, -1):
-				# Perform transaction using segregated interface methods
-				inventory.modify_slot_quantity(5, -1) # Consume 1 Lava Bucket
-				inventory.modify_slot_quantity(6, 1)  # Gain 1 Fried Chicken
-				
+			# Delegate transactions rules to Domain TradingService (Strict DDD and clean SRP)
+			# Consuming 1 Lava Bucket (Slot 5) and reward 1 Fried Chicken (Slot 6)
+			if TradingService.execute_trade(inventory, 5, 1, 6, 1):
 				# Hop excited with physical joy
 				velocity.y = JUMP_VELOCITY
 				

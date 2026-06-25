@@ -1,8 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure controller node representing the first-person player, 
-#              handling camera look, movements, RayCast targeting, inventory,
-#              animated first-person 3D viewmodels, and robust Pause inputs.
+# Description: Infrastructure controller node representing the first-person player.
+#              Responsible for camera control, movement physics, RayCast targeting,
+#              animated viewmodels, and pause inputs. Uses composition to hold
+#              a pure Domain VoxelEntity for survival and health rules.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -21,13 +22,13 @@ var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 # Spawn Protection: Player remains frozen until home chunk is generated
 var is_active: bool = false
 
-# Player Survival Combat Health
-var health: int = 3
+# Domain Model Composition (DDD Compliance)
+var domain_entity: VoxelEntity
 
 # Segregated Inventory Interface (ISP compliant)
 var inventory: IInventory
 
-# Node references created via code (loosely typed to prevent compile-time loops)
+# Node references created via code
 var camera: Camera3D
 var raycast: RayCast3D
 var world_controller: Node3D
@@ -41,6 +42,15 @@ var is_item_selected: bool = true # False if selecting currency/weapon
 
 # Internal rotation tracking
 var _rotation_input: Vector2 = Vector2.ZERO
+
+func _init() -> void:
+	# Register primary and secondary input actions programmatically
+	_setup_inputs_mouse_actions()
+	
+	# Instantiate pure domain model representing the player's survival/health logic
+	domain_entity = VoxelEntity.new(3)
+	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
+	domain_entity.died.connect(_on_domain_entity_died)
 
 func _ready() -> void:
 	_setup_inputs()
@@ -170,7 +180,43 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 
-	# Quick Slot Selection mapping keys 1-8
+	_process_hotbar_inputs()
+
+	# Block Mining & Placement Handlers
+	if is_instance_valid(world_controller):
+		if Input.is_action_just_pressed("click_left"):
+			_mine_or_attack()
+		elif Input.is_action_just_pressed("click_right"):
+			_build_or_interact()
+
+	# Gravity
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+
+	# Jump
+	if Input.is_action_just_pressed("jump") and is_on_floor():
+		velocity.y = JUMP_VELOCITY
+
+	# Look Rotation
+	rotate_y(_rotation_input.x)
+	camera.rotate_x(_rotation_input.y)
+	camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(85))
+	_rotation_input = Vector2.ZERO
+
+	# Movement direction
+	var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+	var direction: Vector3 = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	
+	if direction != Vector3.ZERO:
+		velocity.x = direction.x * SPEED
+		velocity.z = direction.z * SPEED
+	else:
+		velocity.x = move_toward(velocity.x, 0, SPEED)
+		velocity.z = move_toward(velocity.z, 0, SPEED)
+
+	move_and_slide()
+
+func _process_hotbar_inputs() -> void:
 	if Input.is_action_just_pressed("select_stone"):
 		active_slot_index = 0
 		active_build_type = BlockType.Type.STONE
@@ -215,40 +261,6 @@ func _physics_process(delta: float) -> void:
 		hud.update_active_slot(7)
 		_set_viewmodel_tool(3)
 
-	# Block Mining & Placement Handlers
-	if is_instance_valid(world_controller):
-		if Input.is_action_just_pressed("click_left"):
-			_mine_or_attack()
-		elif Input.is_action_just_pressed("click_right"):
-			_build_or_interact()
-
-	# Gravity
-	if not is_on_floor():
-		velocity.y -= gravity * delta
-
-	# Jump
-	if Input.is_action_just_pressed("jump") and is_on_floor():
-		velocity.y = JUMP_VELOCITY
-
-	# Look Rotation
-	rotate_y(_rotation_input.x)
-	camera.rotate_x(_rotation_input.y)
-	camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(85))
-	_rotation_input = Vector2.ZERO
-
-	# Movement direction
-	var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
-	var direction: Vector3 = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
-	
-	if direction != Vector3.ZERO:
-		velocity.x = direction.x * SPEED
-		velocity.z = direction.z * SPEED
-	else:
-		velocity.x = move_toward(velocity.x, 0, SPEED)
-		velocity.z = move_toward(velocity.z, 0, SPEED)
-
-	move_and_slide()
-
 func _set_viewmodel_tool(tool_id: int) -> void:
 	if is_instance_valid(viewmodel) and viewmodel.has_method("switch_to_tool"):
 		viewmodel.call("switch_to_tool", tool_id)
@@ -266,10 +278,15 @@ func _mine_or_attack() -> void:
 	var collider = raycast.get_collider()
 	
 	if active_slot_index == 7 and is_instance_valid(collider):
-		if collider is VoxelEntity:
+		if collider is CharacterBody3D and collider.get("domain_entity") is VoxelEntity:
+			var target_entity: VoxelEntity = collider.domain_entity
 			var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
 			knockback_dir.y = 2.5
-			collider.take_damage(1, knockback_dir)
+			
+			if collider.has_method("take_damage"):
+				collider.call("take_damage", 1, knockback_dir)
+			else:
+				target_entity.take_damage(1)
 			return
 
 	if is_instance_valid(world_controller):
@@ -294,16 +311,22 @@ func _build_or_interact() -> void:
 		
 	var collider = raycast.get_collider()
 	
-	if is_instance_valid(collider) and collider is VoxelEntity:
-		collider.interact(self)
+	# Interact with villagers, merchants, or other interactive entities
+	if is_instance_valid(collider) and collider is CharacterBody3D and collider.has_method("interact"):
+		collider.call("interact", self)
 		_sync_hud_counters()
 		return
 		
+	# Heal with fried chicken
 	if active_slot_index == 6 and is_instance_valid(inventory):
-		if inventory.can_modify_slot_quantity(6, -1) and health < 3:
+		if inventory.can_modify_slot_quantity(6, -1) and domain_entity.health < 3:
 			inventory.modify_slot_quantity(6, -1)
-			health += 1
-			hud.update_health_display(health)
+			
+			# Modifying domain entity health through logic rules
+			domain_entity.health = min(3, domain_entity.health + 1)
+			
+			# Trigger graphical UI updates
+			hud.update_health_display(domain_entity.health)
 			_sync_hud_counters()
 		return
 
@@ -328,25 +351,39 @@ func _build_or_interact() -> void:
 		
 		world_controller.call("set_block_globally", block_coord, build_type)
 
+## Infrastructure Combat Entry: Recibe el impacto físico del mundo y delega la salud al dominio.
 func take_damage(amount: int, knockback_force: Vector3) -> void:
-	if not is_active:
+	if not is_active or domain_entity.is_dead:
 		return
 		
-	health -= amount
+	# Apply physical recoil impulse
 	velocity += knockback_force
 	
+	# Process combat parameters securely on the domain layer
+	domain_entity.take_damage(amount)
+
+## Infrastructure Event Handler: Reacts to Domain took_damage events.
+func _on_domain_entity_took_damage(_amount: int) -> void:
+	print("[Player] Ouch! Remaining health: ", domain_entity.health)
 	if is_instance_valid(hud):
-		hud.update_health_display(health)
-		
-	if health <= 0:
-		_die_and_respawn()
+		hud.update_health_display(domain_entity.health)
+
+## Infrastructure Event Handler: Reacts to Domain died events.
+func _on_domain_entity_died() -> void:
+	print("[Player] You died!")
+	_die_and_respawn()
 
 func _die_and_respawn() -> void:
-	health = 3
+	# Reset logical parameters of the domain entity
+	domain_entity.health = 3
+	domain_entity.is_dead = false
+	
+	# Teleport player to safe coordinates
 	position = Vector3(8.5, 14.0, 8.5)
 	velocity = Vector3.ZERO
+	
 	if is_instance_valid(hud):
-		hud.update_health_display(health)
+		hud.update_health_display(domain_entity.health)
 
 func _sync_hud_counters() -> void:
 	if not is_instance_valid(hud) or not is_instance_valid(inventory):
@@ -377,6 +414,3 @@ func _setup_inputs_mouse_actions() -> void:
 		var key_event := InputEventKey.new()
 		key_event.keycode = KEY_E if action == "click_left" else KEY_Q
 		InputMap.action_add_event(action, key_event)
-
-func _init() -> void:
-	_setup_inputs_mouse_actions()
