@@ -2,6 +2,7 @@
 # Project: CraftDomain
 # Description: Concrete domain component managing dynamic inventory slots, items,
 #              building blocks, and quantity modifications.
+#              UPDATED: Re-categorized Lava Buckets (Slot 5) as buildable blocks.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/InventoryComponent.gd
 # ==============================================================================
@@ -25,15 +26,18 @@ class SlotData:
 var _slots: Array[SlotData] = []
 
 func _init() -> void:
-	# Register our 8 quick-slots dynamically on initialization (OCP compliant)
+	# Register our 8 quick-slots dynamically on initialization
 	_slots.append(SlotData.new("Stone", 64, BlockType.Type.STONE, true))         # Slot 0
 	_slots.append(SlotData.new("Dirt", 64, BlockType.Type.DIRT, true))           # Slot 1
 	_slots.append(SlotData.new("Grass", 64, BlockType.Type.GRASS, true))         # Slot 2
 	_slots.append(SlotData.new("Wood", 16, BlockType.Type.WOOD, true))           # Slot 3
 	_slots.append(SlotData.new("Leaves", 16, BlockType.Type.LEAVES, true))       # Slot 4
-	_slots.append(SlotData.new("Lava Bucket", 3, BlockType.Type.AIR, false))    # Slot 5 (Currency)
-	_slots.append(SlotData.new("Fried Chicken", 0, BlockType.Type.AIR, false))  # Slot 6 (Food)
-	_slots.append(SlotData.new("Wooden Sword", -1, BlockType.Type.AIR, false))  # Slot 7 (Weapon, -1 means infinite)
+	
+	# UPDATED: Lava Bucket (Slot 5) is now a buildable block of type LAVA!
+	_slots.append(SlotData.new("Lava Bucket", 3, BlockType.Type.LAVA, true))     # Slot 5 (Currency & Placement)
+	
+	_slots.append(SlotData.new("Fried Chicken", 0, BlockType.Type.AIR, false))   # Slot 6 (Food)
+	_slots.append(SlotData.new("Wooden Sword", -1, BlockType.Type.AIR, false))   # Slot 7 (Weapon)
 
 ## Concrete Implementation: Returns the current quantity of a specific slot index.
 func get_slot_quantity(slot_index: int) -> int:
@@ -45,7 +49,7 @@ func get_slot_quantity(slot_index: int) -> int:
 func modify_slot_quantity(slot_index: int, delta: int) -> void:
 	if slot_index >= 0 and slot_index < _slots.size():
 		var slot := _slots[slot_index]
-		if slot.quantity != -1: # Skip modification if item is infinite (like the sword)
+		if slot.quantity != -1: # Skip modification if item is infinite
 			slot.quantity = max(0, slot.quantity + delta)
 
 ## Concrete Implementation: Checks if a slot index can be modified by a certain delta.

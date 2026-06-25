@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Domain registry holding immutable definitions, colors, and 
 #              shading parameters of all block types present in the game.
-#              Expanded to cover the 10-zone commercial world palette.
+#              UPDATED: Registered the glowing, high-contrast LAVA block colors.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockLibrary.gd
 # ==============================================================================
@@ -58,6 +58,9 @@ static func _static_init() -> void:
 	
 	# 15. Cloud (Fluffy, semi-transparent pure white)
 	_register(BlockType.Type.CLOUD, "Cloud", Color(1.0, 1.0, 1.0, 0.65), Color(0.95, 0.95, 0.95, 0.65), Color(0.9, 0.9, 0.9, 0.65))
+
+	# 16. Lava (Vibrant, high-contrast flowing orange-red liquid)
+	_register(BlockType.Type.LAVA, "Lava", Color(1.0, 0.35, 0.0), Color(0.9, 0.25, 0.0), Color(0.8, 0.2, 0.0))
 
 static func _register(type: BlockType.Type, block_name: String, top: Color, side: Color, bottom: Color) -> void:
 	_definitions[type] = BlockDefinition.new(type, block_name, top, side, bottom)

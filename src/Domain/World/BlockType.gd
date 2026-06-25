@@ -2,7 +2,7 @@
 # Project: CraftDomain
 # Description: Domain enumeration and logical rules defining the physical 
 #              and optical properties of all available blocks in the game.
-#              Fully extended to support the 10-zone commercial world.
+#              UPDATED: Added LAVA block type (ID 15) to enable lava placement.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockType.gd
 # ==============================================================================
@@ -25,14 +25,15 @@ enum Type {
 	MUD = 11,
 	NEON_CYAN = 12,
 	NEON_MAGENTA = 13,
-	CLOUD = 14
+	CLOUD = 14,
+	LAVA = 15 # NEW: Buildable glowing liquid
 }
 
 ## Returns true if the block type occupies physical space (is solid).
-## Fluids like AIR and WATER are non-solid, allowing entities to move through them.
+## Fluids like AIR, WATER, and LAVA are non-solid, allowing entities to move through them.
 static func is_solid(type: Type) -> bool:
 	match type:
-		Type.AIR, Type.WATER:
+		Type.AIR, Type.WATER, Type.LAVA:
 			return false
 		_:
 			return true
@@ -41,7 +42,7 @@ static func is_solid(type: Type) -> bool:
 ## Transparent blocks allow light to pass through and trigger rendering face culling.
 static func is_transparent(type: Type) -> bool:
 	match type:
-		Type.AIR, Type.LEAVES, Type.WATER, Type.ICE, Type.CLOUD:
+		Type.AIR, Type.LEAVES, Type.WATER, Type.ICE, Type.CLOUD, Type.LAVA:
 			return true
 		_:
 			return false

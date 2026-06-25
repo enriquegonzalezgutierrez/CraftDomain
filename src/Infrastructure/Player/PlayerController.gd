@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player.
-#              FIXED: Added raycast.add_exception(self) to prevent self-collision,
-#              fully unlocking the block-building and mining mechanics!
+#              FIXED: Allowed block placement on Slot 5 (Lava) so players can 
+#              build glowing lava blocks anywhere!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -110,7 +110,7 @@ func _setup_player_geometry() -> void:
 	raycast.collide_with_areas = false
 	raycast.collide_with_bodies = true
 	
-	# CRITICAL PHYSICS FIX: Exclude the player's own collision capsule from the raycast!
+	# EXCLUDE PLAYER FROM SELF-COLLISION
 	raycast.add_exception(self) 
 	
 	camera.add_child(raycast)
@@ -250,7 +250,8 @@ func _apply_hotbar_selection(slot: int) -> void:
 	if is_instance_valid(hud):
 		hud.update_active_slot(slot)
 	
-	is_item_selected = (slot <= 4)
+	# UPDATED: Slot 0 to 5 are buildable blocks now (Includes Lava Bucket!)
+	is_item_selected = (slot <= 5)
 	
 	match slot:
 		0: active_build_type = BlockType.Type.STONE; _set_viewmodel_tool(2)
@@ -258,7 +259,8 @@ func _apply_hotbar_selection(slot: int) -> void:
 		2: active_build_type = BlockType.Type.GRASS; _set_viewmodel_tool(2)
 		3: active_build_type = BlockType.Type.WOOD; _set_viewmodel_tool(1)
 		4: active_build_type = BlockType.Type.LEAVES; _set_viewmodel_tool(1)
-		5, 6: _set_viewmodel_tool(1)
+		5: active_build_type = BlockType.Type.LAVA; _set_viewmodel_tool(1) # NEW: Lava Block placement
+		6: _set_viewmodel_tool(1)
 		7: _set_viewmodel_tool(3)
 
 func _set_viewmodel_tool(tool_id: int) -> void:
@@ -317,7 +319,7 @@ func _build_or_interact() -> void:
 			_sync_hud_counters()
 		return
 
-	# Building Logic
+	# Building Logic (Supports LAVA placement on Slot 5)
 	if is_item_selected and is_instance_valid(world_controller) and is_instance_valid(inventory):
 		var inv_comp := inventory as InventoryComponent
 		var build_type: BlockType.Type = inv_comp.get_slot_build_type(active_slot_index)
