@@ -5,15 +5,30 @@ This roadmap outlines the technical blueprint and system designs required to exp
 
 ---
 
+## Core Architectural Axioms: Preserving DDD & SOLID
+
+To prevent the engine from collapsing into a monolithic, tightly coupled "spaghetti" codebase as features are added, future developers must strictly adhere to these architectural guidelines. **Extending the game must always be achieved by writing NEW files, never by modifying existing core controllers.**
+
+### 1. Pure Domain Isolation (DDD Compliance)
+*   **The Domain is Independent:** The directories inside `src/Domain/` represent pure business rules and mathematics. They must have **zero dependencies** on Godot nodes, scene trees, Vulkan rendering meshes, or physical colliders.
+*   **Decouple via Contracts:** If a domain service needs to interact with persistence or engine hardware, define an interface/contract inside the Domain (e.g., `WorldRepository.gd`), and implement the concrete logic inside `src/Infrastructure/`.
+
+### 2. The Open-Closed Principle (OCP) as a Law of Extension
+*   **No Core Loop Modifications:** Core managers—such as `WorldGenerator.gd`, `WorldController.gd`, and `ChunkNode.gd`—are **closed to modifications**.
+*   **Extend via Strategy Registries:** Adding new elements (such as Volcano Biomes, Cyber Castles, or Blacksmith NPCs) must be done by subclassing abstract interfaces (`IBiome`, `IStructureBlueprint`, `IInventory`, `DialogueNode`) and registering them dynamically inside `Bootstrap.gd`.
+*   **Anti-Pattern Warning:** Never use large `match` or `if/else` statements inside core carvers to evaluate specific biomes or structural IDs. Doing so violates OCP, leading to endless file merge conflicts and compile-time fragility.
+
+---
+
 ## Technical Architecture Overview
 
 ```
-					  [ Player Interaction Raycast ]
-									|
-									v
-	 [ Dialogue Engine ] <=====================> [ Quest Manager ]
-			 |                                          |
-			 v (Choice HUD / 3D Billboards)             v (Objective Tracker)
+                      [ Player Interaction Raycast ]
+                                    |
+                                    v
+     [ Dialogue Engine ] <=====================> [ Quest Manager ]
+             |                                          |
+             v (Choice HUD / 3D Billboards)             v (Objective Tracker)
    [ Presentation Layer ]                       [ Persistence Layer ]
 ```
 
