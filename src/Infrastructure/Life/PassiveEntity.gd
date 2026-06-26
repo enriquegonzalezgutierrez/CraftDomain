@@ -1,21 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure physics controller node representing a passive entity.
-#              UX IMPROVED: Upgraded NPC sizes (1.15x), programmed 3D blinking eyes,
-#              smooth organic walk cycles, and dynamic farming/greeting behaviors.
+#              OCP COMPLIANT: Acts as an Abstract Base Class. Handles physical
+#              instantiation of collision nodes internally, letting subclasses
+#              only define their dimensions polimorphically.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
-
-## Entity Type definitions.
-enum Type {
-	PIG,
-	CHICKEN,
-	VILLAGER,
-	MERCHANT
-}
 
 ## Behavioral Task States
 enum TaskState {
@@ -25,12 +18,11 @@ enum TaskState {
 	GREETING    # Stopping to look at and nod to the nearby player
 }
 
-# Physics movement properties
+# Base physics movement constants
 const BASE_SPEED: float = 1.3
 const JUMP_VELOCITY: float = 5.0
 
 # Dependencies
-var entity_type: Type
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 # Domain Model Composition (DDD)
@@ -42,7 +34,7 @@ var _task_timer: float = 2.0
 var _wander_direction: Vector3 = Vector3.ZERO
 var _animation_time: float = 0.0
 
-# Dynamic Node references for procedural animations
+# Dynamic Node references for subclass procedural animations
 var _visual_root: Node3D
 var _head_node: Node3D
 var _arms_node: Node3D
@@ -57,123 +49,55 @@ var _is_blinking: bool = false
 # Player tracking range
 const GREET_DISTANCE: float = 3.5
 
-func _init(p_type: Type, spawn_pos: Vector3) -> void:
-	entity_type = p_type
+func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
-	name = "Entity_%s" % Type.keys()[entity_type]
 	
-	# Instantiate pure domain model (Passive entities have 1 health)
-	domain_entity = VoxelEntity.new(1)
+	# Instantiate pure domain model
+	domain_entity = VoxelEntity.new(initial_health)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
 
 func _ready() -> void:
-	_build_visual_representation()
-	_setup_collision()
-
-func _setup_collision() -> void:
-	var col := CollisionShape3D.new()
-	col.name = "EntityCollider"
-	var box_shape := BoxShape3D.new()
-	
-	# Scaled collision boundaries (1.15x larger)
-	match entity_type:
-		Type.CHICKEN:
-			box_shape.size = Vector3(0.46, 0.69, 0.46)
-			col.position = Vector3(0, 0.345, 0)
-		Type.PIG:
-			box_shape.size = Vector3(0.69, 0.69, 0.92)
-			col.position = Vector3(0, 0.345, 0)
-		Type.VILLAGER, Type.MERCHANT:
-			box_shape.size = Vector3(0.575, 1.61, 0.575)
-			col.position = Vector3(0, 0.805, 0)
-			
-	col.shape = box_shape
-	add_child(col)
-
-func _build_visual_representation() -> void:
 	_visual_root = Node3D.new()
 	_visual_root.name = "Visuals"
 	add_child(_visual_root)
 	
-	match entity_type:
-		Type.PIG:
-			_create_box(_visual_root, Vector3(0.7, 0.45, 0.9), Vector3(0, 0.35, 0), Color(1.0, 0.62, 0.72)) # Torso
-			
-			_head_node = Node3D.new()
-			_head_node.name = "PigHead"
-			_head_node.position = Vector3(0, 0.6, -0.45)
-			_visual_root.add_child(_head_node)
-			
-			_create_box(_head_node, Vector3(0.4, 0.4, 0.4), Vector3(0, 0, 0), Color(1.0, 0.58, 0.68)) # Head
-			_create_box(_head_node, Vector3(0.22, 0.12, 0.12), Vector3(0, -0.1, -0.22), Color(0.92, 0.38, 0.48)) # Snout
-			
-			# Voxel pig eyes with blinking
-			_left_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.16, 0.05, -0.21), Color.WHITE)
-			_create_box(_left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.12, 0.12, 0.15)) # Pupil
-			
-			_right_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.16, 0.05, -0.21), Color.WHITE)
-			_create_box(_right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.12, 0.12, 0.15))
-			
-			# Legs
-			_create_box(_visual_root, Vector3(0.18, 0.3, 0.18), Vector3(-0.22, 0.15, -0.28), Color(1.0, 0.62, 0.72))
-			_create_box(_visual_root, Vector3(0.18, 0.3, 0.18), Vector3(0.22, 0.15, -0.28), Color(1.0, 0.62, 0.72))
-			_create_box(_visual_root, Vector3(0.18, 0.3, 0.18), Vector3(-0.22, 0.15, 0.28), Color(1.0, 0.62, 0.72))
-			_create_box(_visual_root, Vector3(0.18, 0.3, 0.18), Vector3(0.22, 0.15, 0.28), Color(1.0, 0.62, 0.72))
-			
-		Type.CHICKEN:
-			_create_box(_visual_root, Vector3(0.35, 0.35, 0.45), Vector3(0, 0.35, 0), Color(0.98, 0.98, 0.98)) # Body
-			
-			_head_node = Node3D.new()
-			_head_node.name = "ChickenHead"
-			_head_node.position = Vector3(0, 0.58, -0.22)
-			_visual_root.add_child(_head_node)
-			
-			_create_box(_head_node, Vector3(0.2, 0.25, 0.2), Vector3(0, 0, 0), Color(0.98, 0.98, 0.98)) # Head
-			_create_box(_head_node, Vector3(0.18, 0.09, 0.14), Vector3(0, 0, -0.13), Color(1.0, 0.62, 0.0)) # Beak
-			_create_box(_head_node, Vector3(0.08, 0.12, 0.08), Vector3(0, -0.12, -0.05), Color(0.92, 0.1, 0.1)) # Wattle
-			
-			# Blinking Chicken Eyes
-			_left_eye = _create_box(_head_node, Vector3(0.06, 0.06, 0.02), Vector3(-0.08, 0.05, -0.11), Color.WHITE)
-			_create_box(_left_eye, Vector3(0.03, 0.03, 0.01), Vector3(0, 0, -0.01), Color(0.12, 0.12, 0.15))
-			
-			_right_eye = _create_box(_head_node, Vector3(0.06, 0.06, 0.02), Vector3(0.08, 0.05, -0.11), Color.WHITE)
-			_create_box(_right_eye, Vector3(0.03, 0.03, 0.01), Vector3(0, 0, -0.01), Color(0.12, 0.12, 0.15))
-			
-			# Legs
-			_create_box(_visual_root, Vector3(0.06, 0.18, 0.06), Vector3(-0.09, 0.09, 0), Color(1.0, 0.62, 0.0))
-			_create_box(_visual_root, Vector3(0.06, 0.18, 0.06), Vector3(0.09, 0.09, 0), Color(1.0, 0.62, 0.0))
-			
-		Type.VILLAGER, Type.MERCHANT:
-			var robe_color := Color(0.35, 0.22, 0.15) if entity_type == Type.VILLAGER else Color(0.48, 0.16, 0.65)
-			var apron_color := Color(0.25, 0.15, 0.1) if entity_type == Type.VILLAGER else Color(0.85, 0.6, 0.15)
-			
-			# 1. Torso Robe (Scaled up 1.15x)
-			_create_box(_visual_root, Vector3(0.52, 1.05, 0.52), Vector3(0, 0.64, 0), robe_color)
-			
-			# 2. Standalone Head Node
-			_head_node = Node3D.new()
-			_head_node.name = "HumanHead"
-			_head_node.position = Vector3(0, 1.25, 0)
-			_visual_root.add_child(_head_node)
-			
-			_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.05, 0), Color(0.95, 0.75, 0.65)) # Head skin
-			_create_box(_head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, -0.01, -0.21), Color(0.85, 0.65, 0.55)) # Classic Nose
-			
-			# 3D detailed blinking Eyes
-			_left_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.06, -0.18), Color.WHITE)
-			_create_box(_left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.18, 0.42, 0.68) if entity_type == Type.MERCHANT else Color(0.2, 0.2, 0.2)) # Pupil
-			
-			_right_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.06, -0.18), Color.WHITE)
-			_create_box(_right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.18, 0.42, 0.68) if entity_type == Type.MERCHANT else Color(0.2, 0.2, 0.2))
-			
-			# 3. Arms (Node created independently to swing/move organically)
-			_arms_node = Node3D.new()
-			_arms_node.name = "ArmsJoint"
-			_arms_node.position = Vector3(0, 0.75, -0.21)
-			_visual_root.add_child(_arms_node)
-			_create_box(_arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), apron_color) # Folded arms block
+	# Abstract template methods: Executed by subclasses polimorphically
+	_build_visual_representation()
+	_setup_floating_bubble()
+	
+	# Instantiate and register the CollisionShape3D internally in base class!
+	var col := CollisionShape3D.new()
+	col.name = "EntityCollider"
+	var box_shape := BoxShape3D.new()
+	box_shape.size = _get_collision_box_size()
+	col.shape = box_shape
+	col.position = _get_collision_box_position()
+	add_child(col)
 
+## Abstract Contract: Subclasses must override this to assemble their 3D voxel models
+func _build_visual_representation() -> void:
+	assert(false, "[PassiveEntity] _build_visual_representation() must be implemented by subclass.")
+
+## Abstract Contract: Subclasses must override this to declare their physical box size
+func _get_collision_box_size() -> Vector3:
+	assert(false, "[PassiveEntity] _get_collision_box_size() must be implemented by subclass.")
+	return Vector3(1.0, 1.0, 1.0)
+
+## Abstract Contract: Subclasses must override this to declare their physical box center offset
+func _get_collision_box_position() -> Vector3:
+	assert(false, "[PassiveEntity] _get_collision_box_position() must be implemented by subclass.")
+	return Vector3(0.0, 0.5, 0.0)
+
+## Virtual Contract: Subclasses can override this to attach floating speech bubbles
+func _setup_floating_bubble() -> void:
+	pass
+
+## Virtual Contract: Subclasses can override this to implement custom dialogue triggers
+func interact(_player: CharacterBody3D) -> void:
+	pass
+
+## Helper factory to construct 3D boxes programmatically
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -199,31 +123,6 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 
 func _on_domain_entity_died() -> void:
 	queue_free()
-
-## Merchant Trading Interaction handler
-func interact(player: CharacterBody3D) -> void:
-	if entity_type != Type.MERCHANT: return
-		
-	# Instantly pivot to face the player during a transaction
-	var look_dir := (player.global_position - global_position).normalized()
-	look_dir.y = 0
-	if is_instance_valid(_visual_root) and look_dir != Vector3.ZERO:
-		_visual_root.look_at(global_position + look_dir, Vector3.UP)
-
-	var inventory: IInventory = player.get("inventory") as IInventory
-	var player_hud = player.get("hud")
-	var active_slot: int = player.get("active_slot_index")
-	
-	if is_instance_valid(inventory) and is_instance_valid(player_hud):
-		if active_slot == 5: # Lava Bucket
-			if TradingService.execute_trade(inventory, 5, 1, 6, 1):
-				velocity.y = JUMP_VELOCITY # Excited hop!
-				player_hud.call("update_active_slot", 5)
-				print("[Merchant] Hmmm! Hot lava! Thank you! Here is your famous Lava-Fried Chicken!")
-			else:
-				print("[Merchant] Hmmm? You are out of Lava Buckets!")
-		else:
-			print("[Merchant] Hmmm? Bring me a Bucket of Lava (Slot 5) to trade for my Lava Fried Chicken!")
 
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: return
@@ -261,14 +160,14 @@ func _set_eyes_vertical_scale(y_scale: float) -> void:
 
 ## Advanced behavior states: WANDERING, GREETING players, or EXAMINING (working on grass)
 func _process_ai_state_machine(delta: float) -> void:
-	# 1. Proximity checking: if player is very close, Villagers/Merchants stop and greet them
+	# 1. Proximity checking: if player is very close, stop and greet them
 	var player_node: CharacterBody3D = get_parent().get_node_or_null("Player") as CharacterBody3D
 	var distance_to_player: float = 999.0
 	
 	if is_instance_valid(player_node):
 		distance_to_player = global_position.distance_to(player_node.global_position)
 		
-	var can_socialize := (entity_type == Type.VILLAGER or entity_type == Type.MERCHANT)
+	var can_socialize := _can_socialize()
 	
 	if can_socialize and distance_to_player <= GREET_DISTANCE:
 		current_task = TaskState.GREETING
@@ -301,6 +200,10 @@ func _process_ai_state_machine(delta: float) -> void:
 			# Auto-jump over blocks when hitting a wall
 			if is_on_wall() and is_on_floor():
 				velocity.y = JUMP_VELOCITY
+
+## Virtual check: overridden by human-roles to allow social greetings
+func _can_socialize() -> bool:
+	return false
 
 ## Dynamically changes states to break robotic uniformity
 func _select_next_random_task() -> void:
@@ -349,8 +252,8 @@ func _process_procedural_animations(delta: float) -> void:
 			
 	# 3. WANDERING: Sway head left-to-right organically and tilt torso during movement
 	elif current_task == TaskState.WANDERING:
-		var speed_mult := 8.0 if (entity_type == Type.CHICKEN) else 5.0
-		var sway_amount := 0.2 if (entity_type == Type.CHICKEN) else 0.08
+		var speed_mult := 8.0 if _is_avian() else 5.0
+		var sway_amount := 0.2 if _is_avian() else 0.08
 		
 		if is_instance_valid(_head_node):
 			# Rhythmic head bobbing while walking
@@ -368,3 +271,7 @@ func _process_procedural_animations(delta: float) -> void:
 			_head_node.rotation.y = lerp(_head_node.rotation.y, 0.0, delta * 5.0)
 		if is_instance_valid(_arms_node):
 			_arms_node.position.y = lerp(_arms_node.position.y, -0.21, delta * 5.0)
+
+## Virtual check: overridden by birds (Chickens) to speed up head bobbing animations
+func _is_avian() -> bool:
+	return false

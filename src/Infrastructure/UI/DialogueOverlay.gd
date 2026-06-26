@@ -2,8 +2,8 @@
 # Project: CraftDomain
 # Description: Infrastructure UI controller representing an interactive, 
 #              glassmorphic bottom-docked dialogue overlay with branching options.
-#              FIXED: Utilizes loose dynamic Resource casting to completely bypass
-#              external class member resolving errors in Godot 4.6.
+#              FIXED: Swapped VBox to a 2-column GridContainer and floated the card
+#              to -120px to prevent overlaps with the HUD hotbar.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/DialogueOverlay.gd
 # ==============================================================================
@@ -19,7 +19,7 @@ signal dialogue_closed
 var _panel_container: Panel
 var _name_label: Label
 var _text_label: Label
-var _choices_container: VBoxContainer
+var _choices_container: GridContainer # FIXED: Changed to GridContainer for 2-column layout
 
 func _ready() -> void:
 	# Fullscreen overlay dark transparent wash
@@ -34,16 +34,18 @@ func _setup_dialogue_ui() -> void:
 	# 1. Glassmorphic Bottom dialogue card container
 	_panel_container = Panel.new()
 	_panel_container.name = "DialogueCard"
-	_panel_container.custom_minimum_size = Vector2(650, 240)
-	_panel_container.size = Vector2(650, 240)
+	_panel_container.custom_minimum_size = Vector2(650, 250)
+	_panel_container.size = Vector2(650, 250)
 	_panel_container.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_panel_container.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	
 	_panel_container.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	
+	# FIXED: Floated the card up to -120px to leave a clean 30px gap above the HUD hotbar
 	_panel_container.offset_left = -325
 	_panel_container.offset_right = 325
-	_panel_container.offset_bottom = -30
-	_panel_container.offset_top = -270
+	_panel_container.offset_bottom = -120
+	_panel_container.offset_top = -370
 	
 	var style := StyleBoxFlat.new()
 	style.set_corner_radius_all(14)
@@ -99,15 +101,15 @@ func _setup_dialogue_ui() -> void:
 	
 	vbox.add_child(_create_spacer(14))
 	
-	# 4. Vertical Choices Button Container
-	_choices_container = VBoxContainer.new()
+	# 4. FIXED: 2-Column Grid Choices Button Container to prevent vertical overflow
+	_choices_container = GridContainer.new()
 	_choices_container.name = "ChoicesContainer"
-	_choices_container.alignment = BoxContainer.ALIGNMENT_BEGIN
-	_choices_container.add_theme_constant_override("separation", 8)
+	_choices_container.columns = 2 # Side-by-side pairs
+	_choices_container.add_theme_constant_override("h_separation", 12)
+	_choices_container.add_theme_constant_override("v_separation", 8)
 	vbox.add_child(_choices_container)
 
 ## Public API: Displays a specific dialogue node and rebuilds option buttons dynamically.
-## FIXED: Receives generic Resource to bypass compile-time class loading races
 func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 	if not is_instance_valid(node):
 		return
@@ -130,18 +132,14 @@ func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 		# Default fallback close button if no options are present (Leaf node)
 		var close_btn := Button.new()
 		close_btn.text = "CONTINUE (CLOSE)"
-		close_btn.custom_minimum_size = Vector2(0, 38)
+		close_btn.custom_minimum_size = Vector2(0, 34)
+		close_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_setup_button_style(close_btn)
 		close_btn.pressed.connect(func() -> void: dialogue_closed.emit())
 		_choices_container.add_child(close_btn)
 
-## FIXED: Receives generic Resource to bypass compiler locks
-func _create_choice_button(choice: Resource) -> Button:
-	var btn := Button.new()
-	btn.text = str(choice.get("option_text"))
-	btn.custom_minimum_size = Vector2(0, 38)
-	btn.pivot_offset = Vector2(300, 19) # Pivot offset for scaling from the center
-	
-	# StyleBox Setup
+## Helper to build button with unified style
+func _setup_button_style(btn: Button) -> void:
 	var style_normal := StyleBoxFlat.new()
 	style_normal.bg_color = Color(0.12, 0.12, 0.15, 0.7)
 	style_normal.set_corner_radius_all(8)
@@ -158,7 +156,7 @@ func _create_choice_button(choice: Resource) -> Button:
 	style_hover.border_width_top = 2
 	style_hover.border_width_right = 2
 	style_hover.border_width_bottom = 2
-	style_hover.border_color = Color(1.0, 0.85, 0.2, 0.8) # Gold highlight on focus
+	style_hover.border_color = Color(1.0, 0.85, 0.2, 0.8) # Gold highlight
 	
 	btn.add_theme_stylebox_override("normal", style_normal)
 	btn.add_theme_stylebox_override("hover", style_hover)
@@ -166,7 +164,6 @@ func _create_choice_button(choice: Resource) -> Button:
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	btn.add_theme_font_size_override("font_size", 13)
 	
-	# Connect signals for interactive hovering scaling
 	btn.mouse_entered.connect(func() -> void:
 		var tw := create_tween()
 		tw.tween_property(btn, "scale", Vector2(1.02, 1.02), 0.08).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
@@ -175,6 +172,18 @@ func _create_choice_button(choice: Resource) -> Button:
 		var tw := create_tween()
 		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.08).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	)
+
+## FIXED: Builds and configures responsive choice button
+func _create_choice_button(choice: Resource) -> Button:
+	var btn := Button.new()
+	btn.text = str(choice.get("option_text"))
+	
+	# FIXED: Adjusted size flags and heights for the new Grid columns
+	btn.custom_minimum_size = Vector2(0, 34)
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.pivot_offset = Vector2(150, 17) # Pivot center
+	
+	_setup_button_style(btn)
 	
 	# Choice selection event trigger
 	btn.pressed.connect(func() -> void:

@@ -2,9 +2,8 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications.
-#              FIXED: Synchronized Mob Spawning to wait until both vertical chunk 
-#              layers (Y=0 and Y=1) are fully rendered, completely stopping NPCs
-#              from spawning trapped underground in high-altitude zones.
+#              FIXED: Removed obsolete collision_body assignment inside 
+#              set_block_globally() to resolve the RefCounted runtime crash.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -281,20 +280,17 @@ func _render_completed_chunks_from_queue() -> void:
 				collision_body
 			)
 			
-			# FIXED: Synchronized Mob Spawning
-			# Only trigger spawning once both vertical chunks (Y=0 and Y=1) for this column have loaded.
-			# This guarantees that the global scanning algorithm finds the true heightmap surface.
-			var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
-			var spawn_chunk_pos_0 := Vector3i(chunk_pos.x, 0, chunk_pos.z)
-			var spawn_chunk_pos_1 := Vector3i(chunk_pos.x, 1, chunk_pos.z)
-			
-			if _chunk_nodes.has(spawn_chunk_pos_0) and _chunk_nodes.has(spawn_chunk_pos_1):
-				if not _chunk_entities.has(col_pos) and is_instance_valid(_mob_spawning_service):
-					# Fetch the baseline chunk data to calculate deterministic houses, but scan with world_state
-					var chunk_0 = _chunk_nodes[spawn_chunk_pos_0].chunk
-					var spawned := _mob_spawning_service.spawn_mobs_for_chunk(chunk_0, self, world_state)
-					if spawned.size() > 0:
-						_chunk_entities[col_pos] = spawned
+			if is_instance_valid(_mob_spawning_service):
+				var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
+				var spawn_chunk_pos_0 := Vector3i(chunk_pos.x, 0, chunk_pos.z)
+				var spawn_chunk_pos_1 := Vector3i(chunk_pos.x, 1, chunk_pos.z)
+				
+				if _chunk_nodes.has(spawn_chunk_pos_0) and _chunk_nodes.has(spawn_chunk_pos_1):
+					if not _chunk_entities.has(col_pos) and is_instance_valid(_mob_spawning_service):
+						var chunk_0 = _chunk_nodes[spawn_chunk_pos_0].chunk
+						var spawned := _mob_spawning_service.spawn_mobs_for_chunk(chunk_0, self, world_state)
+						if spawned.size() > 0:
+							_chunk_entities[col_pos] = spawned
 			
 			if is_instance_valid(_streetlight_service):
 				_streetlight_service.register_streetlights_for_chunk(task.chunk)
@@ -312,7 +308,7 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		_pending_loading_chunks.erase(chunk_pos)
 		return
 
-	# FIXED: Unloads spawned entities safely based on horizontal column positions to prevent memory leaks
+	# Unloads spawned entities safely based on horizontal column positions to prevent memory leaks
 	var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
 	if _chunk_entities.has(col_pos):
 		var entities: Array = _chunk_entities[col_pos]
@@ -489,9 +485,9 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	)
 	
 	# Synchronize the task cache
+	# FIXED: Removed the obsolete, crash-inducing collision_body cached reference!
 	if _chunk_task_cache.has(chunk_pos):
 		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos]
 		cached_task.transforms = collision_transforms
 		cached_task.visual_colors = visual_colors
-		cached_task.collision_body = collision_body
 		cached_task.multimesh_bulk_array = bulk_array
