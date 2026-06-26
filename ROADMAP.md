@@ -23,12 +23,12 @@ To prevent the engine from collapsing into a monolithic, tightly coupled "spaghe
 ## Technical Architecture Overview
 
 ```
-                      [ Player Interaction Raycast ]
-                                    |
-                                    v
-     [ Dialogue Engine ] <=====================> [ Quest Manager ]
-             |                                          |
-             v (Choice HUD / 3D Billboards)             v (Objective Tracker)
+					  [ Player Interaction Raycast ]
+									|
+									v
+	 [ Dialogue Engine ] <=====================> [ Quest Manager ]
+			 |                                          |
+			 v (Choice HUD / 3D Billboards)             v (Objective Tracker)
    [ Presentation Layer ]                       [ Persistence Layer ]
 ```
 

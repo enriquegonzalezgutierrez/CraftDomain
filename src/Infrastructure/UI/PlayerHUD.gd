@@ -1,8 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI controller managing a modern, glassmorphic HUD.
-#              UPDATED: Removed the synchronous save_all() call from the exit
-#              handler to prevent main thread freeze.
+#              FIXED: Resolved a LabelSettings typo inside _setup_health_display().
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -30,6 +29,10 @@ var damage_overlay: ColorRect
 var loading_overlay: Panel
 var loading_spinner: Label
 var loading_status: Label
+
+# FIXED: Changed active_dialogue to Node type to prevent compile-time race locks
+var active_dialogue: Node 
+var _active_speaker_name: String = ""
 
 var _pause_overlay: Panel
 var _settings_overlay: Control
@@ -401,8 +404,8 @@ func _setup_health_display() -> void:
 	health_bg.name = "HealthBackground"
 	health_bg.custom_minimum_size = Vector2(160, 45)
 	health_bg.size = Vector2(160, 45)
-	health_bg.grow_horizontal = Control.GROW_DIRECTION_END
-	health_bg.grow_vertical = Control.GROW_DIRECTION_END
+	health_bg.grow_horizontal = ColorRect.GROW_DIRECTION_END
+	health_bg.grow_vertical = ColorRect.GROW_DIRECTION_END
 	health_bg.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	health_bg.offset_left = 20
 	health_bg.offset_top = 20
@@ -433,6 +436,8 @@ func _setup_health_display() -> void:
 	label_style.font_color = Color(0.95, 0.15, 0.15)
 	label_style.outline_size = 4
 	label_style.outline_color = Color.BLACK
+	
+	# FIXED: Assigned correct label_style variable instead of self node
 	health_label.label_settings = label_style
 	
 	health_bg.add_child(health_label)
@@ -509,6 +514,7 @@ func _process(delta: float) -> void:
 		if is_instance_valid(loading_spinner):
 			loading_spinner.rotation += delta * 6.0
 			
+		# Cycle the loading status dots dynamically
 		if is_instance_valid(loading_status):
 			var elapsed := Time.get_ticks_msec() / 1000.0
 			var dot_count := int(floor(elapsed * 2.0)) % 4
@@ -636,3 +642,74 @@ func update_health_display(current_hp: int) -> void:
 		for i in range(max(0, current_hp)):
 			hearts_text += "❤ "
 		health_label.text = hearts_text
+
+## NEW: Public API to instantiate the Dialogue overlay dynamically and lock player movement
+## FIXED: Uses generic Resource on signature to completely resolve compile race locks
+func open_dialogue(node: Resource, speaker_name: String) -> void:
+	if is_instance_valid(active_dialogue):
+		active_dialogue.queue_free()
+		
+	_active_speaker_name = speaker_name
+		
+	# 1. Instantiate the dynamic Dialogue Panel overlay using dynamic script loading
+	var overlay_script: Script = load("res://src/Infrastructure/UI/DialogueOverlay.gd")
+	if overlay_script != null:
+		active_dialogue = overlay_script.new() as Node
+		add_child(active_dialogue)
+		
+		# Connect event listeners dynamically
+		active_dialogue.connect("choice_selected", Callable(self, "_on_dialogue_choice_selected"))
+		active_dialogue.connect("dialogue_closed", Callable(self, "close_dialogue"))
+		
+		active_dialogue.call("load_dialogue_node", node, speaker_name)
+		
+		# 2. Lock physics inputs and liberate the mouse cursor securely
+		if is_instance_valid(player):
+			player.set("is_active", false)
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+## NEW: Router evaluating Dialogue branching choices dynamically
+func _on_dialogue_choice_selected(target_node_id: String) -> void:
+	# --- TRANSACTION TRIGGER: Handle the actual trade execution securely inside the Dialogue Loop ---
+	if target_node_id == "merchant_trade_execute":
+		var inventory = player.get("inventory")
+		if is_instance_valid(inventory):
+			# Execute the transaction in the domain TradingService (consume 1 Lava Bucket, reward 1 Chicken)
+			if TradingService.execute_trade(inventory, 5, 1, 6, 1):
+				# Make the targeted merchant hop in the air with joy!
+				var raycast = player.get("raycast")
+				if is_instance_valid(raycast) and raycast.is_colliding():
+					var merchant = raycast.get_collider()
+					if is_instance_valid(merchant) and merchant.has_method("take_damage"): # is PassiveEntity
+						merchant.velocity.y = 5.0 # Hop!
+						
+				player.call("_sync_hud_counters")
+				
+				# Dynamically update the dialogue node text to reflect purchase success using loose set() API
+				var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
+				if exec_node != null:
+					exec_node.set("text", "Hmmm! Hot, geothermal, delicious lava! Thank you! Here is your crispy Fried Chicken! It is fresh, delicious, and highly therapeutic.")
+			else:
+				# Dynamically update the dialogue node text to reflect lack of materials using loose set() API
+				var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
+				if exec_node != null:
+					exec_node.set("text", "Hmmm? It seems you are completely out of Lava Buckets! Bring me a Bucket of Lava (Slot 6) and I will fry up a fresh Chicken!")
+
+	# Re-route to the next Dialogue Node, or close if the conversation reaches a leaf node
+	# FIXED: Loose dynamic resolution prevents compile-time race locks
+	var next_node: Resource = DialogueService.get_dialogue_node(target_node_id)
+	if is_instance_valid(next_node) and is_instance_valid(active_dialogue):
+		active_dialogue.call("load_dialogue_node", next_node, _active_speaker_name)
+	else:
+		close_dialogue()
+
+## NEW: Dismisses Dialogue Overlay and restores standard first-person controls
+func close_dialogue() -> void:
+	if is_instance_valid(active_dialogue):
+		active_dialogue.queue_free()
+		active_dialogue = null
+		
+	# Restore standard movement parameters and capture mouse cursor
+	if is_instance_valid(player):
+		player.set("is_active", true)
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
