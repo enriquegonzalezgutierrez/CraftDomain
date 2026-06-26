@@ -2,8 +2,11 @@
 # Project: CraftDomain
 # Description: Infrastructure Service responsible for calculating and spawning
 #              NPC and Fauna classes dynamically inside chunks.
-#              FIXED: Synchronized human spawns to ONLY appear inside valid
-#              village chunks containing a procedural Cabin (Landmark 3).
+#              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP).
+#              UPDATED: Added dynamic GPS Quest tracking. When the procedural engine
+#              spawns the Villager or Merchant, their exact coordinates are 
+#              automatically injected into the Active Quests, ensuring the compass
+#              always points to their physical location regardless of random world seeds.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -53,6 +56,13 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			world_node.add_child(villager)
 			entities_list.append(villager)
 			
+			# --- SOLID QUEST INTEGRATION ---
+			# Dynamically injects the exact spawned coordinates into the "The Lost Bazaar" Quest target!
+			var q1 := QuestService.get_quest("lost_bazaar")
+			if q1 != null:
+				q1.target_position = pos
+				print("[MobSpawningService] GPS Quest 1 Target updated to exact Villager spawn: ", pos)
+			
 		# B. Merchant Stall Owner
 		if _merchant_script != null:
 			var gy := _get_ground_surface_y(world_state, int(chunk_offset.x) + 5, int(chunk_offset.z) + 7)
@@ -61,6 +71,13 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			world_node.add_child(merchant)
 			entities_list.append(merchant)
 			
+			# --- SOLID QUEST INTEGRATION ---
+			# Dynamically injects the exact spawned coordinates into the "Fuel the Fryer" Quest target!
+			var q2 := QuestService.get_quest("fuel_fryer")
+			if q2 != null:
+				q2.target_position = pos
+				print("[MobSpawningService] GPS Quest 2 Target updated to exact Merchant spawn: ", pos)
+			
 		# C. Armed Patrol Guard
 		if _guard_script != null:
 			var gy := _get_ground_surface_y(world_state, int(chunk_offset.x) + 10, int(chunk_offset.z) + 10)
@@ -68,6 +85,13 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			var guard = _guard_script.new(pos)
 			world_node.add_child(guard)
 			entities_list.append(guard)
+			
+			# --- SOLID QUEST INTEGRATION ---
+			# Dynamically injects the exact spawned coordinates into the "Plains Defender" Quest target!
+			var q3 := QuestService.get_quest("plains_defender")
+			if q3 != null:
+				q3.target_position = pos
+				print("[MobSpawningService] GPS Quest 3 Target updated to exact Guard spawn: ", pos)
 			
 		# D. Field Tending Farmer
 		if _farmer_script != null:
@@ -108,6 +132,6 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		var block_type := world_state.get_block(check_pos)
 		
 		if BlockType.is_solid(block_type):
-			return float(y) + 1.0 # Standard physical offset for safe resting
+			return float(y) + 1.0 
 			
 	return 8.0

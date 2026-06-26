@@ -3,8 +3,8 @@
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              dynamic SunLight and MoonLight rotation, and procedural sky transitions.
 #              SOLID COMPLIANCE: Encapsulates all dynamic celestial calculations.
-#              FIXED: Explicitly declared static types (float) for moon phase 
-#              and light intensity calculations to satisfy strict static compiler rules.
+#              FIXED: Activated SKY_MODE_LIGHT_ONLY on MoonLight to completely
+#              hide the dynamic moon disc and prevent sky rendering artifacts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
@@ -78,6 +78,11 @@ func _setup_dynamic_moon_light() -> void:
 	moon_light.light_color = Color(0.75, 0.85, 1.0)
 	moon_light.light_energy = 0.0 # Silent start
 	moon_light.light_indirect_energy = 1.0
+	
+	# FIXED: Set Moon sky mode to SKY_MODE_LIGHT_ONLY.
+	# This ensures the Moon illuminates the world at night but does not
+	# render any buggy dynamic disc on the sky dome.
+	moon_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	
 	add_child(moon_light)
 

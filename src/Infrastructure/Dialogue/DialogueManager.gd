@@ -3,6 +3,8 @@
 # Description: Infrastructure Service acting as the orchestrator for dialogues.
 #              SRP COMPLIANT: Responsible ONLY for opening/closing dialogue panels,
 #              binding branch choices, managing trade transactions, and freezing player.
+#              UPDATED: Tied the Trading loop success to the Quest completion pipeline,
+#              rewarding 3x extra Fried Chickens and auto-starting Quest 3 ("Plains Defender").
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Dialogue/DialogueManager.gd
 # ==============================================================================
@@ -55,12 +57,27 @@ func _on_dialogue_choice_selected(target_node_id: String) -> void:
 					if is_instance_valid(merchant) and merchant.has_method("take_damage"): # is PassiveEntity
 						merchant.velocity.y = 5.0 # Hop!
 						
+				# --- MISSION 2 TRIGGER: Complete Fuel the Fryer ---
+				var active_q := QuestService.get_active_quest()
+				if active_q != null and active_q.quest_id == "fuel_fryer":
+					# Grant the quest reward (3x extra Fried Chickens!)
+					inventory.modify_slot_quantity(active_q.reward_item_index, active_q.reward_quantity)
+					QuestService.complete_active_quest()
+					
+					# Auto-start Campaign Mission 3 (Plains Defender)
+					QuestService.set_active_quest("plains_defender")
+					
+					# Custom quest completion dialogue
+					var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
+					if exec_node != null:
+						exec_node.set("text", "Oh! Dynamic lava! Delicious! Here is your Fried Chicken! And as a special reward for completing my quest, here are 3x EXTRA Fried Chickens!\n\nOh no, wait! Look at the radar! The Guard is calling for help near the tower, a zombie is approaching the llanuras!")
+				else:
+					# Standard fallback trade dialogue
+					var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
+					if exec_node != null:
+						exec_node.set("text", "Hmmm! Hot, geothermal, delicious lava! Thank you! Here is your crispy Fried Chicken! It is fresh, delicious, and highly therapeutic.")
+						
 				player.call("_sync_hud_counters")
-				
-				# Update the target dialogue node text dynamically on success
-				var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
-				if exec_node != null:
-					exec_node.set("text", "Hmmm! Hot, geothermal, delicious lava! Thank you! Here is your crispy Fried Chicken! It is fresh, delicious, and highly therapeutic.")
 			else:
 				# Update the target dialogue node text dynamically on failure
 				var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")

@@ -5,9 +5,8 @@
 #              individual MultiMeshInstance3D nodes per BlockType.
 #              SOLID COMPLIANCE: Adheres to OCP and SRP by isolating material 
 #              and rendering logic from the physical chunk data.
-#              FIXED: Implemented a custom GPU Voxel Triplanar Shader to blend 
-#              texture transparency channels with base procedural colors. This
-#              completely eliminates AI-generated black pixel artifacts on solid blocks.
+#              FIXED: Corrected normal map detection constant to Image.FORMAT_RGTC_RG
+#              to satisfy strict static compilation rules in Godot 4.6.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -28,8 +27,9 @@ static var _materials_cache: Dictionary = {}
 static var _loaded_textures: Dictionary = {}
 static var _textures_preloaded: bool = false
 
-## Static reference to our custom blending shader
+## Static references to our custom PBR shaders (SRP compliant)
 static var _triplanar_shader: Shader
+static var _leaves_wind_shader: Shader
 
 ## Base directory where user custom textures are stored
 const TEXTURE_DIR := "res://assets/textures/"
@@ -55,20 +55,39 @@ func _init(p_chunk: Chunk) -> void:
 	# Pre-load textures instantly on the first chunk init to avoid mid-game physics lag
 	_preload_all_textures()
 
-## Static Preloader: Reads high-res files from disk once on application start
+## Static Preloader with Smart Diagnostic Logging (OCP compliant)
 static func _preload_all_textures() -> void:
 	if _textures_preloaded:
 		return
 	_textures_preloaded = true
 	
-	print("[ChunkNode] Pre-loading custom textures into GPU memory to prevent physics lag...")
+	print("\n[ChunkNode] ========================================================")
+	print("[ChunkNode] STATIC BOOTLOADER: Pre-loading custom textures...")
+	
 	for block_type in TEXTURE_MAP.keys():
 		var file_path = TEXTURE_DIR + TEXTURE_MAP[block_type]
 		if FileAccess.file_exists(file_path):
 			var tex = load(file_path)
 			if tex is Texture2D:
 				_loaded_textures[block_type] = tex
-				print("  -> Successfully cached: ", TEXTURE_MAP[block_type], " (", tex.get_width(), "x", tex.get_height(), ")")
+				print("  -> CACHED SUCCESS: '", TEXTURE_MAP[block_type], "' (", tex.get_width(), "x", tex.get_height(), ")")
+				
+				# FIXED: Explicitly typed 'img' as Image to satisfy strict type inference
+				var img: Image = tex.get_image()
+				if img != null:
+					# FIXED: Use Godot 4's official Image.Format enum for stable compression analysis
+					var format: Image.Format = img.get_format()
+					
+					# NormalMaps in Godot 4 are imported using RG8 (ID 3) or RGTC_RG (ID 12)
+					if format == Image.FORMAT_RG8 or format == Image.FORMAT_RGTC_RG:
+						print("     [WARNING] '", TEXTURE_MAP[block_type], "' seems to be imported as a NormalMap instead of a Texture2D!")
+						print("     [WARNING] To fix this: Select '", TEXTURE_MAP[block_type], "' in your FileSystem dock, go to the Import tab next to Scene, change 'Import As' to 'Texture2D', and click Reimport.")
+			else:
+				print("  -> [ERROR] File exists but is not a valid Texture2D: ", file_path)
+		else:
+			print("  -> Fallback Active: '", TEXTURE_MAP[block_type], "' is missing on disk. Using procedural colors.")
+			
+	print("[ChunkNode] ========================================================\n")
 
 ## Compiles and caches our custom voxel shader to blend texture alpha gaps with solid colors
 static func _get_triplanar_shader() -> Shader:
@@ -86,29 +105,72 @@ static func _get_triplanar_shader() -> Shader:
 		varying vec3 triplanar_pos;
 		
 		void vertex() {
-			// Compute razor-sharp triplanar blending weights
 			power_normal = pow(abs(NORMAL), vec3(150.0));
 			power_normal /= (power_normal.x + power_normal.y + power_normal.z);
 			triplanar_pos = VERTEX;
 		}
 		
 		void fragment() {
-			// Project texture onto 3 coordinate planes
 			vec4 col_x = texture(albedo_texture, triplanar_pos.zy);
 			vec4 col_y = texture(albedo_texture, triplanar_pos.xz);
 			vec4 col_z = texture(albedo_texture, triplanar_pos.xy);
 			
-			// Blend based on normal weights
 			vec4 tex_color = col_x * power_normal.x + col_y * power_normal.y + col_z * power_normal.z;
 			
-			// --- ALPHA BLENDING FIX ---
-			// Mixes the solid base block color under any transparent texture pixel, 
-			// completely preventing transparent cutouts from rendering as black.
 			ALBEDO = mix(block_color.rgb, tex_color.rgb, tex_color.a);
 			ROUGHNESS = roughness_val;
 		}
 		"""
 	return _triplanar_shader
+
+## Compiles and caches our custom leaves shader with wind-sway and organic rounding
+static func _get_leaves_wind_shader() -> Shader:
+	if _leaves_wind_shader == null:
+		_leaves_wind_shader = Shader.new()
+		_leaves_wind_shader.code = """
+		shader_type spatial;
+		render_mode blend_mix, depth_draw_opaque, cull_disabled, diffuse_burley, specular_schlick_ggx;
+		
+		uniform sampler2D albedo_texture : source_color, filter_nearest_mipmap;
+		uniform vec4 block_color : source_color;
+		uniform float roughness_val : hint_range(0.0, 1.0) = 0.85;
+		
+		varying vec3 power_normal;
+		varying vec3 triplanar_pos;
+		
+		void vertex() {
+			power_normal = pow(abs(NORMAL), vec3(150.0));
+			power_normal /= (power_normal.x + power_normal.y + power_normal.z);
+			triplanar_pos = VERTEX;
+			
+			// 1. ORGANIC VOXEL FLUFFINESS
+			float round_wave = sin(TIME * 2.0 + VERTEX.x * 2.5 + VERTEX.y * 3.5) * 0.05;
+			VERTEX.xyz += NORMAL * round_wave;
+			
+			// 2. WIND SWAY
+			float wind_x = sin(TIME * 2.2 + VERTEX.x * 3.0 + VERTEX.y * 2.0) * 0.04;
+			float wind_z = cos(TIME * 1.8 + VERTEX.z * 2.5 + VERTEX.y * 3.0) * 0.03;
+			VERTEX.x += wind_x;
+			VERTEX.z += wind_z;
+		}
+		
+		void fragment() {
+			vec4 col_x = texture(albedo_texture, triplanar_pos.zy);
+			vec4 col_y = texture(albedo_texture, triplanar_pos.xz);
+			vec4 col_z = texture(albedo_texture, triplanar_pos.xy);
+			
+			vec4 tex_color = col_x * power_normal.x + col_y * power_normal.y + col_z * power_normal.z;
+			
+			// Alpha Scissor transparent cutout for leaves
+			if (tex_color.a < 0.4) {
+				discard;
+			}
+			
+			ALBEDO = mix(block_color.rgb, tex_color.rgb, tex_color.a);
+			ROUGHNESS = roughness_val;
+		}
+		"""
+	return _leaves_wind_shader
 
 ## Configures the segmented MultiMeshes and registers the physics body.
 func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D) -> void:
@@ -187,6 +249,7 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 		mat.albedo_color = Color(0.12, 0.45, 0.85, 0.65) 
 		mat.roughness = 0.05 
 		mat.metallic = 0.1
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		_materials_cache[block_type] = mat
 		return mat
 	
@@ -198,6 +261,7 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 		mat.emission_enabled = true
 		mat.emission = Color(1.0, 0.35, 0.0) 
 		mat.emission_energy_multiplier = 1.8
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		_materials_cache[block_type] = mat
 		return mat
 		
@@ -207,6 +271,7 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.albedo_color = def.color_top
 		mat.roughness = 0.4
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		_materials_cache[block_type] = mat
 		return mat
 		
@@ -217,16 +282,13 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 			var tex: Texture2D = _loaded_textures[block_type]
 			has_custom_texture = true
 			
-			# SPECIAL HANDLING FOR LEAVES: Keep them transparent with standard alpha scissor
+			# SPECIAL FOLIAGE SHADER: Applies vertex waving and rounds square block corners
 			if block_type == BlockType.Type.LEAVES:
-				var mat := ORMMaterial3D.new()
-				mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
-				mat.albedo_texture = tex
-				mat.uv1_triplanar = true
-				mat.uv1_triplanar_sharpness = 150.0
-				mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
-				mat.alpha_scissor_threshold = 0.5
-				mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+				var mat := ShaderMaterial.new()
+				mat.shader = _get_leaves_wind_shader()
+				mat.set_shader_parameter("albedo_texture", tex)
+				mat.set_shader_parameter("block_color", def.color_top)
+				mat.set_shader_parameter("roughness_val", 0.85)
 				_materials_cache[block_type] = mat
 				return mat
 			

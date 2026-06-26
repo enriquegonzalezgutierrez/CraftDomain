@@ -3,8 +3,9 @@
 # Description: Infrastructure physics controller node representing a hostile zombie.
 #              Acts as an Infrastructure Wrapper that uses Composition to hold
 #              a pure Domain VoxelEntity, reacting to Domain Events (Signals).
-#              UPDATED: Added a dynamic loot-drop pipeline on entity death
-#              to grant players 1x Lava Bucket upon defeating the zombie.
+#              UPDATED: Added a Quest completion trigger. If defeated under the
+#              "Plains Defender" quest, completes it, grants 3x extra Lava Buckets,
+#              and synchronizes the HUD to show victory.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -20,7 +21,7 @@ const ATTACK_RANGE: float = 1.2
 # Physics and state
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
-# Domain Model Composition (DDD)
+# Domain Model Composition (DDD Compliance)
 var domain_entity: VoxelEntity
 
 # Sibling node references (loosely typed to prevent compile loops)
@@ -123,12 +124,21 @@ func _flash_red() -> void:
 func _on_domain_entity_died() -> void:
 	print("[Zombie] Blegh... Zombie died.")
 	
-	# Drop 1x Lava Bucket directly into player inventory on defeat!
+	# Drop standard and quest-specific rewards
 	if is_instance_valid(player):
 		var inv = player.get("inventory")
 		if is_instance_valid(inv):
+			# Standard drop: 1x Lava Bucket (Slot 5)
 			print("[Zombie] Loot dropped: 1x Lava Bucket added to slot 5.")
-			inv.modify_slot_quantity(5, 1) # Slot 5 matches Lava Bucket
+			inv.modify_slot_quantity(5, 1) 
+			
+			# --- CAMPAIGN MISSION 3 TRIGGER: Complete Plains Defender ---
+			var active_q := QuestService.get_active_quest()
+			if active_q != null and active_q.quest_id == "plains_defender":
+				# Grant the extra campaign reward (3x additional Lava Buckets!)
+				inv.modify_slot_quantity(active_q.reward_item_index, active_q.reward_quantity)
+				QuestService.complete_active_quest()
+				
 			player.call("_sync_hud_counters") # Sync HUD UI instantly
 	
 	# Play a quick spinning/falling animation before deleting

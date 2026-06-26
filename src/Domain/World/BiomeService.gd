@@ -1,8 +1,12 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain Service acting as a Registry and Router for voxel biomes.
-#              FIXED: Re-engineered sector calculations to divide the world into
-#              8 perfectly symmetrical cardinal slices of 45 degrees.
+#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
+#              Principle (SRP) by isolating biome calculations.
+#              FIXED: Corrected the Deterministic Starter Village Overwrite.
+#              Only spawns the Village Cabin Landmark at the local center coordinate (8, 8)
+#              of chunk [19, 0] to prevent spawning 256 overlapping cabins, which
+#              glitched the chunk and suffocated the NPCs.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BiomeService.gd
 # ==============================================================================
@@ -42,6 +46,31 @@ static func get_biome(biome_id: int) -> IBiome:
 static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: FastNoiseLite) -> BiomeProfile:
 	var profile := BiomeProfile.new()
 	
+	# Translate global coordinates to chunk grid coordinates
+	var chunk_x := int(floor(float(global_x) / 16.0))
+	var chunk_z := int(floor(float(global_z) / 16.0))
+	
+	# --- DETERMINISTIC STARTER VILLAGE FORCING (RTX / SOLID Voxel Fix) ---
+	# Forces chunk coordinates [19, 0] (which matches global X 304..319, Z 0..15) 
+	# to always generate a flat Golden Bazaar village bazaar on every single Seed.
+	if chunk_x == 19 and chunk_z == 0:
+		profile.biome_id = 2 # Force Golden Bazaar Biome
+		profile.base_height = 10 # Force flat ground height
+		
+		# FIXED: Only spawn the Village Cabin Landmark at the local center coordinate (8, 8)
+		# to prevent spawning 256 overlapping cabins, which glitched and suffocated the NPCs!
+		var local_x := global_x % 16
+		var local_z := global_z % 16
+		if local_x < 0: local_x += 16
+		if local_z < 0: local_z += 16
+		
+		if local_x == 8 and local_z == 8:
+			profile.landmark_id = 3 # Force single Market Cabin
+		else:
+			profile.landmark_id = 0
+			
+		return profile
+	
 	# 1. Determine the geographical sector ID for this coordinate
 	profile.biome_id = _calculate_sector_biome_id(global_x, global_z)
 	
@@ -58,12 +87,11 @@ static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: Fas
 	
 	return profile
 
-## FIXED: Dividido el mapa en 8 porciones cardinales simétricas perfectas de 45 grados (PI/4 Radianes).
 static func _calculate_sector_biome_id(global_x: int, global_z: int) -> int:
 	var gx := float(global_x)
 	var gz := float(global_z)
 	var distance: float = sqrt(gx * gx + gz * gz)
-	var angle: float = atan2(gz, gx) # Returns -PI to +PI
+	var angle: float = atan2(gz, gx) 
 	
 	# Spawn Bay at center
 	if distance < 130.0:
@@ -73,7 +101,7 @@ static func _calculate_sector_biome_id(global_x: int, global_z: int) -> int:
 	if global_z < -420.0 and abs(global_x) < 180.0:
 		return 4 # FROSTBITE_GLACIERS (North Polar Cap)
 		
-	# 8 Symmetrical Cardinal Slices (45 degrees per biome slice, centered)
+	# 8 Symmetrical Cardinal Slices
 	if angle >= -0.392 and angle < 0.392:
 		return 2 # GOLDEN_BAZAAR (East Plain Corridor)
 	elif angle >= 0.392 and angle < 1.178:

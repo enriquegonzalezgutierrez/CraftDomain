@@ -6,6 +6,7 @@
 #              for both Biome Strategies and Structure Blueprints.
 #              SOLID COMPLIANCE: Environment setup completely delegated to 
 #              EnvironmentBuilder to satisfy Single Responsibility Principle (SRP).
+#              UPDATED: Added WeatherService instantiation on application start.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -36,6 +37,10 @@ func _initialize_application() -> void:
 	_setup_structures()  # Register 11 architecture blueprints dynamically
 	_setup_persistence()
 	_setup_environment()
+	
+	# SOLID OCP UPGRADE: Register and initialize the 6-quest campaign campaign
+	CampaignRegistry.initialize_campaign()
+	
 	_setup_celestial()
 	_setup_audio()
 	_load_main_menu()
@@ -102,6 +107,16 @@ func _setup_celestial() -> void:
 	
 	add_child(celestial_service)
 	print("[Bootstrap] Celestial Service activated.")
+	
+	# --- SOLID OCP UPGRADE: Setup dynamic Weather Service ---
+	print("[Bootstrap] Initializing Weather Service...")
+	var weather_script: Script = load("res://src/Infrastructure/Celestial/WeatherService.gd")
+	if weather_script != null:
+		var weather_service = weather_script.new() as Node
+		weather_service.name = "WeatherService"
+		weather_service.set("player", player_controller) # Inject player reference
+		add_child(weather_service)
+		print("[Bootstrap] Weather Service activated.")
 
 func _setup_audio() -> void:
 	print("[Bootstrap] Initializing Audio Service...")

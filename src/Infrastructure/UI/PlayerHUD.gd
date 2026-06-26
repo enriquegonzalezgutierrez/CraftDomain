@@ -1,10 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure UI controller managing a modern, glassmorphic HUD.
-#              SRP COMPLIANT: Responsible ONLY for persistent gameplay widgets
-#              (Minimap, Compass, Hotbar, Health, and coordinates).
-#              UPDATED: Added dynamic real-time querying of current Moon Phases
-#              from the CelestialService, displaying it cleanly on the GPS header.
+# Description: Infrastructure UI controller acting as a lightweight Orchestrator.
+#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
+#              Principle (SRP) by delegating visual, math, and radar operations
+#              to specialized sub-widgets (MinimapWidget, GPSPanelWidget, QuestTrackerWidget).
+#              Acts as a clean UI Composition Root.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -15,17 +15,15 @@ extends Control
 var player: CharacterBody3D
 var world_controller: Node3D
 
-# Inner UI nodes created dynamically
-var minimap: Control
+# Decoupled Sub-Widgets managed dynamically (SOLID SRP compliant)
+var minimap: MinimapWidget
+var gps_panel: GPSPanelWidget
+var quest_panel: QuestTrackerWidget
+
+# Sibling UI nodes managed locally
 var inventory_label: Label
 var health_label: Label
 var hotbar_slots: Array[Panel] = []
-
-# Navigation UI Nodes
-var gps_panel: Panel
-var gps_coords_label: Label
-var gps_biome_label: Label
-var compass_directory_label: Label
 
 # UX Overlays
 var damage_overlay: ColorRect
@@ -35,31 +33,18 @@ var _settings_overlay: Control
 # Modern 8-Slot Hotbar items mapping
 const HOTBAR_ITEMS = ["Stone", "Dirt", "Grass", "Wood", "Leaves", "Lava", "Chicken", "Sword"]
 
-# Dictionary mapping Biomes to user-friendly Names and UI Colors
-const BIOME_UI_DATA = {
-	0: {"name": "Bay of Sails (Spawn Ocean)", "color": Color(0.12, 0.55, 0.82)},
-	1: {"name": "Warp Plateau (Mario Steps)", "color": Color(0.38, 0.85, 0.28)},
-	2: {"name": "Golden Bazaar (Village Plains)", "color": Color(0.92, 0.85, 0.35)},
-	3: {"name": "Craggy Peaks & Caves", "color": Color(0.48, 0.48, 0.48)},
-	4: {"name": "Frostbite Glaciers (North Cap)", "color": Color(0.98, 0.98, 0.98)},
-	5: {"name": "Whispering Redwood Forest", "color": Color(0.18, 0.45, 0.15)},
-	6: {"name": "Red Sandstone Canyons", "color": Color(0.85, 0.38, 0.22)},
-	7: {"name": "Neon Ruins (Cyber Basin)", "color": Color(0.0, 0.85, 0.85)},
-	8: {"name": "Swamp of Sighs (Mist Bay)", "color": Color(0.28, 0.22, 0.15)},
-	9: {"name": "Cloud Kingdom (Floating Isles)", "color": Color(1.0, 1.0, 1.0)}
-}
-
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	_setup_damage_overlay()
 	_setup_crosshair()
-	_setup_minimap()
+	_setup_minimap()             # Delegate creation to MinimapWidget
+	_setup_navigation_gps_panel() # Delegate creation to GPSPanelWidget
+	_setup_quest_tracker_panel()  # Delegate creation to QuestTrackerWidget
 	_setup_hotbar()
 	_setup_inventory_display()
 	_setup_health_display()
-	_setup_navigation_gps_panel()
 	_setup_pause_menu()
 	
 	if is_instance_valid(player) and player.has_method("_sync_hud_counters"):
@@ -103,142 +88,44 @@ func _draw() -> void:
 	crosshair.set_script(draw_script)
 	add_child(crosshair)
 
+## Instantiates and wires the decoupled Minimap Widget
 func _setup_minimap() -> void:
-	var minimap_bg := Panel.new()
-	minimap_bg.name = "MinimapBackground"
-	minimap_bg.custom_minimum_size = Vector2(150, 150)
-	minimap_bg.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	minimap_bg.offset_left = -170
-	minimap_bg.offset_top = 20
+	minimap = MinimapWidget.new()
+	minimap.player = player
+	minimap.world_controller = world_controller
 	
-	var style := StyleBoxFlat.new()
-	style.corner_detail = 8
-	style.set_corner_radius_all(75) 
-	style.bg_color = Color(0.12, 0.12, 0.12, 0.5)
-	style.border_width_left = 3
-	style.border_width_top = 3
-	style.border_width_right = 3
-	style.border_width_bottom = 3
-	style.border_color = Color(0.25, 0.25, 0.25, 0.8)
-	style.shadow_size = 6
-	style.shadow_color = Color(0, 0, 0, 0.25)
-	minimap_bg.add_theme_stylebox_override("panel", style)
+	# Positioning (Top Right)
+	minimap.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	minimap.offset_left = -170
+	minimap.offset_top = 20
 	
-	minimap_bg.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
-	add_child(minimap_bg)
-	
-	minimap = Control.new()
-	minimap.name = "MinimapRadar"
-	minimap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	minimap_bg.add_child(minimap)
-	
-	var minimap_script := GDScript.new()
-	var code_lines: Array[String] = [
-		"extends Control",
-		"",
-		"var hud: Control",
-		"",
-		"func _draw() -> void:",
-		"\tif not is_instance_valid(hud) or not is_instance_valid(hud.player) or not is_instance_valid(hud.world_controller):",
-		"\t\treturn",
-		"\tvar size_dim: float = 150.0",
-		"\tvar center: Vector2 = Vector2(size_dim / 2.0, size_dim / 2.0)",
-		"\t",
-		"\tvar player_pos: Vector3 = hud.player.global_position",
-		"\tvar grid_radius: int = 4",
-		"\tvar step_size: float = 16.0",
-		"\t",
-		"\tfor x in range(-grid_radius, grid_radius + 1):",
-		"\t\tfor z in range(-grid_radius, grid_radius + 1):",
-		"\t\t\tvar sample_x: int = int(round(player_pos.x)) + (x * 16)",
-		"\t\t\tvar sample_z: int = int(round(player_pos.z)) + (z * 16)",
-		"\t\t\t",
-		"\t\t\tvar profile = BiomeService.evaluate_coordinate(sample_x, sample_z, hud.world_controller.generator._terrain_noise)",
-		"\t\t\tvar biome_color: Color = hud.BIOME_UI_DATA[profile.biome_id][\"color\"]",
-		"\t\t\t",
-		"\t\t\tvar draw_pos: Vector2 = center + Vector2(float(x), float(z)) * step_size - Vector2(step_size / 2.0, step_size / 2.0)",
-		"\t\t\tvar rect_target := Rect2(draw_pos, Vector2(step_size - 1.0, step_size - 1.0))",
-		"\t\t\t",
-		"\t\t\tif draw_pos.distance_to(center) < size_dim / 2.0 - 5.0:",
-		"\t\t\t\tdraw_rect(rect_target, biome_color, true)",
-		"\t",
-		"\tvar arrow_vertices := PackedVector2Array([",
-		"\t\tcenter + Vector2(0, -8),",
-		"\t\tcenter + Vector2(-5, 6),",
-		"\t\tcenter + Vector2(5, 6)",
-		"\t])",
-		"\tvar angle: float = -hud.player.rotation.y",
-		"\tvar rotated_vertices := PackedVector2Array()",
-		"\tfor vertex in arrow_vertices:",
-		"\t\tvar relative_vec: Vector2 = vertex - center",
-		"\t\tvar rotated_vec: Vector2 = relative_vec.rotated(angle)",
-		"\t\trotated_vertices.append(center + rotated_vec)",
-		"\tdraw_colored_polygon(rotated_vertices, Color(1.0, 0.85, 0.1))"
-	]
-	minimap_script.source_code = "\n".join(code_lines)
-	minimap_script.reload()
-	minimap.set_script(minimap_script)
-	minimap.set("hud", self)
+	add_child(minimap)
 
+## Instantiates and wires the decoupled GPS Navigation Panel Widget
 func _setup_navigation_gps_panel() -> void:
-	gps_panel = Panel.new()
-	gps_panel.name = "GPSPanel"
-	gps_panel.custom_minimum_size = Vector2(500, 85)
-	gps_panel.size = Vector2(500, 85)
-	gps_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	gps_panel = GPSPanelWidget.new()
+	gps_panel.player = player
+	gps_panel.world_controller = world_controller
+	
+	# Positioning (Top Center)
 	gps_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	gps_panel.offset_top = 20
 	gps_panel.offset_left = -250
 	gps_panel.offset_right = 250
 	
-	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(10)
-	style.bg_color = Color(0.08, 0.08, 0.1, 0.6)
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.border_color = Color(0.3, 0.3, 0.35, 0.7)
-	style.shadow_size = 5
-	style.shadow_color = Color(0, 0, 0, 0.3)
-	gps_panel.add_theme_stylebox_override("panel", style)
 	add_child(gps_panel)
+
+## Instantiates and wires the decoupled Quest Tracker Panel Widget
+func _setup_quest_tracker_panel() -> void:
+	quest_panel = QuestTrackerWidget.new()
+	quest_panel.player = player
 	
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	gps_panel.add_child(vbox)
+	# Positioning (Top Left under Health Bar)
+	quest_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	quest_panel.offset_left = 20
+	quest_panel.offset_top = 80
 	
-	gps_coords_label = Label.new()
-	gps_coords_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls_coords := LabelSettings.new()
-	ls_coords.font_size = 14
-	ls_coords.font_color = Color(1.0, 0.85, 0.1)
-	ls_coords.outline_size = 3
-	ls_coords.outline_color = Color.BLACK
-	gps_coords_label.label_settings = ls_coords
-	vbox.add_child(gps_coords_label)
-	
-	gps_biome_label = Label.new()
-	gps_biome_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls_biome := LabelSettings.new()
-	ls_biome.font_size = 15
-	ls_biome.font_color = Color(0.9, 0.95, 1.0)
-	ls_biome.outline_size = 3
-	ls_biome.outline_color = Color.BLACK
-	gps_biome_label.label_settings = ls_biome
-	vbox.add_child(gps_biome_label)
-	
-	compass_directory_label = Label.new()
-	compass_directory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls_compass := LabelSettings.new()
-	ls_compass.font_size = 11
-	ls_compass.font_color = Color(0.7, 0.8, 0.9)
-	ls_compass.outline_size = 2
-	ls_compass.outline_color = Color.BLACK
-	compass_directory_label.label_settings = ls_compass
-	vbox.add_child(compass_directory_label)
+	add_child(quest_panel)
 
 func _setup_hotbar() -> void:
 	var hotbar_bg := Panel.new()
@@ -420,47 +307,19 @@ func _setup_pause_menu() -> void:
 	_pause_overlay.visible = false
 	add_child(_pause_overlay)
 
-## FIXED: Kept _delta prefix to silence unused parameter warnings
+## SOLID Delegation: Process loop only coordinates and delegates widget updates!
 func _process(_delta: float) -> void:
+	# 1. Delegate Minimap updates
 	if is_instance_valid(minimap):
-		minimap.queue_redraw()
+		minimap.update_widget()
 		
-	# Synchronize active Navigation & GPS data
-	if is_instance_valid(player) and is_instance_valid(world_controller):
-		var p_pos := player.global_position
+	# 2. Delegate GPS Coordinates & Clock updates
+	if is_instance_valid(gps_panel):
+		gps_panel.update_widget()
 		
-		# Retrieve the celestial clock (HH:MM) and dynamic Moon Phase dynamically!
-		var time_str: String = "12:00"
-		var moon_str: String = "NEW MOON"
-		var celestial = get_parent().get_parent().get_node_or_null("CelestialService")
-		if is_instance_valid(celestial):
-			if celestial.has_method("get_formatted_time"):
-				time_str = celestial.call("get_formatted_time")
-			if celestial.has_method("get_moon_phase_name"):
-				moon_str = celestial.call("get_moon_phase_name")
-			
-		var dist_n := int(p_pos.distance_to(Vector3(0.0, p_pos.y, -400.0))) 
-		var dist_e := int(p_pos.distance_to(Vector3(400.0, p_pos.y, 0.0))) 
-		var dist_s := int(p_pos.distance_to(Vector3(0.0, p_pos.y, 400.0))) 
-			
-		gps_coords_label.text = "[ X: %d  ·  Y: %d  ·  Z: %d ]   ·   [ %s ]   ·   [ %s ]" % [
-			int(round(p_pos.x)), 
-			int(round(p_pos.y)), 
-			int(round(p_pos.z)),
-			time_str,
-			moon_str.to_upper()
-		]
-		
-		var profile = BiomeService.evaluate_coordinate(
-			int(round(p_pos.x)), 
-			int(round(p_pos.z)), 
-			world_controller.generator._terrain_noise
-		)
-		gps_biome_label.text = "REGION: %s" % BIOME_UI_DATA[profile.biome_id]["name"].to_upper()
-		
-		compass_directory_label.text = "[N] Polar Ice: %dm  |  [E] Village Bazaar: %dm  |  [S] Mario Hills: %dm" % [
-			dist_n, dist_e, dist_s
-		]
+	# 3. Delegate Active Quest Objectives updates
+	if is_instance_valid(quest_panel):
+		quest_panel.update_widget()
 
 func _update_inventory_display() -> void:
 	if is_instance_valid(player):
