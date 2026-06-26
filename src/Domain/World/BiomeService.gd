@@ -1,9 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain Service acting as a Registry and Router for voxel biomes.
-#              Provides dynamic registration (OCP compliant) and delegates
-#              topography and styling calculations to concrete IBiome strategies,
-#              closing this class to future modifications.
+#              FIXED: Re-engineered sector calculations to divide the world into
+#              8 perfectly symmetrical cardinal slices of 45 degrees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BiomeService.gd
 # ==============================================================================
@@ -23,7 +22,6 @@ class BiomeProfile:
 	var landmark_id: int
 
 ## Static registry API: Registers a concrete biome strategy at runtime.
-## This allows adding any number of new biomes without ever modifying this file (Strict OCP).
 static func register_biome(biome: IBiome) -> void:
 	if biome == null:
 		return
@@ -31,7 +29,6 @@ static func register_biome(biome: IBiome) -> void:
 	_biomes[biome.get_biome_id()] = biome
 	print("[BiomeService] Dynamic Biome registered: [ID %d] %s" % [biome.get_biome_id(), biome.get_biome_name()])
 	
-	# Set the first registered biome as the safety fallback
 	if _default_biome == null:
 		_default_biome = biome
 
@@ -42,7 +39,6 @@ static func get_biome(biome_id: int) -> IBiome:
 	return _default_biome
 
 ## Evaluates any global coordinate and returns its mapped biome profile.
-## Sector routing is calculated mathematically, delegating detailed properties to registered strategies.
 static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: FastNoiseLite) -> BiomeProfile:
 	var profile := BiomeProfile.new()
 	
@@ -52,7 +48,7 @@ static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: Fas
 	# 2. Fetch the corresponding registered strategy
 	var biome := get_biome(profile.biome_id)
 	
-	# 3. Delegate computations to the strategy (Strict OCP and SRP)
+	# 3. Delegate computations to the strategy
 	var noise_val: float = terrain_noise.get_noise_2d(float(global_x), float(global_z))
 	profile.base_height = biome.get_base_height(noise_val)
 	
@@ -62,29 +58,35 @@ static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: Fas
 	
 	return profile
 
-## Private helper mapping coordinates to sectors. 
-## Centered region, North Polar Caps, and 8 radial cardinal slices.
+## FIXED: Dividido el mapa en 8 porciones cardinales simétricas perfectas de 45 grados (PI/4 Radianes).
 static func _calculate_sector_biome_id(global_x: int, global_z: int) -> int:
 	var gx := float(global_x)
 	var gz := float(global_z)
 	var distance: float = sqrt(gx * gx + gz * gz)
-	var angle: float = atan2(gz, gx)
+	var angle: float = atan2(gz, gx) # Returns -PI to +PI
 	
-	if distance < 120.0:
-		return 0 # BAY_OF_SAILS (Center)
-	elif global_z < -450.0 and abs(global_x) < 200.0:
-		return 4 # FROSTBITE_GLACIERS (Far North Cap)
-	elif angle > -0.25 and angle < 0.25 and distance >= 120.0:
+	# Spawn Bay at center
+	if distance < 130.0:
+		return 0 # BAY_OF_SAILS (Spawn Ocean)
+		
+	# North Polar Ice Cap Core (Strict high altitude North cap)
+	if global_z < -420.0 and abs(global_x) < 180.0:
+		return 4 # FROSTBITE_GLACIERS (North Polar Cap)
+		
+	# 8 Symmetrical Cardinal Slices (45 degrees per biome slice, centered)
+	if angle >= -0.392 and angle < 0.392:
 		return 2 # GOLDEN_BAZAAR (East Plain Corridor)
-	elif angle >= 0.25 and angle < 1.25 and distance >= 120.0:
+	elif angle >= 0.392 and angle < 1.178:
 		return 5 # REDWOOD_FOREST (South-East Canopy)
-	elif angle >= 1.25 or angle < -2.25:
+	elif angle >= 1.178 and angle < 1.963:
 		return 1 # WARP_PLATEAU (South Mario Steps)
-	elif angle < -1.25 and angle >= -2.25:
+	elif angle >= 1.963 and angle < 2.748:
 		return 6 # RED_BADLANDS (South-West Terraces)
-	elif angle >= -1.25 and angle < -0.25 and distance >= 200.0:
-		return 7 # NEON_RUINS (North-East Obsidian Ruins)
-	elif angle >= -1.25 and angle < -0.25:
-		return 8 # SWAMP_OF_SIGHS (North-West Mud Valleys)
+	elif angle >= 2.748 or angle < -2.748:
+		return 8 # SWAMP_OF_SIGHS (West Mud Valleys)
+	elif angle >= -2.748 and angle < -1.963:
+		return 3 # CRAGGY_MINES (North-West Mountains)
+	elif angle >= -1.963 and angle < -1.178:
+		return 4 # FROSTBITE_GLACIERS (North Glacial shelves)
 	else:
-		return 3 # CRAGGY_MINES (Default North Mountains)
+		return 7 # NEON_RUINS (North-East Obsidian Ruins)

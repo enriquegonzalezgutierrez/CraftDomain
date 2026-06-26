@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player.
-#              FIXED: Allowed block placement on Slot 5 (Lava) so players can 
-#              build glowing lava blocks anywhere!
+#              UPDATED: Added dynamic instantiation of the decoupled DialogueManager
+#              to comply fully with SRP and SOLID architecture principles.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -33,6 +33,9 @@ var raycast: RayCast3D
 var world_controller: Node3D
 var hud: PlayerHUD
 var viewmodel: Node3D
+
+# decoupled SRP managers
+var dialogue_manager: Node # Instantiated dynamically on startup
 
 # UX Feature: Voxel target highlighter
 var highlight_mesh: MeshInstance3D
@@ -140,12 +143,28 @@ func _setup_player_geometry() -> void:
 	add_child(highlight_mesh)
 
 func _setup_hud() -> void:
+	# 1. Instantiate the decoupled DialogueManager to satisfy SOLID SRP
+	var dm_script: Script = load("res://src/Infrastructure/Dialogue/DialogueManager.gd")
+	if dm_script != null:
+		dialogue_manager = dm_script.new() as Node
+		dialogue_manager.name = "DialogueManager"
+		dialogue_manager.set("player", self)
+		add_child(dialogue_manager)
+		
+	# 2. Setup standard inventory & HUD
 	inventory = InventoryComponent.new()
 	hud = PlayerHUD.new()
 	hud.name = "HUD"
 	hud.player = self
 	hud.world_controller = world_controller
 	add_child(hud)
+	
+	# 3. Instantiate the decoupled, standalone LoadingScreen dynamically
+	var ls_script: Script = load("res://src/Infrastructure/UI/LoadingScreen.gd")
+	if ls_script != null:
+		var loading_screen = ls_script.new(self) as Node
+		hud.add_child(loading_screen) # Added as a child overlay of HUD
+		
 	_sync_hud_counters()
 
 func _locate_world() -> void:
@@ -250,7 +269,7 @@ func _apply_hotbar_selection(slot: int) -> void:
 	if is_instance_valid(hud):
 		hud.update_active_slot(slot)
 	
-	# UPDATED: Slot 0 to 5 are buildable blocks now (Includes Lava Bucket!)
+	# Slot 0 to 5 are buildable blocks (Includes Lava Bucket!)
 	is_item_selected = (slot <= 5)
 	
 	match slot:
@@ -259,7 +278,7 @@ func _apply_hotbar_selection(slot: int) -> void:
 		2: active_build_type = BlockType.Type.GRASS; _set_viewmodel_tool(2)
 		3: active_build_type = BlockType.Type.WOOD; _set_viewmodel_tool(1)
 		4: active_build_type = BlockType.Type.LEAVES; _set_viewmodel_tool(1)
-		5: active_build_type = BlockType.Type.LAVA; _set_viewmodel_tool(1) # NEW: Lava Block placement
+		5: active_build_type = BlockType.Type.LAVA; _set_viewmodel_tool(1)
 		6: _set_viewmodel_tool(1)
 		7: _set_viewmodel_tool(3)
 
@@ -319,7 +338,7 @@ func _build_or_interact() -> void:
 			_sync_hud_counters()
 		return
 
-	# Building Logic (Supports LAVA placement on Slot 5)
+	# Building Logic
 	if is_item_selected and is_instance_valid(world_controller) and is_instance_valid(inventory):
 		var inv_comp := inventory as InventoryComponent
 		var build_type: BlockType.Type = inv_comp.get_slot_build_type(active_slot_index)

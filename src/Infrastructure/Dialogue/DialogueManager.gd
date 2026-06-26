@@ -1,0 +1,86 @@
+# ==============================================================================
+# Project: CraftDomain
+# Description: Infrastructure Service acting as the orchestrator for dialogues.
+#              SRP COMPLIANT: Responsible ONLY for opening/closing dialogue panels,
+#              binding branch choices, managing trade transactions, and freezing player.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Dialogue/DialogueManager.gd
+# ==============================================================================
+class_name DialogueManager
+extends Node
+
+## Injected reference to the player controller
+var player: CharacterBody3D
+
+# Internal UI overlays managed dynamically
+var active_dialogue: Node
+var _active_speaker_name: String = ""
+
+## Public API: Instantiates the Dialogue Overlay panel and freezes player movement
+func open_dialogue(node: Resource, speaker_name: String) -> void:
+	if is_instance_valid(active_dialogue):
+		active_dialogue.queue_free()
+		
+	_active_speaker_name = speaker_name
+	
+	# Load and instantiate the DialogueOverlay dynamically (De-coupled presentation)
+	var overlay_script: Script = load("res://src/Infrastructure/UI/DialogueOverlay.gd")
+	if overlay_script != null:
+		active_dialogue = overlay_script.new() as Node
+		add_child(active_dialogue)
+		
+		# Bind events dynamically
+		active_dialogue.connect("choice_selected", Callable(self, "_on_dialogue_choice_selected"))
+		active_dialogue.connect("dialogue_closed", Callable(self, "close_dialogue"))
+		
+		active_dialogue.call("load_dialogue_node", node, speaker_name)
+		
+		# Lock standard player physics inputs and show mouse cursor
+		if is_instance_valid(player):
+			player.set("is_active", false)
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+## Router evaluating choices and processing in-dialogue trade transactions
+func _on_dialogue_choice_selected(target_node_id: String) -> void:
+	# --- TRANSACTION TRIGGER: Trade execution evaluated securely inside the Dialogue Loop ---
+	if target_node_id == "merchant_trade_execute" and is_instance_valid(player):
+		var inventory = player.get("inventory")
+		if is_instance_valid(inventory):
+			# Execute the transaction in the domain TradingService (consume 1 Lava, reward 1 Chicken)
+			if TradingService.execute_trade(inventory, 5, 1, 6, 1):
+				# Make the merchant hop in the air with physical joy!
+				var raycast = player.get("raycast")
+				if is_instance_valid(raycast) and raycast.is_colliding():
+					var merchant = raycast.get_collider()
+					if is_instance_valid(merchant) and merchant.has_method("take_damage"): # is PassiveEntity
+						merchant.velocity.y = 5.0 # Hop!
+						
+				player.call("_sync_hud_counters")
+				
+				# Update the target dialogue node text dynamically on success
+				var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
+				if exec_node != null:
+					exec_node.set("text", "Hmmm! Hot, geothermal, delicious lava! Thank you! Here is your crispy Fried Chicken! It is fresh, delicious, and highly therapeutic.")
+			else:
+				# Update the target dialogue node text dynamically on failure
+				var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
+				if exec_node != null:
+					exec_node.set("text", "Hmmm? It seems you are completely out of Lava Buckets! Bring me a Bucket of Lava (Slot 6) and I will fry up a fresh Chicken!")
+
+	# Navigate to the next Dialogue Node, or close if a leaf node is reached
+	var next_node: Resource = DialogueService.get_dialogue_node(target_node_id)
+	if is_instance_valid(next_node) and is_instance_valid(active_dialogue):
+		active_dialogue.call("load_dialogue_node", next_node, _active_speaker_name)
+	else:
+		close_dialogue()
+
+## Closes the overlay and restores normal first-person player controls
+func close_dialogue() -> void:
+	if is_instance_valid(active_dialogue):
+		active_dialogue.queue_free()
+		active_dialogue = null
+		
+	# Restore standard movement parameters and capture mouse cursor
+	if is_instance_valid(player):
+		player.set("is_active", true)
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

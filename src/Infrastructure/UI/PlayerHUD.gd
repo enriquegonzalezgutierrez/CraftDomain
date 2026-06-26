@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI controller managing a modern, glassmorphic HUD.
-#              FIXED: Resolved a LabelSettings typo inside _setup_health_display().
+#              SRP COMPLIANT: Responsible ONLY for persistent gameplay widgets
+#              (Minimap, Compass, Hotbar, Health, and coordinates).
+#              Completely closed to Dialogue or Loading overlay dependencies.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -26,14 +28,6 @@ var compass_directory_label: Label
 
 # UX Overlays
 var damage_overlay: ColorRect
-var loading_overlay: Panel
-var loading_spinner: Label
-var loading_status: Label
-
-# FIXED: Changed active_dialogue to Node type to prevent compile-time race locks
-var active_dialogue: Node 
-var _active_speaker_name: String = ""
-
 var _pause_overlay: Panel
 var _settings_overlay: Control
 
@@ -67,10 +61,6 @@ func _ready() -> void:
 	_setup_navigation_gps_panel()
 	_setup_pause_menu()
 	
-	# Instantiate loading screen immediately if player is not fully active yet
-	if is_instance_valid(player) and not player.get("is_active"):
-		_setup_loading_screen()
-	
 	if is_instance_valid(player) and player.has_method("_sync_hud_counters"):
 		player.call("_sync_hud_counters")
 
@@ -81,79 +71,6 @@ func _setup_damage_overlay() -> void:
 	damage_overlay.color = Color(0.8, 0.0, 0.0, 0.0)
 	damage_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(damage_overlay)
-
-## Programmatically builds a gorgeous dark commercial loading screen overlay
-func _setup_loading_screen() -> void:
-	loading_overlay = Panel.new()
-	loading_overlay.name = "LoadingOverlay"
-	loading_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.04, 0.06, 1.0) # Solid background
-	loading_overlay.add_theme_stylebox_override("panel", style)
-	add_child(loading_overlay)
-	
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	loading_overlay.add_child(center)
-	
-	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	center.add_child(vbox)
-	
-	# Title
-	var title := Label.new()
-	title.text = "CRAFT DOMAIN"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ts := LabelSettings.new()
-	ts.font_size = 46
-	ts.font_color = Color(1.0, 0.85, 0.2)
-	ts.outline_size = 8
-	ts.outline_color = Color.BLACK
-	title.label_settings = ts
-	vbox.add_child(title)
-	
-	vbox.add_child(_create_spacer(10))
-	
-	# Animated status label
-	loading_status = Label.new()
-	loading_status.text = "GENERATING PROCEDURAL WORLD..."
-	loading_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ss := LabelSettings.new()
-	ss.font_size = 16
-	ss.font_color = Color(0.9, 0.9, 0.95)
-	loading_status.label_settings = ss
-	vbox.add_child(loading_status)
-	
-	vbox.add_child(_create_spacer(20))
-	
-	# Programmatic visual spinner
-	loading_spinner = Label.new()
-	loading_spinner.text = "◐"
-	loading_spinner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	loading_spinner.pivot_offset = Vector2(10, 10)
-	var sp_style := LabelSettings.new()
-	sp_style.font_size = 36
-	sp_style.font_color = Color(1.0, 0.85, 0.2)
-	loading_spinner.label_settings = sp_style
-	vbox.add_child(loading_spinner)
-	
-	vbox.add_child(_create_spacer(45))
-	
-	# Gameplay hint card
-	var tip := Label.new()
-	tip.text = "PRO-TIP: Check your compass at the top of the HUD. Walk towards the orange radar pixels to discover village settlements!"
-	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var tp := LabelSettings.new()
-	tp.font_size = 11
-	tp.font_color = Color(0.65, 0.65, 0.7)
-	tip.label_settings = tp
-	vbox.add_child(tip)
-
-func _create_spacer(height: int) -> Control:
-	var s := Control.new()
-	s.custom_minimum_size = Vector2(0, height)
-	return s
 
 func _setup_crosshair() -> void:
 	var crosshair := Control.new()
@@ -355,7 +272,6 @@ func _setup_hotbar() -> void:
 		slot.name = "Slot_%d" % i
 		slot.custom_minimum_size = Vector2(60, 60)
 		
-		# Set pivot to center so the Tween scale animation grows outward naturally
 		slot.pivot_offset = Vector2(30, 30) 
 		
 		var slot_style := StyleBoxFlat.new()
@@ -437,7 +353,6 @@ func _setup_health_display() -> void:
 	label_style.outline_size = 4
 	label_style.outline_color = Color.BLACK
 	
-	# FIXED: Assigned correct label_style variable instead of self node
 	health_label.label_settings = label_style
 	
 	health_bg.add_child(health_label)
@@ -505,32 +420,9 @@ func _setup_pause_menu() -> void:
 	_pause_overlay.visible = false
 	add_child(_pause_overlay)
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if is_instance_valid(minimap):
 		minimap.queue_redraw()
-		
-	# Synchronize active Loading Screen animations and handle dismissal smoothly
-	if is_instance_valid(loading_overlay):
-		if is_instance_valid(loading_spinner):
-			loading_spinner.rotation += delta * 6.0
-			
-		# Cycle the loading status dots dynamically
-		if is_instance_valid(loading_status):
-			var elapsed := Time.get_ticks_msec() / 1000.0
-			var dot_count := int(floor(elapsed * 2.0)) % 4
-			var dots := ""
-			for j in range(dot_count):
-				dots += "."
-			loading_status.text = "GENERATING PROCEDURAL WORLD" + dots
-			
-			if is_instance_valid(player) and player.get("is_active"):
-				var fade_tween := create_tween()
-				fade_tween.tween_property(loading_overlay, "modulate:a", 0.0, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-				fade_tween.tween_callback(func() -> void:
-					if is_instance_valid(loading_overlay):
-						loading_overlay.queue_free()
-						loading_overlay = null
-				)
 		
 	# Synchronize active Navigation & GPS data
 	if is_instance_valid(player) and is_instance_valid(world_controller):
@@ -541,6 +433,11 @@ func _process(delta: float) -> void:
 		var celestial = get_parent().get_parent().get_node_or_null("CelestialService")
 		if is_instance_valid(celestial) and celestial.has_method("get_formatted_time"):
 			time_str = celestial.call("get_formatted_time")
+			
+		# Calculates real, high-fidelity 2D Vector distance from the player to the three main cardinal biome centers!
+		var dist_n := int(p_pos.distance_to(Vector3(0.0, p_pos.y, -400.0))) # Frostbite Glaciers (N)
+		var dist_e := int(p_pos.distance_to(Vector3(400.0, p_pos.y, 0.0))) # Golden Bazaar (E)
+		var dist_s := int(p_pos.distance_to(Vector3(0.0, p_pos.y, 400.0))) # Warp Plateau (S)
 			
 		gps_coords_label.text = "[ X: %d  ·  Y: %d  ·  Z: %d ]   ·   [ %s ]" % [
 			int(round(p_pos.x)), 
@@ -556,10 +453,9 @@ func _process(delta: float) -> void:
 		)
 		gps_biome_label.text = "REGION: %s" % BIOME_UI_DATA[profile.biome_id]["name"].to_upper()
 		
+		# Render true diagonal vector distances
 		compass_directory_label.text = "[N] Polar Ice: %dm  |  [E] Village Bazaar: %dm  |  [S] Mario Hills: %dm" % [
-			int(abs(p_pos.z - (-500.0))),
-			int(abs(p_pos.x - 3000.0)),
-			int(abs(p_pos.z - 300.0))
+			dist_n, dist_e, dist_s
 		]
 
 func _update_inventory_display() -> void:
@@ -588,8 +484,6 @@ func _on_settings_closed() -> void:
 	if is_instance_valid(_settings_overlay):
 		_settings_overlay.queue_free()
 
-## FIXED: Removed the direct world_controller.save_all() call.
-## Now we just trigger return_to_main_menu() directly.
 func _on_quit_pressed() -> void:
 	print("[PlayerHUD] Quit requested. Triggering safe return transition...")
 	var bootstrap = get_node_or_null("/root/Bootstrap")
@@ -643,73 +537,7 @@ func update_health_display(current_hp: int) -> void:
 			hearts_text += "❤ "
 		health_label.text = hearts_text
 
-## NEW: Public API to instantiate the Dialogue overlay dynamically and lock player movement
-## FIXED: Uses generic Resource on signature to completely resolve compile race locks
-func open_dialogue(node: Resource, speaker_name: String) -> void:
-	if is_instance_valid(active_dialogue):
-		active_dialogue.queue_free()
-		
-	_active_speaker_name = speaker_name
-		
-	# 1. Instantiate the dynamic Dialogue Panel overlay using dynamic script loading
-	var overlay_script: Script = load("res://src/Infrastructure/UI/DialogueOverlay.gd")
-	if overlay_script != null:
-		active_dialogue = overlay_script.new() as Node
-		add_child(active_dialogue)
-		
-		# Connect event listeners dynamically
-		active_dialogue.connect("choice_selected", Callable(self, "_on_dialogue_choice_selected"))
-		active_dialogue.connect("dialogue_closed", Callable(self, "close_dialogue"))
-		
-		active_dialogue.call("load_dialogue_node", node, speaker_name)
-		
-		# 2. Lock physics inputs and liberate the mouse cursor securely
-		if is_instance_valid(player):
-			player.set("is_active", false)
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-
-## NEW: Router evaluating Dialogue branching choices dynamically
-func _on_dialogue_choice_selected(target_node_id: String) -> void:
-	# --- TRANSACTION TRIGGER: Handle the actual trade execution securely inside the Dialogue Loop ---
-	if target_node_id == "merchant_trade_execute":
-		var inventory = player.get("inventory")
-		if is_instance_valid(inventory):
-			# Execute the transaction in the domain TradingService (consume 1 Lava Bucket, reward 1 Chicken)
-			if TradingService.execute_trade(inventory, 5, 1, 6, 1):
-				# Make the targeted merchant hop in the air with joy!
-				var raycast = player.get("raycast")
-				if is_instance_valid(raycast) and raycast.is_colliding():
-					var merchant = raycast.get_collider()
-					if is_instance_valid(merchant) and merchant.has_method("take_damage"): # is PassiveEntity
-						merchant.velocity.y = 5.0 # Hop!
-						
-				player.call("_sync_hud_counters")
-				
-				# Dynamically update the dialogue node text to reflect purchase success using loose set() API
-				var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
-				if exec_node != null:
-					exec_node.set("text", "Hmmm! Hot, geothermal, delicious lava! Thank you! Here is your crispy Fried Chicken! It is fresh, delicious, and highly therapeutic.")
-			else:
-				# Dynamically update the dialogue node text to reflect lack of materials using loose set() API
-				var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
-				if exec_node != null:
-					exec_node.set("text", "Hmmm? It seems you are completely out of Lava Buckets! Bring me a Bucket of Lava (Slot 6) and I will fry up a fresh Chicken!")
-
-	# Re-route to the next Dialogue Node, or close if the conversation reaches a leaf node
-	# FIXED: Loose dynamic resolution prevents compile-time race locks
-	var next_node: Resource = DialogueService.get_dialogue_node(target_node_id)
-	if is_instance_valid(next_node) and is_instance_valid(active_dialogue):
-		active_dialogue.call("load_dialogue_node", next_node, _active_speaker_name)
-	else:
-		close_dialogue()
-
-## NEW: Dismisses Dialogue Overlay and restores standard first-person controls
-func close_dialogue() -> void:
-	if is_instance_valid(active_dialogue):
-		active_dialogue.queue_free()
-		active_dialogue = null
-		
-	# Restore standard movement parameters and capture mouse cursor
-	if is_instance_valid(player):
-		player.set("is_active", true)
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+func _create_spacer(height: int) -> Control:
+	var s := Control.new()
+	s.custom_minimum_size = Vector2(0, height)
+	return s
