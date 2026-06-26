@@ -3,7 +3,7 @@
 # Description: Domain Service acting as a Registry and Router for voxel biomes.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating biome calculations.
-#              FIXED: Corrected the Deterministic Starter Village Overwrite.
+#              UPDATED: Implemented a Deterministic Starter Village Overwrite. 
 #              Only spawns the Village Cabin Landmark at the local center coordinate (8, 8)
 #              of chunk [19, 0] to prevent spawning 256 overlapping cabins, which
 #              glitched the chunk and suffocated the NPCs.
@@ -54,18 +54,18 @@ static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: Fas
 	# Forces chunk coordinates [19, 0] (which matches global X 304..319, Z 0..15) 
 	# to always generate a flat Golden Bazaar village bazaar on every single Seed.
 	if chunk_x == 19 and chunk_z == 0:
-		profile.biome_id = 2 # Force Golden Bazaar Biome
-		profile.base_height = 10 # Force flat ground height
+		var local_x := int(global_x) % Chunk.SIZE
+		var local_z := int(global_z) % Chunk.SIZE
+		if local_x < 0: local_x += Chunk.SIZE
+		if local_z < 0: local_z += Chunk.SIZE
 		
-		# FIXED: Only spawn the Village Cabin Landmark at the local center coordinate (8, 8)
-		# to prevent spawning 256 overlapping cabins, which glitched and suffocated the NPCs!
-		var local_x := global_x % 16
-		var local_z := global_z % 16
-		if local_x < 0: local_x += 16
-		if local_z < 0: local_z += 16
+		profile.biome_id = 2 # Golden Bazaar Plains
+		profile.base_height = 10
 		
+		# FIXED: Only spawn the single Market Cabin at the exact local center coordinate (8, 8)
+		# of the chunk. This prevents spawning 256 overlapping cabins, which suffocated the NPCs!
 		if local_x == 8 and local_z == 8:
-			profile.landmark_id = 3 # Force single Market Cabin
+			profile.landmark_id = 3 # Village Cabin
 		else:
 			profile.landmark_id = 0
 			

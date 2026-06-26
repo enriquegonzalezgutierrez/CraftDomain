@@ -2,75 +2,115 @@
 
 ![MainMenu Background](src/Infrastructure/UI/Assets/menu_background.png)
 
-A high-performance, infinite voxel sandbox game engine built in **Godot 4.6.3** adhering to **Domain-Driven Design (DDD)** principles and strict **SOLID** software engineering compliance. Crafted to demonstrate decoupled, modular, and highly extensible systems without sacrificing runtime execution speed.
+A high-performance, infinite voxel sandbox game engine built in **Godot 4.6.3** adhering to **Domain-Driven Design (DDD)** principles and strict **SOLID** software engineering compliance. Architected to demonstrate highly decoupled, modular, and extensible systems without sacrificing runtime execution speed.
 
 ---
 
 ## Architectural Philosophy: Domain-Driven Design (DDD)
 
-CraftDomain is architected using **Domain-Driven Design (DDD)**. By segregating the codebase into distinct layers, we isolate pure business rules (the "Domain") from the framework-specific engine details (the "Infrastructure"), such as Vulkan rendering, physics colliders, and disk I/O.
+CraftDomain is architected using **Domain-Driven Design (DDD)**. By segregating the codebase into distinct layers, we isolate pure business rules (the "Domain") from framework-specific engine details (the "Infrastructure"), such as Vulkan rendering, physics colliders, and disk I/O.
 
-```
-	   [ Core / Bootstrap ]  <-- Application Entry & Dependency Injection
-			   |
-			   v
-	 [ Infrastructure Layer ] <-- Godot Nodes, Vulkan MultiMeshes, Physics Server, Disk I/O
-			   |
-			   v
-	   [ Domain Layer ]       <-- Pure Mathematics, Entities, Aggregates, Strategy Interfaces
+### Layer Segmentation & Dependency Flow
+
+```mermaid
+graph TD
+	subgraph Core_Bootstrap [Core / Bootstrap Layer]
+		Bootstrap[Bootstrap.gd - Composition Root]
+	end
+
+	subgraph Infrastructure_Layer [Infrastructure Layer]
+		WorldController[WorldController.gd]
+		ChunkNode[ChunkNode.gd - MultiMesh]
+		PlayerController[PlayerController.gd - Physics]
+		DiskWorldRepository[DiskWorldRepository.gd - JSON I/O]
+		DialogueManager[DialogueManager.gd]
+		WeatherService[WeatherService.gd - Particles]
+	end
+
+	subgraph Domain_Layer [Domain Layer]
+		WorldState[WorldState.gd - Aggregate Root]
+		Chunk[Chunk.gd - Voxel Grid]
+		VoxelEntity[VoxelEntity.gd - Health & Combat]
+		IBiome[IBiome.gd - Strategy Interface]
+		IInventory[IInventory.gd - Interface Segregation]
+		QuestService[QuestService.gd - Domain Quest State]
+		DialogueService[DialogueService.gd - Dialogue Router]
+	end
+
+	Bootstrap -->|Injects Repositories & Controllers| WorldController
+	Bootstrap -->|Registers| IBiome
+	WorldController -->|Queries & Updates| WorldState
+	WorldState -->|Contains| Chunk
+	ChunkNode -->|Renders| Chunk
+	PlayerController -->|Manipulates| IInventory
+	DiskWorldRepository -->|Implements| WorldRepository
+	DialogueManager -->|Queries| DialogueService
 ```
 
-### Layer Segmentation:
 1. **The Domain Layer (`src/Domain/`):** Contains the core business logic. It has zero dependencies on Godot's scene tree, physics servers, or rendering API. It consists of:
-   * **Aggregates & Entities:** `WorldState.gd` (Aggregate Root managing chunks), `Chunk.gd` (Voxel Grid), and `VoxelEntity.gd` (Logical health and survival rules).
+   * **Aggregates & Entities:** `WorldState.gd` (Aggregate Root managing chunks), `Chunk.gd` (Voxel Grid), `VoxelEntity.gd` (Logical health rules), and `Quest.gd` (Logical quest representation).
    * **Value Objects:** `BlockDefinition.gd` (Immutable block traits and procedural color definitions).
-   * **Domain Services:** `TradingService.gd` (Decoupled inventory transaction rules), `BiomeService.gd` (Dynamic biome routing), and `StructureLibrary.gd` (Blueprint routing).
+   * **Domain Services:** `TradingService.gd` (Decoupled inventory transaction rules), `BiomeService.gd` (Dynamic biome routing), `StructureLibrary.gd` (Blueprint routing), and `QuestService.gd` (Decoupled quest state coordinator).
    * **Interfaces:** `IInventory.gd` (Segregated inventory contract) and `WorldRepository.gd` (Persistence contract).
 
 2. **The Infrastructure Layer (`src/Infrastructure/`):** Concrete implementations of hardware-bound or framework-bound systems.
-   * **Rendering (`src/Infrastructure/Rendering/`):** `ChunkNode.gd` maps pre-compiled visual float buffers directly into Godot's GPU-bound Vulkan pipeline.
+   * **Rendering (`src/Infrastructure/Rendering/`):** `ChunkNode.gd` segments rendering transforms into individual, block-type MultiMesh nodes, applying PBR materials and custom GPU shaders.
    * **Physics (`src/Infrastructure/Player/`):** First-person motion physics, gravity solvers, and collision shapes.
    * **Persistence (`src/Infrastructure/Persistence/`):** `DiskWorldRepository.gd` implements JSON delta serialization inside Godot's safe `user://` directory.
    * **Life (`src/Infrastructure/Life/`):** Physics-bound passive and hostile AI, rendering programmatic 3D box-composition models.
 
 3. **The Core/Bootstrap Layer (`src/Core/Bootstrap`):**
-   * Acts as the **Composition Root**. It instantiates the required database repositories, configures environment nodes, and injects loose dependencies during scene transitions, ensuring no circular compiler loops exist.
+   * Acts as the **Composition Root**. It instantiates the required database repositories, configures environment nodes, registers biomes/structures, and injects loose dependencies during scene transitions, ensuring no circular compiler loops exist.
 
 ---
 
 ## SOLID Software Engineering Compliance
 
-The architecture of CraftDomain is heavily optimized to comply with the five SOLID software engineering design principles:
+The architecture of CraftDomain is highly optimized to comply with the five SOLID software engineering design principles:
 
 ### 1. Single Responsibility Principle (SRP)
 Each class has a single, strictly defined reason to change:
-* **`WorldGenerator.gd`:** Responsible *only* for procedural noise evaluations and coordinate carving. It contains no physics or rendering code.
-* **`ChunkNode.gd`:** Responsible *only* for binding GPU MultiMesh transforms and managing collision shapes.
-* **`MobSpawningService.gd`:** Responsible *only* for finding valid coordinate heights and instantiating NPCs.
+* **`PlayerController.gd`:** Responsible *only* for first-person movement physics and camera rotation. It contains no raycasting or block interaction logic.
+* **`VoxelInteractionComponent.gd`:** Attached to the camera, this component has the single responsibility of managing raycast gaze selection, targeted highlighting, mining blocks, placing blocks, eating consumables, and interacting with NPCs.
+* **`EnvironmentBuilder.gd`:** Responsible *only* for building and configuring the `WorldEnvironment` and `SunLight` nodes.
 
 ### 2. Open-Closed Principle (OCP)
 *Classes are open for extension, but closed for modification.*
-CraftDomain avoids large `match` or `if/else` statements for biomes and structures. Instead, it utilizes dynamic strategy registries:
+CraftDomain utilizes data-driven registry and loading patterns to ensure new content can be added without modifying existing code.
 
-* **Extending Biomes:** To add a new biome, you implement `IBiome.gd` (e.g., `VolcanoBiome.gd`) and register it inside `Bootstrap.gd` via `BiomeService.register_biome()`. You do not modify `BiomeService.gd` or `WorldGenerator.gd` to introduce new terrain types.
-* **Extending Structures:** To introduce a new tree or building, you implement `IStructureBlueprint.gd` and register it via `StructureLibrary.register_blueprint()`. The terrain carver imports and draws it polimorphically.
+#### The Data-Driven Quest & Campaign System
+Instead of hardcoding quests inside scripts, the system reads from external JSON quest configuration files.
 
+```mermaid
+sequenceDiagram
+	participant Boot as Bootstrap
+	participant Reg as CampaignRegistry
+	participant Serv as QuestService
+	participant HUD as PlayerHUD
+	
+	Boot->>Reg: initialize_campaign()
+	Note over Reg: Scans assets/quests/ for .json files
+	Reg->>Reg: Parse JSON Quest Packs
+	loop For Each Quest Object
+		Reg->>Serv: register_quest(Quest)
+	end
+	Reg->>Serv: set_active_quest("lost_bazaar")
+	Serv->>HUD: Broadcast Active Quest Update
+	Note over HUD: Render Quest Tracker Panel & Minimap Gold Marker
 ```
- [ IBiome Strategy ] <--- Inherits --- [ OakMeadowBiome ] (New Biome)
-         |
-         v (Registered dynamically via Bootstrap)
- [ BiomeService Registry ] <--- Queried by --- [ WorldGenerator ] (Closed to edits)
-```
+
+To add more quests (even up to 50+), a developer simply drops a new JSON file (e.g., `res://assets/quests/sidequests.json`) into the directory. The `CampaignRegistry` dynamic directory scanner automatically parses and registers it at startup without modifying a single line of GDScript.
 
 ### 3. Liskov Substitution Principle (LSP)
 Subclasses must be substitutable for their base classes without altering program correctness:
 * Any strategy implementing `IBiome` can be processed by `BiomeService` and evaluated by `WorldGenerator` without runtime exceptions.
 * `DiskWorldRepository` inherits from `WorldRepository`, satisfying all contract signatures safely.
+* Passive entities (`VillagerEntity`, `MerchantEntity`, etc.) inherit from `PassiveEntity`, implementing their custom shapes and behaviors polymorphically.
 
 ### 4. Interface Segregation Principle (ISP)
 *Clients should not be forced to depend upon interfaces they do not use.*
-* Instead of passing the entire `PlayerController.gd` (which contains camera vectors, physics movement, and input states) to the trading system, the game defines `IInventory.gd`.
-* `TradingService` and `PassiveEntity` (Villagers) interact *only* with the `IInventory` interface, completely separating transaction logic from character movement and camera physics.
+* Instead of passing the entire `PlayerController.gd` (which contains camera vectors, physics movement, and input states) to the trading or loot drop systems, the game defines `IInventory.gd`.
+* `TradingService` and `PassiveEntity` (NPCs) interact *only* with the `IInventory` interface, completely separating transaction logic from character movement and camera physics.
 
 ### 5. Dependency Inversion Principle (DIP)
 *High-level modules must not depend on low-level modules; both must depend on abstractions.*
@@ -81,35 +121,76 @@ Subclasses must be substitutable for their base classes without altering program
 
 ## High-Performance Game Engine Optimizations
 
-Voxel sandbox games are traditionally notorious for single-threaded CPU bottlenecks. CraftDomain implements custom lower-level optimizations to maintain solid framerates:
+Voxel sandbox games are traditionally notorious for CPU and GPU bottlenecks. CraftDomain implements custom lower-level optimizations to maintain solid framerates:
 
-### 1. Atomic MultiMesh GPU Swapping (Rendering Fix)
-In Godot 4, modifying a `MultiMesh`'s `instance_count` and `buffer` in-place on an active, already-rendered instance often fails to force a GPU buffer re-allocation. This results in newly placed blocks being logically present but completely invisible.
-* **The Optimization:** `ChunkNode.gd` implements an **Atomic Swap** of the `MultiMesh` object inside `setup_chunk_visuals()`. When a block is broke or placed, the engine instantiates a clean `MultiMesh` in memory, flushes the binary transform buffer, and swaps the reference in a single atomic instruction (`0.01ms`), forcing Vulkan to immediately draw the updated geometry.
+### 1. Multi-Mesh Partitioned Rendering (Water Transparency Fix)
+To support translucent, highly reflective water and glowing lava, `ChunkNode.gd` does not render a chunk using a single monolithic MultiMesh. Instead, it partitions chunk voxel arrays by their `BlockType` and instantiates a separate `MultiMeshInstance3D` for each active block type. This allows applying specialized materials:
+* **Water Material:** Translucent blue color, roughness `0.05` (highly glossy) to enable beautiful Screen Space Reflections (SSR).
+* **Lava Material:** Emission-enabled orange-red glow with a `1.8` multiplier.
+* **Solid Blocks:** Use OCP-compliant custom PBR textures.
 
-### 2. Main-Thread Physics Synchronization (Crash Prevention)
-Instantiating `StaticBody3D` nodes, creating shape owners, and registering colliders on background threads is not thread-safe and causes race conditions in Godot's `PhysicsServer3D`, leading to silent collision dropouts where players and NPCs fall through the world.
-* **The Optimization:** The heavy mathematical calculation of collecting voxel surface transforms is offloaded entirely to background worker threads (`WorkerThreadPool`). However, the actual instantiation of the `StaticBody3D` and the registration of its shape owners are queued and executed on the **Main Thread** during frame rendering (`0.1ms` cost). This guarantees uncorrupted colliders while preserving multi-threaded generation.
+### 2. Custom GPU Blending & Triplanar Shader
+Using custom PNG textures (especially AI-generated ones) on voxels often results in two common rendering artifacts: vertical texture stretching (due to BoxMesh proportions) and solid black blocks (due to transparent alpha channels exporting as black on opaque materials). 
+CraftDomain implements a custom **GPU Blending Triplanar Shader** in `ChunkNode.gd` that resolves both issues:
+* **Decal Triplanar Projection:** Projects textures from X, Y, and Z axes based on local vertex positions, ensuring perfectly square, non-stretched pixel mapping on all 6 faces of the cube.
+* **Alpha Blending Fallback:** Automatically blends the texture colors with the block's base procedural fallback color using the texture's alpha channel. If a pixel is transparent, it renders the rich biome-specific color instead of turning black.
 
-### 3. Self-Healing On-Demand Generation
-Because chunk loading is asynchronus, a player could theoretically place a block in a coordinate that lies on an un-rendered vertical chunk layer (e.g., placing a block at `Y = 16` before chunk `Y = 1` finishes rendering), causing the block to be consumed but never shown.
-* **The Optimization:** `WorldController.gd` implements a self-healing on-demand hook inside `set_block_globally()`. If a block is placed where no visual `ChunkNode` is currently active, the controller instantly generates the chunk logically, reads any existing disk modifications, instantiates the node, and renders it on the main thread in a single frame.
-
-### 4. Dual-Octave Terrain Blending
-To break the monotony of standard noise hills:
-* The engine combines a **Macro Noise** (broad terrain geography) with a high-frequency **Micro Detail Noise** to add ridges and dunes.
-* It implements **Selective Smoothing**: Mountainous biomes (like Craggy Peaks) retain sharp, rugged cliffs, while flat meadows and villages are smoothed out with a 3x3 box-blur pass to make navigation comfortable.
+### 3. Static Texture Preloader (Lag Spike Prevention)
+Decoding high-resolution (1024x1024) PNG files on the main thread during real-time chunk loading causes massive CPU stalls (600ms+), resulting in physics tunneling where players fall through the world. 
+CraftDomain utilizes a **Static Preloader** in `ChunkNode.gd` that reads, caches, and compiles all custom textures into GPU memory *once* during game boot, keeping the gameplay completely stutter-free.
 
 ---
 
-## NPC Animation & Behavior Engine
+## Dynamic Weather & Atmospheric Cycles
 
-Passive entities (Villagers, Merchants, and Animals) feature custom procedural behaviors that eliminate stiff, robotic motions:
+The world features an integrated celestial and climatological loop coordinating sun, moon, and weather states:
 
-* **Procedural 3D Blinking Eyes:** NPCs feature eyes constructed of voxel boxes (sclera + pupils). A randomized timer (every 2.5 to 6 seconds) triggers a blink by scaling the eyes vertically down to `0.1` and smoothly recovering back to `1.0` using a frame-independent duration solver.
-* **Organic Walk Cycles:** Movement applies sine-wave bobbing animations to the heads, arms, and body rotation, simulating natural steps.
-* **Idle Work Behaviors (Farming/Inspecting):** When idle, NPCs randomly transition into an `EXAMINING` state. They stop, rotate their heads downwards toward the ground, and sway their arms vertically to simulate hoeing or inspecting soil.
-* **Interactive Player Greeting:** When the player enters a 3.5-meter radius, the NPC will pause its current task, turn its face toward the player, and execute a head-nodding greeting animation.
+```mermaid
+graph LR
+	subgraph Weather_Engine [Climatology & Weather]
+		WeatherService[WeatherService.gd - Loop]
+		RainParticles[GPUParticles3D - Rain]
+		SnowParticles[GPUParticles3D - Snow]
+	end
+
+	subgraph Celestial_Engine [Day/Night Cycle]
+		CelestialService[CelestialService.gd - Loop]
+		SunLight[SunLight - DirectionalLight3D]
+		MoonLight[MoonLight - DirectionalLight3D]
+	end
+
+	subgraph Domain_Services [Biome Coordinator]
+		BiomeService[BiomeService.gd]
+	end
+
+	CelestialService -->|Rotates & Fades| SunLight
+	CelestialService -->|Rotates & Fades| MoonLight
+	WeatherService -->|Queries Player Coordinates| BiomeService
+	BiomeService -->|Returns Biome ID| WeatherService
+	WeatherService -->|If Glaciers / Cloud| SnowParticles
+	WeatherService -->|If Other Biomes| RainParticles
+```
+
+### 1. The 28-Day Lunar Phase Cycle
+`CelestialService.gd` manages a dynamic 28-day calendar. It instantiates a secondary `MoonLight` (`DirectionalLight3D`) opposite to the Sun, casting soft silver-blue nighttime shadows. The moonlight intensity scales dynamically on a 0.0 to 1.0 curve based on the current calendar day:
+* **Day 14 (Full Moon):** Maximized silver-blue light casting bright nighttime shadows.
+* **Day 1 / 28 (New Moon):** Pitch-black night.
+* The current phase name (e.g., `WAXING CRESCENT`, `FULL MOON`) is displayed in real-time on the top GPS HUD.
+
+### 2. Regional Climatology
+`WeatherService.gd` manages dynamic weather shifts (Sunny, Rainy, Snowy) that interact with regional biomes:
+* **The Performance Emitter:** The particle system is positioned exactly above the player's head, ensuring it only rains/snows in their immediate vicinity, protecting GPU fillrate.
+* **Dynamic Biome Detection:** If precipitation begins and the player is in `Frostbite Glaciers` (Biome 4) or `Cloud Kingdom` (Biome 9), the system automatically alters the particle mesh to slowly drifting, wind-blown white snowflakes. In other biomes, it falls as fast, translucent blue rain needles.
+
+---
+
+## Decoupled SOLID UI Architecture
+
+To satisfy the Single Responsibility Principle, the original `PlayerHUD` was fully refactored. Instead of acting as a monolithic interface, `PlayerHUD.gd` acts as a lightweight **UI Composition Root** managing independent, decoupled sub-widgets:
+
+* **`MinimapWidget.gd`:** Renders the 2D circular radar, the player's white arrow with a thick black outline, and the active quest's pulsing hot-pink navigation diamond (designed to clamp to the compass rim when far away).
+* **`GPSPanelWidget.gd`:** Displays coordinates, the celestial clock, active region biome, and cardinal landmark distances.
+* **`QuestTrackerWidget.gd`:** Renders active quest descriptions, remaining distance in meters, and altitude/gathering progress.
 
 ---
 
@@ -124,28 +205,21 @@ Passive entities (Villagers, Merchants, and Animals) feature custom procedural b
     ├── Core
     │   └── Bootstrap          # Application entry-point and dependency injector
     ├── Domain
+    │   ├── Dialogue           # Pure dialogue data nodes
     │   ├── Life               # Pure domain models (Combat state, health limits)
     │   ├── Player             # Segregated IInventory interfaces
+    │   ├── Quest              # Pure quest entities and domain coordinators
     │   └── World              # Strategy patterns (IBiome, Blueprints, Block Definitions)
     └── Infrastructure
         ├── Audio              # Programmatic loops and parallel crossfaders
-        ├── Celestial          # Dynamic Sun rotations and color sky lerping
-        ├── Life               # Physics controllers, box composition models, blinking
+        ├── Celestial          # Day/night orbits and Weather particle generators
+        ├── Dialogue           # Dialogue manager and UI adapters
+        ├── Life               # Physics controllers, NPCs, blinking, and spawning
         ├── Persistence        # Safe JSON save delta serializers
-        ├── Player             # FP controllers, mouse-motion camera, sways
-        ├── Rendering          # Concave physics wrappers, MultiMesh GPU swaps
-        └── UI                 # Glassmorphic compasses, minimaps, pause states
+        ├── Player             # FP controllers, viewmodels, and interaction components
+        ├── Rendering          # MultiMesh chunk nodes and custom GPU shaders
+        └── UI                 # Glassmorphic sub-widgets, compasses, and pause overlays
 ```
-
----
-
-## Delta-Saving Persistence Pipeline
-
-CraftDomain implements a high-performance, asynchronous **Delta-Saving** architecture to prevent file corruption and memory bloat:
-
-* **Block Modifications:** The engine does not save unchanged terrain blocks. Only modified coordinates (mined or placed blocks) are tracked inside `world_state._chunk_modifications` as delta values. When a save is triggered, these deltas are stored in lightweight, independent JSON files named on a per-coordinate basis (`chunk_x_y_z.json`), making disk operations extremely fast.
-* **Global Metadata:** Player coordinates, look angles, world seed, and **hotbar inventory quantities** are securely serialized into `global_save.json`.
-* **Auto-Save Trigger:** Pressing `Escape` pauses the game, captures the mouse cursor, and silently executes a complete delta-save in the background without causing gameplay stutters.
 
 ---
 
@@ -157,7 +231,7 @@ CraftDomain implements a high-performance, asynchronous **Delta-Saving** archite
 * **Mouse Scroll Wheel or Keys `1` to `8`:** Scroll through Hotbar slots:
   * `1` (Stone), `2` (Dirt), `3` (Grass), `4` (Wood), `5` (Leaves), `6` (Lava Bucket), `7` (Fried Chicken), `8` (Sword).
 * **Left-Click (or `E`):** Mine blocks or swing the active weapon.
-* **Right-Click (or `Q`):** Place blocks, consume items (eating Fried Chicken to heal), or interact (trading with the Purple-Robed Merchant).
+* **Right-Click (or `Q`):** Place blocks, consume items (eating Fried Chicken to heal), or interact (trading with the Purple-Robed Merchant, talking to villagers).
 * **`Escape`:** Unlocks mouse cursor, pauses game, and triggers a silent background auto-save.
 
 ---

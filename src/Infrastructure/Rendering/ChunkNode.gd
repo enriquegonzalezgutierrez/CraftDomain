@@ -5,8 +5,8 @@
 #              individual MultiMeshInstance3D nodes per BlockType.
 #              SOLID COMPLIANCE: Adheres to OCP and SRP by isolating material 
 #              and rendering logic from the physical chunk data.
-#              FIXED: Corrected normal map detection constant to Image.FORMAT_RGTC_RG
-#              to satisfy strict static compilation rules in Godot 4.6.
+#              UPDATED: Added a friendly Format Analyzer helper inside the static
+#              preload log to print human-readable Vulkan/OpenGL texture formats.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -70,24 +70,43 @@ static func _preload_all_textures() -> void:
 			var tex = load(file_path)
 			if tex is Texture2D:
 				_loaded_textures[block_type] = tex
-				print("  -> CACHED SUCCESS: '", TEXTURE_MAP[block_type], "' (", tex.get_width(), "x", tex.get_height(), ")")
 				
-				# FIXED: Explicitly typed 'img' as Image to satisfy strict type inference
+				# Get raw image to analyze the import compression format
 				var img: Image = tex.get_image()
+				var fmt_name := "Unknown"
+				var is_normal_map := false
+				
 				if img != null:
-					# FIXED: Use Godot 4's official Image.Format enum for stable compression analysis
 					var format: Image.Format = img.get_format()
-					
-					# NormalMaps in Godot 4 are imported using RG8 (ID 3) or RGTC_RG (ID 12)
-					if format == Image.FORMAT_RG8 or format == Image.FORMAT_RGTC_RG:
-						print("     [WARNING] '", TEXTURE_MAP[block_type], "' seems to be imported as a NormalMap instead of a Texture2D!")
-						print("     [WARNING] To fix this: Select '", TEXTURE_MAP[block_type], "' in your FileSystem dock, go to the Import tab next to Scene, change 'Import As' to 'Texture2D', and click Reimport.")
+					fmt_name = _get_friendly_format_name(format)
+					is_normal_map = (format == Image.FORMAT_RG8 or format == Image.FORMAT_RGTC_RG)
+				
+				print("  -> CACHED SUCCESS: '", TEXTURE_MAP[block_type], "' (", tex.get_width(), "x", tex.get_height(), ") | Format: ", fmt_name)
+				
+				if is_normal_map:
+					print("     [WARNING] '", TEXTURE_MAP[block_type], "' is imported as a NormalMap instead of a Texture2D!")
+					print("     [WARNING] To fix this: Select '", TEXTURE_MAP[block_type], "' in your FileSystem dock, go to the Import tab next to Scene, change 'Import As' to 'Texture2D', and click Reimport.")
 			else:
 				print("  -> [ERROR] File exists but is not a valid Texture2D: ", file_path)
 		else:
 			print("  -> Fallback Active: '", TEXTURE_MAP[block_type], "' is missing on disk. Using procedural colors.")
 			
 	print("[ChunkNode] ========================================================\n")
+
+## Helper to translate Godot's raw image formats into friendly human-readable strings
+static func _get_friendly_format_name(format: Image.Format) -> String:
+	match format:
+		Image.FORMAT_L8: return "L8 (Grayscale)"
+		Image.FORMAT_LA8: return "LA8 (Grayscale with Alpha)"
+		Image.FORMAT_R8: return "R8 (Red Channel)"
+		Image.FORMAT_RG8: return "RG8 (NORMAL MAP - Uncompressed)"
+		Image.FORMAT_RGB8: return "RGB8 (Classic Color)"
+		Image.FORMAT_RGBA8: return "RGBA8 (Vibrant Color with Alpha)"
+		Image.FORMAT_DXT1: return "DXT1 (Compressed - No Alpha)"
+		Image.FORMAT_DXT5: return "DXT5 (Compressed - With Alpha)"
+		Image.FORMAT_RGTC_R: return "RGTC_R"
+		Image.FORMAT_RGTC_RG: return "RGTC_RG (NORMAL MAP - Compressed BC5)"
+		_: return "Other (" + str(format) + ")"
 
 ## Compiles and caches our custom voxel shader to blend texture alpha gaps with solid colors
 static func _get_triplanar_shader() -> Shader:

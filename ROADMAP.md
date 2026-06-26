@@ -1,156 +1,64 @@
-# CraftDomain - Architectural Expansion Roadmap
-*Future systems design written by Enrique González Gutiérrez (enrique.gonzalez.gutierrez@gmail.com)*
+# CraftDomain - Voxel Engine Development Roadmap
 
-This roadmap outlines the technical blueprint and system designs required to expand **CraftDomain** into an immersive, RPG-capable voxel sandbox engine. Every system is structured following **Domain-Driven Design (DDD)** and **SOLID** principles to ensure seamless extensibility.
-
----
-
-## Core Architectural Axioms: Preserving DDD & SOLID
-
-To prevent the engine from collapsing into a monolithic, tightly coupled "spaghetti" codebase as features are added, future developers must strictly adhere to these architectural guidelines. **Extending the game must always be achieved by writing NEW files, never by modifying existing core controllers.**
-
-### 1. Pure Domain Isolation (DDD Compliance)
-*   **The Domain is Independent:** The directories inside `src/Domain/` represent pure business rules and mathematics. They must have **zero dependencies** on Godot nodes, scene trees, Vulkan rendering meshes, or physical colliders.
-*   **Decouple via Contracts:** If a domain service needs to interact with persistence or engine hardware, define an interface/contract inside the Domain (e.g., `WorldRepository.gd`), and implement the concrete logic inside `src/Infrastructure/`.
-
-### 2. The Open-Closed Principle (OCP) as a Law of Extension
-*   **No Core Loop Modifications:** Core managers—such as `WorldGenerator.gd`, `WorldController.gd`, and `ChunkNode.gd`—are **closed to modifications**.
-*   **Extend via Strategy Registries:** Adding new elements (such as Volcano Biomes, Cyber Castles, or Blacksmith NPCs) must be done by subclassing abstract interfaces (`IBiome`, `IStructureBlueprint`, `IInventory`, `DialogueNode`) and registering them dynamically inside `Bootstrap.gd`.
-*   **Anti-Pattern Warning:** Never use large `match` or `if/else` statements inside core carvers to evaluate specific biomes or structural IDs. Doing so violates OCP, leading to endless file merge conflicts and compile-time fragility.
+This document outlines the completed engineering milestones and the progressive future roadmap for **CraftDomain**, keeping development strictly aligned with **SOLID software engineering principles** and **Domain-Driven Design (DDD)** constraints.
 
 ---
 
-## Technical Architecture Overview
+## Phase 1: Voxel Engine Core & High-End Visuals (Completed)
 
-```
-					  [ Player Interaction Raycast ]
-									|
-									v
-	 [ Dialogue Engine ] <=====================> [ Quest Manager ]
-			 |                                          |
-			 v (Choice HUD / 3D Billboards)             v (Objective Tracker)
-   [ Presentation Layer ]                       [ Persistence Layer ]
-```
+Focus was placed on optimizing Godot's Vulkan Forward+ rendering pipeline, implementing modular shader calculations, and structuring the base game loop.
 
----
-
-## Phase 1: Branching Dialogue & 3D Speech Bubbles
-
-To transform NPCs from static vendors into narrative characters, we must implement a modular dialogue system capable of branching choices and real-time atmospheric rendering.
-
-### 1. Dialogue Node Resource (`res://src/Domain/Dialogue/DialogueNode.gd`)
-Dialogue is represented as a tree structure of immutable, reusable Resource files. This separates dialogue text from the NPC entity logic:
-
-```gdscript
-class_name DialogueNode
-extends Resource
-
-@export var node_id: String
-@export_multiline var text: String
-@export var choices: Array[DialogueChoice] = []
-```
-
-Where `DialogueChoice` is a nested sub-resource:
-```gdscript
-class_name DialogueChoice
-extends Resource
-
-@export var option_text: String
-@export var target_node_id: String
-@export var required_quest_id: String = "" # Optional condition
-@export var reward_item_id: String = ""      # Optional trigger
-```
-
-### 2. Atmospheric 3D Speech Bubbles (`res://src/Infrastructure/UI/SpeechBubble.gd`)
-To display brief overhead speech without pausing the game, we will add a **3D Billboard Speech Bubble** above NPCs:
-* **Implementation:** Add a `SubViewport` containing a styled 2D `Panel` with a `Label` as a child of the NPC node.
-* **Rendering:** Render the viewport's texture on a `Sprite3D` configured with `billboard = SpatialMaterial.BILLBOARD_ENABLED` (keeps the speech bubble facing the player's camera at all times).
-* **Usage:** Used for floating greetings, short alerts, and vendor barks.
-
-### 3. Fullscreen Interactive Choice HUD (`res://src/Infrastructure/UI/DialogueOverlay.gd`)
-When the player triggers a deep dialogue node (e.g., accepting a quest):
-1. Lock player movement input and free the mouse cursor.
-2. Slowly tilt the camera toward the NPC's face.
-3. Bring up a glassmorphic bottom-screen container showing the NPC's text and a list of interactive buttons for player choices.
-4. Clicking a choice evaluates the target `node_id`, updating the dialogue overlay or triggering game state events (e.g., adding a quest to the journal).
+- [x] **Composition Root Bootloader:** Created `Bootstrap.gd` to handle dynamic dependency injection, environment setups, and clean transitions, eliminating circular compiler loops.
+- [x] **SOLID UI Widget Refactoring:** Decoupled `PlayerHUD.gd` from a monolithic class into independent, single-responsibility widgets (`MinimapWidget.gd`, `GPSPanelWidget.gd`, `QuestTrackerWidget.gd`), implementing the Facade/Adapter pattern.
+- [x] **Next-Gen PBR Voxel Shading:** 
+  - Segmented chunk rendering into per-block MultiMeshes to allow transparent water meshes and emissive lava.
+  - Implemented a custom GPU Voxel Triplanar Shader to prevent texture stretching on cubes and automatically blend custom texture alpha channels with procedural base colors (resolving black-pixel artifacts).
+  - Programmed a custom GPU Vertex Foliage Shader for leaf blocks, adding natural wind-waving lateral sways and organic rounded fluffiness to breaking box shapes.
+- [x] **Static Texture Preloader:** Implemented a thread-safe static loader in `ChunkNode.gd` that caches 1024x1024 custom block assets on game boot, completely eliminating main-thread disk I/O lag and preventing physics tunneling.
+- [x] **Celestial & Climatological Simulation:**
+  - Implemented a dynamic 28-day Lunar Cycle in `CelestialService.gd` with silver-blue shadow-casting moonlight that scales according to moon phases.
+  - Created a decoupled, regional `WeatherService.gd` that emits fast-falling rain needles over temperate biomes, but dynamically shifts to fluffy, wind-blown white snowflakes over the polar ice caps or cloud kingdoms.
 
 ---
 
-## Phase 2: Decoupled Quest Engine
+## Phase 2: Sandbox Expansion & Survival Mechanics (Short-Term)
 
-The Quest system must remain entirely independent of physical entity controllers, operating purely on logical conditions.
+Focus is on enriching the survival game loop, adding physics variables, and expanding sandbox interactions.
 
-### 1. Domain Models (`res://src/Domain/Quest/`)
-* **`QuestDefinition.gd`:** Value object storing static quest data:
-  ```gdscript
-  class_name QuestDefinition
-  extends RefCounted
-  
-  var id: String
-  var title: String
-  var description: String
-  var objective_type: String # "KILL", "GATHER", "SPEAK"
-  var target_id: String       # e.g., "Entity_ZOMBIE" or "Stone"
-  var required_amount: int
-  ```
-* **`QuestState.gd`:** Entity tracking the active progress of a quest for the player:
-  ```gdscript
-  class_name QuestState
-  extends RefCounted
-  
-  var quest_id: String
-  var current_amount: int = 0
-  var is_completed: bool = false
-  ```
-
-### 2. Infrastructure Quest Manager (`res://src/Infrastructure/Quest/QuestManager.gd`)
-A singleton global service that acts as an event router:
-* Listens to logical event signals: `block_mined(type)`, `enemy_slain(entity_name)`, or `npc_interacted(npc_id)`.
-* Iterates through the player's active `QuestState` list, increments the counters when matches are found, and triggers HUD achievements when objectives are completed.
-
-### 3. Quest Persistence Integration
-* **Serialization:** Upgrades `DiskWorldRepository.gd`'s `save_global_state()` to serialize the player's active `QuestState` array into `global_save.json` alongside their position and inventory quantities.
+- [ ] **Cellular-Automata Fluid Physics:**
+  - Implement a lightweight, decoupled `FluidSimulationService.gd` in the domain layer.
+  - Process placed water and lava blocks, calculating finite-state spreading and downward flow physics in the voxel grid.
+- [ ] **Dynamic Structure Spawning (OCP/DIP compliant):**
+  - Create a generic structure schematic reader (`res://assets/schematics/`) that parses custom voxel designs from disk and writes them dynamically to chunk matrices.
+  - Allows adding custom buildings, bridges, and dungeons without modifying the `WorldGenerator` logic.
+- [ ] **Player Survival Attributes (DDD Aggregates):**
+  - Refactor `VoxelEntity.gd` to manage hunger, stamina, oxygen, and fall damage variables in the domain layer.
+  - Integrate a drowning timer inside `VoxelInteractionComponent.gd` when the player's eye-level camera dips below the water mesh height.
 
 ---
 
-## Phase 3: Expanded NPC Roles & Faction AI
+## Phase 3: Multiplayer & High-Refresh Optimizations (Mid-Term)
 
-To make the villages feel alive and dynamic, we will expand `PassiveEntity` behaviors and introduce defensive AI:
+Focus is on network replication, multi-threaded performance, and memory footprints during infinite travel.
 
-```
-        [ Faction: Village ]                 [ Faction: Undead ]
-                 |                                    |
-                 v                                    v
-     [ Guard NPC / Farmer NPC ] <=== Combat ===> [ Zombie / Skeleton ]
-```
-
-### 1. The Guard NPC (`res://src/Infrastructure/Life/GuardEntity.gd`)
-A combat-oriented village protector node:
-* **Sensors:** Features an `Area3D` spherical sensor scanning for hostiles (`HostileEntity`) within a 12-meter radius.
-* **Movement:** Patrolls a procedural path around village cabins when peaceful.
-* **Combat:** If a Zombie is detected, the Guard switches its AI state to `ENGAGING`, unsheathes a programmatic voxel sword, runs to the hostile, and swings to attack, absorbing aggro away from players and passive villagers.
-
-### 2. The Farmer NPC (`res://src/Infrastructure/Life/FarmerEntity.gd`)
-A dedicated resource-gathering villager:
-* **Tending Fields:** Periodically wanders towards nearby crop blocks or mud areas.
-* **Task Cycle:** Performs the `EXAMINING` state to tap on blocks, simulating harvesting.
-* **Inventory Deposit:** Walks back to village cabins to "deposit" resources inside wood barrels (modifying coordinate metadata), visualising a real working economy.
+- [ ] **C++ GDExtension Voxel Meshing:**
+  - Migrate the heavy coordinate-looping voxel face-culling and bulk array compiler from GDScript to a C++ GDExtension module.
+  - Eliminates garbage collection spikes during high-speed camera travel.
+- [ ] **Network Replication Layer (DIP/ISP compliant):**
+  - Implement real-time multi-player state synchronization using Godot's high-level multiplayer API.
+  - Keep packet overhead low by only synchronizing block edit deltas (`WorldState._chunk_modifications`) across clients.
+- [ ] **Save State Compression:**
+  - Compress JSON delta-chunk files (`chunk_x_y_z.json`) on disk using GZip or Brotli compression to minimize storage footprints for massive, infinitely explored worlds.
 
 ---
 
-## Development Milestones Roadmap
+## Phase 4: Creative Tools & Advanced AI (Long-Term)
 
-### Phase 1: Interface & Core Dialogue (Laying the Groundwork)
-* [ ] Implement `IInventory` upgrades to support custom quest items.
-* [ ] Implement `IStructureBlueprint` for a Dedicated Village Tavern.
-* [ ] Code the `get_formatted_time()` integration to trigger night shifts accurately.
+Focus is on user-generated content, in-game editors, and complex agent behaviors.
 
-### Phase 2: Dialogue & Quests Integration
-* [ ] Code `IBiome` coordinate-mapping logic to spawn specific quest-giving NPCs in predetermined regions (e.g., Ice Spires spawning Ice priests).
-* [ ] Write the Dialogue Tree parser with multiple-choice buttons inside the HUD.
-* [ ] Integrate the overhead 3D Billboard Speech bubble above active NPCs.
-
-### Phase 3: Active AI & Combat Expansion
-* [ ] Implement the `GuardEntity` with hostile sensor arrays and melee combat behaviors.
-* [ ] Introduce skeleton archers (firing programmatic 3D arrow projectiles) to challenge village defenses during midnight cycles.
-* [ ] Add the Farmer NPC crop harvesting behaviors.
+- [ ] **In-Game Visual Quest Designer (OCP compliant):**
+  - Implement an in-game graphical node interface (Quest Creator) that allows players to design custom quest chains, coordinate targets, and rewards.
+  - Outputs directly as validated JSON files inside `res://assets/quests/`, instantly loaded by the engine at runtime without rebuilding.
+- [ ] **Dynamic Pathfinding (A* on Voxel Meshes):**
+  - Implement a 3D A* pathfinding algorithm (`AStar3D`) inside `MobSpawningService.gd`.
+  - Allows guards, merchants, and hostile entities to navigate irregular voxel terrain, climb stairs, and bypass player-built walls intelligently.
