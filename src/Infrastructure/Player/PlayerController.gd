@@ -1,8 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player.
-#              UPDATED: Added dynamic instantiation of the decoupled DialogueManager
-#              to comply fully with SRP and SOLID architecture principles.
+#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
+#              Principle (SRP) by delegating all voxel raycasting, mining, building,
+#              eating, and NPC interactions to VoxelInteractionComponent.
+#              Acts strictly as a lightweight Movement and Camera Controller.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -13,7 +15,6 @@ extends CharacterBody3D
 const SPEED: float = 6.0
 const JUMP_VELOCITY: float = 6.5
 const MOUSE_SENSITIVITY: float = 0.003
-const REACH_DISTANCE: float = 5.0
 
 # Physics gravity
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -29,16 +30,13 @@ var inventory: IInventory
 
 # Node references created via code
 var camera: Camera3D
-var raycast: RayCast3D
 var world_controller: Node3D
 var hud: PlayerHUD
 var viewmodel: Node3D
 
-# decoupled SRP managers
-var dialogue_manager: Node # Instantiated dynamically on startup
-
-# UX Feature: Voxel target highlighter
-var highlight_mesh: MeshInstance3D
+# Decoupled SRP managers and components
+var dialogue_manager: Node 
+var interaction_component: VoxelInteractionComponent # Decoupled SRP interaction handler
 
 # Build inventory selection state (0 to 7 matches our 8 slots)
 var active_slot_index: int = 0
@@ -58,6 +56,7 @@ func _ready() -> void:
 	_setup_player_geometry()
 	_locate_world()
 	_setup_hud()
+	_setup_interaction_component() # Instantiate and wire the decoupled interaction handler (SRP)
 	
 	# Capture mouse cursor
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -106,41 +105,10 @@ func _setup_player_geometry() -> void:
 	camera.current = true
 	add_child(camera)
 	
-	# 3. Dynamic target selection raycast
-	raycast = RayCast3D.new()
-	raycast.name = "MiningRayCast"
-	raycast.target_position = Vector3(0, 0, -REACH_DISTANCE)
-	raycast.collide_with_areas = false
-	raycast.collide_with_bodies = true
-	
-	# EXCLUDE PLAYER FROM SELF-COLLISION
-	raycast.add_exception(self) 
-	
-	camera.add_child(raycast)
-	
-	# 4. Viewmodel Setup
+	# 3. Viewmodel Setup
 	var viewmodel_script: Script = load("res://src/Infrastructure/Player/PlayerViewModel.gd")
 	viewmodel = viewmodel_script.new() as Node3D
 	camera.add_child(viewmodel)
-	
-	# 5. UX Voxel Highlighter setup
-	highlight_mesh = MeshInstance3D.new()
-	highlight_mesh.name = "TargetHighlight"
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(1.02, 1.02, 1.02)
-	highlight_mesh.mesh = box_mesh
-	
-	var mat := StandardMaterial3D.new()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(1.0, 1.0, 1.0, 0.15)
-	mat.emission_enabled = true
-	mat.emission = Color(1.0, 1.0, 1.0)
-	mat.emission_energy_multiplier = 0.5
-	box_mesh.material = mat
-	
-	highlight_mesh.top_level = true
-	highlight_mesh.visible = false
-	add_child(highlight_mesh)
 
 func _setup_hud() -> void:
 	# 1. Instantiate the decoupled DialogueManager to satisfy SOLID SRP
@@ -163,9 +131,26 @@ func _setup_hud() -> void:
 	var ls_script: Script = load("res://src/Infrastructure/UI/LoadingScreen.gd")
 	if ls_script != null:
 		var loading_screen = ls_script.new(self) as Node
-		hud.add_child(loading_screen) # Added as a child overlay of HUD
+		hud.add_child(loading_screen) 
 		
 	_sync_hud_counters()
+
+## Instantiates and registers the decoupled interaction component as a child of the camera (SRP)
+func _setup_interaction_component() -> void:
+	print("[PlayerController] Initializing decoupled VoxelInteractionComponent (SRP)...")
+	var ic_script: Script = load("res://src/Infrastructure/Player/VoxelInteractionComponent.gd")
+	if ic_script != null:
+		interaction_component = ic_script.new() as VoxelInteractionComponent
+		
+		# Inject dependencies (DIP compliant)
+		interaction_component.player = self
+		interaction_component.camera = camera
+		interaction_component.world_controller = world_controller
+		interaction_component.hud = hud
+		
+		# Added as a child of the camera so its internal RayCast3D rotates automatically with player gaze
+		camera.add_child(interaction_component)
+		print("[PlayerController] VoxelInteractionComponent successfully connected.")
 
 func _locate_world() -> void:
 	var parent_node := get_parent()
@@ -208,14 +193,12 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_process_hotbar_keys()
-	_update_target_highlight()
 
-	# Interactions
-	if is_instance_valid(world_controller):
-		if Input.is_action_just_pressed("click_left"):
-			_mine_or_attack()
-		elif Input.is_action_just_pressed("click_right"):
-			_build_or_interact()
+	# --- SOLID DELEGATION ---
+	# Delegates all targeted raycasting, mining, building, and eating calculations
+	# to the decoupled specialized VoxelInteractionComponent (SRP)
+	if is_instance_valid(interaction_component):
+		interaction_component.process_interaction()
 
 	# Gravity & Jump
 	if not is_on_floor():
@@ -223,7 +206,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = JUMP_VELOCITY
 
-	# Movement
+	# Movement Calculations
 	var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 	var direction: Vector3 = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 	
@@ -235,16 +218,6 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0, SPEED)
 
 	move_and_slide()
-
-func _update_target_highlight() -> void:
-	if is_instance_valid(highlight_mesh) and raycast.is_colliding():
-		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
-		var target_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
-		
-		highlight_mesh.global_position = Vector3(target_coord) + Vector3(0.5, 0.5, 0.5)
-		highlight_mesh.visible = true
-	elif is_instance_valid(highlight_mesh):
-		highlight_mesh.visible = false
 
 func _scroll_hotbar(direction: int) -> void:
 	var new_slot := active_slot_index + direction
@@ -285,77 +258,6 @@ func _apply_hotbar_selection(slot: int) -> void:
 func _set_viewmodel_tool(tool_id: int) -> void:
 	if is_instance_valid(viewmodel) and viewmodel.has_method("switch_to_tool"):
 		viewmodel.call("switch_to_tool", tool_id)
-
-func _mine_or_attack() -> void:
-	if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
-		viewmodel.call("play_swing_animation")
-	
-	if not raycast.is_colliding(): return
-	var collider = raycast.get_collider()
-	
-	# Combat logic
-	if active_slot_index == 7 and is_instance_valid(collider) and collider is CharacterBody3D:
-		if collider.get("domain_entity") is VoxelEntity:
-			var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
-			knockback_dir.y = 2.5
-			if collider.has_method("take_damage"):
-				collider.call("take_damage", 1, knockback_dir)
-			return
-
-	# Mining Logic
-	if is_instance_valid(world_controller):
-		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
-		var block_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
-		
-		var world_state = world_controller.get("world_state")
-		if is_instance_valid(world_state):
-			var mined_type: BlockType.Type = world_state.call("get_block", block_coord)
-			if inventory is InventoryComponent:
-				(inventory as InventoryComponent).add_block_by_type(mined_type)
-				_sync_hud_counters()
-				
-		world_controller.call("set_block_globally", block_coord, BlockType.Type.AIR)
-
-func _build_or_interact() -> void:
-	if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
-		viewmodel.call("play_swing_animation")
-	
-	if not raycast.is_colliding(): return
-	var collider = raycast.get_collider()
-	
-	# Interaction (Villagers/Merchants)
-	if is_instance_valid(collider) and collider is CharacterBody3D and collider.has_method("interact"):
-		collider.call("interact", self)
-		_sync_hud_counters()
-		return
-		
-	# Heal with Chicken
-	if active_slot_index == 6 and is_instance_valid(inventory):
-		if inventory.can_modify_slot_quantity(6, -1) and domain_entity.health < 3:
-			inventory.modify_slot_quantity(6, -1)
-			domain_entity.health = min(3, domain_entity.health + 1)
-			hud.update_health_display(domain_entity.health)
-			_sync_hud_counters()
-		return
-
-	# Building Logic
-	if is_item_selected and is_instance_valid(world_controller) and is_instance_valid(inventory):
-		var inv_comp := inventory as InventoryComponent
-		var build_type: BlockType.Type = inv_comp.get_slot_build_type(active_slot_index)
-		
-		if not inventory.can_modify_slot_quantity(active_slot_index, -1): return
-			
-		var build_pos: Vector3 = raycast.get_collision_point() + (raycast.get_collision_normal() * 0.5)
-		var block_coord := Vector3i(floor(build_pos.x), floor(build_pos.y), floor(build_pos.z))
-		
-		# Do not allow building inside our own body
-		var player_feet := Vector3i(floor(global_position.x), floor(global_position.y), floor(global_position.z))
-		var player_head := Vector3i(floor(global_position.x), floor(global_position.y + 0.9), floor(global_position.z))
-		if block_coord == player_feet or block_coord == player_head: return
-			
-		inventory.modify_slot_quantity(active_slot_index, -1)
-		_sync_hud_counters()
-		world_controller.call("set_block_globally", block_coord, build_type)
 
 func take_damage(amount: int, knockback_force: Vector3) -> void:
 	if not is_active or domain_entity.is_dead: return

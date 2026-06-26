@@ -2,8 +2,9 @@
 # Project: CraftDomain
 # Description: Villager NPC entity. Inherits from the abstract base class PassiveEntity.
 #              OCP COMPLIANT: Completely isolated from other NPC files.
-#              UPDATED: Wired dynamic PBR texture mapping for the face (villager_face.png)
-#              and body (villager_body.png) with smart solid-color PBR fallback.
+#              REVERTED: Restored the original programmatic 3D voxel block design
+#              (with custom nose and blinking eyes) for a classic Minecraft look,
+#              while keeping the campaign Quest 1 completion triggers fully functional.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
@@ -18,8 +19,8 @@ func _build_visual_representation() -> void:
 	var robe_color := Color(0.35, 0.22, 0.15)
 	var apron_color := Color(0.25, 0.15, 0.1)
 	
-	# 1. Torso Robe (Loads villager_body.png if exists)
-	_create_box(_visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), robe_color, "villager_body.png")
+	# 1. Torso Robe
+	_create_box(_visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), robe_color)
 	
 	# 2. Head Node
 	_head_node = Node3D.new()
@@ -27,11 +28,13 @@ func _build_visual_representation() -> void:
 	_head_node.position = Vector3(0, 1.25, 0)
 	_visual_root.add_child(_head_node)
 	
-	# Head skin (Loads villager_face.png if exists)
-	_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.05, 0), Color(0.95, 0.75, 0.65), "villager_face.png")
+	# Head skin
+	_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.05, 0), Color(0.95, 0.75, 0.65))
+	
+	# Programmatic 3D Nose
 	_create_box(_head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, -0.01, -0.21), Color(0.85, 0.65, 0.55))
 	
-	# Blinking Eyes (Positioned over the face texture)
+	# Blinking Eyes
 	_left_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.06, -0.18), Color.WHITE)
 	_create_box(_left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
 	_right_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.06, -0.18), Color.WHITE)
@@ -57,6 +60,7 @@ func _setup_floating_bubble() -> void:
 		add_child(bubble)
 		bubble.call("set_text", "VILLAGER")
 
+## Trigger custom dialogue and handle quest progression
 func interact(player_node: CharacterBody3D) -> void:
 	var active_q := QuestService.get_active_quest()
 	

@@ -4,9 +4,8 @@
 #              OCP COMPLIANT: Acts as an Abstract Base Class. Handles physical
 #              instantiation of collision nodes internally, letting subclasses
 #              only define their dimensions polimorphically.
-#              UPDATED: Enhanced _create_box() factory to load custom NPC/Fauna
-#              textures dynamically (from res://assets/textures/npcs/) with a 
-#              safe solid-color PBR fallback if the assets are missing.
+#              REVERTED: Restored the original high-performance, solid-color 
+#              3D box factory to return to the classic Minecraft voxel art style.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -51,9 +50,6 @@ var _is_blinking: bool = false
 
 # Player tracking range
 const GREET_DISTANCE: float = 3.5
-
-# Base folder for NPC/Fauna textures
-const NPC_TEX_DIR := "res://assets/textures/npcs/"
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
@@ -104,8 +100,7 @@ func interact(_player: CharacterBody3D) -> void:
 	pass
 
 ## Helper factory to construct 3D boxes programmatically
-## UPDATED: Loads PBR textures from res://assets/textures/npcs/ dynamically if specified.
-func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color, texture_name: String = "") -> MeshInstance3D:
+func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
 	box_mesh.size = size
@@ -113,24 +108,10 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color, te
 	mesh_instance.position = box_pos
 	
 	var mat := ORMMaterial3D.new()
+	mat.albedo_color = color
 	mat.roughness = 0.95
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
-	
-	var has_tex := false
-	if texture_name != "":
-		var file_path := NPC_TEX_DIR + texture_name
-		if FileAccess.file_exists(file_path):
-			var tex = load(file_path)
-			if tex is Texture2D:
-				mat.albedo_texture = tex
-				mat.albedo_color = Color.WHITE # Clear tint multiplier
-				has_tex = true
-				
-	# If no texture is found, fall back gracefully to the original solid color! (OCP)
-	if not has_tex:
-		mat.albedo_color = color
-	
 	mesh_instance.material_override = mat
+	
 	parent.add_child(mesh_instance)
 	return mesh_instance
 

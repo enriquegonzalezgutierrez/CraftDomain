@@ -3,8 +3,10 @@
 # Description: Infrastructure UI controller acting as a lightweight Orchestrator.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by delegating visual, math, and radar operations
-#              to specialized sub-widgets (MinimapWidget, GPSPanelWidget, QuestTrackerWidget).
-#              Acts as a clean UI Composition Root.
+#              to specialized sub-widgets.
+#              FIXED: Implemented the Facade Pattern by adding a forwarding
+#              open_dialogue() API. This safely routes NPC dialogue requests 
+#              to the decoupled DialogueManager without modifying NPC code (OCP).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -320,6 +322,14 @@ func _process(_delta: float) -> void:
 	# 3. Delegate Active Quest Objectives updates
 	if is_instance_valid(quest_panel):
 		quest_panel.update_widget()
+
+## SOLID Facade API: Safely routes NPC dialogue requests to the player's DialogueManager.
+## This acts as a clean bridge preventing tight coupling and fixing the runtime crash.
+func open_dialogue(node: Resource, speaker_name: String) -> void:
+	if is_instance_valid(player):
+		var dm = player.get("dialogue_manager")
+		if is_instance_valid(dm) and dm.has_method("open_dialogue"):
+			dm.call("open_dialogue", node, speaker_name)
 
 func _update_inventory_display() -> void:
 	if is_instance_valid(player):

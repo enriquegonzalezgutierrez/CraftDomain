@@ -2,8 +2,8 @@
 # Project: CraftDomain
 # Description: Farmer NPC entity. Inherits from the abstract base class PassiveEntity.
 #              OCP COMPLIANT: Completely isolated from other NPC files.
-#              UPDATED: Wired dynamic PBR texture mapping for the face (villager_face.png)
-#              and body (farmer_body.png) with smart solid-color PBR fallback.
+#              REVERTED: Restored the original programmatic 3D voxel block design
+#              (with straw hat, custom nose, and blinking eyes) for a classic Minecraft look.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
@@ -14,12 +14,13 @@ func _init(spawn_pos: Vector3) -> void:
 	super(spawn_pos, 1)
 	name = "Entity_FARMER"
 
+## Override: Assembles the 3D Farmer model with a custom straw hat
 func _build_visual_representation() -> void:
 	var robe_color := Color(0.68, 0.58, 0.42) # Straw yellow/linen robe
 	var sash_color := Color(0.25, 0.15, 0.1)  # Dark brown sash
 	
-	# 1. Torso Robe (Loads farmer_body.png if exists)
-	_create_box(_visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), robe_color, "farmer_body.png")
+	# 1. Torso Robe
+	_create_box(_visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), robe_color)
 	
 	# 2. Head Node
 	_head_node = Node3D.new()
@@ -27,9 +28,8 @@ func _build_visual_representation() -> void:
 	_head_node.position = Vector3(0, 1.25, 0)
 	_visual_root.add_child(_head_node)
 	
-	# Head skin (Loads villager_face.png if exists)
-	_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.05, 0), Color(0.95, 0.75, 0.65), "villager_face.png")
-	_create_box(_head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, -0.01, -0.21), Color(0.85, 0.65, 0.55)) 
+	_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.05, 0), Color(0.95, 0.75, 0.65)) # Head skin
+	_create_box(_head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, -0.01, -0.21), Color(0.85, 0.65, 0.55)) # Nose
 	
 	# Wide flat Straw Hat on head
 	_create_box(_head_node, Vector3(0.65, 0.04, 0.65), Vector3(0, 0.24, 0), Color(0.88, 0.78, 0.42))
