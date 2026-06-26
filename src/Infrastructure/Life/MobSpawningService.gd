@@ -2,16 +2,15 @@
 # Project: CraftDomain
 # Description: Infrastructure Service responsible for calculating and spawning
 #              NPC and Fauna classes dynamically inside chunks.
-#              OCP COMPLIANT: Completely decoupled from strict types. Loads 
-#              individual subclasses dynamically to satisfy SOLID specifications.
-#              FIXED: Declared static int casting for spawn_roll variable.
+#              FIXED: Synchronized human spawns to ONLY appear inside valid
+#              village chunks containing a procedural Cabin (Landmark 3).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
 class_name MobSpawningService
 extends RefCounted
 
-# Dynamic compilation isolation (OCP Compliant)
+# Dynamic compilation isolation
 var _pig_script := load("res://src/Infrastructure/Life/PigEntity.gd")
 var _chicken_script := load("res://src/Infrastructure/Life/ChickenEntity.gd")
 var _sheep_script := load("res://src/Infrastructure/Life/SheepEntity.gd")
@@ -27,9 +26,25 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 	var chunk_pos := chunk.position
 	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	
-	# 1. Village Spawning (If cabin is present)
-	var has_house: bool = (abs(chunk_pos.x) + abs(chunk_pos.z)) % 3 == 2 and chunk_pos.y == 0
-	if has_house:
+	# Determine if this chunk is a real village by querying the generator noise on the main thread
+	var is_real_village: bool = false
+	var generator = world_node.get("generator")
+	
+	if is_instance_valid(generator):
+		var terrain_noise = generator.get("_terrain_noise")
+		if terrain_noise != null:
+			# Scan the center column of the chunk dynamically
+			var center_x := chunk_pos.x * Chunk.SIZE + 8
+			var center_z := chunk_pos.z * Chunk.SIZE + 8
+			var profile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise)
+			
+			# Landmark 3 is the Village Market Cabin!
+			is_real_village = (profile.landmark_id == 3)
+
+	# 1. Village Spawning (ONLY triggered if a Cabin was actually built here!)
+	if is_real_village:
+		print("[MobSpawningService] Village detected at chunk %s. Spawning civil community!" % str(chunk_pos))
+		
 		# A. Common Villager
 		if _villager_script != null:
 			var gy := _get_ground_surface_y(world_state, int(chunk_offset.x) + 7, int(chunk_offset.z) + 5)
@@ -62,10 +77,9 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			world_node.add_child(farmer)
 			entities_list.append(farmer)
 			
-	# 2. Fauna Spawning (Deterministic herd spawn)
+	# 2. Fauna Spawning (Wild animals are allowed to spawn anywhere in plains/mountains)
 	var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2
 	if should_spawn_animal:
-		# FIXED: Declared static int casting to satisfy Godot's static analyzer
 		var spawn_roll: int = int(abs(chunk_pos.x + chunk_pos.z)) % 4
 		var gy := _get_ground_surface_y(world_state, int(chunk_offset.x) + 8, int(chunk_offset.z) + 8)
 		var pos := chunk_offset + Vector3(8.5, gy, 8.5)

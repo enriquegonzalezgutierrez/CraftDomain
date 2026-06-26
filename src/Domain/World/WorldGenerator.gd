@@ -1,9 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain Generator responsible for procedurally carving chunk block data.
-#              IMPROVED: Implements dual-noise blending, selective smoothing to 
-#              preserve steep mountain peaks, and surface material patches (rock 
-#              outcrops on steep slopes, sand/dirt patches on meadows) to break monotony.
+#              FIXED: Expanded flora height limits up to Y=27 to allow high-altitude
+#              forests, Sakura trees, and giant mushrooms to generate on top of mountains.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldGenerator.gd
 # ==============================================================================
@@ -28,7 +27,7 @@ func _init(p_seed: int = 42) -> void:
 	_terrain_noise = FastNoiseLite.new()
 	_terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_terrain_noise.seed = p_seed
-	_terrain_noise.frequency = 0.015 # Slightly wider landscapes
+	_terrain_noise.frequency = 0.015
 	_terrain_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_terrain_noise.fractal_octaves = 4
 	_terrain_noise.fractal_lacunarity = 2.0
@@ -37,8 +36,8 @@ func _init(p_seed: int = 42) -> void:
 	# Secondary Detail Noise: Rugged peaks, ridges, and material variations
 	_detail_noise = FastNoiseLite.new()
 	_detail_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	_detail_noise.seed = p_seed + 101 # Seed offset to avoid parallel synchronization
-	_detail_noise.frequency = 0.08    # High frequency for micro-bounces
+	_detail_noise.seed = p_seed + 101
+	_detail_noise.frequency = 0.08
 	_detail_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_detail_noise.fractal_octaves = 2
 
@@ -74,7 +73,6 @@ func generate_chunk(chunk: Chunk) -> void:
 			landmark_ids[idx] = profile.landmark_id
 
 	# PASS 2: Selective Terrain Smoothing
-	# Instead of a flat blur everywhere, we preserve rugged peaks for mountains
 	var smoothed_heights: Array[int] = []
 	smoothed_heights.resize(Chunk.SIZE * Chunk.SIZE)
 	for x in range(Chunk.SIZE):
@@ -92,13 +90,12 @@ func generate_chunk(chunk: Chunk) -> void:
 			var idx: int = x + Chunk.SIZE * z
 			var b_id: int = biome_ids[idx]
 			
-			# Mountainous/Canyon biomes (Craggy Peaks, Red Badlands, Neon Ruins)
 			var is_mountainous: bool = (b_id == 3 or b_id == 6 or b_id == 7)
 			if is_mountainous:
-				# 40% blur blend: Keeps sharp cliffs and steep drops intact
+				# Keeps sharp cliffs and steep drops intact
 				smoothed_heights[idx] = int(lerp(float(raw_heights[idx]), float(blur_height), 0.40))
 			else:
-				# 100% blur: Keeps plains, valleys, and forests walkably smooth
+				# Keeps plains, valleys, and forests walkably smooth
 				smoothed_heights[idx] = blur_height
 
 	# PASS 3: Sculpt blocks polymorphically with micro material patches
@@ -144,25 +141,21 @@ func generate_chunk(chunk: Chunk) -> void:
 			var idx: int = x + Chunk.SIZE * z
 			var ground_y: int = smoothed_heights[idx]
 			
-			# Ensure we only build on solid exposed ground
-			if ground_y < 2 or ground_y > 11:
+			# FIXED: Expanded spawn limit from Y=11 up to Y=27.
+			# This populates high mountains and plateau steps with trees and giant mushrooms.
+			if ground_y < 2 or ground_y > 27:
 				continue
 				
 			var biome_id: int = biome_ids[idx]
+			var biome: IBiome = BiomeService.get_biome(biome_id)
 			var scatter_hash: int = abs(global_x * 93856093 ^ global_z * 29349663)
 			
-			# Organic Forest Scatter
-			if scatter_hash % 60 == 5:
-				if biome_id == 2 or biome_id == 5: # Golden Bazaar / Redwood Forest
-					_spawn_blueprint(chunk, x, z, ground_y, 1) # Oak Tree
-			elif scatter_hash % 120 == 12:
-				if biome_id == 5: # Redwood Forest specifically
-					_spawn_blueprint(chunk, x, z, ground_y, 2) # Giant Redwood
-			elif scatter_hash % 90 == 8:
-				if biome_id == 1: # Warp Plateau
-					_spawn_blueprint(chunk, x, z, ground_y, 3) # Giant Mushroom
+			# 4A. Organic Forest Scatter (100% OCP COMPLIANT!)
+			var scatter_id: int = biome.get_scatter_blueprint_id(scatter_hash)
+			if scatter_id > 0:
+				_spawn_blueprint(chunk, x, z, ground_y, scatter_id)
 					
-			# Rare Biome Landmarks
+			# 4B. Rare Biome Landmarks
 			var l_id: int = landmark_ids[idx]
 			if l_id > 0 and LANDMARK_TO_BLUEPRINT.has(l_id):
 				var blueprint_id: int = int(LANDMARK_TO_BLUEPRINT[l_id])
@@ -175,7 +168,6 @@ func _determine_surface_block(
 	biome_id: int, smoothed_heights: Array[int]
 ) -> BlockType.Type:
 	
-	# 1. Slope Check: Detect steep drops or mountain cliffs
 	var is_steep: bool = false
 	for dx in range(-1, 2):
 		for dz in range(-1, 2):
@@ -185,14 +177,14 @@ func _determine_surface_block(
 				is_steep = true
 				break
 				
-	# Steep cliff sides expose raw mountain rock on the surface instead of clean grass
+	# Steep cliff sides expose raw mountain rock on the surface
 	if is_steep and biome_id != 0 and biome_id != 9: 
 		return BlockType.Type.STONE
 		
-	# 2. Base surface block from strategy
+	# Base surface block from strategy
 	var default_surface: BlockType.Type = biome.get_block_for_depth(target_height, target_height)
 	
-	# 3. Micro patches of sand/dirt to break grasslands monotony
+	# Micro patches of sand/dirt to break grasslands monotony
 	if default_surface == BlockType.Type.GRASS:
 		var patch_val: float = _detail_noise.get_noise_2d(float(gx) * 2.0, float(gz) * 2.0)
 		if patch_val > 0.45:

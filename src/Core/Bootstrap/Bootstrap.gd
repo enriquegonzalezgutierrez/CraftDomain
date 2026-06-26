@@ -4,8 +4,7 @@
 #              handling dynamic, decoupled dependency injection, soundtracks, 
 #              safe audio crossfades, and dynamic OCP-compliant registrations
 #              for both Biome Strategies and Structure Blueprints.
-#              UPDATED: Added secure save_all() pipeline execution on the main
-#              thread *after* drawing the loading screen to prevent freezes.
+#              UPDATED: Registered Sakura Tree (ID 10) and Giant Fungus (ID 11) blueprints.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -33,7 +32,7 @@ func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
 	
 	_setup_biomes()      # Register 10 biome strategies dynamically
-	_setup_structures()  # Register 9 architecture blueprints dynamically
+	_setup_structures()  # Register 11 architecture blueprints dynamically
 	_setup_persistence()
 	_setup_environment()
 	_setup_celestial()
@@ -65,6 +64,11 @@ func _setup_structures() -> void:
 	StructureLibrary.register_blueprint(NeonPyramidBlueprint.new())   # ID 7
 	StructureLibrary.register_blueprint(MarketCabinBlueprint.new())   # ID 8
 	StructureLibrary.register_blueprint(HarborPierBlueprint.new())    # ID 9
+	
+	# UPDATED: Register new flora blueprints dynamically! (OCP compliant)
+	StructureLibrary.register_blueprint(SakuraTreeBlueprint.new())       # ID 10
+	StructureLibrary.register_blueprint(UnderworldFungusBlueprint.new()) # ID 11
+	
 	print("[Bootstrap] Dynamic structure blueprints registered successfully.")
 
 func _setup_persistence() -> void:
@@ -162,7 +166,6 @@ func _on_start_game_requested() -> void:
 	add_child(player_controller)
 
 ## Public API: Safely unloads the active 3D world/player and reloads the Main Menu
-## FIXED: Performs the heavy save_all() call AFTER drawing the Loading Screen to bypass freezes.
 func return_to_main_menu() -> void:
 	print("[Bootstrap] Unloading gameplay state safely...")
 	

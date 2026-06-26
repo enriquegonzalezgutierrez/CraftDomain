@@ -3,7 +3,8 @@
 # Description: Pure Domain Interface defining the strategic contract for any
 #              procedural biome. Decouples physical, visual, and landmark
 #              rules into independent, extensible classes.
-#              Warnings resolved by prefixing unused abstract parameters with underscores.
+#              UPDATED: Added get_scatter_blueprint_id() contract to make 
+#              terrain scattering fully OCP compliant.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/IBiome.gd
 # ==============================================================================
@@ -38,4 +39,9 @@ func get_block_for_depth(_y: int, _base_height: int) -> BlockType.Type:
 ## Abstract contract: Evaluates deterministically if a landmark spawns on this coordinate column.
 func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 	assert(false, "[IBiome] get_landmark_type() must be implemented by concrete subclass.")
+	return 0
+
+## Virtual Contract: Returns a random structure blueprint ID to spawn based on hash, or 0 if none.
+## Overridden by subclasses to distribute trees/mushrooms organically without editing the core generator.
+func get_scatter_blueprint_id(_scatter_hash: int) -> int:
 	return 0
