@@ -3,7 +3,8 @@
 # Description: Infrastructure UI controller managing a modern, glassmorphic HUD.
 #              SRP COMPLIANT: Responsible ONLY for persistent gameplay widgets
 #              (Minimap, Compass, Hotbar, Health, and coordinates).
-#              Completely closed to Dialogue or Loading overlay dependencies.
+#              UPDATED: Added dynamic real-time querying of current Moon Phases
+#              from the CelestialService, displaying it cleanly on the GPS header.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -183,13 +184,13 @@ func _setup_minimap() -> void:
 func _setup_navigation_gps_panel() -> void:
 	gps_panel = Panel.new()
 	gps_panel.name = "GPSPanel"
-	gps_panel.custom_minimum_size = Vector2(460, 85)
-	gps_panel.size = Vector2(460, 85)
+	gps_panel.custom_minimum_size = Vector2(500, 85)
+	gps_panel.size = Vector2(500, 85)
 	gps_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	gps_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	gps_panel.offset_top = 20
-	gps_panel.offset_left = -230
-	gps_panel.offset_right = 230
+	gps_panel.offset_left = -250
+	gps_panel.offset_right = 250
 	
 	var style := StyleBoxFlat.new()
 	style.set_corner_radius_all(10)
@@ -271,7 +272,6 @@ func _setup_hotbar() -> void:
 		var slot := Panel.new()
 		slot.name = "Slot_%d" % i
 		slot.custom_minimum_size = Vector2(60, 60)
-		
 		slot.pivot_offset = Vector2(30, 30) 
 		
 		var slot_style := StyleBoxFlat.new()
@@ -420,6 +420,7 @@ func _setup_pause_menu() -> void:
 	_pause_overlay.visible = false
 	add_child(_pause_overlay)
 
+## FIXED: Kept _delta prefix to silence unused parameter warnings
 func _process(_delta: float) -> void:
 	if is_instance_valid(minimap):
 		minimap.queue_redraw()
@@ -428,22 +429,26 @@ func _process(_delta: float) -> void:
 	if is_instance_valid(player) and is_instance_valid(world_controller):
 		var p_pos := player.global_position
 		
-		# Retrieve the celestial clock HH:MM string from CelestialService dynamically!
-		var time_str: String = "06:00"
+		# Retrieve the celestial clock (HH:MM) and dynamic Moon Phase dynamically!
+		var time_str: String = "12:00"
+		var moon_str: String = "NEW MOON"
 		var celestial = get_parent().get_parent().get_node_or_null("CelestialService")
-		if is_instance_valid(celestial) and celestial.has_method("get_formatted_time"):
-			time_str = celestial.call("get_formatted_time")
+		if is_instance_valid(celestial):
+			if celestial.has_method("get_formatted_time"):
+				time_str = celestial.call("get_formatted_time")
+			if celestial.has_method("get_moon_phase_name"):
+				moon_str = celestial.call("get_moon_phase_name")
 			
-		# Calculates real, high-fidelity 2D Vector distance from the player to the three main cardinal biome centers!
-		var dist_n := int(p_pos.distance_to(Vector3(0.0, p_pos.y, -400.0))) # Frostbite Glaciers (N)
-		var dist_e := int(p_pos.distance_to(Vector3(400.0, p_pos.y, 0.0))) # Golden Bazaar (E)
-		var dist_s := int(p_pos.distance_to(Vector3(0.0, p_pos.y, 400.0))) # Warp Plateau (S)
+		var dist_n := int(p_pos.distance_to(Vector3(0.0, p_pos.y, -400.0))) 
+		var dist_e := int(p_pos.distance_to(Vector3(400.0, p_pos.y, 0.0))) 
+		var dist_s := int(p_pos.distance_to(Vector3(0.0, p_pos.y, 400.0))) 
 			
-		gps_coords_label.text = "[ X: %d  ·  Y: %d  ·  Z: %d ]   ·   [ %s ]" % [
+		gps_coords_label.text = "[ X: %d  ·  Y: %d  ·  Z: %d ]   ·   [ %s ]   ·   [ %s ]" % [
 			int(round(p_pos.x)), 
 			int(round(p_pos.y)), 
 			int(round(p_pos.z)),
-			time_str
+			time_str,
+			moon_str.to_upper()
 		]
 		
 		var profile = BiomeService.evaluate_coordinate(
@@ -453,7 +458,6 @@ func _process(_delta: float) -> void:
 		)
 		gps_biome_label.text = "REGION: %s" % BIOME_UI_DATA[profile.biome_id]["name"].to_upper()
 		
-		# Render true diagonal vector distances
 		compass_directory_label.text = "[N] Polar Ice: %dm  |  [E] Village Bazaar: %dm  |  [S] Mario Hills: %dm" % [
 			dist_n, dist_e, dist_s
 		]

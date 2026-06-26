@@ -2,7 +2,9 @@
 # Project: CraftDomain
 # Description: Concrete Structure Blueprint implementing the 3D voxel algorithm 
 #              to construct a massive, spotted Mario Mushroom tree.
-#              Fully encapsulated and OCP compliant.
+#              SOLID COMPLIANCE: Fully encapsulated and OCP compliant.
+#              UPDATED: Swapped stalk blocks to SNOW to create a solid, opaque,
+#              matte white stem, eliminating the transparent "water trunk" visual bug.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/GiantMushroomBlueprint.gd
 # ==============================================================================
@@ -17,9 +19,9 @@ func get_structure_id() -> int:
 func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
 	var stalk_height: int = 4
 	
-	# 1. Build thick white-shaded stalk (using Cloud blocks for pristine white aesthetic)
+	# 1. Build thick solid white stalk (using SNOW blocks for an opaque, matte white stem)
 	for y in range(1, stalk_height + 1):
-		chunk.set_block(start_x, ground_y + y, start_z, BlockType.Type.CLOUD)
+		chunk.set_block(start_x, ground_y + y, start_z, BlockType.Type.SNOW)
 		
 	# 2. Build majestic Red Spotted umbrella cap (5x3x5 dome)
 	var cap_y := ground_y + stalk_height + 1

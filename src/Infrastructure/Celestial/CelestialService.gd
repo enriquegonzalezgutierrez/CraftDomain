@@ -1,10 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure Celestial Service managing global game time-of-day,
-#              dynamic SunLight rotation, and procedural sky color transitions.
-#              UPDATED: Shifted starting time to High Noon (12:00 PM) and completely
-#              re-calibrated the sky colors to be ultra-vibrant, bright, and cheerful
-#              to match the classic "RTX Shaders" visual aesthetic.
+#              dynamic SunLight and MoonLight rotation, and procedural sky transitions.
+#              SOLID COMPLIANCE: Encapsulates all dynamic celestial calculations.
+#              FIXED: Explicitly declared static types (float) for moon phase 
+#              and light intensity calculations to satisfy strict static compiler rules.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
@@ -18,63 +18,121 @@ var time_speed: float = 72.0
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
 
-# Internal time tracking (0.0 to 1.0 represents a full 24-hour cycle)
-# UPDATED: Starts at 0.5 (12:00 PM - High Noon) for maximum light and vibrant colors
-var _current_time: float = 0.5
+# Dynamic Moon Light created at runtime (SRP compliant)
+var moon_light: DirectionalLight3D
 
-# Sky colors for different times of day (Interpolation targets)
+# Internal time tracking (starts at 0.5 - High Noon)
+var _current_time: float = 0.5
+var _last_time_value: float = 0.5
+
+# Calendar days tracking for lunar cycle simulation
+var _calendar_days: int = 14 # Start at day 14 (Full Moon) for immediate visual feedback!
+
+# Sky colors for different times of day
 const SKY_COLORS = {
-	"MORNING_TOP": Color(0.2, 0.55, 0.9),      # Clear, bright morning blue
-	"MORNING_HORIZON": Color(0.95, 0.75, 0.45), # Warm golden sunrise
+	"MORNING_TOP": Color(0.2, 0.55, 0.9),      
+	"MORNING_HORIZON": Color(0.95, 0.75, 0.45), 
 	
-	"NOON_TOP": Color(0.12, 0.45, 0.95),       # Deep, vibrant zenith blue
-	"NOON_HORIZON": Color(0.55, 0.85, 1.0),    # Bright cyan/white horizon 
+	"NOON_TOP": Color(0.12, 0.45, 0.95),       
+	"NOON_HORIZON": Color(0.55, 0.85, 1.0),    
 	
-	"SUNSET_TOP": Color(0.15, 0.25, 0.45),     # Deepening evening blue
-	"SUNSET_HORIZON": Color(0.95, 0.45, 0.2),  # Fiery orange sunset
+	"SUNSET_TOP": Color(0.15, 0.25, 0.45),     
+	"SUNSET_HORIZON": Color(0.95, 0.45, 0.2),  
 	
-	"NIGHT_TOP": Color(0.02, 0.02, 0.08),      # Deep space midnight
-	"NIGHT_HORIZON": Color(0.08, 0.08, 0.15)   # Subtle moonlit horizon
+	"NIGHT_TOP": Color(0.02, 0.02, 0.08),      
+	"NIGHT_HORIZON": Color(0.08, 0.08, 0.15)   
 }
 
 func _ready() -> void:
 	name = "CelestialService"
+	_setup_dynamic_moon_light()
 
 func _process(delta: float) -> void:
-	_current_time += (delta * time_speed) / 86400.0 # 86400 seconds in a day
+	# Update daily cycle
+	_last_time_value = _current_time
+	_current_time += (delta * time_speed) / 86400.0
+	
 	if _current_time >= 1.0:
 		_current_time = 0.0
 		
+	# Increment calendar days on midnight crossing to cycle moon phases
+	if _last_time_value > 0.95 and _current_time < 0.05:
+		_calendar_days += 1
+		if _calendar_days > 28:
+			_calendar_days = 1
+		print("[CelestialService] Day Crossed! Calendar Day: ", _calendar_days, " | Moon Phase: ", get_moon_phase_name())
+		
 	_update_sun_rotation()
+	_update_moon_rotation()
 	_update_sky_atmosphere()
+
+## Programmatically instantiates the secondary silver-blue Moon light source
+func _setup_dynamic_moon_light() -> void:
+	print("[CelestialService] Creating dynamic MoonLight source...")
+	moon_light = DirectionalLight3D.new()
+	moon_light.name = "MoonLight"
+	moon_light.shadow_enabled = true
+	moon_light.shadow_blur = 1.0
+	
+	# Cold, pale silver-blue moonlight tint
+	moon_light.light_color = Color(0.75, 0.85, 1.0)
+	moon_light.light_energy = 0.0 # Silent start
+	moon_light.light_indirect_energy = 1.0
+	
+	add_child(moon_light)
 
 func _update_sun_rotation() -> void:
 	if not is_instance_valid(sun_light):
 		return
 		
-	# Map time [0..1] to a 360-degree rotation angle around X axis (elevation)
 	var angle_rad: float = (_current_time * TAU) - (PI / 2.0)
-	
-	# Rotate the SunLight node dynamically
 	sun_light.rotation.x = angle_rad
-	
-	# Add a static 35-degree tilted azimuth orbit (Y-axis)
 	sun_light.rotation.y = deg_to_rad(35)
 	
-	# Turn off shadows and reduce light intensity when the sun is below the horizon (night)
+	# Fade sun in/out based on daylight limits
 	var is_night: bool = _current_time < 0.2 || _current_time > 0.8
 	if is_night:
 		sun_light.light_energy = 0.0
 		sun_light.shadow_enabled = false
 	else:
-		# Map sunrise/sunset fades smoothly
-		var intensity: float = 1.2 # Stronger max sun intensity for vibrant lighting
-		if _current_time < 0.3: # Sunrise fade-in
+		var intensity: float = 1.2
+		if _current_time < 0.3: # Sunrise fade
 			intensity = remap(_current_time, 0.2, 0.3, 0.0, 1.2)
-		elif _current_time > 0.7: # Sunset fade-out
+		elif _current_time > 0.7: # Sunset fade
 			intensity = remap(_current_time, 0.7, 0.8, 1.2, 0.0)
 		sun_light.light_energy = clamp(intensity, 0.0, 1.2)
 		sun_light.shadow_enabled = true
+
+## Rotates the Moon opposite to the Sun and updates its energy based on the phase
+func _update_moon_rotation() -> void:
+	if not is_instance_valid(moon_light):
+		return
+		
+	# Moon rotates 180 degrees (PI radians) out-of-phase with the Sun
+	var angle_rad: float = (_current_time * TAU) - (PI / 2.0) + PI
+	moon_light.rotation.x = angle_rad
+	moon_light.rotation.y = deg_to_rad(-145) # Azimuth opposite angle
+	
+	# Verify if it is currently nighttime
+	var is_night: bool = _current_time < 0.22 or _current_time > 0.78
+	if not is_night:
+		moon_light.light_energy = 0.0
+		moon_light.shadow_enabled = false
+	else:
+		# FIXED: Declared strict types (float) to prevent Variant type propagation errors
+		var moon_phase_mult: float = 1.0 - abs((float(_calendar_days) - 14.0) / 14.0)
+		
+		# Fade moon energy smoothly during transitions (Sunset/Sunrise)
+		var max_intensity: float = 0.45 * moon_phase_mult
+		var intensity: float = max_intensity
+		
+		if _current_time > 0.78 and _current_time < 0.88: # Sunset rise
+			intensity = remap(_current_time, 0.78, 0.88, 0.0, max_intensity)
+		elif _current_time < 0.22 and _current_time > 0.12: # Sunrise set
+			intensity = remap(_current_time, 0.12, 0.22, max_intensity, 0.0)
+			
+		moon_light.light_energy = clamp(intensity, 0.0, 0.45)
+		moon_light.shadow_enabled = moon_light.light_energy > 0.05
 
 func _update_sky_atmosphere() -> void:
 	if not is_instance_valid(world_environment) or not is_instance_valid(world_environment.environment):
@@ -86,19 +144,18 @@ func _update_sky_atmosphere() -> void:
 		
 	var sky_mat := sky.sky_material as ProceduralSkyMaterial
 	
-	# Interpolate sky colors based on current time phase
 	var top_color: Color
 	var horizon_color: Color
 	
-	if _current_time < 0.25: # Night to Morning transition
+	if _current_time < 0.25:
 		var t := remap(_current_time, 0.0, 0.25, 0.0, 1.0)
 		top_color = SKY_COLORS["NIGHT_TOP"].lerp(SKY_COLORS["MORNING_TOP"], t)
 		horizon_color = SKY_COLORS["NIGHT_HORIZON"].lerp(SKY_COLORS["MORNING_HORIZON"], t)
-	elif _current_time < 0.5: # Morning to Noon transition
+	elif _current_time < 0.5:
 		var t := remap(_current_time, 0.25, 0.5, 0.0, 1.0)
 		top_color = SKY_COLORS["MORNING_TOP"].lerp(SKY_COLORS["NOON_TOP"], t)
 		horizon_color = SKY_COLORS["MORNING_HORIZON"].lerp(SKY_COLORS["NOON_HORIZON"], t)
-	elif _current_time < 0.75: # Noon to Sunset transition
+	elif _current_time < 0.75:
 		var t := remap(_current_time, 0.5, 0.75, 0.0, 1.0)
 		top_color = SKY_COLORS["NOON_TOP"].lerp(SKY_COLORS["SUNSET_TOP"], t)
 		horizon_color = SKY_COLORS["NOON_HORIZON"].lerp(SKY_COLORS["SUNSET_HORIZON"], t)
@@ -114,6 +171,25 @@ func _update_sky_atmosphere() -> void:
 ## Public helper: Returns true if it is currently nighttime
 func is_night_time() -> bool:
 	return _current_time < 0.2 or _current_time > 0.8
+
+## Public API: Returns the current descriptive moon phase name based on the calendar
+func get_moon_phase_name() -> String:
+	if _calendar_days == 14:
+		return "Full Moon"
+	elif _calendar_days == 1 or _calendar_days == 28:
+		return "New Moon"
+	elif _calendar_days < 7:
+		return "Waxing Crescent"
+	elif _calendar_days == 7:
+		return "First Quarter"
+	elif _calendar_days < 14:
+		return "Waxing Gibbous"
+	elif _calendar_days < 21:
+		return "Waning Gibbous"
+	elif _calendar_days == 21:
+		return "Third Quarter"
+	else:
+		return "Waning Crescent"
 
 ## Public API: Converts the internal 0..1 timeline into a formatted digital 24h clock string (HH:MM)
 func get_formatted_time() -> String:

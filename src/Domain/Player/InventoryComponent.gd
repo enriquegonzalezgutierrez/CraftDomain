@@ -2,7 +2,9 @@
 # Project: CraftDomain
 # Description: Concrete domain component managing dynamic inventory slots, items,
 #              building blocks, and quantity modifications.
-#              UPDATED: Re-categorized Lava Buckets (Slot 5) as buildable blocks.
+#              UPDATED: Added a Smart Voxel Routing algorithm to map untracked 
+#              mined blocks (Sand, Mud, Snow, Ice, Neon) into active slots
+#              so players never lose resources while terraforming.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/InventoryComponent.gd
 # ==============================================================================
@@ -32,10 +34,7 @@ func _init() -> void:
 	_slots.append(SlotData.new("Grass", 64, BlockType.Type.GRASS, true))         # Slot 2
 	_slots.append(SlotData.new("Wood", 16, BlockType.Type.WOOD, true))           # Slot 3
 	_slots.append(SlotData.new("Leaves", 16, BlockType.Type.LEAVES, true))       # Slot 4
-	
-	# UPDATED: Lava Bucket (Slot 5) is now a buildable block of type LAVA!
 	_slots.append(SlotData.new("Lava Bucket", 3, BlockType.Type.LAVA, true))     # Slot 5 (Currency & Placement)
-	
 	_slots.append(SlotData.new("Fried Chicken", 0, BlockType.Type.AIR, false))   # Slot 6 (Food)
 	_slots.append(SlotData.new("Wooden Sword", -1, BlockType.Type.AIR, false))   # Slot 7 (Weapon)
 
@@ -80,8 +79,20 @@ func get_slot_item_name(slot_index: int) -> String:
 	return ""
 
 ## Helper: Adds 1 block to its corresponding slot based on its BlockType (Mining collection)
+## UPDATED: Routes exotic block types to closest inventory equivalents to ensure solid UX.
 func add_block_by_type(block_type: BlockType.Type) -> void:
+	var target_type := block_type
+	
+	# Smart Routing: Map biome-specific blocks to closest inventory match
+	match block_type:
+		BlockType.Type.SAND, BlockType.Type.RED_SAND, BlockType.Type.MUD:
+			target_type = BlockType.Type.DIRT # Sand and mud route to Dirt
+		BlockType.Type.SNOW, BlockType.Type.ICE, BlockType.Type.NEON_CYAN, BlockType.Type.NEON_MAGENTA:
+			target_type = BlockType.Type.STONE # Ice, snow, and neon route to Stone
+		BlockType.Type.CLOUD:
+			target_type = BlockType.Type.LEAVES # Clouds route to Leaves
+			
 	for slot in _slots:
-		if slot.is_block and slot.build_type == block_type:
+		if slot.is_block and slot.build_type == target_type:
 			slot.quantity += 1
 			break

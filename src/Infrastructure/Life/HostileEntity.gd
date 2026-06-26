@@ -3,6 +3,8 @@
 # Description: Infrastructure physics controller node representing a hostile zombie.
 #              Acts as an Infrastructure Wrapper that uses Composition to hold
 #              a pure Domain VoxelEntity, reacting to Domain Events (Signals).
+#              UPDATED: Added a dynamic loot-drop pipeline on entity death
+#              to grant players 1x Lava Bucket upon defeating the zombie.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -94,10 +96,10 @@ func take_damage(amount: int, knockback_force: Vector3) -> void:
 	if domain_entity.is_dead:
 		return
 		
-	# 1. Apply infrastructure physical knockback
+	# Apply infrastructure physical knockback
 	velocity += knockback_force
 	
-	# 2. Delegate purely logical health reduction to Domain
+	# Delegate purely logical health reduction to Domain
 	domain_entity.take_damage(amount)
 
 ## Infrastructure Event Handler: Reacts to the Domain Event
@@ -113,12 +115,21 @@ func _flash_red() -> void:
 	# Create a quick 0.15-second timer to restore original colors
 	get_tree().create_timer(0.15).timeout.connect(func() -> void:
 		for mat in _visual_materials:
-			mat.emission_enabled = false
+			if is_instance_valid(mat):
+				mat.emission_enabled = false
 	)
 
 ## Infrastructure Event Handler: Reacts to the Domain Event
 func _on_domain_entity_died() -> void:
 	print("[Zombie] Blegh... Zombie died.")
+	
+	# Drop 1x Lava Bucket directly into player inventory on defeat!
+	if is_instance_valid(player):
+		var inv = player.get("inventory")
+		if is_instance_valid(inv):
+			print("[Zombie] Loot dropped: 1x Lava Bucket added to slot 5.")
+			inv.modify_slot_quantity(5, 1) # Slot 5 matches Lava Bucket
+			player.call("_sync_hud_counters") # Sync HUD UI instantly
 	
 	# Play a quick spinning/falling animation before deleting
 	var death_tween := create_tween().set_parallel(true)
@@ -148,7 +159,6 @@ func _physics_process(delta: float) -> void:
 
 func _process_ai_intelligence(delta: float) -> void:
 	var _wander_direction_tmp: Vector3 = Vector3.ZERO
-	# 1. Run simple AI state machine
 	_wander_timer -= delta
 	if _wander_timer <= 0:
 		_is_wandering = randf() > 0.4
@@ -160,7 +170,6 @@ func _process_ai_intelligence(delta: float) -> void:
 			_wander_direction_tmp = Vector3.ZERO
 			_wander_timer = randf_range(1.0, 3.0)
 			
-	# If player is active, close by, and can be tracked, chase them! (Zombie Aggro)
 	var is_player_trackable: bool = false
 	if is_instance_valid(player):
 		var p_active = player.get("is_active")
@@ -170,20 +179,17 @@ func _process_ai_intelligence(delta: float) -> void:
 			_wander_direction.y = 0
 			is_player_trackable = true
 			
-			# Deal melee bites inside range
 			if global_position.distance_to(player.global_position) <= ATTACK_RANGE:
 				_bite_player()
 				
 	if not is_player_trackable and _wander_direction_tmp != Vector3.ZERO:
 		_wander_direction = _wander_direction_tmp
 
-	# 2. Apply velocities
 	if _is_wandering:
 		var speed_mult: float = SPEED if is_player_trackable else (SPEED * 0.5)
 		velocity.x = _wander_direction.x * speed_mult
 		velocity.z = _wander_direction.z * speed_mult
 		
-		# Turn visuals towards wander/chase direction
 		var visuals_node: Node3D = get_node("Visuals")
 		if is_instance_valid(visuals_node) and _wander_direction != Vector3.ZERO:
 			var target_look_at: Vector3 = global_position + _wander_direction
@@ -191,7 +197,6 @@ func _process_ai_intelligence(delta: float) -> void:
 			visuals_node.rotation.x = 0
 			visuals_node.rotation.z = 0
 		
-		# Jump over blocks automatically if colliding with walls on floor level
 		if is_on_wall() and is_on_floor():
 			velocity.y = JUMP_VELOCITY
 	else:
@@ -200,9 +205,8 @@ func _process_ai_intelligence(delta: float) -> void:
 
 func _bite_player() -> void:
 	if is_instance_valid(player):
-		# Calculate knockback vector pointing directly away from the zombie
 		var bite_knockback: Vector3 = (player.global_position - global_position).normalized() * 4.5
-		bite_knockback.y = 2.0 # Throw the player upward slightly
+		bite_knockback.y = 2.0 
 		
 		if player.has_method("take_damage"):
 			player.call("take_damage", 1, bite_knockback)

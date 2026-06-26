@@ -1,3 +1,12 @@
+# ==============================================================================
+# Project: CraftDomain
+# Description: Infrastructure physics controller node representing a passive chicken.
+#              OCP COMPLIANT: Completely isolated entity behavior.
+#              UPDATED: Overrode the virtual _drop_loot() contract to grant players
+#              1x Fried Chicken upon hunting.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/ChickenEntity.gd
+# ==============================================================================
 class_name ChickenEntity
 extends PassiveEntity
 
@@ -29,3 +38,8 @@ func _get_collision_box_position() -> Vector3:
 
 func _is_avian() -> bool:
 	return true
+
+## Override: Drops 1x delicious Fried Chicken directly into player inventory on death
+func _drop_loot(inv: IInventory) -> void:
+	print("[ChickenEntity] Loot dropped: 1x Fried Chicken added to slot 6.")
+	inv.modify_slot_quantity(6, 1) # Slot 6 matches Fried Chicken

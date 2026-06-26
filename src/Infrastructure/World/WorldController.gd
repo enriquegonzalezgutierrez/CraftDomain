@@ -2,8 +2,10 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications.
-#              FIXED: Removed obsolete collision_body assignment inside 
-#              set_block_globally() to resolve the RefCounted runtime crash.
+#              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
+#              and Dependency Inversion (DIP) via WorldRepository.
+#              FIXED: Removed duplicate parent-removal call of physics colliders
+#              to prevent engine memory leaks and reference crashes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -54,12 +56,11 @@ const CACHE_SIZE_LIMIT: int = 64
 var _loaded_inventory_data: Array = []
 
 ## Subclass containing the completed background generation and rendering results.
+## UPDATED: Partitioned transforms by BlockType to support Multi-Material Rendering.
 class GeneratedChunkTask:
 	var chunk: Chunk
-	var instance_count: int
-	var multimesh_bulk_array: PackedFloat32Array
-	var visual_colors: Array[Color]
-	var transforms: Array[Transform3D]
+	var multimesh_data: Dictionary = {} # BlockType.Type -> Array[Transform3D]
+	var collision_transforms: Array[Transform3D] = []
 
 func _ready() -> void:
 	assert(repository != null, "[WorldController] Fatal: WorldRepository must be injected before _ready()!")
@@ -163,75 +164,47 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 	WorkerThreadPool.add_task(_background_generate_chunk_task.bind(chunk_pos))
 
 ## Background Thread: Operates heavy procedural calculations.
+## UPDATED: Groups block coordinates by BlockType, separating fluids from solid physics.
 func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
-	# 1. Procedural generation (Polymorphic OCP call)
 	var chunk := Chunk.new(chunk_pos)
 	generator.generate_chunk(chunk)
 	
-	# 2. Disk I/O load modifications
+	# Disk I/O load modifications
 	var saved_edits := repository.load_chunk_modifications(chunk_pos)
 	if saved_edits.size() > 0:
 		for local_pos in saved_edits.keys():
 			var pos: Vector3i = local_pos
 			chunk.set_block(pos.x, pos.y, pos.z, saved_edits[local_pos])
 			
-	# 3. Pre-compile transforms coordinates
+	# Process and group visual and physical structures
+	var render_data: Dictionary = {}
 	var collision_transforms: Array[Transform3D] = []
+	
 	for x in range(Chunk.SIZE):
 		for y in range(Chunk.SIZE):
 			for z in range(Chunk.SIZE):
-				if BlockType.is_solid(chunk.get_block(x, y, z)):
-					var local_pos := Vector3(x, y, z)
-					var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
-					collision_transforms.append(Transform3D(Basis(), transform_pos))
-	
-	# 4. Background ambient shading
-	var visual_colors: Array[Color] = []
-	visual_colors.resize(collision_transforms.size())
-	
-	for i in range(collision_transforms.size()):
-		var t := collision_transforms[i]
-		var local_pos := t.origin - Vector3(0.5, 0.5, 0.5)
-		var block_x := int(round(local_pos.x))
-		var block_y := int(round(local_pos.y))
-		var block_z := int(round(local_pos.z))
-		var block_type := chunk.get_block(block_x, block_y, block_z)
-		var block_def: BlockDefinition = BlockLibrary.get_definition(block_type)
-		var shade_noise: float = 0.9 + 0.1 * sin(float(block_x) * 1.4 + float(block_y) * 2.3 + float(block_z) * 3.7)
-		visual_colors[i] = block_def.color_top * shade_noise
-	
-	# 5. Advanced binary bulk visual array compilation
-	var bulk_array := PackedFloat32Array()
-	bulk_array.resize(collision_transforms.size() * 16)
-	
-	for i in range(collision_transforms.size()):
-		var t := collision_transforms[i]
-		var c := visual_colors[i]
-		var offset := i * 16
-		bulk_array[offset + 0] = t.basis.x.x
-		bulk_array[offset + 1] = t.basis.y.x
-		bulk_array[offset + 2] = t.basis.z.x
-		bulk_array[offset + 3] = t.origin.x
-		bulk_array[offset + 4] = t.basis.x.y
-		bulk_array[offset + 5] = t.basis.y.y
-		bulk_array[offset + 6] = t.basis.z.y
-		bulk_array[offset + 7] = t.origin.y
-		bulk_array[offset + 8] = t.basis.x.z
-		bulk_array[offset + 9] = t.basis.y.z
-		bulk_array[offset + 10] = t.basis.z.z
-		bulk_array[offset + 11] = t.origin.z
-		bulk_array[offset + 12] = c.r
-		bulk_array[offset + 13] = c.g
-		bulk_array[offset + 14] = c.b
-		bulk_array[offset + 15] = c.a
+				var block_type: BlockType.Type = chunk.get_block(x, y, z)
+				if block_type == BlockType.Type.AIR:
+					continue
+					
+				var local_pos := Vector3(x, y, z)
+				var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
+				var t := Transform3D(Basis(), transform_pos)
+				
+				# Group transforms by their BlockType for rendering (Solid & Fluids)
+				if not render_data.has(block_type):
+					render_data[block_type] = []
+				render_data[block_type].append(t)
+				
+				# Only solid blocks are compiled into physics colliders
+				if BlockType.is_solid(block_type):
+					collision_transforms.append(t)
 						
-	# 6. Queue the task result
+	# Queue the task result
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
-	task_result.instance_count = collision_transforms.size()
-	task_result.multimesh_bulk_array = bulk_array
-	task_result.visual_colors = visual_colors
-	task_result.transforms = collision_transforms
+	task_result.multimesh_data = render_data
+	task_result.collision_transforms = collision_transforms
 	
 	_queue_mutex.lock()
 	_chunk_task_cache[chunk_pos] = task_result
@@ -264,22 +237,19 @@ func _render_completed_chunks_from_queue() -> void:
 			add_child(chunk_node)
 			_chunk_nodes[chunk_pos] = chunk_node
 			
-			# Thread-Safety Fix: Instantiate and register the StaticBody3D on the main thread safely!
+			# Instantiate and register physics shapes for solid blocks only
 			var collision_body := StaticBody3D.new()
 			collision_body.name = "StaticCollisionBody"
 			var shared_box_shape := BoxShape3D.new()
 			
-			for t in task.transforms:
+			for t in task.collision_transforms:
 				var owner_id := collision_body.create_shape_owner(collision_body)
 				collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
 				collision_body.shape_owner_set_transform(owner_id, t)
 			
-			chunk_node.setup_chunk_visuals(
-				task.instance_count, 
-				task.multimesh_bulk_array, 
-				collision_body
-			)
+			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body)
 			
+			# Spawning Community check
 			if is_instance_valid(_mob_spawning_service):
 				var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
 				var spawn_chunk_pos_0 := Vector3i(chunk_pos.x, 0, chunk_pos.z)
@@ -308,7 +278,6 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		_pending_loading_chunks.erase(chunk_pos)
 		return
 
-	# Unloads spawned entities safely based on horizontal column positions to prevent memory leaks
 	var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
 	if _chunk_entities.has(col_pos):
 		var entities: Array = _chunk_entities[col_pos]
@@ -337,7 +306,6 @@ func save_all() -> void:
 		repository.save_chunk_modifications(chunk_pos, modifications)
 		
 	if is_instance_valid(player):
-		# Gather the player's actual inventory quantities before executing save serialization
 		var inv_quantities: Array = []
 		var inventory = player.get("inventory")
 		if is_instance_valid(inventory):
@@ -348,7 +316,7 @@ func save_all() -> void:
 			player.global_position, 
 			player.rotation, 
 			generator._terrain_noise.seed,
-			inv_quantities # Persists active slot quantities
+			inv_quantities 
 		)
 	print("[WorldController] All data serialized and saved successfully.")
 
@@ -357,8 +325,6 @@ func _activate_player_spawn() -> void:
 	var block_z := int(floor(player.position.z))
 	var found_safe_y: float = -1.0
 	
-	# Scan loop from 31 down to 0 (the complete world vertical limit)
-	# This guarantees the player is always spawned on top of the ground, never underground.
 	for y in range(31, -1, -1):
 		var check_coord := Vector3i(block_x, y, block_z)
 		var block_type := world_state.get_block(check_coord)
@@ -372,7 +338,6 @@ func _activate_player_spawn() -> void:
 	else:
 		player.position.y = 14.0
 		
-	# Restore saved inventory quantities safely on player activation
 	_restore_player_inventory()
 	
 	player.set("is_active", true)
@@ -398,14 +363,13 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 	
-	# SELF-HEALING HOOK: If the visual chunk node does not exist, force load it immediately on the main thread!
+	# SELF-HEALING HOOK: If the visual chunk node does not exist, force load it.
 	if not is_instance_valid(chunk_node):
 		var chunk := world_state.get_chunk(chunk_pos)
 		if chunk == null:
 			chunk = Chunk.new(chunk_pos)
 			generator.generate_chunk(chunk)
 			
-			# Load any existing saved edits on disk for this chunk
 			var saved_edits := repository.load_chunk_modifications(chunk_pos)
 			if saved_edits.size() > 0:
 				for local_pos in saved_edits.keys():
@@ -413,58 +377,36 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 					
 			world_state.add_chunk(chunk)
 			
-		# Instantiate visual chunk node on the main thread instantly
 		chunk_node = ChunkNode.new(chunk)
 		add_child(chunk_node)
 		_chunk_nodes[chunk_pos] = chunk_node
 	
-	# 2. Rebuild visuals for the target chunk node
+	# 2. Rebuild the partitioned MultiMesh rendering arrays instantly
+	var render_data: Dictionary = {}
 	var collision_transforms: Array[Transform3D] = []
+	
 	for x in range(Chunk.SIZE):
 		for y in range(Chunk.SIZE):
 			for z in range(Chunk.SIZE):
-				var check_b: BlockType.Type = chunk_node.chunk.get_block(x, y, z)
-				if BlockType.is_solid(check_b):
-					var local_pos := Vector3(x, y, z)
-					var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
-					collision_transforms.append(Transform3D(Basis(), transform_pos))
+				var block_type: BlockType.Type = chunk_node.chunk.get_block(x, y, z)
+				if block_type == BlockType.Type.AIR:
+					continue
 					
-	var visual_colors: Array[Color] = []
-	visual_colors.resize(collision_transforms.size())
-	for i in range(collision_transforms.size()):
-		var t := collision_transforms[i]
-		var local_pos := t.origin - Vector3(0.5, 0.5, 0.5)
-		var block_x := int(round(local_pos.x))
-		var block_y := int(round(local_pos.y))
-		var block_z := int(round(local_pos.z))
-		var block_type_at := chunk_node.chunk.get_block(block_x, block_y, block_z)
-		var block_def := BlockLibrary.get_definition(block_type_at)
-		var shade_noise: float = 0.9 + 0.1 * sin(float(block_x) * 1.4 + float(block_y) * 2.3 + float(block_z) * 3.7)
-		visual_colors[i] = block_def.color_top * shade_noise
+				var local_pos := Vector3(x, y, z)
+				var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
+				var t := Transform3D(Basis(), transform_pos)
+				
+				# Group transforms by their BlockType for rendering
+				if not render_data.has(block_type):
+					render_data[block_type] = []
+				render_data[block_type].append(t)
+				
+				# Only solid blocks are compiled into physics colliders
+				if BlockType.is_solid(block_type):
+					collision_transforms.append(t)
 		
-	var bulk_array := PackedFloat32Array()
-	bulk_array.resize(collision_transforms.size() * 16)
-	for i in range(collision_transforms.size()):
-		var t := collision_transforms[i]
-		var c := visual_colors[i]
-		var offset := i * 16
-		bulk_array[offset + 0] = t.basis.x.x
-		bulk_array[offset + 1] = t.basis.y.x
-		bulk_array[offset + 2] = t.basis.z.x
-		bulk_array[offset + 3] = t.origin.x
-		bulk_array[offset + 4] = t.basis.x.y
-		bulk_array[offset + 5] = t.basis.y.y
-		bulk_array[offset + 6] = t.basis.z.y
-		bulk_array[offset + 7] = t.origin.y
-		bulk_array[offset + 8] = t.basis.x.z
-		bulk_array[offset + 9] = t.basis.y.z
-		bulk_array[offset + 10] = t.basis.z.z
-		bulk_array[offset + 11] = t.origin.z
-		bulk_array[offset + 12] = c.r
-		bulk_array[offset + 13] = c.g
-		bulk_array[offset + 14] = c.b
-		bulk_array[offset + 15] = c.a
-		
+	# 3. Compile and apply new physics StaticBody3D on the main thread
+	# FIXED: Left the cleanup entirely to setup_chunk_visuals to prevent parent removal exceptions
 	var collision_body := StaticBody3D.new()
 	collision_body.name = "StaticCollisionBody"
 	var shared_box_shape := BoxShape3D.new()
@@ -473,21 +415,10 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
 		collision_body.shape_owner_set_transform(owner_id, t)
 		
-	var old_body := chunk_node.get_node_or_null("StaticCollisionBody")
-	if is_instance_valid(old_body):
-		chunk_node.remove_child(old_body)
-		old_body.queue_free()
-		
-	chunk_node.setup_chunk_visuals(
-		collision_transforms.size(), 
-		bulk_array, 
-		collision_body
-	)
+	chunk_node.setup_chunk_visuals(render_data, collision_body)
 	
 	# Synchronize the task cache
-	# FIXED: Removed the obsolete, crash-inducing collision_body cached reference!
 	if _chunk_task_cache.has(chunk_pos):
 		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos]
-		cached_task.transforms = collision_transforms
-		cached_task.visual_colors = visual_colors
-		cached_task.multimesh_bulk_array = bulk_array
+		cached_task.multimesh_data = render_data
+		cached_task.collision_transforms = collision_transforms

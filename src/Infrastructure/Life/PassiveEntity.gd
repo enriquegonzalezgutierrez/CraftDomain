@@ -4,6 +4,8 @@
 #              OCP COMPLIANT: Acts as an Abstract Base Class. Handles physical
 #              instantiation of collision nodes internally, letting subclasses
 #              only define their dimensions polimorphically.
+#              UPDATED: Added a dynamic loot-drop pipeline on entity death
+#              to reward players with direct inventory items.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -122,7 +124,23 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
 
 func _on_domain_entity_died() -> void:
+	_try_drop_player_loot()
 	queue_free()
+
+## Scans the parent node to find the Player and safely inject loot rewards
+func _try_drop_player_loot() -> void:
+	var parent := get_parent()
+	if is_instance_valid(parent):
+		var player_node := parent.get_node_or_null("Player") as CharacterBody3D
+		if is_instance_valid(player_node):
+			var inv: IInventory = player_node.get("inventory")
+			if is_instance_valid(inv):
+				_drop_loot(inv)
+				player_node.call("_sync_hud_counters") # Sync HUD UI instantly
+
+## Virtual Method: Overridden by specific subclasses to declare their unique drops
+func _drop_loot(_inv: IInventory) -> void:
+	pass
 
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: return
@@ -158,9 +176,8 @@ func _set_eyes_vertical_scale(y_scale: float) -> void:
 	if is_instance_valid(_right_eye):
 		_right_eye.scale.y = y_scale
 
-## Advanced behavior states: WANDERING, GREETING players, or EXAMINING (working on grass)
+## Advanced behavior states: WANDERING, GREETING players, or EXAMINING
 func _process_ai_state_machine(delta: float) -> void:
-	# 1. Proximity checking: if player is very close, stop and greet them
 	var player_node: CharacterBody3D = get_parent().get_node_or_null("Player") as CharacterBody3D
 	var distance_to_player: float = 999.0
 	
@@ -171,25 +188,22 @@ func _process_ai_state_machine(delta: float) -> void:
 	
 	if can_socialize and distance_to_player <= GREET_DISTANCE:
 		current_task = TaskState.GREETING
-		# Rotate smoothly to look at the player
 		var look_dir := (player_node.global_position - global_position).normalized()
 		look_dir.y = 0
 		if look_dir != Vector3.ZERO:
 			_wander_direction = look_dir
 	else:
-		# Standard self-directed routine timers
 		_task_timer -= delta
 		if _task_timer <= 0.0:
 			_select_next_random_task()
 
-	# 2. Execute active state velocities
+	# Execute active state velocities
 	match current_task:
 		TaskState.IDLE, TaskState.GREETING:
 			velocity.x = move_toward(velocity.x, 0, BASE_SPEED)
 			velocity.z = move_toward(velocity.z, 0, BASE_SPEED)
 			
 		TaskState.EXAMINING:
-			# Slow movement, looking down at a block
 			velocity.x = _wander_direction.x * (BASE_SPEED * 0.25)
 			velocity.z = _wander_direction.z * (BASE_SPEED * 0.25)
 			
@@ -197,7 +211,6 @@ func _process_ai_state_machine(delta: float) -> void:
 			velocity.x = _wander_direction.x * BASE_SPEED
 			velocity.z = _wander_direction.z * BASE_SPEED
 			
-			# Auto-jump over blocks when hitting a wall
 			if is_on_wall() and is_on_floor():
 				velocity.y = JUMP_VELOCITY
 
@@ -215,7 +228,7 @@ func _select_next_random_task() -> void:
 		_wander_direction = Vector3(cos(angle), 0, sin(angle))
 		_task_timer = randf_range(3.0, 7.0)
 	elif roll < 0.70:
-		current_task = TaskState.EXAMINING # Farming / Inspecting state!
+		current_task = TaskState.EXAMINING 
 		var angle := randf() * TAU
 		_wander_direction = Vector3(cos(angle), 0, sin(angle))
 		_task_timer = randf_range(2.0, 5.0)
@@ -223,48 +236,39 @@ func _select_next_random_task() -> void:
 		current_task = TaskState.IDLE
 		_task_timer = randf_range(1.5, 4.0)
 
-## Beautiful procedural animations (head nodding, arm swaying, walking tilts)
+## Beautiful procedural animations
 func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
 	
-	# Turn visuals towards their travel or tracking direction
 	if is_instance_valid(_visual_root) and _wander_direction != Vector3.ZERO:
 		var target_look := global_position + _wander_direction
 		_visual_root.look_at(target_look, Vector3.UP)
 		_visual_root.rotation.x = 0
 		_visual_root.rotation.z = 0
 		
-	# 1. GREETING: Nod head up and down slightly to simulate a verbal greet
 	if current_task == TaskState.GREETING:
 		if is_instance_valid(_head_node):
-			_head_node.rotation.x = sin(_animation_time * 6.0) * 0.15 # Nodding hello!
+			_head_node.rotation.x = sin(_animation_time * 6.0) * 0.15 
 		if is_instance_valid(_arms_node):
 			_arms_node.rotation.x = 0.0
 			
-	# 2. EXAMINING: Look downward and swing arms slightly to simulate working
 	elif current_task == TaskState.EXAMINING:
 		if is_instance_valid(_head_node):
-			# Look downward at the ground
 			_head_node.rotation.x = lerp(_head_node.rotation.x, deg_to_rad(25), delta * 5.0)
 		if is_instance_valid(_arms_node):
-			# Sway arms vertically to simulate hoeing/shoveling
 			_arms_node.position.y = -0.21 + sin(_animation_time * 8.0) * 0.03
 			
-	# 3. WANDERING: Sway head left-to-right organically and tilt torso during movement
 	elif current_task == TaskState.WANDERING:
 		var speed_mult := 8.0 if _is_avian() else 5.0
 		var sway_amount := 0.2 if _is_avian() else 0.08
 		
 		if is_instance_valid(_head_node):
-			# Rhythmic head bobbing while walking
 			_head_node.rotation.x = sin(_animation_time * speed_mult) * sway_amount
 			_head_node.rotation.y = cos(_animation_time * (speed_mult * 0.5)) * 0.05
 			
 		if is_instance_valid(_arms_node):
-			# Folded arms bob with the walk cycle
 			_arms_node.position.y = -0.21 + sin(_animation_time * 10.0) * 0.02
 			
-	# 4. IDLE: Return all nodes back to baseline resting positions smoothly
 	else:
 		if is_instance_valid(_head_node):
 			_head_node.rotation.x = lerp(_head_node.rotation.x, 0.0, delta * 5.0)
