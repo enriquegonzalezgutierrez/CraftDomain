@@ -2,29 +2,57 @@
 # Project: CraftDomain
 # Description: Domain Registry/Loader responsible for parsing and instantiating 
 #              quests from external JSON data.
-#              SOLID COMPLIANCE: Strictly satisfies the Open-Closed Principle (OCP)
-#              and Single Responsibility Principle (SRP). All hardcoded campaign 
-#              dictionaries have been completely removed from the GDScript codebase.
-#              The system relies strictly on the external "campaign.json" asset.
+#              SOLID COMPLIANCE: Adheres strictly to the Open-Closed Principle (OCP)
+#              and Single Responsibility Principle (SRP). All template generators
+#              and hardcoded dictionaries have been completely removed from the
+#              GDScript code. The system relies strictly on scanning and parsing
+#              whatever .json files exist in the res://assets/quests/ folder.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Quest/CampaignRegistry.gd
 # ==============================================================================
 class_name CampaignRegistry
 extends RefCounted
 
-const CAMPAIGN_FILE := "res://assets/quests/campaign.json"
+const QUEST_DIR := "res://assets/quests/"
 
-## Initializes the campaign by loading the external JSON configuration (OCP compliant)
+## Scans the directory and loads all present JSON quest files (OCP compliant)
 static func initialize_campaign() -> void:
-	_load_campaign_from_json()
+	_scan_and_load_all_quest_files()
 
-## Parses the JSON file and registers the instantiated Quests into the QuestService
-static func _load_campaign_from_json() -> void:
-	print("[CampaignRegistry] Loading campaign dynamically from external JSON: ", CAMPAIGN_FILE)
+## Scans the quest directory and parses every single .json file present (OCP)
+static func _scan_and_load_all_quest_files() -> void:
+	print("[CampaignRegistry] Scanning directory for quest files: ", QUEST_DIR)
 	
-	var file := FileAccess.open(CAMPAIGN_FILE, FileAccess.READ)
+	var dir := DirAccess.open(QUEST_DIR)
+	if dir == null:
+		push_error("[CampaignRegistry] Error: Could not access quest directory: " + QUEST_DIR)
+		return
+		
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+	var loaded_files_count := 0
+	
+	while file_name != "":
+		if not dir.current_is_dir() and file_name.ends_with(".json"):
+			var full_path := QUEST_DIR + file_name
+			_load_quests_from_file(full_path)
+			loaded_files_count += 1
+		file_name = dir.get_next()
+		
+	dir.list_dir_end()
+	print("[CampaignRegistry] Dynamic scan finished. Total quest files loaded: ", loaded_files_count)
+	
+	# Automatically activate the starter quest to begin the campaign
+	if QuestService.get_quest("lost_bazaar") != null:
+		QuestService.set_active_quest("lost_bazaar")
+
+## Parses a specific JSON file and registers its instantiated Quests
+static func _load_quests_from_file(file_path: String) -> void:
+	print("  -> Loading quest pack: ", file_path)
+	
+	var file := FileAccess.open(file_path, FileAccess.READ)
 	if file == null:
-		push_error("[CampaignRegistry] Error: Critical asset 'campaign.json' is missing from " + CAMPAIGN_FILE)
+		push_error("[CampaignRegistry] Error: Could not read quest file: " + file_path)
 		return
 		
 	var json_string := file.get_as_text()
@@ -33,10 +61,9 @@ static func _load_campaign_from_json() -> void:
 	var json := JSON.new()
 	var error := json.parse(json_string)
 	if error != OK:
-		push_error("[CampaignRegistry] Error parsing JSON. Line: %d | Error: %s" % [json.get_error_line(), json.get_error_message()])
+		push_error("[CampaignRegistry] Error parsing JSON " + file_path + ". Line: " + str(json.get_error_line()) + " | Error: " + json.get_error_message())
 		return
 		
-	# Instantiates Quests polymorphically from the parsed JSON array
 	var quest_array: Array = json.data
 	for q_data in quest_array:
 		var q := Quest.new()
@@ -56,11 +83,11 @@ static func _load_campaign_from_json() -> void:
 		q.reward_item_index = int(q_data["reward_item_index"])
 		q.reward_quantity = int(q_data["reward_quantity"])
 		
+		# Optional requirements
+		if q_data.has("required_item_index"):
+			q.required_item_index = int(q_data["required_item_index"])
+		if q_data.has("required_quantity"):
+			q.required_quantity = int(q_data["required_quantity"])
+			
 		# Register in the Domain Database
 		QuestService.register_quest(q)
-		
-	# Automatically activate the first registered quest to begin the narrative Campaign
-	if quest_array.size() > 0:
-		var first_quest_id: String = str(quest_array[0]["quest_id"])
-		QuestService.set_active_quest(first_quest_id)
-		print("[CampaignRegistry] Campaign loaded successfully. Starting quest: ", first_quest_id)

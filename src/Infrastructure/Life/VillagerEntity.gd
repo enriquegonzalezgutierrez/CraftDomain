@@ -2,9 +2,9 @@
 # Project: CraftDomain
 # Description: Villager NPC entity. Inherits from the abstract base class PassiveEntity.
 #              OCP COMPLIANT: Completely isolated from other NPC files.
-#              REVERTED: Restored the original programmatic 3D voxel block design
-#              (with custom nose and blinking eyes) for a classic Minecraft look,
-#              while keeping the campaign Quest 1 completion triggers fully functional.
+#              UPDATED: Cleaned up quest triggers (SOLID OCP). Removed the hardcoded
+#              set_active_quest("fuel_fryer") call to let the dynamic JSON-driven
+#              campaign.json chain load the story campaign autonomously.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
@@ -66,17 +66,15 @@ func interact(player_node: CharacterBody3D) -> void:
 	
 	# --- CAMPAIGN MISSION 1 TRIGGER: Talk to the Villager ---
 	if active_q != null and active_q.quest_id == "lost_bazaar":
-		var inv := player_node.get("inventory") as IInventory
-		if is_instance_valid(inv):
-			inv.modify_slot_quantity(active_q.reward_item_index, active_q.reward_quantity)
-			player_node.call("_sync_hud_counters")
-			
-		QuestService.complete_active_quest()
-		QuestService.set_active_quest("fuel_fryer")
+		# SOLID OCP FIX: We only call complete_active_quest passing the player node.
+		# The QuestService will automatically grant rewards and chain-load the next
+		# quest defined in your JSON, without any hardcoded scripts!
+		QuestService.complete_active_quest(player_node)
 		
+		# Create story completion dialogue dynamically
 		var complete_node := DialogueNode.new()
 		complete_node.node_id = "villager_quest_complete"
-		complete_node.text = "Thank goodness you found our bazaar, traveler! We were worried you were lost in the ocean bay. Here are some Wood Blocks to help you build a shelter.\n\nPlease talk to our Merchant nearby, his lava-chicken fryers are completely out of fuel!"
+		complete_node.text = "Thank goodness you found our bazaar, traveler! We were worried you were lost in the ocean bay. Here are some Wood Blocks to help you build a shelter.\n\nPlease check your mission tracker, you need to collect leaves to build a thatched roof!"
 		DialogueService.register_node(complete_node)
 		
 		var hud = player_node.get("hud")
