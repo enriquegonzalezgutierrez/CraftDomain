@@ -4,7 +4,8 @@
 #              handling dynamic, decoupled dependency injection, soundtracks, 
 #              safe audio crossfades, and dynamic OCP-compliant registrations
 #              for both Biome Strategies and Structure Blueprints.
-#              UPDATED: Registered Sakura Tree (ID 10) and Giant Fungus (ID 11) blueprints.
+#              SOLID COMPLIANCE: Environment setup completely delegated to 
+#              EnvironmentBuilder to satisfy Single Responsibility Principle (SRP).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -65,7 +66,7 @@ func _setup_structures() -> void:
 	StructureLibrary.register_blueprint(MarketCabinBlueprint.new())   # ID 8
 	StructureLibrary.register_blueprint(HarborPierBlueprint.new())    # ID 9
 	
-	# UPDATED: Register new flora blueprints dynamically! (OCP compliant)
+	# Register flora blueprints dynamically (OCP compliant)
 	StructureLibrary.register_blueprint(SakuraTreeBlueprint.new())       # ID 10
 	StructureLibrary.register_blueprint(UnderworldFungusBlueprint.new()) # ID 11
 	
@@ -76,39 +77,17 @@ func _setup_persistence() -> void:
 	world_repository = DiskWorldRepository.new()
 
 func _setup_environment() -> void:
-	# 1. Setup directional Sun light with shadows
-	sun_light = DirectionalLight3D.new()
-	sun_light.name = "SunLight"
-	sun_light.shadow_enabled = true
+	print("[Bootstrap] Delegating environment setup to EnvironmentBuilder (SRP)...")
 	
-	# Rotate the sun to a natural high-noon angle initially
-	sun_light.transform.basis = Basis(Vector3(1, 0, 0), deg_to_rad(-55)).rotated(Vector3(0, 1, 0), deg_to_rad(30))
+	# 1. Delegate Sun creation
+	sun_light = EnvironmentBuilder.build_sun()
 	add_child(sun_light)
 	
-	# 2. Configure a gorgeous Procedural Sky Environment
-	world_environment = WorldEnvironment.new()
-	world_environment.name = "WorldEnvironment"
-	
-	var environment := Environment.new()
-	environment.background_mode = Environment.BG_SKY
-	
-	var sky := Sky.new()
-	var sky_material := ProceduralSkyMaterial.new()
-	
-	# Custom sky dome colors
-	sky_material.sky_top_color = Color(0.2, 0.5, 0.85)       # Deep blue
-	sky_material.sky_horizon_color = Color(0.55, 0.75, 0.9)   # Pale horizon
-	sky_material.ground_bottom_color = Color(0.12, 0.12, 0.12) # Dark ground
-	sky_material.ground_horizon_color = Color(0.55, 0.75, 0.9)
-	
-	sky.sky_material = sky_material
-	environment.sky = sky
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	
-	world_environment.environment = environment
+	# 2. Delegate RTX-style WorldEnvironment creation
+	world_environment = EnvironmentBuilder.build_environment()
 	add_child(world_environment)
 	
-	print("[Bootstrap] Procedural environment initialized.")
+	print("[Bootstrap] Environment initialized.")
 
 func _setup_celestial() -> void:
 	print("[Bootstrap] Initializing Celestial Day/Night Cycle Service...")

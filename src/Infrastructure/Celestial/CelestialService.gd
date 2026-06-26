@@ -2,7 +2,9 @@
 # Project: CraftDomain
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              dynamic SunLight rotation, and procedural sky color transitions.
-#              FIXED: Resolved integer division warning inside get_formatted_time().
+#              UPDATED: Shifted starting time to High Noon (12:00 PM) and completely
+#              re-calibrated the sky colors to be ultra-vibrant, bright, and cheerful
+#              to match the classic "RTX Shaders" visual aesthetic.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
@@ -16,19 +18,23 @@ var time_speed: float = 72.0
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
 
-# Internal time tracking (0.0 to 1.0 represents a full 24-hour cycle, starts at 0.25 - Morning)
-var _current_time: float = 0.25
+# Internal time tracking (0.0 to 1.0 represents a full 24-hour cycle)
+# UPDATED: Starts at 0.5 (12:00 PM - High Noon) for maximum light and vibrant colors
+var _current_time: float = 0.5
 
 # Sky colors for different times of day (Interpolation targets)
 const SKY_COLORS = {
-	"MORNING_TOP": Color(0.3, 0.45, 0.8),
-	"MORNING_HORIZON": Color(0.9, 0.6, 0.4),
-	"NOON_TOP": Color(0.2, 0.5, 0.85),
-	"NOON_HORIZON": Color(0.55, 0.75, 0.9),
-	"SUNSET_TOP": Color(0.15, 0.15, 0.35),
-	"SUNSET_HORIZON": Color(0.85, 0.35, 0.2),
-	"NIGHT_TOP": Color(0.02, 0.02, 0.05),
-	"NIGHT_HORIZON": Color(0.05, 0.05, 0.1)
+	"MORNING_TOP": Color(0.2, 0.55, 0.9),      # Clear, bright morning blue
+	"MORNING_HORIZON": Color(0.95, 0.75, 0.45), # Warm golden sunrise
+	
+	"NOON_TOP": Color(0.12, 0.45, 0.95),       # Deep, vibrant zenith blue
+	"NOON_HORIZON": Color(0.55, 0.85, 1.0),    # Bright cyan/white horizon 
+	
+	"SUNSET_TOP": Color(0.15, 0.25, 0.45),     # Deepening evening blue
+	"SUNSET_HORIZON": Color(0.95, 0.45, 0.2),  # Fiery orange sunset
+	
+	"NIGHT_TOP": Color(0.02, 0.02, 0.08),      # Deep space midnight
+	"NIGHT_HORIZON": Color(0.08, 0.08, 0.15)   # Subtle moonlit horizon
 }
 
 func _ready() -> void:
@@ -62,12 +68,12 @@ func _update_sun_rotation() -> void:
 		sun_light.shadow_enabled = false
 	else:
 		# Map sunrise/sunset fades smoothly
-		var intensity: float = 1.0
+		var intensity: float = 1.2 # Stronger max sun intensity for vibrant lighting
 		if _current_time < 0.3: # Sunrise fade-in
-			intensity = remap(_current_time, 0.2, 0.3, 0.0, 1.0)
+			intensity = remap(_current_time, 0.2, 0.3, 0.0, 1.2)
 		elif _current_time > 0.7: # Sunset fade-out
-			intensity = remap(_current_time, 0.7, 0.8, 1.0, 0.0)
-		sun_light.light_energy = clamp(intensity, 0.0, 1.0)
+			intensity = remap(_current_time, 0.7, 0.8, 1.2, 0.0)
+		sun_light.light_energy = clamp(intensity, 0.0, 1.2)
 		sun_light.shadow_enabled = true
 
 func _update_sky_atmosphere() -> void:
@@ -110,7 +116,6 @@ func is_night_time() -> bool:
 	return _current_time < 0.2 or _current_time > 0.8
 
 ## Public API: Converts the internal 0..1 timeline into a formatted digital 24h clock string (HH:MM)
-## FIXED: Casted total_minutes to float divisor to prevent GDScript compiler Integer Division Warnings.
 func get_formatted_time() -> String:
 	var total_minutes := int(floor(_current_time * 1440.0))
 	var hours := int(float(total_minutes) / 60.0)

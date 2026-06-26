@@ -1,8 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain Generator responsible for procedurally carving chunk block data.
-#              FIXED: Expanded flora height limits up to Y=27 to allow high-altitude
-#              forests, Sakura trees, and giant mushrooms to generate on top of mountains.
+#              FIXED: Solved the "Floating Blocks" bug by properly converting global
+#              ground heights into local chunk heights before passing them to blueprints!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldGenerator.gd
 # ==============================================================================
@@ -10,7 +10,7 @@ class_name WorldGenerator
 extends RefCounted
 
 var _terrain_noise: FastNoiseLite
-var _detail_noise: FastNoiseLite # High-frequency noise for surface variety
+var _detail_noise: FastNoiseLite 
 
 # Maps old Biome landmark IDs to new OCP Structure Blueprint IDs
 const LANDMARK_TO_BLUEPRINT: Dictionary = {
@@ -23,7 +23,7 @@ const LANDMARK_TO_BLUEPRINT: Dictionary = {
 }
 
 func _init(p_seed: int = 42) -> void:
-	# Primary Macro Terrain Noise: Continental elevations
+	# Primary Macro Terrain Noise
 	_terrain_noise = FastNoiseLite.new()
 	_terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_terrain_noise.seed = p_seed
@@ -33,7 +33,7 @@ func _init(p_seed: int = 42) -> void:
 	_terrain_noise.fractal_lacunarity = 2.0
 	_terrain_noise.fractal_gain = 0.45
 
-	# Secondary Detail Noise: Rugged peaks, ridges, and material variations
+	# Secondary Detail Noise
 	_detail_noise = FastNoiseLite.new()
 	_detail_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	_detail_noise.seed = p_seed + 101
@@ -64,9 +64,8 @@ func generate_chunk(chunk: Chunk) -> void:
 			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(global_x, global_z, _terrain_noise)
 			var idx: int = x + Chunk.SIZE * z
 			
-			# Obtain micro detailed ruggedness modifier
 			var detail_val: float = _detail_noise.get_noise_2d(float(global_x), float(global_z))
-			var detail_modifier: int = int(detail_val * 2.2) # Adds +/- 2 blocks of local texture
+			var detail_modifier: int = int(detail_val * 2.2) 
 			
 			raw_heights[idx] = profile.base_height + detail_modifier
 			biome_ids[idx] = profile.biome_id
@@ -92,13 +91,11 @@ func generate_chunk(chunk: Chunk) -> void:
 			
 			var is_mountainous: bool = (b_id == 3 or b_id == 6 or b_id == 7)
 			if is_mountainous:
-				# Keeps sharp cliffs and steep drops intact
 				smoothed_heights[idx] = int(lerp(float(raw_heights[idx]), float(blur_height), 0.40))
 			else:
-				# Keeps plains, valleys, and forests walkably smooth
 				smoothed_heights[idx] = blur_height
 
-	# PASS 3: Sculpt blocks polymorphically with micro material patches
+	# PASS 3: Sculpt blocks polymorphically
 	for x in range(Chunk.SIZE):
 		var global_x: int = chunk_offset_x + x
 		for z in range(Chunk.SIZE):
@@ -106,28 +103,23 @@ func generate_chunk(chunk: Chunk) -> void:
 			var idx: int = x + Chunk.SIZE * z
 			var target_height: int = smoothed_heights[idx]
 			var biome_id: int = biome_ids[idx]
-			
 			var biome: IBiome = BiomeService.get_biome(biome_id)
 			
 			for y in range(Chunk.SIZE):
 				var global_y: int = chunk_offset_y + y
 				var block_type: BlockType.Type = BlockType.Type.AIR
 				
-				# Sculpt the terrain layers polymorphically
 				if global_y <= target_height:
-					# Check if this is a surface block to add visual variety
 					if global_y == target_height:
 						block_type = _determine_surface_block(x, z, global_x, global_z, target_height, biome, biome_id, smoothed_heights)
 					else:
 						block_type = biome.get_block_for_depth(global_y, target_height)
 				else:
-					# Aquatic Biomes Water levels
 					if biome_id == 0 and global_y <= 5:
 						block_type = BlockType.Type.WATER
 					elif biome_id == 8 and global_y <= 4:
 						block_type = BlockType.Type.WATER
 						
-					# Celestial Cloud Isles Generation
 					if (abs(global_x) + abs(global_z)) % 120 < 18 and global_y >= 12 and global_y <= 14:
 						block_type = BlockType.Type.CLOUD
 				
@@ -141,27 +133,26 @@ func generate_chunk(chunk: Chunk) -> void:
 			var idx: int = x + Chunk.SIZE * z
 			var ground_y: int = smoothed_heights[idx]
 			
-			# FIXED: Expanded spawn limit from Y=11 up to Y=27.
-			# This populates high mountains and plateau steps with trees and giant mushrooms.
 			if ground_y < 2 or ground_y > 27:
 				continue
 				
+			# BUG FIX: Convert global ground_y to local chunk Y coordinates before passing to blueprints!
+			# This absolutely prevents trees from duplicating in mid-air in higher chunks.
+			var local_ground_y: int = ground_y - chunk_offset_y
+			
 			var biome_id: int = biome_ids[idx]
 			var biome: IBiome = BiomeService.get_biome(biome_id)
 			var scatter_hash: int = abs(global_x * 93856093 ^ global_z * 29349663)
 			
-			# 4A. Organic Forest Scatter (100% OCP COMPLIANT!)
 			var scatter_id: int = biome.get_scatter_blueprint_id(scatter_hash)
 			if scatter_id > 0:
-				_spawn_blueprint(chunk, x, z, ground_y, scatter_id)
+				_spawn_blueprint(chunk, x, z, local_ground_y, scatter_id)
 					
-			# 4B. Rare Biome Landmarks
 			var l_id: int = landmark_ids[idx]
 			if l_id > 0 and LANDMARK_TO_BLUEPRINT.has(l_id):
 				var blueprint_id: int = int(LANDMARK_TO_BLUEPRINT[l_id])
-				_spawn_blueprint(chunk, x, z, ground_y, blueprint_id)
+				_spawn_blueprint(chunk, x, z, local_ground_y, blueprint_id)
 
-## Helper to determine surface block type with realistic variation
 func _determine_surface_block(
 	x: int, z: int, gx: int, gz: int, 
 	target_height: int, biome: IBiome, 
@@ -177,25 +168,21 @@ func _determine_surface_block(
 				is_steep = true
 				break
 				
-	# Steep cliff sides expose raw mountain rock on the surface
 	if is_steep and biome_id != 0 and biome_id != 9: 
 		return BlockType.Type.STONE
 		
-	# Base surface block from strategy
 	var default_surface: BlockType.Type = biome.get_block_for_depth(target_height, target_height)
 	
-	# Micro patches of sand/dirt to break grasslands monotony
 	if default_surface == BlockType.Type.GRASS:
 		var patch_val: float = _detail_noise.get_noise_2d(float(gx) * 2.0, float(gz) * 2.0)
 		if patch_val > 0.45:
-			return BlockType.Type.SAND # Sand deposit
+			return BlockType.Type.SAND 
 		elif patch_val < -0.45:
-			return BlockType.Type.DIRT # Coarse dirt patch
+			return BlockType.Type.DIRT 
 			
 	return default_surface
 
-## Helper to fetch and execute blueprints from the dynamic registry safely
-func _spawn_blueprint(chunk: Chunk, x: int, z: int, ground_y: int, blueprint_id: int) -> void:
+func _spawn_blueprint(chunk: Chunk, x: int, z: int, local_ground_y: int, blueprint_id: int) -> void:
 	var blueprint: IStructureBlueprint = StructureLibrary.get_blueprint(blueprint_id)
 	if blueprint != null:
-		blueprint.build_structure(chunk, x, z, ground_y)
+		blueprint.build_structure(chunk, x, z, local_ground_y)

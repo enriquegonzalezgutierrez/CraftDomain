@@ -2,6 +2,8 @@
 # Project: CraftDomain
 # Description: Infrastructure rendering node representing a chunk using Godot's
 #              native MultiMeshInstance3D with procedural 16x16 pixel textures.
+#              UPDATED: Reduced material roughness to 0.65 to enable high-end 
+#              SDFGI light bounces and SSR reflections for that "RTX" look.
 #              FIXED: Recreates the MultiMesh object entirely inside setup_chunk_visuals()
 #              to force Godot to flush GPU memory and correctly draw newly placed blocks!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -57,7 +59,10 @@ func _apply_material() -> void:
 	if _shared_material == null:
 		_shared_material = ORMMaterial3D.new()
 		_shared_material.vertex_color_use_as_albedo = true
-		_shared_material.roughness = 0.95
+		
+		# UPGRADE: Reduced roughness to 0.65 to enable beautiful Godot 4 SDFGI and SSR bounces!
+		_shared_material.roughness = 0.65 
+		
 		_shared_material.albedo_texture = _procedural_pixel_texture
 		_shared_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	
