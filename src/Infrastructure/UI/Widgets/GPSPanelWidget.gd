@@ -4,6 +4,7 @@
 #              top coordinates, celestial clock, active biome, and regional compass distances.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating GPS navigation math from the main HUD class.
+#              FIXED: Corrected absolute NodePath search to prevent relative path breaking.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/GPSPanelWidget.gd
 # ==============================================================================
@@ -27,7 +28,7 @@ const BIOME_NAMES = {
 	4: "Frostbite Glaciers (North Cap)",
 	5: "Whispering Redwood Forest",
 	6: "Red Sandstone Canyons",
-	7: {"name": "Neon Ruins (Cyber Basin)"}, # Keep consistent with HUD map
+	7: {"name": "Neon Ruins (Cyber Basin)"}, 
 	8: "Swamp of Sighs (Mist Bay)",
 	9: "Cloud Kingdom (Floating Isles)"
 }
@@ -35,9 +36,6 @@ const BIOME_NAMES = {
 func _ready() -> void:
 	name = "GPSPanel"
 	_setup_gps_layout()
-
-func _setup_navigation_gps_panel() -> void:
-	pass # Legacy placeholder
 
 func _setup_gps_layout() -> void:
 	custom_minimum_size = Vector2(500, 85)
@@ -101,9 +99,9 @@ func update_widget() -> void:
 		
 	var p_pos := player.global_position
 	
-	# 1. Retrieve the celestial clock (HH:MM) from CelestialService
+	# 1. FIXED: Corrected absolute NodePath search to locate CelestialService safely
 	var time_str: String = "12:00"
-	var celestial = get_parent().get_parent().get_node_or_null("CelestialService")
+	var celestial = get_node_or_null("/root/Bootstrap/CelestialService")
 	if is_instance_valid(celestial) and celestial.has_method("get_formatted_time"):
 		time_str = celestial.call("get_formatted_time")
 		
@@ -114,7 +112,7 @@ func update_widget() -> void:
 		time_str
 	]
 	
-	# 2. Query Biome name from BiomeService dynamically (Zero circular loop dependencies!)
+	# 2. Query Biome name from BiomeService dynamically
 	var profile := BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), world_controller.generator._terrain_noise)
 	var b_name: String = ""
 	

@@ -3,16 +3,16 @@
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              dynamic SunLight and MoonLight rotation, and procedural sky transitions.
 #              SOLID COMPLIANCE: Encapsulates all dynamic celestial calculations.
-#              FIXED: Activated SKY_MODE_LIGHT_ONLY on MoonLight to completely
-#              hide the dynamic moon disc and prevent sky rendering artifacts.
+#              UPDATED: Adjusted time_speed to 96.0 to ensure a full 24-hour cycle 
+#              takes exactly 15 minutes of real-world play.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
 class_name CelestialService
 extends Node
 
-## Speed of time progression (72.0 multiplier makes a full day last exactly 20 minutes)
-var time_speed: float = 72.0
+## Speed of time progression (96.0 multiplier makes a full day last exactly 15 minutes)
+var time_speed: float = 96.0
 
 # Dependencies injected by Bootstrap
 var sun_light: DirectionalLight3D
@@ -79,9 +79,7 @@ func _setup_dynamic_moon_light() -> void:
 	moon_light.light_energy = 0.0 # Silent start
 	moon_light.light_indirect_energy = 1.0
 	
-	# FIXED: Set Moon sky mode to SKY_MODE_LIGHT_ONLY.
-	# This ensures the Moon illuminates the world at night but does not
-	# render any buggy dynamic disc on the sky dome.
+	# Set Moon sky mode to SKY_MODE_LIGHT_ONLY
 	moon_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	
 	add_child(moon_light)
@@ -124,7 +122,6 @@ func _update_moon_rotation() -> void:
 		moon_light.light_energy = 0.0
 		moon_light.shadow_enabled = false
 	else:
-		# FIXED: Declared strict types (float) to prevent Variant type propagation errors
 		var moon_phase_mult: float = 1.0 - abs((float(_calendar_days) - 14.0) / 14.0)
 		
 		# Fade moon energy smoothly during transitions (Sunset/Sunrise)
@@ -188,8 +185,8 @@ func get_moon_phase_name() -> String:
 	elif _calendar_days == 7:
 		return "First Quarter"
 	elif _calendar_days < 14:
-		return "Waxing Gibbous"
-	elif _calendar_days < 21:
+		return "Waxing Crescent"
+	elif _calendar_days >= 15 and _calendar_days < 21:
 		return "Waning Gibbous"
 	elif _calendar_days == 21:
 		return "Third Quarter"

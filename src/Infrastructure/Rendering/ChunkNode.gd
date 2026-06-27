@@ -1,12 +1,12 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure rendering node representing a chunk. Upgraded from
-#              a single MultiMesh to a Node3D container that dynamically manages
-#              individual MultiMeshInstance3D nodes per BlockType.
+# Description: Infrastructure rendering node representing a single chunk.
+#              Manages individual MultiMeshInstance3D nodes per BlockType to 
+#              support customized material shading (PBR, Water, Lava, and Wind-Sway).
 #              SOLID COMPLIANCE: Adheres to OCP and SRP by isolating material 
-#              and rendering logic from the physical chunk data.
-#              UPDATED: Added a friendly Format Analyzer helper inside the static
-#              preload log to print human-readable Vulkan/OpenGL texture formats.
+#              and rendering logic from raw physical chunk data.
+#              UPDATED: Added native support for Sakura Tree leaves (NEON_MAGENTA)
+#              using the specialized foliage wind shader and custom texture.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -27,14 +27,14 @@ static var _materials_cache: Dictionary = {}
 static var _loaded_textures: Dictionary = {}
 static var _textures_preloaded: bool = false
 
-## Static references to our custom PBR shaders (SRP compliant)
+## Static references to custom PBR shaders
 static var _triplanar_shader: Shader
 static var _leaves_wind_shader: Shader
 
 ## Base directory where user custom textures are stored
 const TEXTURE_DIR := "res://assets/textures/"
 
-## File names mapping for custom PBR albedo textures
+## File names mapping for custom albedo textures
 const TEXTURE_MAP = {
 	BlockType.Type.STONE: "stone.png",
 	BlockType.Type.DIRT: "dirt.png",
@@ -42,7 +42,8 @@ const TEXTURE_MAP = {
 	BlockType.Type.WOOD: "wood.png",
 	BlockType.Type.LEAVES: "leaves.png",
 	BlockType.Type.SAND: "sand.png",
-	BlockType.Type.RED_SAND: "red_sand.png"
+	BlockType.Type.RED_SAND: "red_sand.png",
+	BlockType.Type.NEON_MAGENTA: "sakura_leaves.png" # Sakura leaves texture mapping
 }
 
 func _init(p_chunk: Chunk) -> void:
@@ -52,10 +53,10 @@ func _init(p_chunk: Chunk) -> void:
 	# Set position in the world space
 	position = Vector3(chunk.position * Chunk.SIZE)
 	
-	# Pre-load textures instantly on the first chunk init to avoid mid-game physics lag
+	# Pre-load textures instantly on the first chunk initialization to avoid mid-game lags
 	_preload_all_textures()
 
-## Static Preloader with Smart Diagnostic Logging (OCP compliant)
+## Static Preloader with Smart Diagnostic Logging
 static func _preload_all_textures() -> void:
 	if _textures_preloaded:
 		return
@@ -85,7 +86,7 @@ static func _preload_all_textures() -> void:
 				
 				if is_normal_map:
 					print("     [WARNING] '", TEXTURE_MAP[block_type], "' is imported as a NormalMap instead of a Texture2D!")
-					print("     [WARNING] To fix this: Select '", TEXTURE_MAP[block_type], "' in your FileSystem dock, go to the Import tab next to Scene, change 'Import As' to 'Texture2D', and click Reimport.")
+					print("     [WARNING] To fix this: Select '", TEXTURE_MAP[block_type], "' in your FileSystem dock, go to the Import tab, change 'Import As' to 'Texture2D', and click Reimport.")
 			else:
 				print("  -> [ERROR] File exists but is not a valid Texture2D: ", file_path)
 		else:
@@ -301,8 +302,9 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 			var tex: Texture2D = _loaded_textures[block_type]
 			has_custom_texture = true
 			
-			# SPECIAL FOLIAGE SHADER: Applies vertex waving and rounds square block corners
-			if block_type == BlockType.Type.LEAVES:
+			# SPECIAL FOLIAGE SHADER: Applies vertex waving, rounds block corners, and supports wind-sway
+			# Applied to both Oak leaves (LEAVES) and Sakura leaves (NEON_MAGENTA)
+			if block_type == BlockType.Type.LEAVES or block_type == BlockType.Type.NEON_MAGENTA:
 				var mat := ShaderMaterial.new()
 				mat.shader = _get_leaves_wind_shader()
 				mat.set_shader_parameter("albedo_texture", tex)
@@ -312,7 +314,7 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 				return mat
 			
 			# SOLID BLOCKS (Stone, Dirt, Wood, Sand, Red Sand)
-			# Apply our custom GPU Blending Shader to safely replace alpha black holes with base colors
+			# Apply custom GPU Blending Shader to safely replace alpha black holes with base colors
 			else:
 				var mat := ShaderMaterial.new()
 				mat.shader = _get_triplanar_shader()
