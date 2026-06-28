@@ -1,4 +1,4 @@
-# CraftDomain - Ultimate Gameplay & Survival Manual
+# CraftDomain - Gameplay & Survival Manual
 *Written by Enrique González Gutiérrez (enrique.gonzalez.gutierrez@gmail.com)*
 
 Welcome to **CraftDomain**, a high-performance, infinite procedural voxel world. This manual is a comprehensive, step-by-step documentation designed to help you navigate, mine, build, fight, and trade. 
@@ -8,6 +8,7 @@ Welcome to **CraftDomain**, a high-performance, infinite procedural voxel world.
 ## 1. Getting Started: The Main Menu
 When you launch CraftDomain, you enter a polished, glassmorphic **Main Menu** set against a scenic, rotating procedurally generated backdrop, accompanied by a dynamic looping acoustic soundtrack.
 * **PLAY WORLD:** Instantly initiates or restores your infinite world. If a save file is detected, you will be loaded precisely at your last coordinates, with your edits, modifications, and exact inventory quantities intact.
+* **SETTINGS:** Opens the settings overlay to dynamically control Music Volume, Sound Effects Volume, and adjust display resolutions (Windowed vs Fullscreen).
 * **EXIT GAME:** Closes the game application window safely.
 
 ---
@@ -17,10 +18,11 @@ When you launch CraftDomain, you enter a polished, glassmorphic **Main Menu** se
 As you join the world, the engine runs a vertical spawn scan at your coordinates, finding the top-most solid block (up to height 31) and dropping you smoothly onto the surface.
 
 ### The GPS HUD & 2D Circular Radar Minimap
-Located in the upper right-hand corner of your screen is a high-fidelity **GPS Navigation Overlay** designed to keep you oriented:
-* **The Yellow Arrow (Center):** Represents your character. It rotates dynamically in real-time as you turn your camera.
-* **Real-time Grid Coordinates:** Located at the top center of the HUD, showing your exact global `[ X  ·  Y  ·  Z ]` block coordinates.
-* **Regional Compass Card:** Displays your current biome location (e.g., `REGION: GOLDEN BAZAAR`) and dynamically calculates your distance to major geographical landmarks (e.g., `[N] Polar Ice: 450m | [E] Village Bazaar: 300m`).
+Located in the upper right-hand corner of your screen is a high-contrast **GPS Navigation Overlay** designed to keep you oriented:
+* **The Selected Arrow (Center):** Represents your character on the circular radar. It rotates dynamically in real-time with a thick black outline as you turn your camera.
+* **Real-time Grid Coordinates:** Located at the top center of the HUD, showing your exact global `[ X  ·  Y  ·  Z ]` block coordinates alongside the synchronized 24-hour clock.
+* **Active Mission Tracker:** Renders active quest descriptions, remaining distance in meters, and progress bars. The panel automatically hides itself from the screen when all campaign quests are completed.
+* **Active Quest Marker:** Indicated by a pulsing hot-pink diamond on the minimap. When you are far from the target, the diamond clamps cleanly to the outer compass rim, guiding your gaze toward the destination.
 * **Radar Colors Mapping:**
   * **Vibrant Tropical Blue:** Bay of Sails (Spawn Ocean).
   * **Emerald Green:** Warp Plateau (Mario Steps).
@@ -31,7 +33,6 @@ Located in the upper right-hand corner of your screen is a high-fidelity **GPS N
   * **Terracotta Orange:** Red Sandstone Canyons.
   * **Electric Cyan:** Neon Ruins (Cyber Basin).
   * **Muddy Dark Brown:** Swamp of Sighs.
-  * **Pure Fluffy White:** Cloud Kingdom (Floating Isles).
 
 ---
 
@@ -48,7 +49,7 @@ The input mapping system is processed in raw hardware buffers inside `_unhandled
 | **Jump**         | `Space` | - | - | Jump over blocks |
 | **Pause & Save** | `Escape` | - | - | Unlocks mouse cursor & auto-saves |
 | **Mining/Attack**| `E` | - | `Left-Click` | Swing active tool, break block, hit |
-| **Build/Interact**| `Q` | - | `Right-Click` | Place block, eat chicken, trade |
+| **Build/Interact**| `Q` | - | `Right-Click` | Place block, eat chicken, trade, open chest |
 | **Scroll Hotbar** | - | - | `Mouse Wheel` | Scroll left/right through slots |
 | **Select Slot 1** | `1` | - | - | Select Stone Block |
 | **Select Slot 2** | `2` | - | - | Select Dirt Block |
@@ -75,18 +76,19 @@ Interacting with voxels is governed by a **5-meter Reach Distance**. A white aim
 ### Mining (Breaking Blocks)
 1. Aim at any block within range.
 2. Press **Left-Click** (or `E`).
-3. The block breaks instantly and is added to your inventory. The viewmodel plays a rapid swinging animation, and the HUD updates your item counters.
+3. The block breaks, triggering a **dynamic particle debris emitter** that sprays color-matched 3D voxel particles for visceral impact. The block is then added to your inventory.
+4. **Visual Hotbar Feedback:** Each slot has an elegant, color-coded central icon block representing the material, with active item counts displayed in the bottom-right corner. When you select a slot, the full item name (e.g., `WOOD LOG`) appears floating above the hotbar and fades out smoothly after 1.8 seconds.
 
 ### Building (Placing Blocks & Lava)
 1. Select a material using the **Mouse Wheel** or keys **1 to 6**.
 2. Aim at any solid block surface. The white highlighter box will outline the target.
 3. Press **Right-Click** (or `Q`).
 4. The block is placed adjacent to the face you were pointing at.
-5. **NEW FEATURE: Lava Placement!** Selecting your **Lava Bucket** (Slot 6) and Right-Clicking will place a glowing, flowing orange **Lava block** in the world, consuming 1 Lava Bucket from your hotbar.
+5. **Lava Placement:** Selecting your **Lava Bucket** (Slot 6) and Right-Clicking will place a glowing, flowing orange **Lava block** in the world, consuming 1 Lava Bucket from your hotbar.
 
 ---
 
-## 5. Procedural Voxel Biomes & Structures
+## 5. Procedural Voxel Biomes & Weather Atmosphere
 
 The world features 10 completely distinct geographical regions, each populated with unique resources, trees, and buildings:
 
@@ -100,45 +102,53 @@ The world features 10 completely distinct geographical regions, each populated w
 				  [ South Cap: Warp Plateau ]
 ```
 
-### 1. Bay of Sails (Spawn Ocean - Center)
+### The 10 Geographical Regions
+
+#### 1. Bay of Sails (Spawn Ocean - Center)
 * **Description:** A tropical, sandy shoreline surrounding a vast blue water bay.
 * **Flora/Landmarks:** Rustic wooden piers and harbor docks.
 
-### 2. Warp Plateau (Mario Steps - South)
+#### 2. Warp Plateau (Mario Steps - South)
 * **Description:** A vibrant green grassland characterized by giant vertical step-like plateaus.
 * **Flora/Landmarks:** Spawns giant, red-spotted Mario mushrooms and green hollow Warp Pipes.
 
-### 3. Golden Bazaar (Village Plains - East)
+#### 3. Golden Bazaar (Village Plains - East)
 * **Description:** Flat, smooth sunlit fields perfect for establishing trading settlements.
 * **Flora/Landmarks:** High concentration of rustic wooden cabins and active merchant stalls.
 
-### 4. Craggy Peaks & Caves (North Mountains)
+#### 4. Craggy Peaks & Caves (North Mountains)
 * **Description:** Jagged, tall stone mountain ranges that overlook dark caves below.
 * **Flora/Landmarks:** Spawns wooden mine pillars topped with glowing lanterns.
 
-### 5. Frostbite Glaciers (Polar Cap - Far North)
+#### 5. Frostbite Glaciers (Polar Cap - Far North)
 * **Description:** A freezing, quiet basin of solid ice and deep snowdrifts.
 * **Flora/Landmarks:** Spawns majestic, hollow spires built entirely of frozen blue ice.
 
-### 6. Whispering Redwood Forest (North West)
+#### 6. Whispering Redwood Forest (North West)
 * **Description:** Densely forested, mossy green valleys carpeted in rich grass.
 * **Flora/Landmarks:** Covered in towering, multi-tiered coniferous Giant Redwood trees.
 
-### 7. Red Sandstone Canyons (Far South)
+#### 7. Red Sandstone Canyons (Far South)
 * **Description:** Terraced, deep desert canyons sculpted into steps of reddish terracotta sandstone.
 * **Flora/Landmarks:** Rocky canyons with sharp drops.
 
-### 8. Neon Ruins (Cyber Basin - Far West)
+#### 8. Neon Ruins (Cyber Basin - Far West)
 * **Description:** A dark, technological crater lined with active cybernetic pathways.
 * **Flora/Landmarks:** Spawns ancient stepped pyramids radiating glowing cyan and magenta light blocks.
 
-### 9. Swamp of Sighs (Mist Bay - North West)
+#### 9. Swamp of Sighs (Mist Bay - North West)
 * **Description:** Depressed, murky valleys filled with dark, sticky mud and stagnant water.
 * **Flora/Landmarks:** Covered in dense foliage.
 
-### 10. Cloud Kingdom (Floating Isles - Sky)
-* **Description:** Beautiful, floating islands made of semi-transparent, fluffy white cloud voxels drifting high in the atmosphere.
+#### 10. Cloud Kingdom (Floating Isles - Sky)
+* **Description:** Beautiful, floating islands made of fluffy white cloud voxels drifting high in the atmosphere.
 * **Flora/Landmarks:** Spawns above height Y=12.
+
+### Dynamic GPU Overcast System
+The sky is rendered with an advanced GPU shader that reacts dynamically to weather shifts:
+* **Sunny Weather:** Fluffy, procedurally generated white clouds float across a bright blue sky, with a crisp glowing sun disk orbiting above.
+* **Overcast & Precipitation:** When rain or snow begins, the sky color shifts progressively to a plomizo slate-grey over 5 seconds. The clouds turn dark and dense, and the Sun and Moon disks dim by 85%, creating an immersive storm atmosphere.
+* **Night Cycle:** The clouds turn a deep navy blue, allowing twinkling stars and a glowing, silver crescent moon to shine through.
 
 ---
 
@@ -154,16 +164,23 @@ The procedural world is populated with active, box-composition creatures and vil
 						[Greeting State] (Stops & Nods Head)
 ```
 
-### Dynamic Eye Blinking & Head Bobbing
+### Dynamic Eye Blinking & Step-Bouncing Walk Cycles
 * All mobs feature detailed 3D eyes. Every 3 to 6 seconds, they procedurally **blink** by flattening their eyes vertically for a fraction of a second.
-* When moving, they display smooth walk cycles, swaying their heads, wings, or arms to eliminate stiff robotic motions.
+* When moving, they display smooth walk cycles using a **`_body_bob_node` step-bouncing system** that makes their entire body bounce with weight, coupled with realistic head sways and idle breathing.
 
-### NPC Tasks & Social Behaviors
-* **Examine (Farming/Inspecting):** Villagers and Merchants will periodically stop, look downward at a block, and sway their arms up and down, simulating hoeing, digging, or inspecting.
-* **Greeting (Player Interaction):** If you walk within 3.5 meters of a Villager or Merchant, they will stop what they are doing, rotate their bodies to face you, and **nod their heads up and down** to greet you.
+### Specialized Community Roles
+* **Villagers:** Clothed in textured brown robes with leather boots and sashes.
+* **Merchants:** Styled with purple robes, silk turbans with embedded emerald gems, and dual-layered gold aprons.
+* **Guards:** Overhauled with metallic pauldrons, iron greaves, combat visor helmets, and sheathed iron swords and knightly shields on their backs.
+* **Farmers:** Rigged with muddy boots, denim dungarees with suspenders, wide-brim straw hats, and sheathed wood-iron hoes.
+
+### Interactive 3D Loot Chests
+Inside village settlements, you will discover interactive **3D Loot Chests** spawned near buildings.
+1. Approach a chest and press **Right-Click** (or `Q`).
+2. The chest will play a physical scaling pop animation, award you a random reward (such as a *Fried Chicken* or a *Lava Bucket*), trigger a sliding **"Loot Found!"** notification toast, and delete itself safely.
 
 ### The Lava-Fried Chicken Trade Loop
-Inside villages (found in the **Golden Bazaar** plains), you will discover rustic market cabins with a **Purple-Robed Merchant Villager** wearing a golden apron standing nearby.
+Inside villages (found in the **Golden Bazaar** plains), you will discover rustic market cabins with an active Merchant standing nearby.
 
 ```
  [ Player ] --- Gives: 1x Lava Bucket (Key 6) ---> [ Merchant ]
@@ -171,7 +188,7 @@ Inside villages (found in the **Golden Bazaar** plains), you will discover rusti
  [ Player ] <--- Receives: 1x Fried Chicken <----------- [ Merchant ] (Hops in the air!)
 ```
 
-1. Hold your **Lava Buckets** (Select Slot 6). The HUD will display: `[ LAVA BUCKET ]` and show your remaining count.
+1. Hold your **Lava Buckets** (Select Slot 6).
 2. Aim at the Merchant and **Right-Click** (or `Q`).
 3. The Merchant will hum excitedly, **hop in the air with physical joy**, consume 1 Lava Bucket, and place 1 **Fried Chicken** into your inventory.
 4. If you attempt to interact without holding a Lava Bucket, the Merchant will hum inquisitively, and the developer console will print: `[Merchant] Hmmm? Bring me a Bucket of Lava (Slot 6) to trade for my Lava-Fried Chicken!`
@@ -194,7 +211,7 @@ As night falls (the sun rotates below the horizon, monitored by the dynamic day/
 
 ### The Zombie Threat
 * **Behaviors:** Zombies wander searching for flesh. If you enter their aggro range, they will chase you down, climb blocks automatically, and bite you.
-* **Damage Feedback:** Getting bitten deals **1 Heart** of damage, pushes you backward with physical recoil, and **flashes your screen with a deep red vignette** for immediate combat feedback.
+* **Damage Feedback:** Getting bitten deals **1 Heart** of damage, pushes you backward with physical recoil, flashes your screen with a deep red vignette, and triggers a high-frequency decaying camera trauma shake.
 * **Death & Respawn:** If you lose all 3 hearts, you will die, resetting your health back to full, and respawning safely on top of your designated spawn area.
 
 ### Combat with the Wooden Sword

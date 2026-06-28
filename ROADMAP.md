@@ -1,64 +1,81 @@
-# CraftDomain - Voxel Engine Development Roadmap
+# CraftDomain - Engine Architecture, Graphics & Gameplay Roadmap
 
-This document outlines the completed engineering milestones and the progressive future roadmap for **CraftDomain**, keeping development strictly aligned with **SOLID software engineering principles** and **Domain-Driven Design (DDD)** constraints.
-
----
-
-## Phase 1: Voxel Engine Core & High-End Visuals (Completed)
-
-Focus was placed on optimizing Godot's Vulkan Forward+ rendering pipeline, implementing modular shader calculations, and structuring the base game loop.
-
-- [x] **Composition Root Bootloader:** Created `Bootstrap.gd` to handle dynamic dependency injection, environment setups, and clean transitions, eliminating circular compiler loops.
-- [x] **SOLID UI Widget Refactoring:** Decoupled `PlayerHUD.gd` from a monolithic class into independent, single-responsibility widgets (`MinimapWidget.gd`, `GPSPanelWidget.gd`, `QuestTrackerWidget.gd`), implementing the Facade/Adapter pattern.
-- [x] **Next-Gen PBR Voxel Shading:** 
-  - Segmented chunk rendering into per-block MultiMeshes to allow transparent water meshes and emissive lava.
-  - Implemented a custom GPU Voxel Triplanar Shader to prevent texture stretching on cubes and automatically blend custom texture alpha channels with procedural base colors (resolving black-pixel artifacts).
-  - Programmed a custom GPU Vertex Foliage Shader for leaf blocks, adding natural wind-waving lateral sways and organic rounded fluffiness to breaking box shapes.
-- [x] **Static Texture Preloader:** Implemented a thread-safe static loader in `ChunkNode.gd` that caches 1024x1024 custom block assets on game boot, completely eliminating main-thread disk I/O lag and preventing physics tunneling.
-- [x] **Celestial & Climatological Simulation:**
-  - Implemented a dynamic 28-day Lunar Cycle in `CelestialService.gd` with silver-blue shadow-casting moonlight that scales according to moon phases.
-  - Created a decoupled, regional `WeatherService.gd` that emits fast-falling rain needles over temperate biomes, but dynamically shifts to fluffy, wind-blown white snowflakes over the polar ice caps or cloud kingdoms.
+This document outlines the technical trajectory, architectural milestones, and planned features for the **CraftDomain** voxel sandbox engine. The roadmap is divided into iterative phases focusing on performance optimizations, SOLID design compliance, deep gameplay loops, and networking foundations.
 
 ---
 
-## Phase 2: Sandbox Expansion & Survival Mechanics (Short-Term)
+## Phase 1: Voxel Core & Domain Foundation (Completed)
+*Focus: Establish the DDD layer separation, basic chunk meshing, and infinite world coordination.*
 
-Focus is on enriching the survival game loop, adding physics variables, and expanding sandbox interactions.
-
-- [ ] **Cellular-Automata Fluid Physics:**
-  - Implement a lightweight, decoupled `FluidSimulationService.gd` in the domain layer.
-  - Process placed water and lava blocks, calculating finite-state spreading and downward flow physics in the voxel grid.
-- [ ] **Dynamic Structure Spawning (OCP/DIP compliant):**
-  - Create a generic structure schematic reader (`res://assets/schematics/`) that parses custom voxel designs from disk and writes them dynamically to chunk matrices.
-  - Allows adding custom buildings, bridges, and dungeons without modifying the `WorldGenerator` logic.
-- [ ] **Player Survival Attributes (DDD Aggregates):**
-  - Refactor `VoxelEntity.gd` to manage hunger, stamina, oxygen, and fall damage variables in the domain layer.
-  - Integrate a drowning timer inside `VoxelInteractionComponent.gd` when the player's eye-level camera dips below the water mesh height.
+*   [x] **Domain Model Isolation:** Encapsulate voxel chunk grids, logical blocks, and player states strictly within the Domain Layer (`src/Domain/`), keeping them completely free of Godot node dependencies.
+*   [x] **Partitioned MultiMesh Mesher:** Implement a multi-mesh chunk mesher (`ChunkNode.gd`) to separate translucent fluid blocks (Water, Lava) from solid voxels to support specialized shaders and reflections.
+*   [x] **Delta-Save Pipeline:** Create an asynchronous, stutter-free JSON serialization repository (`DiskWorldRepository.gd`) to save local voxel modifications to disk on thread buffers.
+*   [x] **Composition Root:** Establish a clean application bootstrapper (`Bootstrap.gd`) to dynamically register biomes/structures and inject dependencies, preventing circular compiler loops.
 
 ---
 
-## Phase 3: Multiplayer & High-Refresh Optimizations (Mid-Term)
+## Phase 2: Atmospheric Rendering & Immersive Interface (Completed)
+*Focus: Elevate environment realism, optimize rendering shaders, and streamline the player's on-screen interface.*
 
-Focus is on network replication, multi-threaded performance, and memory footprints during infinite travel.
-
-- [ ] **C++ GDExtension Voxel Meshing:**
-  - Migrate the heavy coordinate-looping voxel face-culling and bulk array compiler from GDScript to a C++ GDExtension module.
-  - Eliminates garbage collection spikes during high-speed camera travel.
-- [ ] **Network Replication Layer (DIP/ISP compliant):**
-  - Implement real-time multi-player state synchronization using Godot's high-level multiplayer API.
-  - Keep packet overhead low by only synchronizing block edit deltas (`WorldState._chunk_modifications`) across clients.
-- [ ] **Save State Compression:**
-  - Compress JSON delta-chunk files (`chunk_x_y_z.json`) on disk using GZip or Brotli compression to minimize storage footprints for massive, infinitely explored worlds.
+*   [x] **GPU-Optimized Procedural Sky Shader:** Move all celestial color gradients, Sun/Moon orbits, and FBM cloud projections to a dedicated GPU Sky Shader, eliminating CPU-bound color calculations.
+*   [x] **Deterministic Orbit Synchronization:** Direct the physical Sun/Moon light vectors from `CelestialService.gd` directly to the shader uniforms, resolving light index swapping artifacts and matching sky states with the clock.
+*   [x] **Meteorological Overcast Transitions:** Coordinate `WeatherService.gd` state changes (sunny, rainy, snowy) with the sky shader to smoothly interpolate cloud density, sky coloration, and sun dimming.
+*   [x] **Minimalist Hotbar & Fading Toasts:** Redesign the HUD to shrink hotbar space, replace static text with procedural color-coded item blocks, and add a fading selected-item name notification to enhance game immersion.
+*   [x] **Procedural NPC Rigging and Animations:** Implement the `_body_bob_node` walking joint on `PassiveEntity.gd` to simulate realistic footstep bouncing. Overhaul Villager, Merchant, Guard, and Farmer 3D programmatic models.
 
 ---
 
-## Phase 4: Creative Tools & Advanced AI (Long-Term)
+## Phase 3: Expanded Domain Economy & Inventory Systems (In-Progress)
+*Focus: Expand the Domain Layer to support complex item manipulation, crafting matrices, and container tracking.*
 
-Focus is on user-generated content, in-game editors, and complex agent behaviors.
+*   [ ] **Full Grid Inventory UI (The "E" Menu):** Implement a full-screen inventory GUI overlay, allowing players to drag and drop items, manage storage, and organize blocks between their main backpack and the 8 quick-slots.
+*   [ ] **Extensible Crafting Matrix Service:** Establish a decoupled `CraftingService` that reads recipe matrices from an external `recipes.json` configuration file, allowing players to combine items into tools.
+*   [ ] **Persistent Container System:** Extend the `WorldState` aggregate to track and save the inventory states of individual physical props (such as chests) generated procedurally in the world.
+*   [ ] **Economic Transactions Overhaul:** Refactor `TradingService` to support dynamic currency exchange (using copper/silver equivalents) instead of single-item direct barter.
 
-- [ ] **In-Game Visual Quest Designer (OCP compliant):**
-  - Implement an in-game graphical node interface (Quest Creator) that allows players to design custom quest chains, coordinate targets, and rewards.
-  - Outputs directly as validated JSON files inside `res://assets/quests/`, instantly loaded by the engine at runtime without rebuilding.
-- [ ] **Dynamic Pathfinding (A* on Voxel Meshes):**
-  - Implement a 3D A* pathfinding algorithm (`AStar3D`) inside `MobSpawningService.gd`.
-  - Allows guards, merchants, and hostile entities to navigate irregular voxel terrain, climb stairs, and bypass player-built walls intelligently.
+---
+
+## Phase 4: Advanced Generation, Cave Carvers & Multi-Threading (Planned)
+*Focus: Optimize world generation and chunk loading performance to completely eliminate frame stuttering.*
+
+*   [ ] **Strict OCP Landmark Registry:** Move the hardcoded landmark-to-blueprint mapping currently residing in `WorldGenerator.gd` into a dynamic, registration-based system within `StructureLibrary`.
+*   [ ] **Multithreaded Mesh Compilation:** Offload the generation of `ArrayMesh` surfaces from the main thread to worker threads using Godot's `WorkerThreadPool`, eliminating rendering lag spikes when crossing chunk boundaries.
+*   [ ] **Cave Carver Noise Service:** Add a 3D Simplex Noise service to carve hollow, subterranean tunnels and ore veins beneath the Craggy Peaks biome.
+*   [ ] **Cellular Automata Fluids:** Implement a CPU-bound cellular automata fluid simulation to allow water and lava blocks to flow dynamically when adjacent blocks are mined.
+
+---
+
+## Phase 5: Combat Overhaul, Weapon Classes & Enemy AI (Planned)
+*Focus: Deepen the combat mechanics, introduce ranged weaponry, and establish pathfinding algorithms for hostile mobs.*
+
+*   [ ] **Ranged Weaponry Integration:** Introduce bows, projectiles (arrows), and throwables, separating projectile physics into an isolated infrastructure component.
+*   [ ] **A\* Voxel Pathfinding Service:** Build a high-performance 3D A* pathfinding system that maps the local solid voxel grid, allowing zombies to navigate around walls and climb steps intelligently.
+*   [ ] **Lunar Event Spawning Cycles:** Connect monster spawn rates and stats with the 28-day lunar phase tracked by `CelestialService.gd` (e.g., higher aggression and elite spawns during Full Moons).
+*   [ ] **Entity Combat Stats:** Expand `VoxelEntity.gd` to encapsulate modular defense, knockback resistance, and attack damage attributes, separating stats calculations from physics nodes.
+
+---
+
+## Phase 6: Town Generation & Dynamic Structure Blueprints (Planned)
+*Focus: Scale structure blueprints into multi-building, procedurally generated village settlements.*
+
+*   [ ] **Procedural Town Planner:** Develop a village layout algorithm that scans flat coordinates in plains biomes, carves dirt roads, and spawns houses, market cabins, and streetlights deterministically.
+*   [ ] **Connected Streetlight Power Grid:** Connect registered village streetlights to a local grid controller, letting them toggle on and off based on ambient power lines instead of polling the clock individually.
+*   [ ] **Dynamic Structure Rotations:** Update `IStructureBlueprint` to support 90, 180, and 270-degree rotation matrices during generation, allowing buildings to face roads naturally.
+
+---
+
+## Phase 7: Modding API, Extensibility & Custom Blocks (Long-Term)
+*Focus: Transform the engine into a highly moddable platform via data-driven registries.*
+
+*   [ ] **Data-Driven Block Registry:** Refactor `BlockLibrary.gd` to load block definitions, colors, and textures dynamically from external JSON files, letting users register new blocks without modifying the source.
+*   [ ] **GDExtension API Bridges:** Compile core voxel meshing and chunk generation modules into high-speed C++ via Godot's `GDExtension`, exposing clean API endpoints for heavy gameplay scripts.
+*   [ ] **Custom Blueprint Importer:** Develop a tool to import standard `.vox` (MagicaVoxel) files directly into `IStructureBlueprint` instances at runtime.
+
+---
+
+## Phase 8: Multiplayer Networking & Client-Server Replication (Long-Term)
+*Focus: Establish a high-performance multi-client synchronization layer with authoritative server physics.*
+
+*   [ ] **UDP Voxel Replication Protocol:** Build a client-server sync pipeline using high-performance UDP packets to stream chunk modification deltas only to players within rendering range.
+*   [ ] **Authoritative Physics & Prediction:** Implement server-authoritative movement physics with local client prediction and interpolation to guarantee smooth movement under high latency.
+*   [ ] **Synchronized Celestial Clock:** Replicate timeline and weather states from the server's authoritative `CelestialService` and `WeatherService` across all connected client sessions.
