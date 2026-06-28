@@ -10,8 +10,8 @@
 #              FASE 1 BACKPACK UPGRADE: Made block building, weapon equipping, and 
 #              tool rendering 100% dynamic, executing logic based on whatever 
 #              Voxel Block or Item ID currently occupies the active hotbar slot.
-#              FIXED: Casted integer button bindings to standard MouseButton enums
-#              to resolve strict compilator warnings.
+#              FIXED: Applied strict casting "as Key" on programmatic keyboard layout 
+#              to resolve INT_AS_ENUM_WITHOUT_CAST compilation warnings on line 103.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -90,7 +90,8 @@ func _setup_inputs() -> void:
 		"select_chicken": KEY_7,
 		"select_sword": KEY_8,
 		"craft_item": KEY_C,
-		"toggle_backpack": KEY_I
+		"toggle_backpack": KEY_I,
+		"free_cursor": KEY_ALT
 	}
 	
 	for action_name in primary_inputs.keys():
@@ -99,7 +100,10 @@ func _setup_inputs() -> void:
 		InputMap.action_erase_events(action_name)
 		
 		var primary_event := InputEventKey.new()
-		primary_event.keycode = primary_inputs[action_name] as int
+		
+		# STRICT MODE FIX: Cast integer representation to Key enum safely (Line 103 resolved!)
+		primary_event.keycode = primary_inputs[action_name] as Key
+		
 		InputMap.action_add_event(action_name, primary_event)
 
 func _setup_player_geometry() -> void:
@@ -185,6 +189,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_scroll_hotbar(1)
 
 func _physics_process(delta: float) -> void:
+	# FASE 1: Dynamic Cursor Release state machine
+	_process_cursor_grab_state()
+
 	if not is_active:
 		# Process UI workspace toggles even when movement physics are frozen
 		if Input.is_action_just_pressed("craft_item") and is_instance_valid(hud):
@@ -197,7 +204,7 @@ func _physics_process(delta: float) -> void:
 
 	_process_hotbar_keys()
 
-	# FASE 1: Crafting Workshop Trigger (C Key)
+	# FASE 1: Workshop Crafting Overlay Trigger (C Key)
 	if Input.is_action_just_pressed("craft_item") and is_instance_valid(hud):
 		var is_workshop_active := hud.get("_crafting_overlay") != null
 		hud.toggle_crafting_workshop(not is_workshop_active)
@@ -230,6 +237,20 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_process_camera_effects(delta)
+
+## FASE 1: Controls hardware cursor visibility when holding Left Alt
+func _process_cursor_grab_state() -> void:
+	if not is_instance_valid(hud):
+		return
+		
+	# If Alt is held, release the cursor so the player can hover/click the HUD
+	if Input.is_action_pressed("free_cursor"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		# Only recapture mouse if NO other UI overlay/pause menu is open!
+		if not hud.is_any_menu_open():
+			if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and not Input.is_action_pressed("ui_cancel"):
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 ## Executes procedural camera movements (bobbing/sway) and damage camera trauma
 func _process_camera_effects(delta: float) -> void:
@@ -365,18 +386,30 @@ func _sync_hud_counters() -> void:
 		var slot := inv_comp.get_slot_data(i)
 		hud.update_slot_quantity(i, slot.item_id, slot.quantity)
 
+## STRICT TYPING: Rewrote method to assign buttons explicitly, preventing INT_AS_ENUM warnings
 func _setup_inputs_mouse_actions() -> void:
-	var actions := {"click_left": MOUSE_BUTTON_LEFT, "click_right": MOUSE_BUTTON_RIGHT}
-	for action in actions.keys():
-		if not InputMap.has_action(action): InputMap.add_action(action)
-		InputMap.action_erase_events(action)
-		var btn_event := InputEventMouseButton.new()
-		
-		# STRICT MODE FIX: Casted dynamic Dictionary values to actual MouseButton enum
-		btn_event.button_index = actions[action] as MouseButton
-		
-		InputMap.action_add_event(action, btn_event)
-		
-		var key_event := InputEventKey.new()
-		key_event.keycode = KEY_E if action == "click_left" else KEY_Q
-		InputMap.action_add_event(action, key_event)
+	# 1. Register Left-Click / E Action
+	if not InputMap.has_action("click_left"):
+		InputMap.add_action("click_left")
+	InputMap.action_erase_events("click_left")
+	
+	var left_btn := InputEventMouseButton.new()
+	left_btn.button_index = MOUSE_BUTTON_LEFT # Direct Enum assignation (no warnings!)
+	InputMap.action_add_event("click_left", left_btn)
+	
+	var left_key := InputEventKey.new()
+	left_key.keycode = KEY_E
+	InputMap.action_add_event("click_left", left_key)
+	
+	# 2. Register Right-Click / Q Action
+	if not InputMap.has_action("click_right"):
+		InputMap.add_action("click_right")
+	InputMap.action_erase_events("click_right")
+	
+	var right_btn := InputEventMouseButton.new()
+	right_btn.button_index = MOUSE_BUTTON_RIGHT
+	InputMap.action_add_event("click_right", right_btn)
+	
+	var right_key := InputEventKey.new()
+	right_key.keycode = KEY_Q
+	InputMap.action_add_event("click_right", right_key)

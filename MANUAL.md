@@ -53,14 +53,15 @@ The input mapping system is processed in raw hardware buffers inside `_unhandled
 | **Scroll Hotbar** | - | - | `Mouse Wheel` | Scroll left/right through slots |
 | **Open Inventory**| `I` | - | - | Toggle Backpack Grid & Item Inspector |
 | **Open Crafting** | `C` | - | - | Toggle Blueprint Catalog & Crafting Workshop |
-| **Select Slot 1** | `1` | - | - | Select Stone Block |
-| **Select Slot 2** | `2` | - | - | Select Dirt Block |
-| **Select Slot 3** | `3` | - | - | Select Grass Block |
-| **Select Slot 4** | `4` | - | - | Select Wood Trunk Block |
-| **Select Slot 5** | `5` | - | - | Select Shrubbery Leaves Block |
-| **Select Slot 6** | `6` | - | - | Select Lava Bucket (Placable Liquid) |
-| **Select Slot 7** | `7` | - | - | Select Fried Chicken (Healing Food) |
-| **Select Slot 8** | `8` | - | - | Select Wooden Sword (Weapons) |
+| **Free Cursor**   | `Left Alt` | - | - | Hold to release captured mouse cursor |
+| **Select Slot 1** | `1` | - | - | Select Hotbar Slot 0 |
+| **Select Slot 2** | `2` | - | - | Select Hotbar Slot 1 |
+| **Select Slot 3** | `3` | - | - | Select Hotbar Slot 2 |
+| **Select Slot 4** | `4` | - | - | Select Hotbar Slot 3 |
+| **Select Slot 5** | `5` | - | - | Select Hotbar Slot 4 |
+| **Select Slot 6** | `6` | - | - | Select Hotbar Slot 5 |
+| **Select Slot 7** | `7` | - | - | Select Hotbar Slot 6 |
+| **Select Slot 8** | `8` | - | - | Select Hotbar Slot 7 |
 
 ---
 
@@ -86,7 +87,7 @@ Interacting with voxels is governed by a **5-meter Reach Distance**. A white aim
 2. Aim at any solid block surface. The white highlighter box will outline the target.
 3. Press **Right-Click** (or `Q`).
 4. The block is placed adjacent to the face you were pointing at.
-5. **Lava Placement:** Selecting your **Lava Bucket** (Slot 6) and Right-Clicking will place a glowing, flowing orange **Lava block** in the world, consuming 1 Lava Bucket from your hotbar.
+5. **Lava Placement:** Selecting your **Lava Bucket** and Right-Clicking will place a glowing, flowing orange **Lava block** in the world, consuming 1 Lava Bucket from your hotbar.
 
 ---
 
@@ -126,11 +127,11 @@ The world features 10 completely distinct geographical regions, each populated w
 * **Description:** A freezing, quiet basin of solid ice and deep snowdrifts.
 * **Flora/Landmarks:** Spawns majestic, hollow spires built entirely of frozen blue ice.
 
-#### 6. Whispering Redwood Forest (North West)
+#### 7. Whispering Redwood Forest (North West)
 * **Description:** Densely forested, mossy green valleys carpeted in rich grass.
 * **Flora/Landmarks:** Covered in towering, multi-tiered coniferous Giant Redwood trees.
 
-#### 7. Red Sandstone Canyons (Far South)
+#### 6. Red Sandstone Canyons (Far South)
 * **Description:** Terraced, deep desert canyons sculpted into steps of reddish terracotta sandstone.
 * **Flora/Landmarks:** Rocky canyons with sharp drops.
 
@@ -315,3 +316,13 @@ Selecting a blueprint shows its visual specifications:
 *   **Composite Planks:** `2x Wood` + `1x Stone` ➔ `4x Wood`
 *   **Magma Core Synthesis:** `15x Stone` + `1x Lava` ➔ `2x Lava Buckets`
 *   **Soothing Herbal Poultice:** `6x Leaves` ➔ `1x Fried Chicken`
+
+---
+
+## 11. Dynamic Cursor Release Engine (`Left Alt` Hold)
+
+To easily bridge the gap between first-person look controls and HUD-element interactions, CraftDomain features an intuitive **Cursor Release Engine**:
+
+*   **Holding `Left Alt`:** Freezes camera rotation and reveals the hardware mouse pointer. You can move the pointer freely to click on the HUD shortcut icons (`🎒` to open inventory or `🛠️` to open the crafting workshop).
+*   **Releasing `Left Alt`:** Hides the mouse pointer and locks it back into first-person rotation mode. 
+*   **Abierto-Cerrado Safety Hook:** Releasing `Left Alt` will *not* lock the cursor if any overlay window (Backpack, Workshop, Pause Menu, or Dialogue overlays) is open on the screen, allowing you to click buttons inside those windows without having to hold any keys.

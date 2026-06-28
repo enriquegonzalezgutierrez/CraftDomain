@@ -1,4 +1,4 @@
-# CraftDomain
+s# CraftDomain
 
 ![MainMenu Background](src/Infrastructure/UI/Assets/menu_background.png)
 
@@ -222,7 +222,12 @@ The fixed inventory system has been refactored to support a fully dynamic **24-s
 Pressing `C` opens a dual-pane Blueprint Workshop overlay:
 * **Blueprint Catalog (Left Pane):** Scrollable deck showing all available recipes parsed dynamically from `recipes.json`. Card margins are color-coded to match the output block types.
 * **Visual Checklist (Right Pane):** Selecting a recipe displays its name, result count, and a color-coded checklist of required ingredients compared with the player's total inventory count (green if satisfied, red if missing).
-* **Manufacturing Transaction:** Clicking the "Fabricate" button consumes the inputs globally across the grid, plays a hand-swing tool animation, and updates both the checklist and HUD counters instantly.
+* **Manufacturing Transaction:** Clicking the "Fabricate" button consumes the inputs globally across the grid, grants the crafted outcome, triggers a viewmodel hand-swing, and pops a sliding success notification.
+
+### 3. Dynamic Cursor Release Engine (`free_cursor`)
+To seamlessly bridge the gap between first-person camera movement and interactive UI clicks:
+* **Left Alt Hold Mechanic:** Holding the **`Left Alt`** key temporarily freezes first-person camera rotation and releases the captured hardware cursor, allowing players to hover and click the HUD shortcut buttons (`🎒` and `🛠️`).
+* **Intelligent Auto-Recapture:** Releasing the key automatically hides and locks the mouse cursor back into captured gameplay mode if, and only if, no overlay windows or dialogue trees are currently open.
 
 ---
 
@@ -245,8 +250,8 @@ NPCs are designed with a layered hierarchical box structure attached to a dedica
 * **`Space`:** Jump.
 * **`I` (or clicking the HUD 🎒 button):** Toggle the 24-slot Backpack Inventory & Inspector overlay.
 * **`C` (or clicking the HUD 🛠️ button):** Toggle the Context-aware Crafting & Blueprint Workshop.
-* **Mouse Scroll Wheel or Keys `1` to `8`:** Scroll through Hotbar slots:
-  * `1` (Stone), `2` (Dirt), `3` (Grass), `4` (Wood), `5` (Leaves), `6` (Lava Bucket), `7` (Fried Chicken), `8` (Sword).
+* **`Left Alt` (Hold):** Release the captured mouse cursor to click HUD shortcut buttons.
+* **Mouse Scroll Wheel or Keys `1` to `8`:** Scroll through Hotbar slots.
 * **Left-Click (or `E`):** Mine blocks (generating color-matched voxel debris particles) or swing the active weapon.
 * **Right-Click (or `Q`):** Place blocks, consume items (eating Fried Chicken to heal), or interact (trading with the Purple-Robed Merchant, talking to villagers).
 * **`Escape`:** Unlocks mouse cursor, pauses game, and triggers a silent background auto-save.

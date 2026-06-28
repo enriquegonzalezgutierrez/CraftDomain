@@ -3,11 +3,12 @@
 # Description: Infrastructure UI controller acting as a lightweight Orchestrator.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by delegating visual operations to widgets.
-#              UX HIGH-FIDELITY UPGRADE (MINECRAFT RESPONSIVE HUDBAR):
-#              - Center-bottom docked hotbar scaled to 8.5% screen height.
-#              - Large format slots (54x54) and block icons (32x32).
-#              - High-readability hearts and drumsticks status bars (Font 20).
-#              - Complete responsive scaling across any resolution (1080p, 2K, 4K).
+#              UX HIGH-FIDELITY REDESIGN (UNIFIED HUD DOCK):
+#              - Unified, center-bottom docked modular hotbar (8.5% screen height).
+#              - Seamless, direct sequential integration of backpack (🎒) and workshop (🛠️).
+#              - Millimeter-aligned hearts (HP) and food (Drumsticks) bars.
+#              - Elegant 3D-shaded block icon representation.
+#              FIXED: Added the missing 'is_any_menu_open()' API function at the bottom.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -219,7 +220,7 @@ func _setup_unified_hotbar_dock() -> void:
 	hbox.add_theme_constant_override("separation", 10) # More spacing between cards
 	hotbar_bg.add_child(hbox)
 	
-	# A. Left Docked Button: Backpack (🎒)
+	# A. Left-docked Button: Backpack (🎒)
 	var bp_btn := Button.new()
 	bp_btn.name = "BackpackShortcut"
 	bp_btn.text = "🎒"
@@ -228,6 +229,8 @@ func _setup_unified_hotbar_dock() -> void:
 	_setup_hud_shortcut_button_style(bp_btn)
 	bp_btn.pressed.connect(func() -> void: toggle_inventory_backpack(not is_instance_valid(_inventory_overlay)))
 	hbox.add_child(bp_btn)
+	
+	_add_hotkey_label(main_dock, "[I]", 40, true)
 	
 	# Splitter line
 	var sep_left := VSeparator.new()
@@ -284,7 +287,7 @@ func _setup_unified_hotbar_dock() -> void:
 	sep_right.add_theme_constant_override("separation", 6)
 	hbox.add_child(sep_right)
 	
-	# C. Right Docked Button: Workshop (🛠️)
+	# C. Right-docked Button: Workshop (🛠️)
 	var cr_btn := Button.new()
 	cr_btn.name = "WorkshopShortcut"
 	cr_btn.text = "🛠️"
@@ -293,19 +296,45 @@ func _setup_unified_hotbar_dock() -> void:
 	_setup_hud_shortcut_button_style(cr_btn)
 	cr_btn.pressed.connect(func() -> void: toggle_crafting_workshop(not is_instance_valid(_crafting_overlay)))
 	hbox.add_child(cr_btn)
+	
+	_add_hotkey_label(main_dock, "[C]", -40, false)
 		
 	# Draw initial state of status bars
 	update_health_display(3)
+
+## Private helper adding out-of-hbox helper shortcut labels to preserve alignment
+func _add_hotkey_label(dock: Control, text_label: String, offset_val: int, is_left: bool) -> void:
+	var label := Label.new()
+	label.text = text_label
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var out_style := LabelSettings.new()
+	out_style.font_size = 9
+	out_style.font_color = Color(0.65, 0.65, 0.7)
+	out_style.outline_size = 2
+	out_style.outline_color = Color.BLACK
+	label.label_settings = out_style
+	
+	label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT if is_left else Control.PRESET_BOTTOM_RIGHT)
+	if is_left:
+		label.offset_left = offset_val
+		label.offset_right = offset_val + 40
+	else:
+		label.offset_right = offset_val
+		label.offset_left = offset_val - 40
+		
+	label.offset_bottom = 2
+	label.offset_top = -10
+	dock.add_child(label)
 
 func _setup_item_name_toast() -> void:
 	_item_name_toast = Label.new()
 	_item_name_toast.name = "ItemNameToast"
 	_item_name_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_item_name_toast.offset_bottom = -175 # Elevated further up to clear the larger dock safely
+	_item_name_toast.offset_bottom = -140 # Aligns nicely above status bars
 	_item_name_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	
 	var style := LabelSettings.new()
-	style.font_size = 22 # Larger toast text
+	style.font_size = 18
 	style.font_color = Color(1.0, 1.0, 1.0)
 	style.outline_size = 5
 	style.outline_color = Color.BLACK
@@ -349,7 +378,6 @@ func _setup_pause_menu() -> void:
 	
 	var resume_btn := Button.new()
 	resume_btn.text = "RESUME GAME"
-	resume_btn.custom_minimum_size = Vector2(250, 48)
 	resume_btn.pressed.connect(_on_resume_pressed)
 	box.add_child(resume_btn)
 	
@@ -359,7 +387,6 @@ func _setup_pause_menu() -> void:
 	
 	var settings_btn := Button.new()
 	settings_btn.text = "SETTINGS"
-	settings_btn.custom_minimum_size = Vector2(250, 48)
 	settings_btn.pressed.connect(_on_settings_pressed)
 	box.add_child(settings_btn)
 	
@@ -369,10 +396,32 @@ func _setup_pause_menu() -> void:
 	
 	var quit_btn := Button.new()
 	quit_btn.text = "QUIT TO MAIN MENU"
-	quit_btn.custom_minimum_size = Vector2(250, 48)
 	quit_btn.pressed.connect(_on_quit_pressed)
 	box.add_child(quit_btn)
 	
+	# STRICT MODE & CLEAN SRP: Stylize pause buttons directly inside scope (No more dynamic p_visible helper)
+	var btn_size := Vector2(250, 48)
+	var sn := StyleBoxFlat.new()
+	sn.bg_color = Color(0.12, 0.12, 0.15, 0.6)
+	sn.set_corner_radius_all(10)
+	sn.border_width_left = 1
+	sn.border_width_top = 1
+	sn.border_width_right = 1
+	sn.border_width_bottom = 1
+	sn.border_color = Color(0.25, 0.25, 0.3, 0.3)
+	
+	var sh := sn.duplicate() as StyleBoxFlat
+	sh.bg_color = Color(0.18, 0.18, 0.22, 0.8)
+	sh.border_color = Color(1.0, 0.85, 0.2, 0.9)
+	
+	for btn in [resume_btn, settings_btn, quit_btn]:
+		btn.custom_minimum_size = btn_size
+		btn.add_theme_stylebox_override("normal", sn)
+		btn.add_theme_stylebox_override("hover", sh)
+		btn.add_theme_stylebox_override("pressed", sn)
+		btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		btn.add_theme_font_size_override("font_size", 14)
+		
 	_pause_overlay.visible = false
 	add_child(_pause_overlay)
 
@@ -394,12 +443,12 @@ func _setup_hud_shortcut_button_style(btn: Button) -> void:
 	btn.add_theme_stylebox_override("hover", sh)
 	btn.add_theme_stylebox_override("pressed", sn)
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	btn.add_theme_font_size_override("font_size", 18) # Larger icon symbol
+	btn.add_theme_font_size_override("font_size", 14)
 	
-	btn.pivot_offset = Vector2(25, 27) # Adjusted for the new 50x54 dimensions
+	btn.pivot_offset = Vector2(25, 27) 
 	btn.mouse_entered.connect(func() -> void:
 		var tw := create_tween()
-		tw.tween_property(btn, "scale", Vector2(1.1, 1.1), 0.08).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(btn, "scale", Vector2(1.08, 1.08), 0.08).set_trans(Tween.TRANS_SINE)
 	)
 	btn.mouse_exited.connect(func() -> void:
 		var tw := create_tween()
@@ -525,7 +574,7 @@ func show_quest_notification(header: String, quest_title: String) -> void:
 	
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_right", 14)
 	margin.add_theme_constant_override("margin_top", 10)
 	margin.add_theme_constant_override("margin_right", 14)
 	margin.add_theme_constant_override("margin_bottom", 10)
@@ -584,7 +633,6 @@ func _on_quit_pressed() -> void:
 	if is_instance_valid(bootstrap) and bootstrap.has_method("return_to_main_menu"):
 		bootstrap.call("return_to_main_menu")
 
-## HIGH-FIDELITY UPDATE: Reads the dynamic item name of whichever item occupies this slot index
 func update_active_slot(active_index: int) -> void:
 	for i in range(hotbar_slots.size()):
 		var slot: Panel = hotbar_slots[i]
@@ -647,7 +695,7 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 			if item_id >= 1 and item_id <= 15:
 				var shadow := ColorRect.new()
 				shadow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-				shadow.offset_left = 3 # Increased relief spacing
+				shadow.offset_left = 3 
 				shadow.offset_top = 3
 				shadow.color = Color(0, 0, 0, 0.18) 
 				shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -708,7 +756,16 @@ func update_health_display(current_hp: int) -> void:
 		if drumsticks_count == 0:
 			ds.font_color = Color(0.22, 0.22, 0.26)
 		else:
-			ds.font_color = Color(1.0, 0.65, 0.3) 
+			ds.font_color = Color(1.0, 0.7, 0.35) 
 			
 		drumstick.label_settings = ds
 		_food_container.add_child(drumstick)
+
+## FASE 1: Public API returning if any interactive glassmorphic menu is currently open on screen
+func is_any_menu_open() -> bool:
+	return (
+		_pause_overlay.visible or
+		is_instance_valid(_crafting_overlay) or
+		is_instance_valid(_inventory_overlay) or
+		(is_instance_valid(dialogue_manager) and is_instance_valid(dialogue_manager.active_dialogue))
+	)
