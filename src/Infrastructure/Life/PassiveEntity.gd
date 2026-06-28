@@ -1,11 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure physics controller node representing a passive entity.
-#              OCP COMPLIANT: Acts as an Abstract Base Class. Handles physical
-#              instantiation of collision nodes internally, letting subclasses
-#              only define their dimensions polimorphically.
-#              REVERTED: Restored the original high-performance, solid-color 
-#              3D box factory to return to the classic Minecraft voxel art style.
+#              SOLID COMPLIANCE: 
+#              - Liskov Substitution Principle (LSP): Acts as an Abstract Base Class. 
+#              - Open-Closed Principle (OCP): Handles physical instantiation of 
+#                collision nodes internally, letting subclasses define dimensions 
+#                polymorphically.
+#              - Single Responsibility Principle (SRP): Only manages physics, state,
+#                and material assignment.
+#              FIXED: Switched to StandardMaterial3D and set metallic_specular to 0.0 
+#              with roughness 1.0 to create a perfectly matte surface that does not 
+#              reflect the ambient sky color.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -64,7 +69,7 @@ func _ready() -> void:
 	_visual_root.name = "Visuals"
 	add_child(_visual_root)
 	
-	# Abstract template methods: Executed by subclasses polimorphically
+	# Abstract template methods: Executed by subclasses polymorphically
 	_build_visual_representation()
 	_setup_floating_bubble()
 	
@@ -107,9 +112,11 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	mesh_instance.mesh = box_mesh
 	mesh_instance.position = box_pos
 	
-	var mat := ORMMaterial3D.new()
+	# FIX: Using StandardMaterial3D with zero specular reflection for perfect matte colors
+	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
-	mat.roughness = 0.95
+	mat.roughness = 1.0
+	mat.metallic_specular = 0.0 
 	mesh_instance.material_override = mat
 	
 	parent.add_child(mesh_instance)

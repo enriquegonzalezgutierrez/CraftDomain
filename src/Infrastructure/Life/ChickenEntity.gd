@@ -1,9 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure physics controller node representing a passive chicken.
-#              OCP COMPLIANT: Completely isolated entity behavior.
-#              UPDATED: Overrode the virtual _drop_loot() contract to grant players
-#              1x Fried Chicken upon hunting.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Handles only the unique 
+#                geometry and loot drops for the chicken.
+#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity.
+#              PROGRAMMATIC DESIGN: Constructs a highly detailed voxel chicken
+#              entirely via code, featuring separate wings, a red comb (crest),
+#              a red wattle (barba), a golden beak, and orange legs with claws.
+#              FIXED: Adjusted the base white color to a warm ivory (0.98, 0.96, 0.92)
+#              to naturally counteract PBR blue-tinting from sky ambient lighting.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/ChickenEntity.gd
 # ==============================================================================
@@ -14,21 +20,54 @@ func _init(spawn_pos: Vector3) -> void:
 	super(spawn_pos, 1)
 	name = "Entity_CHICKEN"
 
+## Overrides: Assembles a premium detailed voxel chicken model programmatically using 3D boxes
 func _build_visual_representation() -> void:
-	_create_box(_visual_root, Vector3(0.35, 0.35, 0.45), Vector3(0, 0.35, 0), Color(0.98, 0.98, 0.98))
+	# FIX: Changed to a warm ivory white to neutralize the cool blue sky lighting
+	var white := Color(0.98, 0.96, 0.92) 
+	var wing_grey := Color(0.92, 0.92, 0.94)
+	var orange := Color(1.0, 0.6, 0.0)
+	var beak_yellow := Color(1.0, 0.68, 0.0)
+	var red := Color(0.92, 0.12, 0.15)
+	
+	# 1. Main Torso Body (White)
+	_create_box(_visual_root, Vector3(0.36, 0.38, 0.46), Vector3(0, 0.36, 0), white)
+	
+	# Exent Side Wings (adds 3D volume and depth)
+	_create_box(_visual_root, Vector3(0.06, 0.24, 0.32), Vector3(-0.21, 0.36, 0.02), wing_grey) # Left wing
+	_create_box(_visual_root, Vector3(0.06, 0.24, 0.32), Vector3(0.21, 0.36, 0.02), wing_grey)  # Right wing
+	
+	# 2. Head Joint & Neck
 	_head_node = Node3D.new()
 	_head_node.name = "ChickenHead"
-	_head_node.position = Vector3(0, 0.58, -0.22)
+	_head_node.position = Vector3(0, 0.58, -0.2)
 	_visual_root.add_child(_head_node)
-	_create_box(_head_node, Vector3(0.2, 0.25, 0.2), Vector3(0, 0, 0), Color(0.98, 0.98, 0.98))
-	_create_box(_head_node, Vector3(0.18, 0.09, 0.14), Vector3(0, 0, -0.13), Color(1.0, 0.62, 0.0))
-	_create_box(_head_node, Vector3(0.08, 0.12, 0.08), Vector3(0, -0.12, -0.05), Color(0.92, 0.1, 0.1))
-	_left_eye = _create_box(_head_node, Vector3(0.06, 0.06, 0.02), Vector3(-0.08, 0.05, -0.11), Color.WHITE)
-	_create_box(_left_eye, Vector3(0.03, 0.03, 0.01), Vector3(0, 0, -0.01), Color(0.12, 0.12, 0.15))
-	_right_eye = _create_box(_head_node, Vector3(0.06, 0.06, 0.02), Vector3(0.08, 0.05, -0.11), Color.WHITE)
-	_create_box(_right_eye, Vector3(0.03, 0.03, 0.01), Vector3(0, 0, -0.01), Color(0.12, 0.12, 0.15))
-	_create_box(_visual_root, Vector3(0.06, 0.18, 0.06), Vector3(-0.09, 0.09, 0), Color(1.0, 0.62, 0.0))
-	_create_box(_visual_root, Vector3(0.06, 0.18, 0.06), Vector3(0.09, 0.09, 0), Color(1.0, 0.62, 0.0))
+	
+	_create_box(_head_node, Vector3(0.22, 0.28, 0.22), Vector3(0, 0.08, 0), white) # Main head block
+	
+	# Red Comb/Crest (on top of the head)
+	_create_box(_head_node, Vector3(0.06, 0.1, 0.22), Vector3(0, 0.27, 0.02), red)
+	
+	# Golden Yellow Beak
+	_create_box(_head_node, Vector3(0.18, 0.1, 0.14), Vector3(0, 0.06, -0.16), beak_yellow)
+	
+	# Red Wattle (Barba under the beak)
+	_create_box(_head_node, Vector3(0.08, 0.12, 0.08), Vector3(0, -0.05, -0.11), red)
+	
+	# Blinking Eyes with cyan-blue pupils
+	_left_eye = _create_box(_head_node, Vector3(0.06, 0.06, 0.02), Vector3(-0.12, 0.12, -0.12), Color.WHITE)
+	_create_box(_left_eye, Vector3(0.03, 0.03, 0.01), Vector3(0, 0, -0.01), Color(0.12, 0.45, 0.85)) # Cyan pupil
+	
+	_right_eye = _create_box(_head_node, Vector3(0.06, 0.06, 0.02), Vector3(0.12, 0.12, -0.12), Color.WHITE)
+	_create_box(_right_eye, Vector3(0.03, 0.03, 0.01), Vector3(0, 0, -0.01), Color(0.12, 0.45, 0.85))
+	
+	# 3. Orange Legs & Claws (Centered at 2 sides)
+	# Left Leg
+	_create_box(_visual_root, Vector3(0.06, 0.16, 0.06), Vector3(-0.08, 0.1, -0.02), orange) # Leg shaft
+	_create_box(_visual_root, Vector3(0.14, 0.03, 0.18), Vector3(-0.08, 0.015, -0.06), orange) # Claws
+	
+	# Right Leg
+	_create_box(_visual_root, Vector3(0.06, 0.16, 0.06), Vector3(0.08, 0.1, -0.02), orange)
+	_create_box(_visual_root, Vector3(0.14, 0.03, 0.18), Vector3(0.08, 0.015, -0.06), orange)
 
 func _get_collision_box_size() -> Vector3:
 	return Vector3(0.46, 0.69, 0.46)

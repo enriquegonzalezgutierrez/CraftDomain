@@ -2,18 +2,19 @@
 # Project: CraftDomain
 # Description: Infrastructure Builder responsible for constructing and configuring
 #              the visual environment, lighting, and post-processing.
-#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by isolating visual setup from the Bootstrap core.
-#              REBALANCED: Upgraded to AgX Tonemapping, boosted Sun Energy to 2.6,
-#              disabled SDFGI to prevent dark dynamic chunk artifacts, and optimized
-#              SSAO crevice shadowing for voxel grids.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Strictly isolates visual 
+#                and atmospheric setup from the Bootstrap core.
+#              FIXED: Completely decoupled the ambient lighting from the procedural 
+#              sky, using a strict neutral grey color. This prevents shadows from 
+#              tinting white voxels (snow, clouds, cows, chickens) with a blue hue.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
 # ==============================================================================
 class_name EnvironmentBuilder
 extends RefCounted
 
-## Constructs and configures the High-Quality Directional Sun Light with high outdoor energy.
+## Constructs and configures the High-Quality Directional Sun Light with warm solar color.
 static func build_sun() -> DirectionalLight3D:
 	var sun_light := DirectionalLight3D.new()
 	sun_light.name = "SunLight"
@@ -30,9 +31,10 @@ static func build_sun() -> DirectionalLight3D:
 	sun_light.directional_shadow_fade_start = 0.8
 	sun_light.directional_shadow_max_distance = 150.0
 	
-	# UPGRADE (Outdoor Scale): Boosted sun light energy to 2.6 to bring bright, vivid daylight to the world
+	# Boosted sun light energy and set a warm golden-white color to balance shadows
 	sun_light.light_energy = 2.6
 	sun_light.light_indirect_energy = 1.5
+	sun_light.light_color = Color(0.99, 0.96, 0.90) # Warm, realistic sunlight color
 	
 	# Restrict sky rendering on the light source to avoid artifacts
 	sun_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
@@ -42,7 +44,7 @@ static func build_sun() -> DirectionalLight3D:
 	
 	return sun_light
 
-## Constructs and configures the WorldEnvironment with AgX tonemapping and SSAO.
+## Constructs and configures the WorldEnvironment with balanced ambient lighting.
 static func build_environment() -> WorldEnvironment:
 	var world_environment := WorldEnvironment.new()
 	world_environment.name = "WorldEnvironment"
@@ -62,10 +64,14 @@ static func build_environment() -> WorldEnvironment:
 	sky.sky_material = sky_material
 	environment.sky = sky
 	
-	# UPGRADE: Ambient light source set to Sky, blending soft sky blue into shadowed areas
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_sky_contribution = 0.45
-	environment.ambient_light_color = Color(0.85, 0.9, 0.98)
+	# ======================================================================
+	# FIX: NEUTRALIZED AMBIENT LIGHT (Global PBR Correction)
+	# Decoupled the ambient source from the sky to use a solid neutral color.
+	# This ensures that shadows remain dark grey instead of tinting white voxels blue.
+	# ======================================================================
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color(0.40, 0.40, 0.40) # Neutral balanced grey
+	environment.ambient_light_sky_contribution = 0.0 # Completely disable sky bleeding into shadows
 	
 	# ======================================================================
 	# HIGH-END GRAPHICS UPGRADES (Godot 4.6+ AgX & SSAO Voxel-Optimized)
@@ -74,7 +80,7 @@ static func build_environment() -> WorldEnvironment:
 	# NOTE: SDFGI is disabled to prevent dynamic chunk loading from creating dark areas.
 	environment.sdfgi_enabled = false
 	
-	# 1. SSAO (Screen Space Ambient Occlusion) - Dark crisp outlines where voxel edges touch
+	# 1. SSAO (Screen Space Ambient Occlusion) - Dark crevice shadowing
 	environment.ssao_enabled = true
 	environment.ssao_radius = 0.45
 	environment.ssao_intensity = 2.2
@@ -86,7 +92,7 @@ static func build_environment() -> WorldEnvironment:
 	environment.ssil_radius = 3.0
 	environment.ssil_intensity = 1.0
 	
-	# 3. UPGRADE: Enabled AgX Tonemapping (Godot 4.3+) for state-of-the-art color preservation
+	# 3. AgX Tonemapping for state-of-the-art color preservation
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
 	environment.tonemap_exposure = 1.25
 	environment.tonemap_white = 1.0
@@ -101,7 +107,6 @@ static func build_environment() -> WorldEnvironment:
 	# 5. Volumetric Atmosphere Fog - Seamless horizontal block clipping
 	environment.volumetric_fog_enabled = true
 	environment.volumetric_fog_density = 0.006
-	# Fog color matches sky horizon perfectly
 	environment.volumetric_fog_albedo = Color(0.62, 0.82, 0.98)
 	
 	# 6. Screen Space Reflections (SSR)

@@ -4,8 +4,8 @@
 #              SOLID COMPLIANCE: Adheres to the Single Responsibility Principle (SRP)
 #              by handling only the physical instantiation, collision box setup,
 #              and interaction/loot granting logic of the chest asset.
-#              FIXED: Elevated _model_node position to 0.4 to prevent the chest 
-#              from being buried in the ground due to center-point pivot geometry.
+#              MATHEMATICAL FIX: Calibrated Y position precisely to 0.373 based 
+#              on vertices telemetry to ensure the chest rests perfectly on the ground.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChestEntity.gd
 # ==============================================================================
@@ -13,6 +13,11 @@ class_name ChestEntity
 extends StaticBody3D
 
 const MODEL_PATH := "res://assets/models/decorations/chest.glb"
+
+# ==============================================================================
+# MATHEMATICAL ALIGNMENT CONSTANTS (Extracted from Python GLB Analyzer)
+# ==============================================================================
+const VERTICAL_OFFSET: float = 0.373  # Elevates center-pivot model perfectly to ground level
 
 # Internal model instance reference
 var _model_node: Node3D
@@ -29,8 +34,8 @@ func _setup_model() -> void:
 		_model_node = model_scene.instantiate() as Node3D
 		add_child(_model_node)
 		
-		# FIXED: Elevated the model node 0.4 meters to compensate for centered geometry pivot
-		_model_node.position = Vector3(0.0, 0.4, 0.0)
+		# Center and adjust scale based on telemetry
+		_model_node.position = Vector3(0.0, VERTICAL_OFFSET, 0.0)
 		_model_node.scale = Vector3(1.0, 1.0, 1.0)
 	else:
 		push_error("[ChestEntity] Failed to load GLB model at path: " + MODEL_PATH)
