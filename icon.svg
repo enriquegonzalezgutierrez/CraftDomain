@@ -1,38 +1,69 @@
-<!--
-==============================================================================
-Project: CraftDomain
-Description: High-end minimalist SVG icon representing an isometric voxel 
-             grass block with a crossed combat sword for the project icon.
-Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-File: res://icon.svg
-==============================================================================
--->
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-    <!-- Circular Shield Background (Dark Slate) -->
-    <circle cx="64" cy="64" r="58" fill="#14141a" stroke="#252530" stroke-width="4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Ambient Back-Glow Gradients -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffcc00" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#5ec42f" stop-opacity="0"/>
+    </radialGradient>
     
-    <g transform="translate(64, 64)">
-        <!-- Crossed Sword (Rotated Background Layer) -->
-        <g transform="rotate(-45) translate(-10, -50)">
-			<!-- Blade (Iron Grey) -->
-			<rect x="6" y="0" width="8" height="60" fill="#e0e0e0" rx="2"/>
-			<rect x="10" y="0" width="4" height="60" fill="#cfd8dc" rx="1"/>
-			<!-- Guard (Wood Brown) -->
-			<rect x="0" y="60" width="20" height="6" fill="#8d6e63" rx="2"/>
-			<!-- Grip (Dark Oak) -->
-			<rect x="7" y="66" width="6" height="16" fill="#5d4037" rx="1"/>
-			<!-- Pommel -->
-			<rect x="5" y="82" width="10" height="6" fill="#8d6e63" rx="2"/>
-        </g>
-        
-        <!-- Isometric Voxel Block (Foreground Layer) -->
-        <g transform="translate(0, 5)">
-            <!-- Top Face (Grass Light Green) -->
-            <polygon points="0,-35 32,-16 0,3 -32,-16" fill="#8bc34a" />
-            <!-- Left Face (Dirt Medium Green/Brown) -->
-            <polygon points="-32,-16 0,3 0,35 -32,16" fill="#689f38" />
-            <!-- Right Face (Dirt Dark Green/Brown) -->
-            <polygon points="0,3 32,-16 32,16 0,35" fill="#558b2f" />
-        </g>
-    </g>
+    <!-- Face Gradients -->
+    <linearGradient id="grassTop" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7be03b"/>
+      <stop offset="100%" stop-color="#46a81b"/>
+    </linearGradient>
+    <linearGradient id="dirtLeft" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#805435"/>
+      <stop offset="100%" stop-color="#54351f"/>
+    </linearGradient>
+    <linearGradient id="dirtRight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#613b1f"/>
+      <stop offset="100%" stop-color="#3b2112"/>
+    </linearGradient>
+    
+    <!-- Glowing Tech Borders -->
+    <linearGradient id="borderGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffe600"/>
+      <stop offset="100%" stop-color="#ffd000"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Rounded glassmorphic dark background card -->
+  <rect width="512" height="512" rx="110" fill="#0b0b0f" stroke="#1b1b22" stroke-width="12"/>
+  
+  <!-- Ambient Back-Glow behind the block -->
+  <circle cx="256" cy="256" r="190" fill="url(#bgGlow)"/>
+  
+  <!-- Isometric Cube Group -->
+  <g transform="translate(0, 10)">
+    
+    <!-- LEFT FACE (Dirt Base) -->
+    <path d="M 136,190 L 256,260 L 256,400 L 136,330 Z" fill="url(#dirtLeft)"/>
+    
+    <!-- RIGHT FACE (Dirt Shadowed) -->
+    <path d="M 256,260 L 376,190 L 376,330 L 256,400 Z" fill="url(#dirtRight)"/>
+    
+    <!-- STEPPED GRASS OVERHANG (Left Face Voxel Details) -->
+    <path d="M 136,190 
+             L 166,207 Q 170,215 174,211 L 186,204
+             L 196,211 Q 202,225 208,218 L 224,208
+             L 236,218 L 256,230 
+             L 256,260 L 136,190 Z" fill="url(#grassTop)" opacity="0.95"/>
+    
+    <!-- STEPPED GRASS OVERHANG (Right Face Voxel Details) -->
+    <path d="M 256,230
+             L 276,218 L 288,225 L 302,211
+             L 316,218 Q 322,224 326,218 L 342,208
+             L 356,218 L 376,190
+             L 376,220 L 256,260 Z" fill="url(#grassTop)" opacity="0.85"/>
+             
+    <!-- TOP FACE (Grass Rhombus) -->
+    <path d="M 256,120 L 376,190 L 256,260 L 136,190 Z" fill="url(#grassTop)"/>
+    
+    <!-- Glowing Golden Outlines (Satisfies the Technology/Domain theme) -->
+    <path d="M 256,120 L 376,190 L 256,260 L 136,190 Z" fill="none" stroke="url(#borderGlow)" stroke-width="4.5" stroke-linejoin="round" opacity="0.85"/>
+    
+    <!-- Vertical Central Edge Highlight -->
+    <line x1="256" y1="260" x2="256" y2="400" stroke="url(#borderGlow)" stroke-width="2.5" opacity="0.3"/>
+    
+  </g>
 </svg>
