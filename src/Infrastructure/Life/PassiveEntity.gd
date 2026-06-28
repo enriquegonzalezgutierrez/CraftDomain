@@ -3,14 +3,11 @@
 # Description: Infrastructure physics controller node representing a passive entity.
 #              SOLID COMPLIANCE: 
 #              - Liskov Substitution Principle (LSP): Acts as an Abstract Base Class. 
-#              - Open-Closed Principle (OCP): Handles physical instantiation of 
-#                collision nodes internally, letting subclasses define dimensions 
-#                polymorphically.
 #              - Single Responsibility Principle (SRP): Only manages physics, state,
 #                and material assignment.
-#              FIXED: Switched to StandardMaterial3D and set metallic_specular to 0.0 
-#              with roughness 1.0 to create a perfectly matte surface that does not 
-#              reflect the ambient sky color.
+#              ANIMATION UPGRADE: Implemented a robust procedural animation engine.
+#              Added `_body_bob_node` to simulate actual footstep bouncing.
+#              Improved idle breathing and walking arm/head sway for organic life.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -43,6 +40,7 @@ var _animation_time: float = 0.0
 
 # Dynamic Node references for subclass procedural animations
 var _visual_root: Node3D
+var _body_bob_node: Node3D # NEW: Root node for entire body bouncing (footsteps)
 var _head_node: Node3D
 var _arms_node: Node3D
 var _left_eye: MeshInstance3D
@@ -59,7 +57,6 @@ const GREET_DISTANCE: float = 3.5
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
 	
-	# Instantiate pure domain model
 	domain_entity = VoxelEntity.new(initial_health)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
@@ -69,11 +66,14 @@ func _ready() -> void:
 	_visual_root.name = "Visuals"
 	add_child(_visual_root)
 	
-	# Abstract template methods: Executed by subclasses polymorphically
+	# NEW: Add a bobbing root inside visuals to handle procedural walking bounce
+	_body_bob_node = Node3D.new()
+	_body_bob_node.name = "BodyBobJoint"
+	_visual_root.add_child(_body_bob_node)
+	
 	_build_visual_representation()
 	_setup_floating_bubble()
 	
-	# Instantiate and register the CollisionShape3D internally in base class!
 	var col := CollisionShape3D.new()
 	col.name = "EntityCollider"
 	var box_shape := BoxShape3D.new()
@@ -83,24 +83,21 @@ func _ready() -> void:
 	add_child(col)
 
 ## Abstract Contract: Subclasses must override this to assemble their 3D voxel models
+## Note: Subclasses should attach their geometry to `_body_bob_node` instead of `_visual_root`
 func _build_visual_representation() -> void:
 	assert(false, "[PassiveEntity] _build_visual_representation() must be implemented by subclass.")
 
-## Abstract Contract: Subclasses must override this to declare their physical box size
 func _get_collision_box_size() -> Vector3:
 	assert(false, "[PassiveEntity] _get_collision_box_size() must be implemented by subclass.")
 	return Vector3(1.0, 1.0, 1.0)
 
-## Abstract Contract: Subclasses must override this to declare their physical box center offset
 func _get_collision_box_position() -> Vector3:
 	assert(false, "[PassiveEntity] _get_collision_box_position() must be implemented by subclass.")
 	return Vector3(0.0, 0.5, 0.0)
 
-## Virtual Contract: Subclasses can override this to attach floating speech bubbles
 func _setup_floating_bubble() -> void:
 	pass
 
-## Virtual Contract: Subclasses can override this to implement custom dialogue triggers
 func interact(_player: CharacterBody3D) -> void:
 	pass
 
@@ -112,7 +109,6 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	mesh_instance.mesh = box_mesh
 	mesh_instance.position = box_pos
 	
-	# FIX: Using StandardMaterial3D with zero specular reflection for perfect matte colors
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 1.0
@@ -134,7 +130,6 @@ func _on_domain_entity_died() -> void:
 	_try_drop_player_loot()
 	queue_free()
 
-## Scans the parent node to find the Player and safely inject loot rewards
 func _try_drop_player_loot() -> void:
 	var parent := get_parent()
 	if is_instance_valid(parent):
@@ -143,16 +138,14 @@ func _try_drop_player_loot() -> void:
 			var inv: IInventory = player_node.get("inventory")
 			if is_instance_valid(inv):
 				_drop_loot(inv)
-				player_node.call("_sync_hud_counters") # Sync HUD UI instantly
+				player_node.call("_sync_hud_counters") 
 
-## Virtual Method: Overridden by specific subclasses to declare their unique drops
 func _drop_loot(_inv: IInventory) -> void:
 	pass
 
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: return
 		
-	# Apply standard physics gravity
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 
@@ -162,20 +155,19 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-## Temporarily shrinks the eyes vertically to simulate natural blinking
 func _process_blinking_cycle(delta: float) -> void:
 	if not _is_blinking:
 		_blink_timer -= delta
 		if _blink_timer <= 0.0:
 			_is_blinking = true
-			_blink_duration = 0.12 # Blink lasts 120ms
-			_set_eyes_vertical_scale(0.1) # Close eyes
+			_blink_duration = 0.12 
+			_set_eyes_vertical_scale(0.1) 
 	else:
 		_blink_duration -= delta
 		if _blink_duration <= 0.0:
 			_is_blinking = false
 			_blink_timer = randf_range(2.5, 6.0)
-			_set_eyes_vertical_scale(1.0) # Open eyes
+			_set_eyes_vertical_scale(1.0) 
 
 func _set_eyes_vertical_scale(y_scale: float) -> void:
 	if is_instance_valid(_left_eye):
@@ -183,7 +175,6 @@ func _set_eyes_vertical_scale(y_scale: float) -> void:
 	if is_instance_valid(_right_eye):
 		_right_eye.scale.y = y_scale
 
-## Advanced behavior states: WANDERING, GREETING players, or EXAMINING
 func _process_ai_state_machine(delta: float) -> void:
 	var player_node: CharacterBody3D = get_parent().get_node_or_null("Player") as CharacterBody3D
 	var distance_to_player: float = 999.0
@@ -204,7 +195,6 @@ func _process_ai_state_machine(delta: float) -> void:
 		if _task_timer <= 0.0:
 			_select_next_random_task()
 
-	# Execute active state velocities
 	match current_task:
 		TaskState.IDLE, TaskState.GREETING:
 			velocity.x = move_toward(velocity.x, 0, BASE_SPEED)
@@ -221,11 +211,9 @@ func _process_ai_state_machine(delta: float) -> void:
 			if is_on_wall() and is_on_floor():
 				velocity.y = JUMP_VELOCITY
 
-## Virtual check: overridden by human-roles to allow social greetings
 func _can_socialize() -> bool:
 	return false
 
-## Dynamically changes states to break robotic uniformity
 func _select_next_random_task() -> void:
 	var roll := randf()
 	
@@ -243,29 +231,49 @@ func _select_next_random_task() -> void:
 		current_task = TaskState.IDLE
 		_task_timer = randf_range(1.5, 4.0)
 
-## Beautiful procedural animations
+## ANIMATION UPGRADE: Advanced Procedural Bouncing and Sway
 func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
+	var is_moving: bool = current_task == TaskState.WANDERING
 	
+	# Face the wandering/examining direction
 	if is_instance_valid(_visual_root) and _wander_direction != Vector3.ZERO:
 		var target_look := global_position + _wander_direction
 		_visual_root.look_at(target_look, Vector3.UP)
 		_visual_root.rotation.x = 0
 		_visual_root.rotation.z = 0
 		
+	# 1. Body Bobbing (Footsteps)
+	if is_instance_valid(_body_bob_node):
+		if is_moving and is_on_floor():
+			var speed_mult := 12.0 if _is_avian() else 10.0
+			var bounce_height := 0.05 if _is_avian() else 0.035
+			# Absolute sine wave creates a bounce on every step
+			_body_bob_node.position.y = abs(sin(_animation_time * speed_mult)) * bounce_height
+		else:
+			# Idle breathing
+			_body_bob_node.position.y = lerp(_body_bob_node.position.y, sin(_animation_time * 2.0) * 0.015, delta * 5.0)
+			
+	# 2. State-Specific Sway (Head and Arms)
 	if current_task == TaskState.GREETING:
 		if is_instance_valid(_head_node):
-			_head_node.rotation.x = sin(_animation_time * 6.0) * 0.15 
+			_head_node.rotation.x = sin(_animation_time * 5.0) * 0.15 # Nodding slowly
+			_head_node.rotation.y = 0.0
 		if is_instance_valid(_arms_node):
 			_arms_node.rotation.x = 0.0
+			_arms_node.position.y = -0.21
 			
 	elif current_task == TaskState.EXAMINING:
 		if is_instance_valid(_head_node):
+			# Look down
 			_head_node.rotation.x = lerp(_head_node.rotation.x, deg_to_rad(25), delta * 5.0)
+			_head_node.rotation.y = sin(_animation_time * 2.0) * 0.05
 		if is_instance_valid(_arms_node):
+			# Digging/Hoeing motion
+			_arms_node.rotation.x = sin(_animation_time * 8.0) * 0.15
 			_arms_node.position.y = -0.21 + sin(_animation_time * 8.0) * 0.03
 			
-	elif current_task == TaskState.WANDERING:
+	elif is_moving:
 		var speed_mult := 8.0 if _is_avian() else 5.0
 		var sway_amount := 0.2 if _is_avian() else 0.08
 		
@@ -274,15 +282,17 @@ func _process_procedural_animations(delta: float) -> void:
 			_head_node.rotation.y = cos(_animation_time * (speed_mult * 0.5)) * 0.05
 			
 		if is_instance_valid(_arms_node):
+			# Arm swing opposite to footstep
+			_arms_node.rotation.x = cos(_animation_time * speed_mult) * 0.1
 			_arms_node.position.y = -0.21 + sin(_animation_time * 10.0) * 0.02
 			
-	else:
+	else: # IDLE
 		if is_instance_valid(_head_node):
 			_head_node.rotation.x = lerp(_head_node.rotation.x, 0.0, delta * 5.0)
 			_head_node.rotation.y = lerp(_head_node.rotation.y, 0.0, delta * 5.0)
 		if is_instance_valid(_arms_node):
+			_arms_node.rotation.x = lerp(_arms_node.rotation.x, 0.0, delta * 5.0)
 			_arms_node.position.y = lerp(_arms_node.position.y, -0.21, delta * 5.0)
 
-## Virtual check: overridden by birds (Chickens) to speed up head bobbing animations
 func _is_avian() -> bool:
 	return false

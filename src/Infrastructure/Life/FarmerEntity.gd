@@ -1,9 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Farmer NPC entity. Inherits from the abstract base class PassiveEntity.
-#              OCP COMPLIANT: Completely isolated from other NPC files.
-#              REVERTED: Restored the original programmatic 3D voxel block design
-#              (with straw hat, custom nose, and blinking eyes) for a classic Minecraft look.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Handles only the farming-specific
+#                AI states, dialogues, and agriculturist visual blocks.
+#              - Liskov Substitution Principle (LSP): Fully interchangeable subclass.
+#              MODEL UPGRADE: Complete rustic worker redesign. Modeled muddy field-boots,
+#              blue denim overalls with leather suspender straps, an improved wide-brim
+#              straw hat, and a sheathed harvesting wooden hoe on his back.
+#              Fully integrated into the bouncy `_body_bob_node`.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
@@ -14,45 +19,78 @@ func _init(spawn_pos: Vector3) -> void:
 	super(spawn_pos, 1)
 	name = "Entity_FARMER"
 
-## Override: Assembles the 3D Farmer model with a custom straw hat
+## Override: Assembles the 3D Farmer model with its rustic field outfit
 func _build_visual_representation() -> void:
-	var robe_color := Color(0.68, 0.58, 0.42) # Straw yellow/linen robe
-	var sash_color := Color(0.25, 0.15, 0.1)  # Dark brown sash
+	var shirt_color := Color(0.85, 0.82, 0.75)       # Linen off-white shirt
+	var denim_color := Color(0.20, 0.35, 0.55)       # Rustic blue denim overalls
+	var strap_color := Color(0.35, 0.22, 0.15)       # Brown leather straps
+	var skin_color := Color(0.95, 0.75, 0.65)        # Peachy skin
+	var nose_color := Color(0.85, 0.65, 0.55)        # Nose
+	var straw_color := Color(0.88, 0.78, 0.42)       # Straw yellow hat
+	var boots_color := Color(0.18, 0.14, 0.11)       # Muddy boots
+	var iron_color := Color(0.50, 0.50, 0.52)        # Worn iron blade
 	
-	# 1. Torso Robe
-	_create_box(_visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), robe_color)
+	# 1. Base Legs / Muddy Boots (Attached to the bouncing bob node!)
+	_create_box(_body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), boots_color)
 	
-	# 2. Head Node
+	# 2. Torso: Linen Shirt & Denim Overalls
+	# Linen shirt base
+	_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), shirt_color)
+	# Denim overall trousers wrapping the lower half of the torso
+	_create_box(_body_bob_node, Vector3(0.47, 0.45, 0.47), Vector3(0, 0.375, 0), denim_color)
+	# Overall front chest pocket/panel
+	_create_box(_body_bob_node, Vector3(0.32, 0.18, 0.05), Vector3(0, 0.60, -0.21), denim_color)
+	
+	# Overalls leather suspender straps (Over the shoulders)
+	_create_box(_body_bob_node, Vector3(0.06, 0.22, 0.49), Vector3(-0.13, 0.74, 0), strap_color) # Left strap
+	_create_box(_body_bob_node, Vector3(0.06, 0.22, 0.49), Vector3(0.13, 0.74, 0), strap_color)  # Right strap
+	
+	# 3. Head Node & Straw Hat
 	_head_node = Node3D.new()
 	_head_node.name = "HumanHead"
-	_head_node.position = Vector3(0, 1.25, 0)
-	_visual_root.add_child(_head_node)
+	_head_node.position = Vector3(0, 1.05, 0)
+	_body_bob_node.add_child(_head_node)
 	
-	_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.05, 0), Color(0.95, 0.75, 0.65)) # Head skin
-	_create_box(_head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, -0.01, -0.21), Color(0.85, 0.65, 0.55)) # Nose
+	# Skin head
+	_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color)
+	# 3D Nose
+	_create_box(_head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), nose_color)
 	
-	# Wide flat Straw Hat on head
-	_create_box(_head_node, Vector3(0.65, 0.04, 0.65), Vector3(0, 0.24, 0), Color(0.88, 0.78, 0.42))
-	_create_box(_head_node, Vector3(0.22, 0.12, 0.22), Vector3(0, 0.3, 0), Color(0.85, 0.72, 0.35))
+	# Wide flat Straw Hat (Shields the farmer from the procedural sun)
+	_create_box(_head_node, Vector3(0.65, 0.03, 0.65), Vector3(0, 0.36, 0), straw_color) # Wide Brim
+	_create_box(_head_node, Vector3(0.24, 0.10, 0.24), Vector3(0, 0.42, 0), straw_color) # Dome top
 	
 	# Blinking Eyes
-	_left_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.06, -0.18), Color.WHITE)
+	_left_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
 	_create_box(_left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
-	_right_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.06, -0.18), Color.WHITE)
+	
+	_right_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
 	_create_box(_right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
 	
-	# 3. Folded arms
+	# 4. Linen Folded Arms
 	_arms_node = Node3D.new()
 	_arms_node.name = "ArmsJoint"
-	_arms_node.position = Vector3(0, 0.75, -0.21)
-	_visual_root.add_child(_arms_node)
-	_create_box(_arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), sash_color)
+	_arms_node.position = Vector3(0, 0.65, -0.23)
+	_body_bob_node.add_child(_arms_node)
+	
+	_create_box(_arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), shirt_color)
+	
+	# 5. Sheathed Wood/Iron Hoe on Back (Diagonally mounted)
+	var hoe_joint := Node3D.new()
+	hoe_joint.name = "HarvestHoeJoint"
+	hoe_joint.position = Vector3(0.1, 0.5, 0.24)
+	hoe_joint.rotation = Vector3(0, 0, deg_to_rad(45)) 
+	_body_bob_node.add_child(hoe_joint)
+	
+	_create_box(hoe_joint, Vector3(0.04, 0.52, 0.04), Vector3(0, 0, 0), strap_color) # Long Oak handle
+	_create_box(hoe_joint, Vector3(0.06, 0.06, 0.14), Vector3(0, 0.24, -0.06), iron_color) # Iron head coupler
+	_create_box(hoe_joint, Vector3(0.10, 0.18, 0.04), Vector3(0, 0.21, -0.12), iron_color) # Hoe digging blade
 
 func _get_collision_box_size() -> Vector3:
-	return Vector3(0.575, 1.61, 0.575)
+	return Vector3(0.575, 1.5, 0.575)
 
 func _get_collision_box_position() -> Vector3:
-	return Vector3(0, 0.805, 0)
+	return Vector3(0, 0.75, 0)
 
 func _setup_floating_bubble() -> void:
 	var sb_script: Script = load("res://src/Infrastructure/UI/SpeechBubble.gd")

@@ -2,9 +2,14 @@
 # Project: CraftDomain
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              dynamic SunLight and MoonLight rotation, and procedural sky transitions.
-#              SOLID COMPLIANCE: Encapsulates all dynamic celestial calculations.
-#              UPDATED: Adjusted time_speed to 96.0 to ensure a full 24-hour cycle 
-#              takes exactly 15 minutes of real-world play.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Only manages physical orbits
+#                and day timelines, delegating weather-uniform parameters to the GPU.
+#              FIXED: Detects the active weather state from WeatherService dynamically
+#              and smoothly interpolates `_current_storm_weight` using a linear 
+#              interpolation (lerp) over time. Updates the custom GPU Sky Shader
+#              with the dynamic `storm_weight` parameter to render realistic 
+#              cloud coverage during rain/snow.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
@@ -28,20 +33,8 @@ var _last_time_value: float = 0.5
 # Calendar days tracking for lunar cycle simulation
 var _calendar_days: int = 14 # Start at day 14 (Full Moon) for immediate visual feedback!
 
-# Sky colors for different times of day
-const SKY_COLORS = {
-	"MORNING_TOP": Color(0.2, 0.55, 0.9),      
-	"MORNING_HORIZON": Color(0.95, 0.75, 0.45), 
-	
-	"NOON_TOP": Color(0.12, 0.45, 0.95),       
-	"NOON_HORIZON": Color(0.55, 0.85, 1.0),    
-	
-	"SUNSET_TOP": Color(0.15, 0.25, 0.45),     
-	"SUNSET_HORIZON": Color(0.95, 0.45, 0.2),  
-	
-	"NIGHT_TOP": Color(0.02, 0.02, 0.08),      
-	"NIGHT_HORIZON": Color(0.08, 0.08, 0.15)   
-}
+# Weather-Storm parameters
+var _current_storm_weight: float = 0.0
 
 func _ready() -> void:
 	name = "CelestialService"
@@ -64,6 +57,10 @@ func _process(delta: float) -> void:
 		
 	_update_sun_rotation()
 	_update_moon_rotation()
+	
+	# Smoothly calculate weather cloud overcast transition (approx. 5 seconds transition)
+	_process_weather_transitions(delta)
+	
 	_update_sky_atmosphere()
 
 ## Programmatically instantiates the secondary silver-blue Moon light source
@@ -79,8 +76,8 @@ func _setup_dynamic_moon_light() -> void:
 	moon_light.light_energy = 0.0 # Silent start
 	moon_light.light_indirect_energy = 1.0
 	
-	# Set Moon sky mode to SKY_MODE_LIGHT_ONLY
-	moon_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	# Configured to LIGHT_AND_SKY so the sky shader receives the Moon's rotation vectors
+	moon_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	
 	add_child(moon_light)
 
@@ -88,7 +85,8 @@ func _update_sun_rotation() -> void:
 	if not is_instance_valid(sun_light):
 		return
 		
-	var angle_rad: float = (_current_time * TAU) - (PI / 2.0)
+	# Inverted angle calculation to ensure the light shines DOWNWARDS during daytime
+	var angle_rad: float = -((_current_time * TAU) - (PI / 2.0))
 	sun_light.rotation.x = angle_rad
 	sun_light.rotation.y = deg_to_rad(35)
 	
@@ -112,7 +110,7 @@ func _update_moon_rotation() -> void:
 		return
 		
 	# Moon rotates 180 degrees (PI radians) out-of-phase with the Sun
-	var angle_rad: float = (_current_time * TAU) - (PI / 2.0) + PI
+	var angle_rad: float = -((_current_time * TAU) - (PI / 2.0)) + PI
 	moon_light.rotation.x = angle_rad
 	moon_light.rotation.y = deg_to_rad(-145) # Azimuth opposite angle
 	
@@ -136,39 +134,48 @@ func _update_moon_rotation() -> void:
 		moon_light.light_energy = clamp(intensity, 0.0, 0.45)
 		moon_light.shadow_enabled = moon_light.light_energy > 0.05
 
+## Queries the Weather Service sibling and interpolates storm overcast weights
+func _process_weather_transitions(delta: float) -> void:
+	var weather_node: Node = get_parent().get_node_or_null("WeatherService")
+	var target_storm: float = 0.0
+	
+	if is_instance_valid(weather_node):
+		var w_type: int = int(weather_node.get("current_weather"))
+		# WeatherType.SUNNY is 0. If current_weather > 0 (RAINY=1, SNOWY=2), we close the clouds
+		if w_type != 0:
+			target_storm = 1.0
+			
+	# Smoothly transition storm overcast weight (lerping toward target)
+	_current_storm_weight = lerp(_current_storm_weight, target_storm, delta * 0.4)
+
+## Deterministic Sky Synchronization using explicit static typing
 func _update_sky_atmosphere() -> void:
 	if not is_instance_valid(world_environment) or not is_instance_valid(world_environment.environment):
 		return
 		
 	var sky: Sky = world_environment.environment.sky
-	if sky == null or not (sky.sky_material is ProceduralSkyMaterial):
+	if sky == null or not (sky.sky_material is ShaderMaterial):
 		return
 		
-	var sky_mat := sky.sky_material as ProceduralSkyMaterial
+	var sky_mat: ShaderMaterial = sky.sky_material as ShaderMaterial
 	
-	var top_color: Color
-	var horizon_color: Color
-	
-	if _current_time < 0.25:
-		var t := remap(_current_time, 0.0, 0.25, 0.0, 1.0)
-		top_color = SKY_COLORS["NIGHT_TOP"].lerp(SKY_COLORS["MORNING_TOP"], t)
-		horizon_color = SKY_COLORS["NIGHT_HORIZON"].lerp(SKY_COLORS["MORNING_HORIZON"], t)
-	elif _current_time < 0.5:
-		var t := remap(_current_time, 0.25, 0.5, 0.0, 1.0)
-		top_color = SKY_COLORS["MORNING_TOP"].lerp(SKY_COLORS["NOON_TOP"], t)
-		horizon_color = SKY_COLORS["MORNING_HORIZON"].lerp(SKY_COLORS["NOON_HORIZON"], t)
-	elif _current_time < 0.75:
-		var t := remap(_current_time, 0.5, 0.75, 0.0, 1.0)
-		top_color = SKY_COLORS["NOON_TOP"].lerp(SKY_COLORS["SUNSET_TOP"], t)
-		horizon_color = SKY_COLORS["NOON_HORIZON"].lerp(SKY_COLORS["SUNSET_HORIZON"], t)
-	else: # Sunset to Night transition
-		var t := remap(_current_time, 0.75, 1.0, 0.0, 1.0)
-		top_color = SKY_COLORS["SUNSET_TOP"].lerp(SKY_COLORS["NIGHT_TOP"], t)
-		horizon_color = SKY_COLORS["SUNSET_HORIZON"].lerp(SKY_COLORS["NIGHT_HORIZON"], t)
+	# 1. Synchronize the Sun's position and the clock's day weight
+	if is_instance_valid(sun_light):
+		# global_transform.basis.z points directly towards the sun source in Godot 3D
+		var sun_dir: Vector3 = sun_light.global_transform.basis.z.normalized()
+		sky_mat.set_shader_parameter("sun_direction", sun_dir)
 		
-	sky_mat.sky_top_color = top_color
-	sky_mat.sky_horizon_color = horizon_color
-	sky_mat.ground_horizon_color = horizon_color
+		# Compute the precise day/night blend (positive Y means above the horizon/day)
+		var day_weight: float = clamp(sun_dir.y * 4.0 + 0.2, 0.0, 1.0)
+		sky_mat.set_shader_parameter("day_weight", day_weight)
+		
+	# 2. Synchronize the Moon's position
+	if is_instance_valid(moon_light):
+		var moon_dir: Vector3 = moon_light.global_transform.basis.z.normalized()
+		sky_mat.set_shader_parameter("moon_direction", moon_dir)
+		
+	# 3. Synchronize the smooth weather storm cloud cover
+	sky_mat.set_shader_parameter("storm_weight", _current_storm_weight)
 
 ## Public helper: Returns true if it is currently nighttime
 func is_night_time() -> bool:

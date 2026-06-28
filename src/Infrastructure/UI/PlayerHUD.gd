@@ -2,10 +2,13 @@
 # Project: CraftDomain
 # Description: Infrastructure UI controller acting as a lightweight Orchestrator.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by delegating visual, math, and radar operations
-#              to specialized sub-widgets.
-#              UPGRADED: Integrated premium spring-scale transitions on pause,
-#              and a programmatic slide-down quest completion notification toast.
+#              Principle (SRP) by delegating visual operations to widgets.
+#              UX UPGRADE (MINECRAFT STYLE): Decluttered the Hotbar. Removed 
+#              static text tags from slots, shrunk slot sizes, placed quantities 
+#              in the bottom right corner, and implemented a fading "Toast" label 
+#              that shows the item name contextually and then disappears.
+#              FIXED: Added color-coded procedural visual icons inside each slot 
+#              to represent the selected materials clearly and avoid empty grey boxes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -22,7 +25,8 @@ var gps_panel: GPSPanelWidget
 var quest_panel: QuestTrackerWidget
 
 # Sibling UI nodes managed locally
-var inventory_label: Label
+var _item_name_toast: Label
+var _toast_tween: Tween
 var health_label: Label
 var hotbar_slots: Array[Panel] = []
 
@@ -32,7 +36,7 @@ var _pause_overlay: Panel
 var _settings_overlay: Control
 
 # Modern 8-Slot Hotbar items mapping
-const HOTBAR_ITEMS = ["Stone", "Dirt", "Grass", "Wood", "Leaves", "Lava", "Chicken", "Sword"]
+const HOTBAR_ITEMS = ["Stone Block", "Dirt Block", "Grass Block", "Wood Log", "Leaves", "Lava Bucket", "Fried Chicken", "Wooden Sword"]
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -40,16 +44,20 @@ func _ready() -> void:
 	
 	_setup_damage_overlay()
 	_setup_crosshair()
-	_setup_minimap()             # Delegate creation to MinimapWidget
-	_setup_navigation_gps_panel() # Delegate creation to GPSPanelWidget
-	_setup_quest_tracker_panel()  # Delegate creation to QuestTrackerWidget
+	_setup_minimap()             
+	_setup_navigation_gps_panel() 
+	_setup_quest_tracker_panel()  
+	
 	_setup_hotbar()
-	_setup_inventory_display()
+	_setup_item_name_toast()
 	_setup_health_display()
 	_setup_pause_menu()
 	
 	if is_instance_valid(player) and player.has_method("_sync_hud_counters"):
 		player.call("_sync_hud_counters")
+		
+	# Trigger the first selection visually
+	update_active_slot(0)
 
 func _setup_damage_overlay() -> void:
 	damage_overlay = ColorRect.new()
@@ -89,26 +97,19 @@ func _draw() -> void:
 	crosshair.set_script(draw_script)
 	add_child(crosshair)
 
-## Instantiates and wires the decoupled Minimap Widget
 func _setup_minimap() -> void:
 	minimap = MinimapWidget.new()
 	minimap.player = player
 	minimap.world_controller = world_controller
-	
-	# Positioning (Top Right)
 	minimap.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	minimap.offset_left = -170
 	minimap.offset_top = 20
-	
 	add_child(minimap)
 
-## Instantiates and wires the decoupled GPS Navigation Panel Widget
 func _setup_navigation_gps_panel() -> void:
 	gps_panel = GPSPanelWidget.new()
 	gps_panel.player = player
 	gps_panel.world_controller = world_controller
-	
-	# Positioning (Top Center)
 	gps_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	gps_panel.offset_top = 20
 	gps_panel.offset_left = -250
@@ -116,7 +117,6 @@ func _setup_navigation_gps_panel() -> void:
 	
 	add_child(gps_panel)
 
-## Instantiates and wires the decoupled Quest Tracker Panel Widget
 func _setup_quest_tracker_panel() -> void:
 	quest_panel = QuestTrackerWidget.new()
 	quest_panel.player = player
@@ -156,52 +156,80 @@ func _setup_hotbar() -> void:
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hotbar_bg.add_child(hbox)
 	
+	# Primary palette colors representing each active item
+	var item_colors = [
+		Color(0.55, 0.55, 0.55), # Stone Block (Solid Grey)
+		Color(0.55, 0.38, 0.25), # Dirt Block (Chocolate Soil Brown)
+		Color(0.42, 0.78, 0.25), # Grass Block (Vibrant Green)
+		Color(0.72, 0.55, 0.35), # Wood Log (Warm Oak Tan)
+		Color(0.25, 0.65, 0.18), # Leaves (Forest Green)
+		Color(1.0, 0.45, 0.0),   # Lava Bucket (Glowing Orange)
+		Color(0.92, 0.62, 0.62), # Fried Chicken (Pinkish/Beige)
+		Color(0.75, 0.75, 0.80)  # Wooden Sword (Steel Grey/Worn)
+	]
+	
 	for i in range(8):
 		var slot := Panel.new()
 		slot.name = "Slot_%d" % i
-		slot.custom_minimum_size = Vector2(60, 60)
-		slot.pivot_offset = Vector2(30, 30) 
+		slot.custom_minimum_size = Vector2(46, 46)
+		slot.pivot_offset = Vector2(23, 23) 
 		
 		var slot_style := StyleBoxFlat.new()
-		slot_style.set_corner_radius_all(8)
-		slot_style.bg_color = Color(0.15, 0.15, 0.15, 0.6)
+		slot_style.set_corner_radius_all(6)
+		slot_style.bg_color = Color(0.12, 0.12, 0.12, 0.6)
 		slot.add_theme_stylebox_override("panel", slot_style)
 		hbox.add_child(slot)
 		
-		var label := Label.new()
-		label.name = "ItemLabel"
-		label.text = HOTBAR_ITEMS[i].substr(0, 3).to_upper()
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		# FIXED: Center-anchored minimalist procedural colored icon
+		var icon := ColorRect.new()
+		icon.name = "ItemIcon"
+		icon.custom_minimum_size = Vector2(22, 22)
+		icon.size = Vector2(22, 22)
+		icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		icon.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		icon.grow_vertical = Control.GROW_DIRECTION_BOTH
+		icon.color = item_colors[i]
+		slot.add_child(icon)
+		
+		# Quantity label positioned on top of the colored icon (Minecraft style)
+		var qty_label := Label.new()
+		qty_label.name = "QtyLabel"
+		qty_label.text = ""
+		qty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		qty_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		qty_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 		
 		var label_style := LabelSettings.new()
-		label_style.font_size = 12
-		label_style.outline_size = 3
+		label_style.font_size = 14
+		label_style.outline_size = 4
 		label_style.outline_color = Color.BLACK
-		label.label_settings = label_style
-		slot.add_child(label)
+		qty_label.label_settings = label_style
 		
+		var margin := MarginContainer.new()
+		margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		margin.add_theme_constant_override("margin_right", 4)
+		margin.add_theme_constant_override("margin_bottom", -2)
+		margin.add_child(qty_label)
+		
+		slot.add_child(margin)
 		hotbar_slots.append(slot)
-		
-	update_active_slot(0)
 
-func _setup_inventory_display() -> void:
-	inventory_label = Label.new()
-	inventory_label.name = "InventoryLabel"
-	inventory_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	inventory_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	inventory_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	inventory_label.offset_bottom = -110
-	inventory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+func _setup_item_name_toast() -> void:
+	_item_name_toast = Label.new()
+	_item_name_toast.name = "ItemNameToast"
+	_item_name_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_item_name_toast.offset_bottom = -85 
+	_item_name_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	
 	var style := LabelSettings.new()
-	style.font_size = 18
-	style.outline_size = 4
+	style.font_size = 20
+	style.font_color = Color(1.0, 1.0, 1.0)
+	style.outline_size = 5
 	style.outline_color = Color.BLACK
-	inventory_label.label_settings = style
-	add_child(inventory_label)
-	_update_inventory_display()
+	_item_name_toast.label_settings = style
+	
+	_item_name_toast.modulate.a = 0.0 
+	add_child(_item_name_toast)
 
 func _setup_health_display() -> void:
 	var health_bg := Panel.new()
@@ -308,47 +336,31 @@ func _setup_pause_menu() -> void:
 	_pause_overlay.visible = false
 	add_child(_pause_overlay)
 
-## SOLID Delegation: Process loop only coordinates and delegates widget updates!
 func _process(_delta: float) -> void:
-	# 1. Delegate Minimap updates
 	if is_instance_valid(minimap):
 		minimap.update_widget()
-		
-	# 2. Delegate GPS Coordinates & Clock updates
 	if is_instance_valid(gps_panel):
 		gps_panel.update_widget()
-		
-	# 3. Delegate Active Quest Objectives updates
 	if is_instance_valid(quest_panel):
 		quest_panel.update_widget()
 
-## SOLID Facade API: Safely routes NPC dialogue requests to the player's DialogueManager.
 func open_dialogue(node: Resource, speaker_name: String) -> void:
 	if is_instance_valid(player):
 		var dm = player.get("dialogue_manager")
 		if is_instance_valid(dm) and dm.has_method("open_dialogue"):
 			dm.call("open_dialogue", node, speaker_name)
 
-func _update_inventory_display() -> void:
-	if is_instance_valid(player):
-		update_active_slot(0)
-
-# ==============================================================================
-# UPGRADE: Smooth animated Pause Menu transitions (Micro-Phase 5)
-# ==============================================================================
 func toggle_pause_menu(p_visible: bool) -> void:
 	if not is_instance_valid(_pause_overlay):
 		return
 		
-	# Cancel any running tweens to prevent overlay locking
 	var tween := create_tween().set_parallel(true)
 	
 	if p_visible:
-		# Reset parameters for smooth zoom spring effect
 		_pause_overlay.visible = true
 		_pause_overlay.modulate.a = 0.0
 		_pause_overlay.scale = Vector2(0.96, 0.96)
-		_pause_overlay.pivot_offset = Vector2(640, 360) # Central screen viewport anchor
+		_pause_overlay.pivot_offset = Vector2(640, 360) 
 		
 		tween.tween_property(_pause_overlay, "modulate:a", 1.0, 0.22).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 		tween.tween_property(_pause_overlay, "scale", Vector2(1.0, 1.0), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -356,23 +368,18 @@ func toggle_pause_menu(p_visible: bool) -> void:
 		tween.tween_property(_pause_overlay, "modulate:a", 0.0, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 		tween.tween_property(_pause_overlay, "scale", Vector2(0.96, 0.96), 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 		
-		# Chain deferred visibility disable to avoid rendering hidden draw passes
 		tween.chain().tween_callback(func() -> void:
 			_pause_overlay.visible = false
 			if is_instance_valid(_settings_overlay):
 				_settings_overlay.queue_free()
 		)
 
-# ==============================================================================
-# UPGRADE: Sliding Quest Completed Toast Notification (Micro-Phase 5)
-# ==============================================================================
 func show_quest_notification(header: String, quest_title: String) -> void:
 	var toast := Panel.new()
 	toast.name = "QuestToast"
 	toast.custom_minimum_size = Vector2(340, 75)
 	toast.size = Vector2(340, 75)
 	
-	# Position at top center, offscreen initially (Y = -90)
 	toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	toast.offset_top = -90
@@ -386,13 +393,12 @@ func show_quest_notification(header: String, quest_title: String) -> void:
 	style.border_width_top = 2
 	style.border_width_right = 2
 	style.border_width_bottom = 2
-	style.border_color = Color(1.0, 0.85, 0.2, 0.7) # Golden highlight
+	style.border_color = Color(1.0, 0.85, 0.2, 0.7) 
 	style.shadow_size = 8
 	style.shadow_color = Color(0, 0, 0, 0.3)
 	toast.add_theme_stylebox_override("panel", style)
 	add_child(toast)
 	
-	# Inner layout margins
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 14)
@@ -428,15 +434,10 @@ func show_quest_notification(header: String, quest_title: String) -> void:
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 	vbox.add_child(desc_lbl)
 	
-	# Slide-in transition sequence
 	var toast_tween := create_tween()
-	# 1. Slide down into viewport view (Y = 25)
 	toast_tween.tween_property(toast, "offset_top", 25, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	# 2. Remain stationary
 	toast_tween.tween_interval(2.8)
-	# 3. Slide back upwards offscreen
 	toast_tween.tween_property(toast, "offset_top", -90, 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
-	# 4. Safely garbage collect the temporary panel node
 	toast_tween.tween_callback(toast.queue_free)
 
 func _on_resume_pressed() -> void:
@@ -455,7 +456,6 @@ func _on_settings_closed() -> void:
 		_settings_overlay.queue_free()
 
 func _on_quit_pressed() -> void:
-	print("[PlayerHUD] Quit requested. Triggering safe return transition...")
 	var bootstrap = get_node_or_null("/root/Bootstrap")
 	if is_instance_valid(bootstrap) and bootstrap.has_method("return_to_main_menu"):
 		bootstrap.call("return_to_main_menu")
@@ -478,8 +478,10 @@ func update_active_slot(active_index: int) -> void:
 			
 			tween.tween_property(slot, "scale", Vector2(1.15, 1.15), 0.1).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
 			
-			if is_instance_valid(inventory_label):
-				inventory_label.text = "[ %s ]" % HOTBAR_ITEMS[i].to_upper()
+			# Trigger fading toast
+			if is_instance_valid(_item_name_toast):
+				_item_name_toast.text = HOTBAR_ITEMS[i].to_upper()
+				_show_toast_notification()
 		else:
 			style.bg_color = Color(0.12, 0.12, 0.12, 0.5)
 			style.border_width_left = 1
@@ -490,15 +492,25 @@ func update_active_slot(active_index: int) -> void:
 			
 			tween.tween_property(slot, "scale", Vector2(1.0, 1.0), 0.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
-func update_slot_quantity(slot_index: int, item_name: String, quantity: int) -> void:
+func _show_toast_notification() -> void:
+	if is_instance_valid(_toast_tween) and _toast_tween.is_running():
+		_toast_tween.kill()
+		
+	_item_name_toast.modulate.a = 1.0
+	_toast_tween = create_tween()
+	_toast_tween.tween_interval(1.8) 
+	_toast_tween.tween_property(_item_name_toast, "modulate:a", 0.0, 0.4).set_trans(Tween.TRANS_SINE)
+
+## MINECRAFT UX: Only numeric quantities in the bottom right over the custom color icon
+func update_slot_quantity(slot_index: int, _item_name: String, quantity: int) -> void:
 	if slot_index >= 0 and slot_index < hotbar_slots.size():
 		var slot: Panel = hotbar_slots[slot_index]
-		var label: Label = slot.get_node_or_null("ItemLabel")
+		var label: Label = slot.get_node_or_null("MarginContainer/QtyLabel")
 		if is_instance_valid(label):
 			if quantity < 0:
-				label.text = item_name.substr(0, 3).to_upper()
+				label.text = "" # Infinite (like the Sword) has no number
 			else:
-				label.text = "%s\n(%d)" % [item_name.substr(0, 3).to_upper(), quantity]
+				label.text = str(quantity)
 
 func update_health_display(current_hp: int) -> void:
 	if is_instance_valid(health_label):
@@ -506,8 +518,3 @@ func update_health_display(current_hp: int) -> void:
 		for i in range(max(0, current_hp)):
 			hearts_text += "❤ "
 		health_label.text = hearts_text
-
-func _create_spacer(height: int) -> Control:
-	var s := Control.new()
-	s.custom_minimum_size = Vector2(0, height)
-	return s

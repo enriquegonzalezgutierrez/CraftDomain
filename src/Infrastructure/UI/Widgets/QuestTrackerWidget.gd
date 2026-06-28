@@ -4,13 +4,14 @@
 #              active quest objectives, distance, and inventory progress bars.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating quest tracking layouts and metrics.
-#              UPGRADED: Added a state machine to track quest transitions and 
-#              dispatch sliding completion toast notifications to the parent HUD.
+#              UX UPGRADE: Made the background completely transparent. The widget
+#              now hides itself completely when there are no active quests, freeing
+#              up screen real estate.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
 # ==============================================================================
 class_name QuestTrackerWidget
-extends Panel
+extends Control # Changed from Panel to Control to remove the dark background box
 
 # Dependency injected by the HUD orchestrator
 var player: CharacterBody3D
@@ -18,9 +19,6 @@ var player: CharacterBody3D
 var _title_label: Label
 var _objective_label: Label
 
-# ==============================================================================
-# UPGRADE: Quest transition tracking states (Micro-Phase 6)
-# ==============================================================================
 var _last_active_quest_id: String = ""
 var _last_active_quest_title: String = ""
 var _is_first_frame: bool = true
@@ -30,26 +28,13 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(260, 110)
 	size = Vector2(260, 110)
 	
-	# Glassmorphic dark slate card style
-	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(10)
-	style.bg_color = Color(0.08, 0.08, 0.1, 0.6) 
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.border_color = Color(0.3, 0.3, 0.35, 0.7)
-	style.shadow_size = 4
-	style.shadow_color = Color(0, 0, 0, 0.25)
-	add_theme_stylebox_override("panel", style)
+	# Start hidden until a quest is actively loaded
+	visible = false 
 	
 	# Margin Layout
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 14)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_bottom", 10)
+	# Removed paddings since we have no box borders anymore
 	add_child(margin)
 	
 	var vbox := VBoxContainer.new()
@@ -62,8 +47,8 @@ func _ready() -> void:
 	var hs := LabelSettings.new()
 	hs.font_size = 11
 	hs.font_color = Color(1.0, 0.85, 0.2) # Gold
-	hs.outline_size = 2
-	hs.outline_color = Color.BLACK
+	hs.outline_size = 3
+	hs.outline_color = Color(0.0, 0.0, 0.0, 0.9)
 	header.label_settings = hs
 	vbox.add_child(header)
 	
@@ -72,8 +57,8 @@ func _ready() -> void:
 	var ts := LabelSettings.new()
 	ts.font_size = 14
 	ts.font_color = Color.WHITE
-	ts.outline_size = 3
-	ts.outline_color = Color.BLACK
+	ts.outline_size = 4
+	ts.outline_color = Color(0.0, 0.0, 0.0, 0.9)
 	_title_label.label_settings = ts
 	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	vbox.add_child(_title_label)
@@ -81,10 +66,10 @@ func _ready() -> void:
 	# Quest Objective
 	_objective_label = Label.new()
 	var os := LabelSettings.new()
-	os.font_size = 11
-	os.font_color = Color(0.85, 0.85, 0.9) 
-	os.outline_size = 2
-	os.outline_color = Color.BLACK
+	os.font_size = 12
+	os.font_color = Color(0.9, 0.9, 0.95) 
+	os.outline_size = 4
+	os.outline_color = Color(0.0, 0.0, 0.0, 0.9)
 	_objective_label.label_settings = os
 	_objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	vbox.add_child(_objective_label)
@@ -96,7 +81,6 @@ func update_widget() -> void:
 		
 	var active_quest := QuestService.get_active_quest()
 	
-	# UPGRADE: Dispatch completed toast notifications upon quest state transitions
 	_process_quest_notification_dispatch(active_quest)
 	
 	if active_quest != null:
@@ -131,14 +115,9 @@ func update_widget() -> void:
 			if active_quest.autocomplete_on_arrival and dist_q <= active_quest.target_range:
 				QuestService.complete_active_quest(player)
 	else:
-		# Fallback state when all quests are finished
-		visible = true
-		_title_label.text = "All Quests Completed!"
-		_objective_label.text = "Enjoy your infinite procedural voxel world."
+		# UX UPGRADE: Completely hide the widget when there are no active quests
+		visible = false
 
-# ==============================================================================
-# UPGRADE: Process quest state changes to fire sliding toasts (Micro-Phase 6)
-# ==============================================================================
 func _process_quest_notification_dispatch(active_quest: Quest) -> void:
 	if _is_first_frame:
 		if active_quest != null:

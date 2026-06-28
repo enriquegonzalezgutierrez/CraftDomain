@@ -1,8 +1,11 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain Generator responsible for procedurally carving chunk block data.
-#              FIXED: Solved the "Floating Blocks" bug by properly converting global
-#              ground heights into local chunk heights before passing them to blueprints!
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Only handles world carving rules.
+#              FIXED: Removed the generation of physical 3D CLOUD blocks (Y=12..14).
+#              These blocky transparent grids are now fully redundant and caused 
+#              unwanted transparency sorting conflicts with our advanced GPU Sky Shader.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldGenerator.gd
 # ==============================================================================
@@ -120,8 +123,9 @@ func generate_chunk(chunk: Chunk) -> void:
 					elif biome_id == 8 and global_y <= 4:
 						block_type = BlockType.Type.WATER
 						
-					if (abs(global_x) + abs(global_z)) % 120 < 18 and global_y >= 12 and global_y <= 14:
-						block_type = BlockType.Type.CLOUD
+					# FIX: Removed the physical, overlapping 3D voxel clouds.
+					# They are now fully replaced by our weather-integrated, moving 
+					# perspective GPU clouds to eliminate alpha sorting conflicts.
 				
 				chunk.set_block(x, y, z, block_type)
 
@@ -136,8 +140,6 @@ func generate_chunk(chunk: Chunk) -> void:
 			if ground_y < 2 or ground_y > 27:
 				continue
 				
-			# BUG FIX: Convert global ground_y to local chunk Y coordinates before passing to blueprints!
-			# This absolutely prevents trees from duplicating in mid-air in higher chunks.
 			var local_ground_y: int = ground_y - chunk_offset_y
 			
 			var biome_id: int = biome_ids[idx]

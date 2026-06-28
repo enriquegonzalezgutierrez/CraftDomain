@@ -1,15 +1,17 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI Widget responsible ONLY for rendering the 
-#              top coordinates, celestial clock, active biome, and regional compass distances.
+#              top coordinates, celestial clock, and active biome.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating GPS navigation math from the main HUD class.
-#              FIXED: Corrected absolute NodePath search to prevent relative path breaking.
+#              UX UPGRADE (MINECRAFT STYLE): Removed the bulky dark panel background.
+#              Text now floats cleanly over the 3D world with strong text outlines.
+#              Removed the redundant directional landmark texts to clear up screen space.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/GPSPanelWidget.gd
 # ==============================================================================
 class_name GPSPanelWidget
-extends Panel
+extends Control # Changed from Panel to Control to remove the dark background box
 
 # Dependency injected by the HUD orchestrator
 var player: CharacterBody3D
@@ -17,7 +19,6 @@ var world_controller: Node3D
 
 var _coords_label: Label
 var _biome_label: Label
-var _compass_label: Label
 
 # Biome names duplicated here for self-containment
 const BIOME_NAMES = {
@@ -38,25 +39,15 @@ func _ready() -> void:
 	_setup_gps_layout()
 
 func _setup_gps_layout() -> void:
-	custom_minimum_size = Vector2(500, 85)
-	size = Vector2(500, 85)
-	
-	# Glassmorphic dark slate header style
-	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(10)
-	style.bg_color = Color(0.08, 0.08, 0.1, 0.6)
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.border_color = Color(0.3, 0.3, 0.35, 0.7)
-	style.shadow_size = 5
-	style.shadow_color = Color(0, 0, 0, 0.3)
-	add_theme_stylebox_override("panel", style)
+	# Reduced size since we removed the 3rd line of text
+	custom_minimum_size = Vector2(400, 50)
+	size = Vector2(400, 50)
 	
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	# Tighten the gap between the two lines
+	vbox.add_theme_constant_override("separation", 2)
 	add_child(vbox)
 	
 	# Coords & Clock Label
@@ -64,9 +55,9 @@ func _setup_gps_layout() -> void:
 	_coords_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ls_coords := LabelSettings.new()
 	ls_coords.font_size = 14
-	ls_coords.font_color = Color(1.0, 0.85, 0.1)
-	ls_coords.outline_size = 3
-	ls_coords.outline_color = Color.BLACK
+	ls_coords.font_color = Color(1.0, 1.0, 1.0) # Clean white instead of gold
+	ls_coords.outline_size = 4
+	ls_coords.outline_color = Color(0.0, 0.0, 0.0, 0.8) # Strong drop shadow/outline for readability
 	_coords_label.label_settings = ls_coords
 	vbox.add_child(_coords_label)
 	
@@ -74,23 +65,12 @@ func _setup_gps_layout() -> void:
 	_biome_label = Label.new()
 	_biome_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ls_biome := LabelSettings.new()
-	ls_biome.font_size = 15
-	ls_biome.font_color = Color(0.9, 0.95, 1.0)
-	ls_biome.outline_size = 3
-	ls_biome.outline_color = Color.BLACK
+	ls_biome.font_size = 14
+	ls_biome.font_color = Color(0.85, 0.85, 0.85) # Slight off-white
+	ls_biome.outline_size = 4
+	ls_biome.outline_color = Color(0.0, 0.0, 0.0, 0.8)
 	_biome_label.label_settings = ls_biome
 	vbox.add_child(_biome_label)
-	
-	# Compass Landmarks Label
-	_compass_label = Label.new()
-	_compass_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls_compass := LabelSettings.new()
-	ls_compass.font_size = 11
-	ls_compass.font_color = Color(0.7, 0.8, 0.9)
-	ls_compass.outline_size = 2
-	ls_compass.outline_color = Color.BLACK
-	_compass_label.label_settings = ls_compass
-	vbox.add_child(_compass_label)
 
 ## Real-time metric updater: Decoupled navigation loop
 func update_widget() -> void:
@@ -99,20 +79,20 @@ func update_widget() -> void:
 		
 	var p_pos := player.global_position
 	
-	# 1. FIXED: Corrected absolute NodePath search to locate CelestialService safely
 	var time_str: String = "12:00"
 	var celestial = get_node_or_null("/root/Bootstrap/CelestialService")
 	if is_instance_valid(celestial) and celestial.has_method("get_formatted_time"):
 		time_str = celestial.call("get_formatted_time")
 		
-	_coords_label.text = "[ X: %d  ·  Y: %d  ·  Z: %d ]   ·   [ %s ]" % [
+	# Minimalist formatting
+	_coords_label.text = "[ X: %d  Y: %d  Z: %d ]   ·   %s" % [
 		int(round(p_pos.x)), 
 		int(round(p_pos.y)), 
 		int(round(p_pos.z)),
 		time_str
 	]
 	
-	# 2. Query Biome name from BiomeService dynamically
+	# Query Biome name from BiomeService dynamically
 	var profile := BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), world_controller.generator._terrain_noise)
 	var b_name: String = ""
 	
@@ -121,13 +101,4 @@ func update_widget() -> void:
 	else:
 		b_name = str(BIOME_NAMES[profile.biome_id])
 		
-	_biome_label.text = "REGION: " + b_name.to_upper()
-	
-	# 3. Calculate 2D Vector distances to main geographical landmarks dynamically
-	var dist_n := int(p_pos.distance_to(Vector3(0.0, p_pos.y, -420.0))) # North Polar cap Spire
-	var dist_e := int(p_pos.distance_to(Vector3(300.0, p_pos.y, 5.0))) # East village bazaar
-	var dist_s := int(p_pos.distance_to(Vector3(0.0, p_pos.y, 178.0)))  # South Mario steps
-	
-	_compass_label.text = "[N] Polar Ice: %dm  |  [E] Village Bazaar: %dm  |  [S] Mario Hills: %dm" % [
-		dist_n, dist_e, dist_s
-	]
+	_biome_label.text = b_name.to_upper()
