@@ -4,9 +4,8 @@
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by delegating visual, math, and radar operations
 #              to specialized sub-widgets.
-#              FIXED: Implemented the Facade Pattern by adding a forwarding
-#              open_dialogue() API. This safely routes NPC dialogue requests 
-#              to the decoupled DialogueManager without modifying NPC code (OCP).
+#              UPGRADED: Integrated premium spring-scale transitions on pause,
+#              and a programmatic slide-down quest completion notification toast.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -324,7 +323,6 @@ func _process(_delta: float) -> void:
 		quest_panel.update_widget()
 
 ## SOLID Facade API: Safely routes NPC dialogue requests to the player's DialogueManager.
-## This acts as a clean bridge preventing tight coupling and fixing the runtime crash.
 func open_dialogue(node: Resource, speaker_name: String) -> void:
 	if is_instance_valid(player):
 		var dm = player.get("dialogue_manager")
@@ -335,12 +333,111 @@ func _update_inventory_display() -> void:
 	if is_instance_valid(player):
 		update_active_slot(0)
 
+# ==============================================================================
+# UPGRADE: Smooth animated Pause Menu transitions (Micro-Phase 5)
+# ==============================================================================
 func toggle_pause_menu(p_visible: bool) -> void:
-	if is_instance_valid(_pause_overlay):
-		_pause_overlay.visible = p_visible
+	if not is_instance_valid(_pause_overlay):
+		return
 		
-	if not p_visible and is_instance_valid(_settings_overlay):
-		_settings_overlay.queue_free()
+	# Cancel any running tweens to prevent overlay locking
+	var tween := create_tween().set_parallel(true)
+	
+	if p_visible:
+		# Reset parameters for smooth zoom spring effect
+		_pause_overlay.visible = true
+		_pause_overlay.modulate.a = 0.0
+		_pause_overlay.scale = Vector2(0.96, 0.96)
+		_pause_overlay.pivot_offset = Vector2(640, 360) # Central screen viewport anchor
+		
+		tween.tween_property(_pause_overlay, "modulate:a", 1.0, 0.22).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tween.tween_property(_pause_overlay, "scale", Vector2(1.0, 1.0), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	else:
+		tween.tween_property(_pause_overlay, "modulate:a", 0.0, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+		tween.tween_property(_pause_overlay, "scale", Vector2(0.96, 0.96), 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+		
+		# Chain deferred visibility disable to avoid rendering hidden draw passes
+		tween.chain().tween_callback(func() -> void:
+			_pause_overlay.visible = false
+			if is_instance_valid(_settings_overlay):
+				_settings_overlay.queue_free()
+		)
+
+# ==============================================================================
+# UPGRADE: Sliding Quest Completed Toast Notification (Micro-Phase 5)
+# ==============================================================================
+func show_quest_notification(header: String, quest_title: String) -> void:
+	var toast := Panel.new()
+	toast.name = "QuestToast"
+	toast.custom_minimum_size = Vector2(340, 75)
+	toast.size = Vector2(340, 75)
+	
+	# Position at top center, offscreen initially (Y = -90)
+	toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	toast.offset_top = -90
+	toast.offset_left = -170
+	toast.offset_right = 170
+	
+	var style := StyleBoxFlat.new()
+	style.set_corner_radius_all(10)
+	style.bg_color = Color(0.06, 0.08, 0.12, 0.9)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(1.0, 0.85, 0.2, 0.7) # Golden highlight
+	style.shadow_size = 8
+	style.shadow_color = Color(0, 0, 0, 0.3)
+	toast.add_theme_stylebox_override("panel", style)
+	add_child(toast)
+	
+	# Inner layout margins
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 14)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	toast.add_child(margin)
+	
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	margin.add_child(vbox)
+	
+	var header_lbl := Label.new()
+	header_lbl.text = "🏆 " + header.to_upper()
+	var hs := LabelSettings.new()
+	hs.font_size = 11
+	hs.font_color = Color(1.0, 0.85, 0.2)
+	hs.outline_size = 2
+	hs.outline_color = Color.BLACK
+	header_lbl.label_settings = hs
+	header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(header_lbl)
+	
+	var desc_lbl := Label.new()
+	desc_lbl.text = quest_title
+	var ds := LabelSettings.new()
+	ds.font_size = 13
+	ds.font_color = Color.WHITE
+	ds.outline_size = 2
+	ds.outline_color = Color.BLACK
+	desc_lbl.label_settings = ds
+	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+	vbox.add_child(desc_lbl)
+	
+	# Slide-in transition sequence
+	var toast_tween := create_tween()
+	# 1. Slide down into viewport view (Y = 25)
+	toast_tween.tween_property(toast, "offset_top", 25, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# 2. Remain stationary
+	toast_tween.tween_interval(2.8)
+	# 3. Slide back upwards offscreen
+	toast_tween.tween_property(toast, "offset_top", -90, 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	# 4. Safely garbage collect the temporary panel node
+	toast_tween.tween_callback(toast.queue_free)
 
 func _on_resume_pressed() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

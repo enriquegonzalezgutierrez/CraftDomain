@@ -5,6 +5,9 @@
 #              Principle (SRP) by delegating all voxel raycasting, mining, building,
 #              eating, and NPC interactions to VoxelInteractionComponent.
 #              Acts strictly as a lightweight Movement and Camera Controller.
+#              UPGRADED: Integrated smooth vertical/horizontal camera bobbing,
+#              dynamic lateral roll tilt during strafing, and high-frequency 
+#              decaying camera trauma shake upon taking combat damage.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -42,6 +45,16 @@ var interaction_component: VoxelInteractionComponent # Decoupled SRP interaction
 var active_slot_index: int = 0
 var active_build_type: BlockType.Type = BlockType.Type.STONE
 var is_item_selected: bool = true # False if selecting currency/weapon
+
+# Camera Bobbing & Tilt variables
+var _bob_timer: float = 0.0
+var _target_camera_pos: Vector3 = Vector3(0.0, 0.6, 0.0)
+var _target_camera_tilt: float = 0.0
+
+# ==============================================================================
+# UPGRADE: Camera Trauma Shake variable (Micro-Phase 4)
+# ==============================================================================
+var _shake_intensity: float = 0.0
 
 func _init() -> void:
 	_setup_inputs_mouse_actions()
@@ -194,9 +207,7 @@ func _physics_process(delta: float) -> void:
 
 	_process_hotbar_keys()
 
-	# --- SOLID DELEGATION ---
 	# Delegates all targeted raycasting, mining, building, and eating calculations
-	# to the decoupled specialized VoxelInteractionComponent (SRP)
 	if is_instance_valid(interaction_component):
 		interaction_component.process_interaction()
 
@@ -218,6 +229,61 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0, SPEED)
 
 	move_and_slide()
+	
+	# Process camera animation effects
+	_process_camera_effects(delta)
+
+# ==============================================================================
+# UPGRADE: Smooth first-person camera animations and Trauma Screen Shake
+# ==============================================================================
+func _process_camera_effects(delta: float) -> void:
+	if not is_instance_valid(camera):
+		return
+		
+	var flat_vel := Vector2(velocity.x, velocity.z)
+	var horizontal_speed := flat_vel.length()
+	
+	# Camera Bobbing (Vertical and Horizontal head sway)
+	if is_on_floor() and horizontal_speed > 0.1:
+		# Cycle frequency based on moving speed
+		_bob_timer += delta * horizontal_speed * 2.2
+		
+		var bob_y: float = sin(_bob_timer) * 0.035
+		var bob_x: float = cos(_bob_timer * 0.5) * 0.018
+		_target_camera_pos = Vector3(bob_x, 0.6 + bob_y, 0.0)
+		
+		# Lean (Roll) Z axis when strafing
+		var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+		_target_camera_tilt = -input_dir.x * 0.02
+	else:
+		# Gentle idle breathing effect when stationary
+		_bob_timer += delta * 1.5
+		var breath_y: float = sin(_bob_timer) * 0.006
+		_target_camera_pos = Vector3(0.0, 0.6 + breath_y, 0.0)
+		_target_camera_tilt = 0.0
+		
+	# Interpolate base animated camera position and roll rotation tilt
+	var current_pos: Vector3 = camera.position.lerp(_target_camera_pos, delta * 10.0)
+	var current_tilt: float = lerp(camera.rotation.z, _target_camera_tilt, delta * 8.0)
+	
+	# UPGRADE: Add high-frequency decaying damage camera trauma (Screen Shake)
+	if _shake_intensity > 0.005:
+		# Generate randomized offsets based on trauma intensity limits
+		var shake_x := randf_range(-_shake_intensity, _shake_intensity) * 0.4
+		var shake_y := randf_range(-_shake_intensity, _shake_intensity) * 0.4
+		var shake_z := randf_range(-_shake_intensity, _shake_intensity) * 0.4
+		
+		current_pos += Vector3(shake_x, shake_y, shake_z)
+		current_tilt += randf_range(-_shake_intensity, _shake_intensity) * 0.08
+		
+		# Smoothly decay the camera shake trauma back to zero over time
+		_shake_intensity = lerp(_shake_intensity, 0.0, delta * 9.0)
+	else:
+		_shake_intensity = 0.0
+		
+	# Apply final animated transforms to camera
+	camera.position = current_pos
+	camera.rotation.z = current_tilt
 
 func _scroll_hotbar(direction: int) -> void:
 	var new_slot := active_slot_index + direction
@@ -265,6 +331,9 @@ func take_damage(amount: int, knockback_force: Vector3) -> void:
 	domain_entity.take_damage(amount)
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
+	# UPGRADE: Inject high-frequency camera shake trauma upon taking damage
+	_shake_intensity = 0.32
+	
 	if is_instance_valid(hud):
 		hud.update_health_display(domain_entity.health)
 		if hud.has_method("flash_damage_screen"):

@@ -4,7 +4,8 @@
 #              active quest objectives, distance, and inventory progress bars.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating quest tracking layouts and metrics.
-#              Encapsulates the automatic arrival and gathering quest triggers (OCP).
+#              UPGRADED: Added a state machine to track quest transitions and 
+#              dispatch sliding completion toast notifications to the parent HUD.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
 # ==============================================================================
@@ -16,6 +17,13 @@ var player: CharacterBody3D
 
 var _title_label: Label
 var _objective_label: Label
+
+# ==============================================================================
+# UPGRADE: Quest transition tracking states (Micro-Phase 6)
+# ==============================================================================
+var _last_active_quest_id: String = ""
+var _last_active_quest_title: String = ""
+var _is_first_frame: bool = true
 
 func _ready() -> void:
 	name = "QuestTrackerWidget"
@@ -87,6 +95,10 @@ func update_widget() -> void:
 		return
 		
 	var active_quest := QuestService.get_active_quest()
+	
+	# UPGRADE: Dispatch completed toast notifications upon quest state transitions
+	_process_quest_notification_dispatch(active_quest)
+	
 	if active_quest != null:
 		visible = true
 		_title_label.text = active_quest.title
@@ -123,3 +135,30 @@ func update_widget() -> void:
 		visible = true
 		_title_label.text = "All Quests Completed!"
 		_objective_label.text = "Enjoy your infinite procedural voxel world."
+
+# ==============================================================================
+# UPGRADE: Process quest state changes to fire sliding toasts (Micro-Phase 6)
+# ==============================================================================
+func _process_quest_notification_dispatch(active_quest: Quest) -> void:
+	if _is_first_frame:
+		if active_quest != null:
+			_last_active_quest_id = active_quest.quest_id
+			_last_active_quest_title = active_quest.title
+		_is_first_frame = false
+		return
+		
+	# Case 1: Active quest transitioned from valid to null (Final quest of campaign complete)
+	if active_quest == null and _last_active_quest_id != "":
+		var parent_hud = get_parent()
+		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
+			parent_hud.call("show_quest_notification", "Campaign Complete", _last_active_quest_title)
+		_last_active_quest_id = ""
+		_last_active_quest_title = ""
+		
+	# Case 2: Active quest transitioned to a new campaign link
+	elif active_quest != null and active_quest.quest_id != _last_active_quest_id:
+		var parent_hud = get_parent()
+		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
+			parent_hud.call("show_quest_notification", "Quest Completed", _last_active_quest_title)
+		_last_active_quest_id = active_quest.quest_id
+		_last_active_quest_title = active_quest.title
