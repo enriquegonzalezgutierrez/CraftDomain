@@ -1,12 +1,11 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure Service responsible for calculating and spawning
-#              NPC and Fauna classes dynamically inside chunks.
-#              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP).
-#              UPDATED: Added dynamic GPS Quest tracking. When the procedural engine
-#              spawns the Villager or Merchant, their exact coordinates are 
-#              automatically injected into the Active Quests, ensuring the compass
-#              always points to their physical location regardless of random world seeds.
+#              NPC, Fauna, and interactive prop classes dynamically inside chunks.
+#              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
+#              and Liskov Substitution Principle (LSP). Changed return type to 
+#              Array[Node] to treat both character bodies and static body props 
+#              polymorphically during chunk load/unload states.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -23,9 +22,13 @@ var _merchant_script := load("res://src/Infrastructure/Life/MerchantEntity.gd")
 var _guard_script := load("res://src/Infrastructure/Life/GuardEntity.gd")
 var _farmer_script := load("res://src/Infrastructure/Life/FarmerEntity.gd")
 
-## Calculates and spawns passive entities for a given chunk, returning the active list.
-func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[CharacterBody3D]:
-	var entities_list: Array[CharacterBody3D] = []
+# UPGRADE: Load the 3D Chest Prop script dynamically (SRP compliant)
+var _chest_script := load("res://src/Infrastructure/World/ChestEntity.gd")
+
+## Calculates and spawns passive entities and props for a given chunk, returning the active list.
+## LSP UPGRADE: Returns Array[Node] to allow static props (StaticBody3D) and mobs (CharacterBody3D)
+func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
+	var entities_list: Array[Node] = []
 	var chunk_pos := chunk.position
 	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	
@@ -46,7 +49,7 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 
 	# 1. Village Spawning (ONLY triggered if a Cabin was actually built here!)
 	if is_real_village:
-		print("[MobSpawningService] Village detected at chunk %s. Spawning civil community!" % str(chunk_pos))
+		print("[MobSpawningService] Village detected at chunk %s. Spawning civil community & props!" % str(chunk_pos))
 		
 		# A. Common Villager
 		if _villager_script != null:
@@ -56,8 +59,6 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			world_node.add_child(villager)
 			entities_list.append(villager)
 			
-			# --- SOLID QUEST INTEGRATION ---
-			# Dynamically injects the exact spawned coordinates into the "The Lost Bazaar" Quest target!
 			var q1 := QuestService.get_quest("lost_bazaar")
 			if q1 != null:
 				q1.target_position = pos
@@ -71,8 +72,6 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			world_node.add_child(merchant)
 			entities_list.append(merchant)
 			
-			# --- SOLID QUEST INTEGRATION ---
-			# Dynamically injects the exact spawned coordinates into the "Fuel the Fryer" Quest target!
 			var q2 := QuestService.get_quest("fuel_fryer")
 			if q2 != null:
 				q2.target_position = pos
@@ -86,8 +85,6 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			world_node.add_child(guard)
 			entities_list.append(guard)
 			
-			# --- SOLID QUEST INTEGRATION ---
-			# Dynamically injects the exact spawned coordinates into the "Plains Defender" Quest target!
 			var q3 := QuestService.get_quest("plains_defender")
 			if q3 != null:
 				q3.target_position = pos
@@ -100,6 +97,17 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			var farmer = _farmer_script.new(pos)
 			world_node.add_child(farmer)
 			entities_list.append(farmer)
+			
+		# E. Interactive Loot Chest (3D GLB Prop - Micro-Phase 7)
+		if _chest_script != null:
+			var gy := _get_ground_surface_y(world_state, int(chunk_offset.x) + 4, int(chunk_offset.z) + 8)
+			var pos := chunk_offset + Vector3(4.5, gy, 8.5)
+			
+			var chest = _chest_script.new()
+			chest.position = pos
+			world_node.add_child(chest)
+			entities_list.append(chest)
+			print("[MobSpawningService] 3D Loot Chest spawned at position: ", pos)
 			
 	# 2. Fauna Spawning (Wild animals are allowed to spawn anywhere in plains/mountains)
 	var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2

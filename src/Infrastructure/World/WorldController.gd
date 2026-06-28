@@ -4,8 +4,9 @@
 #              generation, dynamic loading, and saving/loading block modifications.
 #              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
 #              and Dependency Inversion (DIP) via WorldRepository.
-#              FIXED: Removed duplicate parent-removal call of physics colliders
-#              to prevent engine memory leaks and reference crashes.
+#              LSP COMPLIANCE: Updated spawned chunk tracker _chunk_entities to 
+#              hold polymorphic Array arrays containing generic Node entities 
+#              (both character bodies and static chest props) for clean unloads.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -33,7 +34,7 @@ var _chunk_nodes: Dictionary = {}
 ## Tracking dictionary to prevent initiating duplicate load threads: Vector3i -> bool
 var _pending_loading_chunks: Dictionary = {}
 
-## Tracking map for entities spawned within specific chunk columns: Vector3i (y=0) -> Array[CharacterBody3D]
+## LSP UPGRADE: Tracking map for entities spawned within specific chunk columns: Vector3i (y=0) -> Array[Node]
 var _chunk_entities: Dictionary = {}
 
 ## Thread safety sync structures
@@ -56,7 +57,6 @@ const CACHE_SIZE_LIMIT: int = 64
 var _loaded_inventory_data: Array = []
 
 ## Subclass containing the completed background generation and rendering results.
-## UPDATED: Partitioned transforms by BlockType to support Multi-Material Rendering.
 class GeneratedChunkTask:
 	var chunk: Chunk
 	var multimesh_data: Dictionary = {} # BlockType.Type -> Array[Transform3D]
@@ -164,7 +164,6 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 	WorkerThreadPool.add_task(_background_generate_chunk_task.bind(chunk_pos))
 
 ## Background Thread: Operates heavy procedural calculations.
-## UPDATED: Groups block coordinates by BlockType, separating fluids from solid physics.
 func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	var chunk := Chunk.new(chunk_pos)
 	generator.generate_chunk(chunk)
@@ -258,6 +257,8 @@ func _render_completed_chunks_from_queue() -> void:
 				if _chunk_nodes.has(spawn_chunk_pos_0) and _chunk_nodes.has(spawn_chunk_pos_1):
 					if not _chunk_entities.has(col_pos) and is_instance_valid(_mob_spawning_service):
 						var chunk_0 = _chunk_nodes[spawn_chunk_pos_0].chunk
+						
+						# LSP UPGRADE: Receives generic Array[Node] containing both NPCs and chest props
 						var spawned := _mob_spawning_service.spawn_mobs_for_chunk(chunk_0, self, world_state)
 						if spawned.size() > 0:
 							_chunk_entities[col_pos] = spawned
@@ -406,7 +407,6 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 					collision_transforms.append(t)
 		
 	# 3. Compile and apply new physics StaticBody3D on the main thread
-	# FIXED: Left the cleanup entirely to setup_chunk_visuals to prevent parent removal exceptions
 	var collision_body := StaticBody3D.new()
 	collision_body.name = "StaticCollisionBody"
 	var shared_box_shape := BoxShape3D.new()

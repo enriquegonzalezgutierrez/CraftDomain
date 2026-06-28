@@ -7,6 +7,7 @@
 #              Principle (SRP) by decoupling voxel interactions from PlayerController.
 #              UPGRADED: Integrated dynamic GPUParticles3D voxel debris systems 
 #              matching the exact color of the mined block for visceral feedback.
+#              FIXED: Reordered add_child() sequence to prevent !is_inside_tree() warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -130,7 +131,6 @@ func _mine_or_attack() -> void:
 # UPGRADE: Programmatic, GPU-optimized voxel debris emitter
 # ==============================================================================
 func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) -> void:
-	# Avoid spawning debris for air or invalid blocks
 	if block_type == BlockType.Type.AIR:
 		return
 		
@@ -146,20 +146,16 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	particles.explosiveness = 0.95
 	particles.lifetime = 0.45
 	
-	# Center emitter inside the bounds of the targeted voxel
-	particles.global_position = global_pos + Vector3(0.5, 0.5, 0.5)
-	
 	# Configure particle movement physical process
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 	pm.emission_box_extents = Vector3(0.35, 0.35, 0.35)
-	pm.direction = Vector3(0.0, 1.0, 0.0) # Upwards explosion blast
+	pm.direction = Vector3(0.0, 1.0, 0.0) 
 	pm.spread = 50.0
 	pm.initial_velocity_min = 2.5
 	pm.initial_velocity_max = 4.5
-	pm.gravity = Vector3(0.0, -9.8, 0.0) # Gravity fall
+	pm.gravity = Vector3(0.0, -9.8, 0.0) 
 	
-	# Scale variation curve
 	pm.scale_min = 0.6
 	pm.scale_max = 1.3
 	
@@ -176,9 +172,10 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	
 	particles.draw_pass_1 = mesh
 	
-	# Attach emitter to the scene tree safely
+	# FIXED: Attach emitter to the scene tree FIRST before setting global_position
 	if is_instance_valid(world_controller):
 		world_controller.add_child(particles)
+		particles.global_position = global_pos + Vector3(0.5, 0.5, 0.5)
 		
 	particles.emitting = true
 	
@@ -219,7 +216,7 @@ func _build_or_interact() -> void:
 		return
 
 	# CONSTRUCTION CASE: Place selected block in the 3D voxel grid
-	var is_block_selected: bool = player.get("is_item_selected")
+	var is_block_selected = player.get("is_item_selected")
 	if is_block_selected and is_instance_valid(world_controller) and is_instance_valid(inventory):
 		var inv_comp := inventory as InventoryComponent
 		var build_type: BlockType.Type = inv_comp.get_slot_build_type(active_slot)
