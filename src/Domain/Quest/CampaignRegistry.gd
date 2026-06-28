@@ -5,8 +5,9 @@
 #              SOLID COMPLIANCE: Adheres strictly to the Open-Closed Principle (OCP)
 #              and Single Responsibility Principle (SRP). All template generators
 #              and hardcoded dictionaries have been completely removed from the
-#              GDScript code. The system relies strictly on scanning and parsing
-#              whatever .json files exist in the res://assets/quests/ folder.
+#              GDScript code.
+#              STRICT MODE UPDATE: Implemented safe type casting (`as Type`) for
+#              all parsed JSON Variants to completely eliminate UNSAFE_CALL_ARGUMENT warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Quest/CampaignRegistry.gd
 # ==============================================================================
@@ -64,30 +65,40 @@ static func _load_quests_from_file(file_path: String) -> void:
 		push_error("[CampaignRegistry] Error parsing JSON " + file_path + ". Line: " + str(json.get_error_line()) + " | Error: " + json.get_error_message())
 		return
 		
-	var quest_array: Array = json.data
-	for q_data in quest_array:
+	# STRICT MODE FIX: Safely cast the root Variant to an Array
+	var quest_array := json.data as Array
+	
+	for item in quest_array:
+		# STRICT MODE FIX: Safely cast the iterated Variant to a Dictionary
+		var q_data := item as Dictionary
 		var q := Quest.new()
-		q.quest_id = str(q_data["quest_id"])
-		q.title = str(q_data["title"])
-		q.description = str(q_data["description"])
-		q.objective_text = str(q_data["objective_text"])
 		
-		# Parse 3D coordinates target
-		var pos_dict: Dictionary = q_data["target_position"]
-		q.target_position = Vector3(float(pos_dict["x"]), float(pos_dict["y"]), float(pos_dict["z"]))
-		q.target_range = float(q_data["target_range"])
+		# STRICT MODE FIX: Use `as Type` instead of constructors to avoid UNSAFE_CALL_ARGUMENT
+		q.quest_id = q_data["quest_id"] as String
+		q.title = q_data["title"] as String
+		q.description = q_data["description"] as String
+		q.objective_text = q_data["objective_text"] as String
 		
-		q.autocomplete_on_arrival = bool(q_data["autocomplete_on_arrival"])
-		q.next_quest_id = str(q_data["next_quest_id"])
+		# Parse 3D coordinates target safely
+		var pos_dict := q_data["target_position"] as Dictionary
+		q.target_position = Vector3(
+			pos_dict["x"] as float, 
+			pos_dict["y"] as float, 
+			pos_dict["z"] as float
+		)
+		q.target_range = q_data["target_range"] as float
 		
-		q.reward_item_index = int(q_data["reward_item_index"])
-		q.reward_quantity = int(q_data["reward_quantity"])
+		q.autocomplete_on_arrival = q_data["autocomplete_on_arrival"] as bool
+		q.next_quest_id = q_data["next_quest_id"] as String
 		
-		# Optional requirements
+		q.reward_item_index = q_data["reward_item_index"] as int
+		q.reward_quantity = q_data["reward_quantity"] as int
+		
+		# Optional requirements mapped safely
 		if q_data.has("required_item_index"):
-			q.required_item_index = int(q_data["required_item_index"])
+			q.required_item_index = q_data["required_item_index"] as int
 		if q_data.has("required_quantity"):
-			q.required_quantity = int(q_data["required_quantity"])
+			q.required_quantity = q_data["required_quantity"] as int
 			
 		# Register in the Domain Database
 		QuestService.register_quest(q)

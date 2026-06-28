@@ -3,6 +3,9 @@
 # Description: Infrastructure UI controller representing the main menu overlay.
 #              UX IMPROVED: Added premium glassmorphic button styling, tactile 
 #              hover scale animations, and a floating sine-wave game title.
+#              STRICT MODE UPDATE: Replaced dynamic script injection (load().new())
+#              with strong global class instantiation (SettingsMenu.new()) to 
+#              completely eliminate UNSAFE_CAST warnings and improve performance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MainMenu.gd
 # ==============================================================================
@@ -12,7 +15,8 @@ extends Control
 ## Emitted when the player clicks the "Play World" button.
 signal play_pressed
 
-var _settings_overlay: Control
+# STRICT MODE FIX: Statically type the variable to its concrete class
+var _settings_overlay: SettingsMenu
 var _title_label: Label
 var _time_passed: float = 0.0
 
@@ -163,12 +167,10 @@ func _on_play_pressed() -> void:
 	play_pressed.emit()
 
 func _on_settings_pressed() -> void:
-	# Load settings menu component via script injection for safe reference
-	var sm_script: Script = load("res://src/Infrastructure/UI/SettingsMenu.gd")
-	if sm_script != null:
-		_settings_overlay = sm_script.new() as Control
-		_settings_overlay.connect("closed", Callable(self, "_on_settings_closed"))
-		add_child(_settings_overlay)
+	# STRICT MODE FIX: Use strong class instantiation instead of dynamic string loading
+	_settings_overlay = SettingsMenu.new()
+	_settings_overlay.connect("closed", Callable(self, "_on_settings_closed"))
+	add_child(_settings_overlay)
 
 func _on_settings_closed() -> void:
 	if is_instance_valid(_settings_overlay):

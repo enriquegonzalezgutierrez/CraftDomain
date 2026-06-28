@@ -3,12 +3,9 @@
 # Description: Infrastructure UI controller acting as a lightweight Orchestrator.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by delegating visual operations to widgets.
-#              UX UPGRADE (MINECRAFT STYLE): Decluttered the Hotbar. Removed 
-#              static text tags from slots, shrunk slot sizes, placed quantities 
-#              in the bottom right corner, and implemented a fading "Toast" label 
-#              that shows the item name contextually and then disappears.
-#              FIXED: Added color-coded procedural visual icons inside each slot 
-#              to represent the selected materials clearly and avoid empty grey boxes.
+#              STRICT MODE UPDATE: Replaced dynamic script injection with strong
+#              global class instantiations (DialogueManager, LoadingScreen, SettingsMenu)
+#              to eliminate UNSAFE_CAST and allow direct typed method calls.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -33,7 +30,10 @@ var hotbar_slots: Array[Panel] = []
 # UX Overlays
 var damage_overlay: ColorRect
 var _pause_overlay: Panel
-var _settings_overlay: Control
+
+# STRICT MODE FIX: Statically typed sub-managers
+var _settings_overlay: SettingsMenu
+var dialogue_manager: DialogueManager
 
 # Modern 8-Slot Hotbar items mapping
 const HOTBAR_ITEMS = ["Stone Block", "Dirt Block", "Grass Block", "Wood Log", "Leaves", "Lava Bucket", "Fried Chicken", "Wooden Sword"]
@@ -52,6 +52,16 @@ func _ready() -> void:
 	_setup_item_name_toast()
 	_setup_health_display()
 	_setup_pause_menu()
+	
+	# STRICT MODE FIX: Direct instantiation of DialogueManager
+	dialogue_manager = DialogueManager.new()
+	dialogue_manager.name = "DialogueManager"
+	dialogue_manager.player = player
+	add_child(dialogue_manager)
+	
+	# STRICT MODE FIX: Direct instantiation of LoadingScreen
+	var loading_screen := LoadingScreen.new(player)
+	add_child(loading_screen) 
 	
 	if is_instance_valid(player) and player.has_method("_sync_hud_counters"):
 		player.call("_sync_hud_counters")
@@ -156,16 +166,15 @@ func _setup_hotbar() -> void:
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hotbar_bg.add_child(hbox)
 	
-	# Primary palette colors representing each active item
 	var item_colors = [
-		Color(0.55, 0.55, 0.55), # Stone Block (Solid Grey)
-		Color(0.55, 0.38, 0.25), # Dirt Block (Chocolate Soil Brown)
-		Color(0.42, 0.78, 0.25), # Grass Block (Vibrant Green)
-		Color(0.72, 0.55, 0.35), # Wood Log (Warm Oak Tan)
-		Color(0.25, 0.65, 0.18), # Leaves (Forest Green)
-		Color(1.0, 0.45, 0.0),   # Lava Bucket (Glowing Orange)
-		Color(0.92, 0.62, 0.62), # Fried Chicken (Pinkish/Beige)
-		Color(0.75, 0.75, 0.80)  # Wooden Sword (Steel Grey/Worn)
+		Color(0.55, 0.55, 0.55), # Stone Block 
+		Color(0.55, 0.38, 0.25), # Dirt Block 
+		Color(0.42, 0.78, 0.25), # Grass Block 
+		Color(0.72, 0.55, 0.35), # Wood Log 
+		Color(0.25, 0.65, 0.18), # Leaves 
+		Color(1.0, 0.45, 0.0),   # Lava Bucket 
+		Color(0.92, 0.62, 0.62), # Fried Chicken 
+		Color(0.75, 0.75, 0.80)  # Wooden Sword 
 	]
 	
 	for i in range(8):
@@ -180,7 +189,6 @@ func _setup_hotbar() -> void:
 		slot.add_theme_stylebox_override("panel", slot_style)
 		hbox.add_child(slot)
 		
-		# FIXED: Center-anchored minimalist procedural colored icon
 		var icon := ColorRect.new()
 		icon.name = "ItemIcon"
 		icon.custom_minimum_size = Vector2(22, 22)
@@ -191,7 +199,6 @@ func _setup_hotbar() -> void:
 		icon.color = item_colors[i]
 		slot.add_child(icon)
 		
-		# Quantity label positioned on top of the colored icon (Minecraft style)
 		var qty_label := Label.new()
 		qty_label.name = "QtyLabel"
 		qty_label.text = ""
@@ -345,10 +352,9 @@ func _process(_delta: float) -> void:
 		quest_panel.update_widget()
 
 func open_dialogue(node: Resource, speaker_name: String) -> void:
-	if is_instance_valid(player):
-		var dm = player.get("dialogue_manager")
-		if is_instance_valid(dm) and dm.has_method("open_dialogue"):
-			dm.call("open_dialogue", node, speaker_name)
+	# STRICT MODE FIX: Direct method call on the statically typed manager
+	if is_instance_valid(dialogue_manager):
+		dialogue_manager.open_dialogue(node, speaker_name)
 
 func toggle_pause_menu(p_visible: bool) -> void:
 	if not is_instance_valid(_pause_overlay):
@@ -445,11 +451,10 @@ func _on_resume_pressed() -> void:
 	toggle_pause_menu(false)
 
 func _on_settings_pressed() -> void:
-	var sm_script: Script = load("res://src/Infrastructure/UI/SettingsMenu.gd")
-	if sm_script != null:
-		_settings_overlay = sm_script.new() as Control
-		_settings_overlay.connect("closed", Callable(self, "_on_settings_closed"))
-		add_child(_settings_overlay)
+	# STRICT MODE FIX: Direct class instantiation
+	_settings_overlay = SettingsMenu.new()
+	_settings_overlay.connect("closed", Callable(self, "_on_settings_closed"))
+	add_child(_settings_overlay)
 
 func _on_settings_closed() -> void:
 	if is_instance_valid(_settings_overlay):
@@ -478,7 +483,6 @@ func update_active_slot(active_index: int) -> void:
 			
 			tween.tween_property(slot, "scale", Vector2(1.15, 1.15), 0.1).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
 			
-			# Trigger fading toast
 			if is_instance_valid(_item_name_toast):
 				_item_name_toast.text = HOTBAR_ITEMS[i].to_upper()
 				_show_toast_notification()
@@ -501,14 +505,13 @@ func _show_toast_notification() -> void:
 	_toast_tween.tween_interval(1.8) 
 	_toast_tween.tween_property(_item_name_toast, "modulate:a", 0.0, 0.4).set_trans(Tween.TRANS_SINE)
 
-## MINECRAFT UX: Only numeric quantities in the bottom right over the custom color icon
 func update_slot_quantity(slot_index: int, _item_name: String, quantity: int) -> void:
 	if slot_index >= 0 and slot_index < hotbar_slots.size():
 		var slot: Panel = hotbar_slots[slot_index]
 		var label: Label = slot.get_node_or_null("MarginContainer/QtyLabel")
 		if is_instance_valid(label):
 			if quantity < 0:
-				label.text = "" # Infinite (like the Sword) has no number
+				label.text = "" 
 			else:
 				label.text = str(quantity)
 

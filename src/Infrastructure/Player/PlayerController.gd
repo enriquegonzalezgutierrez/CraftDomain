@@ -4,10 +4,9 @@
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by delegating all voxel raycasting, mining, building,
 #              eating, and NPC interactions to VoxelInteractionComponent.
-#              Acts strictly as a lightweight Movement and Camera Controller.
-#              UPGRADED: Integrated smooth vertical/horizontal camera bobbing,
-#              dynamic lateral roll tilt during strafing, and high-frequency 
-#              decaying camera trauma shake upon taking combat damage.
+#              STRICT MODE UPDATE: Replaced dynamic viewmodel and interaction 
+#              injections with direct class instantiation. Cleaned up HUD creation
+#              since the DialogueManager and LoadingScreen are now safely nested in PlayerHUD.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -31,15 +30,12 @@ var domain_entity: VoxelEntity
 # Segregated Inventory Interface (ISP compliant)
 var inventory: IInventory
 
-# Node references created via code
+# STRICT MODE FIX: Statically typed Node references
 var camera: Camera3D
 var world_controller: Node3D
 var hud: PlayerHUD
-var viewmodel: Node3D
-
-# Decoupled SRP managers and components
-var dialogue_manager: Node 
-var interaction_component: VoxelInteractionComponent # Decoupled SRP interaction handler
+var viewmodel: PlayerViewModel
+var interaction_component: VoxelInteractionComponent
 
 # Build inventory selection state (0 to 7 matches our 8 slots)
 var active_slot_index: int = 0
@@ -51,9 +47,7 @@ var _bob_timer: float = 0.0
 var _target_camera_pos: Vector3 = Vector3(0.0, 0.6, 0.0)
 var _target_camera_tilt: float = 0.0
 
-# ==============================================================================
-# UPGRADE: Camera Trauma Shake variable (Micro-Phase 4)
-# ==============================================================================
+# Camera Trauma Shake variable (Micro-Phase 4)
 var _shake_intensity: float = 0.0
 
 func _init() -> void:
@@ -69,7 +63,7 @@ func _ready() -> void:
 	_setup_player_geometry()
 	_locate_world()
 	_setup_hud()
-	_setup_interaction_component() # Instantiate and wire the decoupled interaction handler (SRP)
+	_setup_interaction_component() 
 	
 	# Capture mouse cursor
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -118,21 +112,12 @@ func _setup_player_geometry() -> void:
 	camera.current = true
 	add_child(camera)
 	
-	# 3. Viewmodel Setup
-	var viewmodel_script: Script = load("res://src/Infrastructure/Player/PlayerViewModel.gd")
-	viewmodel = viewmodel_script.new() as Node3D
+	# 3. Viewmodel Setup (STRICT MODE FIX: Direct class instantiation)
+	viewmodel = PlayerViewModel.new()
 	camera.add_child(viewmodel)
 
 func _setup_hud() -> void:
-	# 1. Instantiate the decoupled DialogueManager to satisfy SOLID SRP
-	var dm_script: Script = load("res://src/Infrastructure/Dialogue/DialogueManager.gd")
-	if dm_script != null:
-		dialogue_manager = dm_script.new() as Node
-		dialogue_manager.name = "DialogueManager"
-		dialogue_manager.set("player", self)
-		add_child(dialogue_manager)
-		
-	# 2. Setup standard inventory & HUD
+	# Clean initialization, sub-widgets are now properly encapsulated in PlayerHUD
 	inventory = InventoryComponent.new()
 	hud = PlayerHUD.new()
 	hud.name = "HUD"
@@ -140,35 +125,26 @@ func _setup_hud() -> void:
 	hud.world_controller = world_controller
 	add_child(hud)
 	
-	# 3. Instantiate the decoupled, standalone LoadingScreen dynamically
-	var ls_script: Script = load("res://src/Infrastructure/UI/LoadingScreen.gd")
-	if ls_script != null:
-		var loading_screen = ls_script.new(self) as Node
-		hud.add_child(loading_screen) 
-		
 	_sync_hud_counters()
 
-## Instantiates and registers the decoupled interaction component as a child of the camera (SRP)
 func _setup_interaction_component() -> void:
 	print("[PlayerController] Initializing decoupled VoxelInteractionComponent (SRP)...")
-	var ic_script: Script = load("res://src/Infrastructure/Player/VoxelInteractionComponent.gd")
-	if ic_script != null:
-		interaction_component = ic_script.new() as VoxelInteractionComponent
-		
-		# Inject dependencies (DIP compliant)
-		interaction_component.player = self
-		interaction_component.camera = camera
-		interaction_component.world_controller = world_controller
-		interaction_component.hud = hud
-		
-		# Added as a child of the camera so its internal RayCast3D rotates automatically with player gaze
-		camera.add_child(interaction_component)
-		print("[PlayerController] VoxelInteractionComponent successfully connected.")
+	# STRICT MODE FIX: Direct class instantiation
+	interaction_component = VoxelInteractionComponent.new()
+	
+	# Inject dependencies (DIP compliant)
+	interaction_component.player = self
+	interaction_component.camera = camera
+	interaction_component.world_controller = world_controller
+	interaction_component.hud = hud
+	
+	camera.add_child(interaction_component)
+	print("[PlayerController] VoxelInteractionComponent successfully connected.")
 
 func _locate_world() -> void:
 	var parent_node := get_parent()
 	if is_instance_valid(parent_node):
-		world_controller = parent_node.get_node_or_null("World")
+		world_controller = parent_node.get_node_or_null("World") as Node3D
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
@@ -229,13 +205,8 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0, SPEED)
 
 	move_and_slide()
-	
-	# Process camera animation effects
 	_process_camera_effects(delta)
 
-# ==============================================================================
-# UPGRADE: Smooth first-person camera animations and Trauma Screen Shake
-# ==============================================================================
 func _process_camera_effects(delta: float) -> void:
 	if not is_instance_valid(camera):
 		return
@@ -245,52 +216,41 @@ func _process_camera_effects(delta: float) -> void:
 	
 	# Camera Bobbing (Vertical and Horizontal head sway)
 	if is_on_floor() and horizontal_speed > 0.1:
-		# Cycle frequency based on moving speed
 		_bob_timer += delta * horizontal_speed * 2.2
-		
 		var bob_y: float = sin(_bob_timer) * 0.035
 		var bob_x: float = cos(_bob_timer * 0.5) * 0.018
 		_target_camera_pos = Vector3(bob_x, 0.6 + bob_y, 0.0)
 		
-		# Lean (Roll) Z axis when strafing
 		var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 		_target_camera_tilt = -input_dir.x * 0.02
 	else:
-		# Gentle idle breathing effect when stationary
 		_bob_timer += delta * 1.5
 		var breath_y: float = sin(_bob_timer) * 0.006
 		_target_camera_pos = Vector3(0.0, 0.6 + breath_y, 0.0)
 		_target_camera_tilt = 0.0
 		
-	# Interpolate base animated camera position and roll rotation tilt
 	var current_pos: Vector3 = camera.position.lerp(_target_camera_pos, delta * 10.0)
 	var current_tilt: float = lerp(camera.rotation.z, _target_camera_tilt, delta * 8.0)
 	
-	# UPGRADE: Add high-frequency decaying damage camera trauma (Screen Shake)
+	# High-frequency decaying damage camera trauma
 	if _shake_intensity > 0.005:
-		# Generate randomized offsets based on trauma intensity limits
 		var shake_x := randf_range(-_shake_intensity, _shake_intensity) * 0.4
 		var shake_y := randf_range(-_shake_intensity, _shake_intensity) * 0.4
 		var shake_z := randf_range(-_shake_intensity, _shake_intensity) * 0.4
-		
 		current_pos += Vector3(shake_x, shake_y, shake_z)
 		current_tilt += randf_range(-_shake_intensity, _shake_intensity) * 0.08
 		
-		# Smoothly decay the camera shake trauma back to zero over time
 		_shake_intensity = lerp(_shake_intensity, 0.0, delta * 9.0)
 	else:
 		_shake_intensity = 0.0
 		
-	# Apply final animated transforms to camera
 	camera.position = current_pos
 	camera.rotation.z = current_tilt
 
 func _scroll_hotbar(direction: int) -> void:
 	var new_slot := active_slot_index + direction
-	if new_slot > 7:
-		new_slot = 0
-	elif new_slot < 0:
-		new_slot = 7
+	if new_slot > 7: new_slot = 0
+	elif new_slot < 0: new_slot = 7
 	_apply_hotbar_selection(new_slot)
 
 func _process_hotbar_keys() -> void:
@@ -308,22 +268,21 @@ func _apply_hotbar_selection(slot: int) -> void:
 	if is_instance_valid(hud):
 		hud.update_active_slot(slot)
 	
-	# Slot 0 to 5 are buildable blocks (Includes Lava Bucket!)
 	is_item_selected = (slot <= 5)
 	
 	match slot:
-		0: active_build_type = BlockType.Type.STONE; _set_viewmodel_tool(2)
-		1: active_build_type = BlockType.Type.DIRT; _set_viewmodel_tool(2)
-		2: active_build_type = BlockType.Type.GRASS; _set_viewmodel_tool(2)
-		3: active_build_type = BlockType.Type.WOOD; _set_viewmodel_tool(1)
-		4: active_build_type = BlockType.Type.LEAVES; _set_viewmodel_tool(1)
-		5: active_build_type = BlockType.Type.LAVA; _set_viewmodel_tool(1)
-		6: _set_viewmodel_tool(1)
-		7: _set_viewmodel_tool(3)
+		0: active_build_type = BlockType.Type.STONE; _set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
+		1: active_build_type = BlockType.Type.DIRT; _set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
+		2: active_build_type = BlockType.Type.GRASS; _set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
+		3: active_build_type = BlockType.Type.WOOD; _set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
+		4: active_build_type = BlockType.Type.LEAVES; _set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
+		5: active_build_type = BlockType.Type.LAVA; _set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
+		6: _set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
+		7: _set_viewmodel_tool(PlayerViewModel.ToolType.SWORD)
 
-func _set_viewmodel_tool(tool_id: int) -> void:
-	if is_instance_valid(viewmodel) and viewmodel.has_method("switch_to_tool"):
-		viewmodel.call("switch_to_tool", tool_id)
+func _set_viewmodel_tool(tool_id: PlayerViewModel.ToolType) -> void:
+	if is_instance_valid(viewmodel):
+		viewmodel.switch_to_tool(tool_id)
 
 func take_damage(amount: int, knockback_force: Vector3) -> void:
 	if not is_active or domain_entity.is_dead: return
@@ -331,9 +290,7 @@ func take_damage(amount: int, knockback_force: Vector3) -> void:
 	domain_entity.take_damage(amount)
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	# UPGRADE: Inject high-frequency camera shake trauma upon taking damage
 	_shake_intensity = 0.32
-	
 	if is_instance_valid(hud):
 		hud.update_health_display(domain_entity.health)
 		if hud.has_method("flash_damage_screen"):

@@ -3,10 +3,8 @@
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications.
 #              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
-#              and Dependency Inversion (DIP) via WorldRepository.
-#              LSP COMPLIANCE: Updated spawned chunk tracker _chunk_entities to 
-#              hold polymorphic Array arrays containing generic Node entities 
-#              (both character bodies and static chest props) for clean unloads.
+#              by delegating voxel MultiMesh rendering math to `ChunkVisualBuilder`.
+#              LSP COMPLIANCE: Tracks polymorphic Array[Node] entities for clean unloads.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -85,7 +83,6 @@ func _initialize_systems() -> void:
 		if saved_global.has("player_pos"):
 			spawn_pos = saved_global["player_pos"]
 			spawn_rot = saved_global["player_rot"]
-		# Extract inventory if present in save file
 		if saved_global.has("inventory"):
 			_loaded_inventory_data = saved_global["inventory"]
 	else:
@@ -175,35 +172,14 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 			var pos: Vector3i = local_pos
 			chunk.set_block(pos.x, pos.y, pos.z, saved_edits[local_pos])
 			
-	# Process and group visual and physical structures
-	var render_data: Dictionary = {}
-	var collision_transforms: Array[Transform3D] = []
+	# SRP FIX: Delegate visual and collision evaluation to the builder
+	var visual_data := ChunkVisualBuilder.extract_render_data(chunk)
 	
-	for x in range(Chunk.SIZE):
-		for y in range(Chunk.SIZE):
-			for z in range(Chunk.SIZE):
-				var block_type: BlockType.Type = chunk.get_block(x, y, z)
-				if block_type == BlockType.Type.AIR:
-					continue
-					
-				var local_pos := Vector3(x, y, z)
-				var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
-				var t := Transform3D(Basis(), transform_pos)
-				
-				# Group transforms by their BlockType for rendering (Solid & Fluids)
-				if not render_data.has(block_type):
-					render_data[block_type] = []
-				render_data[block_type].append(t)
-				
-				# Only solid blocks are compiled into physics colliders
-				if BlockType.is_solid(block_type):
-					collision_transforms.append(t)
-						
 	# Queue the task result
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
-	task_result.multimesh_data = render_data
-	task_result.collision_transforms = collision_transforms
+	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
+	task_result.collision_transforms = visual_data["collision"] as Array[Transform3D]
 	
 	_queue_mutex.lock()
 	_chunk_task_cache[chunk_pos] = task_result
@@ -344,7 +320,6 @@ func _activate_player_spawn() -> void:
 	player.set("is_active", true)
 	player.velocity = Vector3.ZERO
 
-## Safely reads loaded file arrays and synchronizes inventory slots
 func _restore_player_inventory() -> void:
 	if _loaded_inventory_data.size() > 0 and is_instance_valid(player):
 		var inventory = player.get("inventory")
@@ -358,13 +333,12 @@ func _restore_player_inventory() -> void:
 
 ## Places/Deletes a block globally and forces a visual refresh.
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
-	# 1. Update logical world state
 	world_state.set_block(global_pos, type)
 	
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 	
-	# SELF-HEALING HOOK: If the visual chunk node does not exist, force load it.
+	# SELF-HEALING HOOK
 	if not is_instance_valid(chunk_node):
 		var chunk := world_state.get_chunk(chunk_pos)
 		if chunk == null:
@@ -382,31 +356,11 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		add_child(chunk_node)
 		_chunk_nodes[chunk_pos] = chunk_node
 	
-	# 2. Rebuild the partitioned MultiMesh rendering arrays instantly
-	var render_data: Dictionary = {}
-	var collision_transforms: Array[Transform3D] = []
-	
-	for x in range(Chunk.SIZE):
-		for y in range(Chunk.SIZE):
-			for z in range(Chunk.SIZE):
-				var block_type: BlockType.Type = chunk_node.chunk.get_block(x, y, z)
-				if block_type == BlockType.Type.AIR:
-					continue
-					
-				var local_pos := Vector3(x, y, z)
-				var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
-				var t := Transform3D(Basis(), transform_pos)
-				
-				# Group transforms by their BlockType for rendering
-				if not render_data.has(block_type):
-					render_data[block_type] = []
-				render_data[block_type].append(t)
-				
-				# Only solid blocks are compiled into physics colliders
-				if BlockType.is_solid(block_type):
-					collision_transforms.append(t)
+	# SRP FIX: Delegate visual rebuild extraction to the builder
+	var visual_data := ChunkVisualBuilder.extract_render_data(chunk_node.chunk)
+	var render_data := visual_data["multimesh"] as Dictionary
+	var collision_transforms := visual_data["collision"] as Array[Transform3D]
 		
-	# 3. Compile and apply new physics StaticBody3D on the main thread
 	var collision_body := StaticBody3D.new()
 	collision_body.name = "StaticCollisionBody"
 	var shared_box_shape := BoxShape3D.new()
@@ -417,7 +371,6 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		
 	chunk_node.setup_chunk_visuals(render_data, collision_body)
 	
-	# Synchronize the task cache
 	if _chunk_task_cache.has(chunk_pos):
 		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos]
 		cached_task.multimesh_data = render_data
