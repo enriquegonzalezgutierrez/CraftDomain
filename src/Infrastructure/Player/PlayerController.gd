@@ -3,10 +3,15 @@
 # Description: Infrastructure controller node representing the first-person player.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by delegating all voxel raycasting, mining, building,
-#              eating, and NPC interactions to VoxelInteractionComponent.
-#              STRICT MODE UPDATE: Replaced dynamic viewmodel and interaction 
-#              injections with direct class instantiation. Cleaned up HUD creation
-#              since the DialogueManager and LoadingScreen are now safely nested in PlayerHUD.
+#              eating, and NPC interactions to VoxelInteractionComponent, and 
+#              UI window orchestration to PlayerHUD.
+#              STRICT TYPING UPDATE: Replaced dynamic script loading with direct typed
+#              class instantiations.
+#              FASE 1 BACKPACK UPGRADE: Made block building, weapon equipping, and 
+#              tool rendering 100% dynamic, executing logic based on whatever 
+#              Voxel Block or Item ID currently occupies the active hotbar slot.
+#              FIXED: Casted integer button bindings to standard MouseButton enums
+#              to resolve strict compilator warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -30,7 +35,7 @@ var domain_entity: VoxelEntity
 # Segregated Inventory Interface (ISP compliant)
 var inventory: IInventory
 
-# STRICT MODE FIX: Statically typed Node references
+# STRICT TYPING: Statically typed Node references
 var camera: Camera3D
 var world_controller: Node3D
 var hud: PlayerHUD
@@ -83,7 +88,9 @@ func _setup_inputs() -> void:
 		"select_leaves": KEY_5,
 		"select_lava": KEY_6,
 		"select_chicken": KEY_7,
-		"select_sword": KEY_8
+		"select_sword": KEY_8,
+		"craft_item": KEY_C,
+		"toggle_backpack": KEY_I
 	}
 	
 	for action_name in primary_inputs.keys():
@@ -92,7 +99,7 @@ func _setup_inputs() -> void:
 		InputMap.action_erase_events(action_name)
 		
 		var primary_event := InputEventKey.new()
-		primary_event.keycode = primary_inputs[action_name]
+		primary_event.keycode = primary_inputs[action_name] as int
 		InputMap.action_add_event(action_name, primary_event)
 
 func _setup_player_geometry() -> void:
@@ -112,12 +119,11 @@ func _setup_player_geometry() -> void:
 	camera.current = true
 	add_child(camera)
 	
-	# 3. Viewmodel Setup (STRICT MODE FIX: Direct class instantiation)
+	# 3. Viewmodel Setup
 	viewmodel = PlayerViewModel.new()
 	camera.add_child(viewmodel)
 
 func _setup_hud() -> void:
-	# Clean initialization, sub-widgets are now properly encapsulated in PlayerHUD
 	inventory = InventoryComponent.new()
 	hud = PlayerHUD.new()
 	hud.name = "HUD"
@@ -129,7 +135,6 @@ func _setup_hud() -> void:
 
 func _setup_interaction_component() -> void:
 	print("[PlayerController] Initializing decoupled VoxelInteractionComponent (SRP)...")
-	# STRICT MODE FIX: Direct class instantiation
 	interaction_component = VoxelInteractionComponent.new()
 	
 	# Inject dependencies (DIP compliant)
@@ -155,6 +160,9 @@ func _input(event: InputEvent) -> void:
 			if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
 				world_controller.call("save_all")
 		else:
+			# Safeguard: Let active workshops/inventories capture Escape first
+			if is_instance_valid(hud) and (hud.get("_crafting_overlay") != null or hud.get("_inventory_overlay") != null):
+				return
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			if is_instance_valid(hud):
 				hud.toggle_pause_menu(false)
@@ -163,13 +171,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not is_active or Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		return
 		
-	# 1. Mouse Look
+	# 1. Mouse Gaze Look Rotation
 	if event is InputEventMouseMotion:
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
 		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(85))
 		
-	# 2. UX: Mouse Wheel Hotbar Scrolling
+	# 2. Mouse Wheel Hotbar Scrolling
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_scroll_hotbar(-1)
@@ -177,11 +185,27 @@ func _unhandled_input(event: InputEvent) -> void:
 			_scroll_hotbar(1)
 
 func _physics_process(delta: float) -> void:
-	if not is_active or Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
-		velocity = Vector3.ZERO
+	if not is_active:
+		# Process UI workspace toggles even when movement physics are frozen
+		if Input.is_action_just_pressed("craft_item") and is_instance_valid(hud):
+			var is_workshop_active := hud.get("_crafting_overlay") != null
+			hud.toggle_crafting_workshop(not is_workshop_active)
+		elif Input.is_action_just_pressed("toggle_backpack") and is_instance_valid(hud):
+			var is_backpack_active := hud.get("_inventory_overlay") != null
+			hud.toggle_inventory_backpack(not is_backpack_active)
 		return
 
 	_process_hotbar_keys()
+
+	# FASE 1: Crafting Workshop Trigger (C Key)
+	if Input.is_action_just_pressed("craft_item") and is_instance_valid(hud):
+		var is_workshop_active := hud.get("_crafting_overlay") != null
+		hud.toggle_crafting_workshop(not is_workshop_active)
+		
+	# FASE 1: Backpack Inventory Trigger (I Key)
+	elif Input.is_action_just_pressed("toggle_backpack") and is_instance_valid(hud):
+		var is_backpack_active := hud.get("_inventory_overlay") != null
+		hud.toggle_inventory_backpack(not is_backpack_active)
 
 	# Delegates all targeted raycasting, mining, building, and eating calculations
 	if is_instance_valid(interaction_component):
@@ -207,6 +231,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	_process_camera_effects(delta)
 
+## Executes procedural camera movements (bobbing/sway) and damage camera trauma
 func _process_camera_effects(delta: float) -> void:
 	if not is_instance_valid(camera):
 		return
@@ -214,7 +239,7 @@ func _process_camera_effects(delta: float) -> void:
 	var flat_vel := Vector2(velocity.x, velocity.z)
 	var horizontal_speed := flat_vel.length()
 	
-	# Camera Bobbing (Vertical and Horizontal head sway)
+	# Camera Bobbing
 	if is_on_floor() and horizontal_speed > 0.1:
 		_bob_timer += delta * horizontal_speed * 2.2
 		var bob_y: float = sin(_bob_timer) * 0.035
@@ -232,7 +257,7 @@ func _process_camera_effects(delta: float) -> void:
 	var current_pos: Vector3 = camera.position.lerp(_target_camera_pos, delta * 10.0)
 	var current_tilt: float = lerp(camera.rotation.z, _target_camera_tilt, delta * 8.0)
 	
-	# High-frequency decaying damage camera trauma
+	# Camera Trauma Shake
 	if _shake_intensity > 0.005:
 		var shake_x := randf_range(-_shake_intensity, _shake_intensity) * 0.4
 		var shake_y := randf_range(-_shake_intensity, _shake_intensity) * 0.4
@@ -263,22 +288,48 @@ func _process_hotbar_keys() -> void:
 	elif Input.is_action_just_pressed("select_chicken"): _apply_hotbar_selection(6)
 	elif Input.is_action_just_pressed("select_sword"): _apply_hotbar_selection(7)
 
+## FASE 1 BACKPACK UPGRADE: Decoupled contextual Hotbar selection mapping
 func _apply_hotbar_selection(slot: int) -> void:
 	active_slot_index = slot
 	if is_instance_valid(hud):
 		hud.update_active_slot(slot)
+		
+	if inventory == null:
+		return
+		
+	var inv_comp := inventory as InventoryComponent
+	var slot_data := inv_comp.get_slot_data(slot)
 	
-	is_item_selected = (slot <= 5)
+	# If the selected hotbar slot is completely empty
+	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:
+		is_item_selected = false
+		active_build_type = BlockType.Type.AIR
+		_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
+		return
+		
+	var item_id := slot_data.item_id
 	
-	match slot:
-		0: active_build_type = BlockType.Type.STONE; _set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
-		1: active_build_type = BlockType.Type.DIRT; _set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
-		2: active_build_type = BlockType.Type.GRASS; _set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
-		3: active_build_type = BlockType.Type.WOOD; _set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
-		4: active_build_type = BlockType.Type.LEAVES; _set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
-		5: active_build_type = BlockType.Type.LAVA; _set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
-		6: _set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
-		7: _set_viewmodel_tool(PlayerViewModel.ToolType.SWORD)
+	# BlockType.Type block IDs are numbered 1 to 15
+	if item_id >= 1 and item_id <= 15:
+		is_item_selected = true
+		active_build_type = item_id as BlockType.Type
+		
+		# Specialized viewmodel tool mapping
+		if item_id == 15: # Lava Bucket
+			_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
+		else:
+			_set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
+	else:
+		# Non-block inventory items (Chicken or Sword)
+		is_item_selected = false
+		active_build_type = BlockType.Type.AIR
+		
+		if item_id == 16: # Fried Chicken
+			_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
+		elif item_id == 17: # Wooden Sword
+			_set_viewmodel_tool(PlayerViewModel.ToolType.SWORD)
+		else:
+			_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
 
 func _set_viewmodel_tool(tool_id: PlayerViewModel.ToolType) -> void:
 	if is_instance_valid(viewmodel):
@@ -304,12 +355,15 @@ func _on_domain_entity_died() -> void:
 	if is_instance_valid(hud):
 		hud.update_health_display(domain_entity.health)
 
+## FASE 1 BACKPACK UPGRADE: Reads dynamic Item IDs and Stack counts for the 8 HUD slots
 func _sync_hud_counters() -> void:
-	if not is_instance_valid(hud) or not is_instance_valid(inventory): return
-	var c := inventory as InventoryComponent
-	for i in range(7):
-		hud.update_slot_quantity(i, c.get_slot_item_name(i), inventory.get_slot_quantity(i))
-	hud.update_slot_quantity(7, c.get_slot_item_name(7), -1)
+	if not is_instance_valid(hud) or not is_instance_valid(inventory): 
+		return
+		
+	var inv_comp := inventory as InventoryComponent
+	for i in range(8):
+		var slot := inv_comp.get_slot_data(i)
+		hud.update_slot_quantity(i, slot.item_id, slot.quantity)
 
 func _setup_inputs_mouse_actions() -> void:
 	var actions := {"click_left": MOUSE_BUTTON_LEFT, "click_right": MOUSE_BUTTON_RIGHT}
@@ -317,7 +371,10 @@ func _setup_inputs_mouse_actions() -> void:
 		if not InputMap.has_action(action): InputMap.add_action(action)
 		InputMap.action_erase_events(action)
 		var btn_event := InputEventMouseButton.new()
-		btn_event.button_index = actions[action]
+		
+		# STRICT MODE FIX: Casted dynamic Dictionary values to actual MouseButton enum
+		btn_event.button_index = actions[action] as MouseButton
+		
 		InputMap.action_add_event(action, btn_event)
 		
 		var key_event := InputEventKey.new()

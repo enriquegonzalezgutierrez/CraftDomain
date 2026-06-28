@@ -1,0 +1,51 @@
+# ==============================================================================
+# Project: CraftDomain
+# Description: Pure Domain Service orchestrating recipe execution.
+#              Checks ingredient requirements and modifies inventory stocks.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Only manages crafting logic.
+#              - Dependency Inversion Principle (DIP): Depends strictly on the
+#                abstract interface `IInventory`, allowing recipe evaluations
+#                on any generic backpack structure.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/Crafting/CraftingService.gd
+# ==============================================================================
+class_name CraftingService
+extends RefCounted
+
+## Validates if the given inventory contains enough ingredients to craft the recipe.
+## Returns true if all criteria are satisfied, false otherwise.
+static func can_craft(inventory: IInventory, recipe: Recipe) -> bool:
+	if inventory == null or recipe == null:
+		return false
+		
+	# 1. Validate if the inventory contains the total aggregate sum of each ingredient
+	for item_id in recipe.inputs.keys():
+		var required_qty := recipe.inputs[item_id] as int
+		
+		# DIP INVERSION: We query the generic total quantity of this ID, regardless of slot placement
+		if inventory.get_item_total_quantity(item_id) < required_qty:
+			return false
+			
+	# 2. Validate if the inventory has enough open slot capacity to receive the manufactured output
+	if not inventory.can_receive_item(recipe.output_item_index, recipe.output_quantity):
+		return false
+		
+	return true
+
+## Executes the crafting transaction, consuming the inputs and granting the output.
+## Returns true if the operation completed successfully, false otherwise.
+static func craft(inventory: IInventory, recipe: Recipe) -> bool:
+	if not can_craft(inventory, recipe):
+		return false
+		
+	# 1. Consume input ingredients across the entire backpack grid
+	for item_id in recipe.inputs.keys():
+		var required_qty := recipe.inputs[item_id] as int
+		inventory.consume_item(item_id, required_qty)
+		
+	# 2. Grant manufactured output item (appends to existing stack or fills an empty slot)
+	inventory.add_item(recipe.output_item_index, recipe.output_quantity)
+	
+	print("[CraftingService] Crafted successfully: ", recipe.recipe_name)
+	return true

@@ -25,6 +25,8 @@ graph TD
 		DiskWorldRepository[DiskWorldRepository.gd - JSON I/O]
 		DialogueManager[DialogueManager.gd]
 		WeatherService[WeatherService.gd - Particles]
+		CraftingOverlay[CraftingOverlay.gd - Dual Pane]
+		InventoryOverlay[InventoryOverlay.gd - 24-Slot Grid]
 	end
 
 	subgraph Domain_Layer [Domain Layer]
@@ -35,6 +37,8 @@ graph TD
 		IInventory[IInventory.gd - Interface Segregation]
 		QuestService[QuestService.gd - Domain Quest State]
 		DialogueService[DialogueService.gd - Dialogue Router]
+		CraftingService[CraftingService.gd - Transaction Logic]
+		Recipe[Recipe.gd - Value Object]
 	end
 
 	Bootstrap -->|Injects Repositories & Controllers| WorldController
@@ -45,18 +49,20 @@ graph TD
 	PlayerController -->|Manipulates| IInventory
 	DiskWorldRepository -->|Implements| WorldRepository
 	DialogueManager -->|Queries| DialogueService
+	CraftingOverlay -->|Calls| CraftingService
+	InventoryOverlay -->|Manipulates| IInventory
 ```
 
 1. **The Domain Layer (`src/Domain/`):** Contains the core business logic. It has zero dependencies on Godot's scene tree, physics servers, or rendering API. It consists of:
    * **Aggregates & Entities:** `WorldState.gd` (Aggregate Root managing chunks), `Chunk.gd` (Voxel Grid), `VoxelEntity.gd` (Logical health rules), and `Quest.gd` (Logical quest representation).
-   * **Value Objects:** `BlockDefinition.gd` (Immutable block traits and procedural color definitions).
-   * **Domain Services:** `TradingService.gd` (Decoupled inventory transaction rules), `BiomeService.gd` (Dynamic biome routing), `StructureLibrary.gd` (Blueprint routing), and `QuestService.gd` (Decoupled quest state coordinator).
-   * **Interfaces:** `IInventory.gd` (Segregated inventory contract) and `WorldRepository.gd` (Persistence contract).
+   * **Value Objects:** `BlockDefinition.gd` (Immutable block traits and procedural color definitions) and `Recipe.gd` (Encapsulates required inputs and output attributes for crafting).
+   * **Domain Services:** `TradingService.gd` (Decoupled inventory transaction rules), `BiomeService.gd` (Dynamic biome routing), `StructureLibrary.gd` (Blueprint routing), `QuestService.gd` (Decoupled quest state coordinator), and `CraftingService.gd` (Validates and processes formula requirements globally across grid networks).
+   * **Interfaces:** `IInventory.gd` (Segregated inventory contract supporting item-ID stacking queries) and `WorldRepository.gd` (Persistence contract).
 
 2. **The Infrastructure Layer (`src/Infrastructure/`):** Concrete implementations of hardware-bound or framework-bound systems.
-   * **Rendering & Materials (`src/Infrastructure/Rendering/`):** `ChunkNode.gd` segments rendering transforms into individual, block-type MultiMesh nodes, applying PBR materials and custom GPU shaders.
-   * **Physics & Interactions (`src/Infrastructure/Player/`):** First-person motion physics, camera rotation, and decoupled raycast interaction solvers.
-   * **Persistence (`src/Infrastructure/Persistence/`):** `DiskWorldRepository.gd` implements JSON delta serialization inside Godot's safe `user://` directory.
+   * **Rendering & Materials (`src/Infrastructure/Rendering/`):** `ChunkNode.gd` segments rendering transforms into individual, block-type MultiMesh nodes, applying PBR materials and custom GPU shaders. `ChunkVisualBuilder.gd` extracts physical meshes and groups MultiMesh matrices efficiently on background threads.
+   * **Physics & Interactions (`src/Infrastructure/Player/`):** First-person motion physics, camera rotation, head bobbing, and decoupled raycast interaction solvers.
+   * **Persistence (`src/Infrastructure/Persistence/`):** `DiskWorldRepository.gd` implements JSON delta serialization inside Godot's safe `user://` directory, now supporting full 24-slot inventory status profiles.
    * **Life & AI (`src/Infrastructure/Life/`):** Physics-bound passive and hostile AI, rendering programmatic 3D box-composition models and scheduling walk/idle tasks.
 
 3. **The Core/Bootstrap Layer (`src/Core/Bootstrap`):**
@@ -70,9 +76,11 @@ The architecture of CraftDomain is highly optimized to comply with the five SOLI
 
 ### 1. Single Responsibility Principle (SRP)
 Each class has a single, strictly defined reason to change:
+* **`WorldController.gd`:** Offloaded from physical and visual meshing calculations. It acts strictly as an asynchronous coordinator for chunk I/O and thread scheduling, delegating 3D matrix grouping to the stateless `ChunkVisualBuilder.gd`.
 * **`PlayerController.gd`:** Responsible *only* for movement physics, camera input handling, and velocity calculations. It delegates all raycasting, block mining, building, eating, and combat actions to `VoxelInteractionComponent.gd`.
 * **`VoxelInteractionComponent.gd`:** Attached as an isolated component under the camera, this class handles targeted block raycasting, highlighted meshes, block placement/removal, eating items, and speaking with NPCs.
 * **`PlayerHUD.gd`:** Acts strictly as a lightweight orchestrator for the UI composition. It delegates specific layout configurations and real-time mathematical calculations to dedicated widgets: `MinimapWidget`, `GPSPanelWidget`, and `QuestTrackerWidget`.
+* **`CraftingOverlay.gd` / `InventoryOverlay.gd`:** Handle only visual rendering of grid slots, checking checklists, and capturing clicks. They delegate all transaction modifications to `CraftingService` and `IInventory`.
 
 ### 2. Open-Closed Principle (OCP)
 *Classes are open for extension, but closed for modification.*
@@ -99,7 +107,8 @@ sequenceDiagram
 	Note over HUD: Render Quest Tracker Panel & Minimap Gold Marker
 ```
 
-To add more quests, a developer drops a new JSON file (e.g., `res://assets/quests/sidequests.json`) into the directory. The `CampaignRegistry` dynamic directory scanner automatically parses and registers it at startup without modifying a single line of GDScript.
+* **The Data-Driven Crafting & Blueprint System:** Similar to quests, all crafting recipes are parsed from `assets/recipes/recipes.json` by `RecipeRegistry.gd`. Adding a new recipe does not require modifying a single line of GDScript.
+* **Dynamic Mob Spawning Registry:** Concrete entities are registered dynamically into the `MobRegistry` at startup, decoupling custom wildlife and NPC instantiation from the procedural spawner `MobSpawningService.gd`.
 
 ### 3. Liskov Substitution Principle (LSP)
 Subclasses must be substitutable for their base classes without altering program correctness:
@@ -109,17 +118,18 @@ Subclasses must be substitutable for their base classes without altering program
 
 ### 4. Interface Segregation Principle (ISP)
 *Clients should not be forced to depend upon interfaces they do not use.*
-* Instead of passing the entire `PlayerController.gd` (which contains camera vectors, physics movement, and input states) to the trading or loot drop systems, the game defines `IInventory.gd`.
-* `TradingService` and `PassiveEntity` (NPCs) interact *only* with the `IInventory` interface, completely separating transaction logic from character movement and camera physics.
+* Instead of passing the entire `PlayerController.gd` (which contains camera vectors, physics movement, and input states) to the trading, loot drop, or crafting systems, the game defines `IInventory.gd`.
+* `TradingService`, `CraftingService`, and `PassiveEntity` (NPCs) interact *only* with the abstract `IInventory` interface, completely separating transaction logic from character movement and camera physics.
 
 ### 5. Dependency Inversion Principle (DIP)
 *High-level modules must not depend on low-level modules; both must depend on abstractions.*
 * `WorldController.gd` (High-level coordinator) never directly instantiates or imports `DiskWorldRepository.gd` (Low-level JSON file details).
 * Instead, it holds a reference to the abstract class `WorldRepository`. The concrete `DiskWorldRepository` is instantiated and injected externally by `Bootstrap.gd` during boot.
+* `CraftingService` depends on the abstract `IInventory` interface, allowing it to process transaction operations on any inventory backend.
 
 ---
 
-## High-Performance Game Engine Optimizations
+## High-Performance Voxel Sandbox Optimizations
 
 Voxel sandbox games are traditionally notorious for CPU and GPU bottlenecks. CraftDomain implements custom lower-level optimizations to maintain solid framerates:
 
@@ -130,7 +140,7 @@ To support translucent, highly reflective water and glowing lava, `ChunkNode.gd`
 * **Solid Blocks:** Use OCP-compliant custom PBR textures.
 
 ### 2. Custom GPU Blending & Triplanar Shader
-Using custom PNG textures (especially AI-generated ones) on voxels often results in vertical texture stretching or solid black blocks. CraftDomain implements a custom **GPU Blending Triplanar Shader** in `ChunkNode.gd` that resolves both issues:
+Using custom PNG textures on voxels often results in vertical texture stretching or solid black blocks. CraftDomain implements a custom **GPU Blending Triplanar Shader** in `ChunkNode.gd` that resolves both issues:
 * **Decal Triplanar Projection:** Projects textures from X, Y, and Z axes based on local vertex positions, ensuring perfectly square, non-stretched pixel mapping on all 6 faces of the cube.
 * **Alpha Blending Fallback:** Automatically blends the texture colors with the block's base procedural fallback color using the texture's alpha channel. If a pixel is transparent, it renders the rich biome-specific color instead of turning black.
 
@@ -190,11 +200,29 @@ To satisfy the Single Responsibility Principle, the HUD is separated into modula
 * **`GPSPanelWidget.gd`:** A clean overlay that displays coordinates, the celestial clock, and active region biomes with high-contrast text outlines, freeing up screen space.
 * **`QuestTrackerWidget.gd`:** Renders active quest descriptions, remaining distance in meters, and gathering progress. To prevent clutter, the widget automatically hides itself completely when all campaign quests are completed.
 
-### Minecraft-Style Minimalist Hotbar
-The hotbar has been optimized for visual clarity:
-* **Procedural Icons:** Each slot features a center-anchored color block (`22x22` pixels) representing its block type (e.g., grey for Stone, green for Grass, glowing orange for Lava, iron grey for the Sword).
-* **Quantity Overlays:** Numeric item counts are drawn in the bottom-right corner of each slot over the item icon. Infinite items, like the Sword, display no numbers.
-* **Fading Selected Item Toast:** When switching slots, the full name of the item (e.g., `STONE BLOCK`) is displayed in a large label above the hotbar. After 1.8 seconds of inactivity, the label fades out smoothly to ensure maximum immersion.
+### Minecraft-Style Centered HUD Layout
+The HUD has been fully overhauled to emulate the standardized layout of modern block sandbox games:
+* **Unified Center-Bottom Dock:** The 8 hotbar slots are grouped inside a sleek, glassmorphic bottom bar. The `🎒` (Backpack Inventory) and `🛠️` (Crafting Workshop) buttons are docked symmetrically on the left and right ends of the bar, providing a clean tactile interface for mouse players.
+* **Pixelated Voxel Shadow Icons:** Hotbar block indicators feature an internal 3D shadow offset that simulates voxel volume. Slot counts are rendered at the bottom right.
+* **Aligned Status Bars:** Red Hearts (`❤ ❤ ❤`) float above the left half of the hotbar, starting exactly aligned with Slot 0. Crispy Chicken Drumsticks (`🍗 🍗 🍗`) representing the actual backpack stock of Fried Chicken float above the right half of the hotbar, aligning perfectly with Slot 7.
+* **Hotkey Tooltip Labels:** Small high-contrast sub-labels (`[I]` and `[C]`) sit underneath the docked shortcuts to seamlessly guide keyboard players.
+
+---
+
+## Inventory & Crafting Workshop Systems
+
+### 1. Stack-Based Grid Inventory (`InventoryComponent.gd`)
+The fixed inventory system has been refactored to support a fully dynamic **24-slot stackable grid**:
+* **Grid Partitioning:** Slots 0 to 7 act as the active gameplay hotbar (synced to the HUD), while slots 8 to 23 form the extra 16-slot backpack storage (visible inside the Backpack screen).
+* **Dynamic Stacking:** Items stack up to 64 units per slot, allowing multiple stacks of the same block types (e.g., Stone, Wood) to occupy separate slots.
+* **Sequential Swapping Engine:** Pressing `I` opens the glassmorphic Backpack menu. Clicking Slot A (glows in gold) and then Slot B swaps their contents physically. This allows seamless backpack sorting and hotbar rearranging.
+* **Inspector & Consumption Panel:** Clicking an item opens its technical description card, current stock metrics, usage instructions, and action buttons. Consumable foods like Fried Chicken can be eaten directly from the menu, restoring health and updating status bars in real-time.
+
+### 2. Context-Aware Crafting Workshop (`CraftingOverlay.gd`)
+Pressing `C` opens a dual-pane Blueprint Workshop overlay:
+* **Blueprint Catalog (Left Pane):** Scrollable deck showing all available recipes parsed dynamically from `recipes.json`. Card margins are color-coded to match the output block types.
+* **Visual Checklist (Right Pane):** Selecting a recipe displays its name, result count, and a color-coded checklist of required ingredients compared with the player's total inventory count (green if satisfied, red if missing).
+* **Manufacturing Transaction:** Clicking the "Fabricate" button consumes the inputs globally across the grid, plays a hand-swing tool animation, and updates both the checklist and HUD counters instantly.
 
 ---
 
@@ -207,6 +235,21 @@ NPCs are designed with a layered hierarchical box structure attached to a dedica
   * **Merchants:** Modeled with silk turbans featuring emerald gems on the forehead, royal violet robes, and layered gold aprons.
   * **Guards:** Styled with steel-plated armor, bulky 3D shoulder pauldrons, helmet visors, sheathed iron swords, and knightly wooden heater shields on their backs.
   * **Farmers:** Rigged with muddy field boots, blue dungarees with suspender straps, wide-brim straw hats, and sheathed harvesting wooden hoes.
+
+---
+
+## Controls Reference
+
+* **`W`, `A`, `S`, `D` or Arrow Keys:** Move around.
+* **Mouse Movement:** Look around (Smooth camera rotation processed inside `_unhandled_input` to match high-refresh monitor rates).
+* **`Space`:** Jump.
+* **`I` (or clicking the HUD 🎒 button):** Toggle the 24-slot Backpack Inventory & Inspector overlay.
+* **`C` (or clicking the HUD 🛠️ button):** Toggle the Context-aware Crafting & Blueprint Workshop.
+* **Mouse Scroll Wheel or Keys `1` to `8`:** Scroll through Hotbar slots:
+  * `1` (Stone), `2` (Dirt), `3` (Grass), `4` (Wood), `5` (Leaves), `6` (Lava Bucket), `7` (Fried Chicken), `8` (Sword).
+* **Left-Click (or `E`):** Mine blocks (generating color-matched voxel debris particles) or swing the active weapon.
+* **Right-Click (or `Q`):** Place blocks, consume items (eating Fried Chicken to heal), or interact (trading with the Purple-Robed Merchant, talking to villagers).
+* **`Escape`:** Unlocks mouse cursor, pauses game, and triggers a silent background auto-save.
 
 ---
 
@@ -223,7 +266,7 @@ NPCs are designed with a layered hierarchical box structure attached to a dedica
 	├── Domain
 	│   ├── Dialogue           # Pure dialogue data nodes
 	│   ├── Life               # Pure domain models (Combat state, health limits)
-	│   ├── Player             # Segregated IInventory interfaces
+	│   ├── Player             # Segregated IInventory interfaces and InventoryComponent
 	│   ├── Quest              # Pure quest entities and domain coordinators
 	│   └── World              # Strategy patterns (IBiome, Blueprints, Block Definitions)
 	└── Infrastructure
@@ -233,22 +276,9 @@ NPCs are designed with a layered hierarchical box structure attached to a dedica
 		├── Life               # Physics controllers, NPCs, blinking, and spawning
 		├── Persistence        # Safe JSON save delta serializers
 		├── Player             # FP controllers, viewmodels, and interaction components
-		├── Rendering          # MultiMesh chunk nodes and custom GPU shaders
-		└── UI                 # Glassmorphic sub-widgets, compasses, and pause overlays
+		├── Rendering          # MultiMesh chunk nodes, ChunkVisualBuilder, and custom GPU shaders
+		└── UI                 # Glassmorphic sub-widgets, compasses, and workshop overlays
 ```
-
----
-
-## Controls Reference
-
-* **`W`, `A`, `S`, `D` or Arrow Keys:** Move around.
-* **Mouse Movement:** Look around (Smooth camera rotation processed inside `_unhandled_input` to match high-refresh monitor rates).
-* **`Space`:** Jump.
-* **Mouse Scroll Wheel or Keys `1` to `8`:** Scroll through Hotbar slots:
-  * `1` (Stone), `2` (Dirt), `3` (Grass), `4` (Wood), `5` (Leaves), `6` (Lava Bucket), `7` (Fried Chicken), `8` (Sword).
-* **Left-Click (or `E`):** Mine blocks (generating color-matched voxel debris particles) or swing the active weapon.
-* **Right-Click (or `Q`):** Place blocks, consume items (eating Fried Chicken to heal), or interact (trading with the Purple-Robed Merchant, talking to villagers).
-* **`Escape`:** Unlocks mouse cursor, pauses game, and triggers a silent background auto-save.
 
 ---
 

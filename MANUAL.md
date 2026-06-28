@@ -1,7 +1,7 @@
 # CraftDomain - Gameplay & Survival Manual
 *Written by Enrique González Gutiérrez (enrique.gonzalez.gutierrez@gmail.com)*
 
-Welcome to **CraftDomain**, a high-performance, infinite procedural voxel world. This manual is a comprehensive, step-by-step documentation designed to help you navigate, mine, build, fight, and trade. 
+Welcome to **CraftDomain**, a high-performance, infinite procedural voxel world. This manual is a comprehensive, step-by-step documentation designed to help you navigate, mine, build, fight, trade, sort your backpack, and craft advanced tools.
 
 ---
 
@@ -51,6 +51,8 @@ The input mapping system is processed in raw hardware buffers inside `_unhandled
 | **Mining/Attack**| `E` | - | `Left-Click` | Swing active tool, break block, hit |
 | **Build/Interact**| `Q` | - | `Right-Click` | Place block, eat chicken, trade, open chest |
 | **Scroll Hotbar** | - | - | `Mouse Wheel` | Scroll left/right through slots |
+| **Open Inventory**| `I` | - | - | Toggle Backpack Grid & Item Inspector |
+| **Open Crafting** | `C` | - | - | Toggle Blueprint Catalog & Crafting Workshop |
 | **Select Slot 1** | `1` | - | - | Select Stone Block |
 | **Select Slot 2** | `2` | - | - | Select Dirt Block |
 | **Select Slot 3** | `3` | - | - | Select Grass Block |
@@ -77,7 +79,7 @@ Interacting with voxels is governed by a **5-meter Reach Distance**. A white aim
 1. Aim at any block within range.
 2. Press **Left-Click** (or `E`).
 3. The block breaks, triggering a **dynamic particle debris emitter** that sprays color-matched 3D voxel particles for visceral impact. The block is then added to your inventory.
-4. **Visual Hotbar Feedback:** Each slot has an elegant, color-coded central icon block representing the material, with active item counts displayed in the bottom-right corner. When you select a slot, the full item name (e.g., `WOOD LOG`) appears floating above the hotbar and fades out smoothly after 1.8 seconds.
+4. **Visual Hotbar Feedback:** Each slot has an elegant, color-coded central icon block representing the material with a 3D-shaded inner relief overlay, with active item counts displayed in the bottom-right corner. When you select a slot, the full item name (e.g., `WOOD LOG`) appears floating above the hotbar and fades out smoothly after 1.8 seconds.
 
 ### Building (Placing Blocks & Lava)
 1. Select a material using the **Mouse Wheel** or keys **1 to 6**.
@@ -172,7 +174,7 @@ The procedural world is populated with active, box-composition creatures and vil
 * **Villagers:** Clothed in textured brown robes with leather boots and sashes.
 * **Merchants:** Styled with purple robes, silk turbans with embedded emerald gems, and dual-layered gold aprons.
 * **Guards:** Overhauled with metallic pauldrons, iron greaves, combat visor helmets, and sheathed iron swords and knightly shields on their backs.
-* **Farmers:** Rigged with muddy boots, denim dungarees with suspenders, wide-brim straw hats, and sheathed wood-iron hoes.
+* **Farmers:** Rigged with muddy field boots, denim dungarees with suspenders, wide-brim straw hats, and sheathed wood-iron hoes.
 
 ### Interactive 3D Loot Chests
 Inside village settlements, you will discover interactive **3D Loot Chests** spawned near buildings.
@@ -192,9 +194,6 @@ Inside villages (found in the **Golden Bazaar** plains), you will discover rusti
 2. Aim at the Merchant and **Right-Click** (or `Q`).
 3. The Merchant will hum excitedly, **hop in the air with physical joy**, consume 1 Lava Bucket, and place 1 **Fried Chicken** into your inventory.
 4. If you attempt to interact without holding a Lava Bucket, the Merchant will hum inquisitively, and the developer console will print: `[Merchant] Hmmm? Bring me a Bucket of Lava (Slot 6) to trade for my Lava-Fried Chicken!`
-
-### Survival & Healing
-When selecting your **Fried Chickens** (Slot 7), if you have taken damage, **Right-Click** (or `Q`) to eat. You will consume 1 chicken, play a satisfying hand-tilt animation, and heal **1 Heart (❤)** of health.
 
 ---
 
@@ -226,6 +225,93 @@ As night falls (the sun rotates below the horizon, monitored by the dynamic day/
 CraftDomain features a silent, zero-stutter background **Delta-Save** process. You never have to manually click a save button:
 
 1. Pressing **Escape** pauses the game and unlocks your mouse cursor.
-2. The engine instantly gathers your current `(X, Y, Z)` position, camera look angles, world seed, and hotbar inventory quantities, writing them to `user://world_save/global_save.json`.
+2. The engine instantly gathers your current `(X, Y, Z)` position, camera look angles, world seed, and full 24-slot backpack item and stack quantities, writing them to `user://world_save/global_save.json`.
 3. Simultaneously, any blocks you broken or placed are gathered as localized modification deltas and saved directly to chunk files on disk (e.g., `chunk_-21_1_10.json`).
 4. When you click **PLAY WORLD** on the Main Menu, the loading queue restores the world, rendering your construction edits and loading your character precisely where you paused!
+
+---
+
+## 9. Backpack Inventory & Item Inspector (`I`)
+
+Pressing **`I`** (or clicking the **`🎒`** HUD shortcut button) freezes the gameplay physics and opens a detailed **Backpack Inventory & Inspector** overlay.
+
+```
++------------------------------------+--------------------------+
+|          BACKPACK GRID             |      ITEM INSPECTOR      |
+|                                    |                          |
+|  [ 8 ]  [ 9 ]  [10]  [11]          |      [ WOOD LOG ]        |
+|  [12]  [13]  [14]  [15]          |                          |
+|  [16]  [17]  [18]  [19]          |          [ 📦 ]          |
+|  [20]  [21]  [22]  [23]          |        (3D Preview)      |
+|                                    |                          |
+|  HOTBAR DOCK (Separated)           | "Sturdy oak logs... used |
+|  [ 0 ] [ 1 ] [ 2 ] [ 3 ] ... [ 7 ] |  for dynamic builds."    |
+|                                    |                          |
+|                                    |  STOCKED: 16 units       |
+|                                    |                          |
+|                                    | [ EQUIP ]  [ USE/EAT ]   |
++------------------------------------+--------------------------+
+```
+
+### Stack-Based 24-Slot Storage Grid
+* **Hotbar Dock (Slots 0 to 7):** The 8 quickbar slots centered at the bottom of the HUD. Items in these slots can be held in your hands to build, mine, or fight.
+* **Backpack Grid (Slots 8 to 23):** The upper 16 storage slots of your backpack, designed to hold auxiliary resources, crafted items, and mined blocks.
+* **Apilamiento (Max Stack 64):** Items stack dynamically up to 64 units per slot (excluding weapons which occupy single non-stackable slots). You can hold multiple separate stacks of the same material across the grid.
+
+### The Sequential Swapping Engine (Inventory Sorting)
+You can reorganize your inventory or move items between your backpack and your hotbar with a simple, tactile clicking sequence:
+1. Click on **Slot A** (the slot will glow in a prominent Gold frame indicating active selection).
+2. Click on any **Slot B**.
+3. The contents of both slots will physically **swap positions** instantly on your screen, updating your active hands and quickbar in real-time! Click Slot A again to deselect.
+
+### The Item Inspector (Utility Tooltips & Fast Use)
+Clicking any item in the backpack displays its specific gameplay profiles:
+* **Description Tooltip:** Teaches the player the utility and lore of each block or tool.
+* **Operational Instructions:** Spells out exact controller shortcuts (e.g., *"Use Right-Click to place blocks"*).
+* **Equip Action:** Click **EQUIP IN HAND** to assign the selected item to that quickbar slot instantly.
+* **Fast Use (Eating Food):** If you inspect Fried Chicken, a green **CONSUME FOOD** button appears. Clicking it eats 1x chicken directly from your bag, healing 1 Heart on your HUD.
+
+---
+
+## 10. Blueprint Taller & Crafting Workshop (`C`)
+
+Pressing **`C`** (or clicking the **`🛠️`** HUD shortcut button) opens a dual-pane **Blueprint Taller & Crafting Workshop** overlay, allowing you to manufacture advanced equipment and process terrain materials.
+
+```
++------------------------------------+--------------------------+
+|          BLUEPRINT CATALOG         |      FORMULA DETAILS     |
+|                                    |                          |
+|  🧱 Grass Turf Blocks              |       SOD CULTIVATION    |
+|  🧱 Reinforced Stone Slabs         |                          |
+|  🛠️ Wooden broadswords             |          [ 🧱 ]          |
+|  🍗 Emergency Herbal Rations       |        (Output Preview)  |
+|                                    |                          |
+|                                    |  REQUIRED MATERIALS:     |
+|                                    |  ✔ 2 / 2  DIRT BLOCK     |
+|                                    |  ✘ 0 / 1  LEAVES         |
+|                                    |                          |
+|                                    |     [ FABRICATE ITEM ]   |
++------------------------------------+--------------------------+
+```
+
+### The Recipe Catalog (Left Pane)
+Displays a scrollable deck of all available crafting blueprints. Each card features a color-coded vertical strip matching the material of the result for immediate visual category identification.
+
+### The Formula Details & Checklist (Right Pane)
+Selecting a blueprint shows its visual specifications:
+* **Inputs Checklist:** Scans your **entire 24-slot inventory** dynamically to aggregate your current stock of each required item, showing a green checkmark (`✔`) if you have enough, or a red cross (`✘`) if you are missing materials.
+* **Fabricate Action:** If the requirements are met, the **FABRICATE ITEM** button unlocks in green. Clicking it consumes the materials globally across your backpack, grants the crafted outcome, triggers a viewmodel hand-swing, and pops a sliding success notification.
+
+### Full Recipe List Reference (12 formulas):
+*   **Organic Composting:** `3x Leaves` ➔ `1x Dirt`
+*   **Sod Cultivation:** `2x Dirt` + `1x Leaves` ➔ `2x Grass`
+*   **Thatch Harvesting:** `1x Wood` ➔ `4x Leaves`
+*   **Soil Pulverizer:** `1x Stone` ➔ `3x Dirt`
+*   **Igneous Cobbling:** `4x Dirt` + `1x Lava` ➔ `4x Stone`
+*   **Wooden Sword:** `4x Wood` ➔ `1x Wooden Sword`
+*   **Emergency Herbal Rations:** `10x Leaves` + `1x Wood` ➔ `1x Fried Chicken`
+*   **Geothermal Charcoal Fuel:** `6x Wood` + `1x Lava` ➔ `3x Lava Buckets`
+*   **Reinforced Stone Slabs:** `2x Stone` + `1x Dirt` ➔ `3x Stone`
+*   **Composite Planks:** `2x Wood` + `1x Stone` ➔ `4x Wood`
+*   **Magma Core Synthesis:** `15x Stone` + `1x Lava` ➔ `2x Lava Buckets`
+*   **Soothing Herbal Poultice:** `6x Leaves` ➔ `1x Fried Chicken`

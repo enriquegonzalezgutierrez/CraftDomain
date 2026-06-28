@@ -3,7 +3,8 @@
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications.
 #              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
-#              by delegating voxel MultiMesh rendering math to `ChunkVisualBuilder`.
+#              by delegating voxel MultiMesh rendering math to `ChunkVisualBuilder`,
+#              and inventory serialization directly to the `InventoryComponent`.
 #              LSP COMPLIANCE: Tracks polymorphic Array[Node] entities for clean unloads.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
@@ -84,7 +85,7 @@ func _initialize_systems() -> void:
 			spawn_pos = saved_global["player_pos"]
 			spawn_rot = saved_global["player_rot"]
 		if saved_global.has("inventory"):
-			_loaded_inventory_data = saved_global["inventory"]
+			_loaded_inventory_data = saved_global["inventory"] as Array
 	else:
 		randomize()
 		active_seed = randi()
@@ -276,6 +277,7 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	_chunk_nodes.erase(chunk_pos)
 	world_state.remove_chunk(chunk_pos)
 
+## HIGH COHESION UPGRADE: Delegate inventory layout serialization directly to InventoryComponent
 func save_all() -> void:
 	print("[WorldController] Executing clean save operations...")
 	for chunk_pos in world_state._chunk_modifications.keys():
@@ -283,17 +285,16 @@ func save_all() -> void:
 		repository.save_chunk_modifications(chunk_pos, modifications)
 		
 	if is_instance_valid(player):
-		var inv_quantities: Array = []
-		var inventory = player.get("inventory")
+		var inv_data: Array = []
+		var inventory = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
-			for i in range(8):
-				inv_quantities.append(inventory.get_slot_quantity(i))
+			inv_data = inventory.get_serialize_data()
 				
 		repository.save_global_state(
 			player.global_position, 
 			player.rotation, 
 			generator._terrain_noise.seed,
-			inv_quantities 
+			inv_data 
 		)
 	print("[WorldController] All data serialized and saved successfully.")
 
@@ -320,15 +321,13 @@ func _activate_player_spawn() -> void:
 	player.set("is_active", true)
 	player.velocity = Vector3.ZERO
 
+## HIGH COHESION UPGRADE: Safely reads loaded file arrays and delegates reconstruction to InventoryComponent
 func _restore_player_inventory() -> void:
 	if _loaded_inventory_data.size() > 0 and is_instance_valid(player):
-		var inventory = player.get("inventory")
+		var inventory = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
 			print("[WorldController] Restoring saved player inventory...")
-			for i in range(min(_loaded_inventory_data.size(), 8)):
-				var current_qty: int = inventory.get_slot_quantity(i)
-				var target_qty: int = int(_loaded_inventory_data[i])
-				inventory.modify_slot_quantity(i, target_qty - current_qty)
+			inventory.deserialize_data(_loaded_inventory_data)
 			player.call("_sync_hud_counters")
 
 ## Places/Deletes a block globally and forces a visual refresh.
@@ -338,7 +337,6 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 	
-	# SELF-HEALING HOOK
 	if not is_instance_valid(chunk_node):
 		var chunk := world_state.get_chunk(chunk_pos)
 		if chunk == null:
@@ -356,7 +354,6 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		add_child(chunk_node)
 		_chunk_nodes[chunk_pos] = chunk_node
 	
-	# SRP FIX: Delegate visual rebuild extraction to the builder
 	var visual_data := ChunkVisualBuilder.extract_render_data(chunk_node.chunk)
 	var render_data := visual_data["multimesh"] as Dictionary
 	var collision_transforms := visual_data["collision"] as Array[Transform3D]

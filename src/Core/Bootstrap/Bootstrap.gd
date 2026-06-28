@@ -2,9 +2,12 @@
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
 #              handling dynamic, decoupled dependency injection.
-#              STRICT MODE UPDATE: Replaced `load().new() as Node` with strong class
+#              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
+#              and Open-Closed Principle (OCP).
+#              STRICT MODE UPDATE: Replaced dynamic script loading with strong class
 #              instantiations to eliminate UNSAFE_CAST.
-#              OCP UPGRADE: Registers mobs dynamically into the MobRegistry.
+#              OCP UPGRADE: Initializes the static databases (Quests, Mobs, Crafting Recipes)
+#              at application startup, decoupling game data from core loops.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -31,11 +34,15 @@ func _initialize_application() -> void:
 	
 	_setup_biomes()      
 	_setup_structures() 
-	_setup_mobs()       # <-- NUEVO: Registro OCP de Entidades
+	_setup_mobs()       # Registers dynamic spawners (OCP)
 	_setup_persistence()
 	_setup_environment()
 	
+	# Load external campaign quests
 	CampaignRegistry.initialize_campaign()
+	
+	# --- FASE 1 UPGRADE: Load dynamic crafting recipes ---
+	RecipeRegistry.initialize_recipes()
 	
 	_setup_celestial()
 	_setup_audio()
@@ -66,22 +73,22 @@ func _setup_structures() -> void:
 	StructureLibrary.register_blueprint(SakuraTreeBlueprint.new())
 	StructureLibrary.register_blueprint(UnderworldFungusBlueprint.new())
 
-## NUEVA FUNCIÓN: Registra las factorías dinámicas (OCP Compliant)
+## Registers the dynamic entity factories (OCP Compliant)
 func _setup_mobs() -> void:
 	print("[Bootstrap] Registering dynamic entity spawning factories...")
-	# Animales Salvajes
+	# Wildlife Spawn Mappings
 	MobRegistry.register_mob(0, func(pos: Vector3) -> Node: return PigEntity.new(pos))
 	MobRegistry.register_mob(1, func(pos: Vector3) -> Node: return ChickenEntity.new(pos))
 	MobRegistry.register_mob(2, func(pos: Vector3) -> Node: return SheepEntity.new(pos))
 	MobRegistry.register_mob(3, func(pos: Vector3) -> Node: return CowEntity.new(pos))
 	
-	# Aldeanos e Interactivos de la Villa
+	# Villagers & Interactive NPCs
 	MobRegistry.register_mob(100, func(pos: Vector3) -> Node: return VillagerEntity.new(pos))
 	MobRegistry.register_mob(101, func(pos: Vector3) -> Node: return MerchantEntity.new(pos))
 	MobRegistry.register_mob(102, func(pos: Vector3) -> Node: return GuardEntity.new(pos))
 	MobRegistry.register_mob(103, func(pos: Vector3) -> Node: return FarmerEntity.new(pos))
 	
-	# Props Físicos (Chest ignora el parámetro pos inicial ya que tiene setter)
+	# Interactive Props (Loot Chests)
 	MobRegistry.register_mob(200, func(pos: Vector3) -> Node: 
 		var chest := ChestEntity.new()
 		chest.position = pos

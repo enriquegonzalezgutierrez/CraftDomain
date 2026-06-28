@@ -1,81 +1,87 @@
-# CraftDomain - Engine Architecture, Graphics & Gameplay Roadmap
+# CraftDomain - Development Roadmap & Milestone Tracker
 
-This document outlines the technical trajectory, architectural milestones, and planned features for the **CraftDomain** voxel sandbox engine. The roadmap is divided into iterative phases focusing on performance optimizations, SOLID design compliance, deep gameplay loops, and networking foundations.
-
----
-
-## Phase 1: Voxel Core & Domain Foundation (Completed)
-*Focus: Establish the DDD layer separation, basic chunk meshing, and infinite world coordination.*
-
-*   [x] **Domain Model Isolation:** Encapsulate voxel chunk grids, logical blocks, and player states strictly within the Domain Layer (`src/Domain/`), keeping them completely free of Godot node dependencies.
-*   [x] **Partitioned MultiMesh Mesher:** Implement a multi-mesh chunk mesher (`ChunkNode.gd`) to separate translucent fluid blocks (Water, Lava) from solid voxels to support specialized shaders and reflections.
-*   [x] **Delta-Save Pipeline:** Create an asynchronous, stutter-free JSON serialization repository (`DiskWorldRepository.gd`) to save local voxel modifications to disk on thread buffers.
-*   [x] **Composition Root:** Establish a clean application bootstrapper (`Bootstrap.gd`) to dynamically register biomes/structures and inject dependencies, preventing circular compiler loops.
+This roadmap documents the architectural milestones, optimization phases, and gameplay expansions of the CraftDomain voxel sandbox engine. It tracks completed features and outlines the short-term, mid-term, and long-term goals of the project.
 
 ---
 
-## Phase 2: Atmospheric Rendering & Immersive Interface (Completed)
-*Focus: Elevate environment realism, optimize rendering shaders, and streamline the player's on-screen interface.*
+## 🗺️ Progress Dashboard
 
-*   [x] **GPU-Optimized Procedural Sky Shader:** Move all celestial color gradients, Sun/Moon orbits, and FBM cloud projections to a dedicated GPU Sky Shader, eliminating CPU-bound color calculations.
-*   [x] **Deterministic Orbit Synchronization:** Direct the physical Sun/Moon light vectors from `CelestialService.gd` directly to the shader uniforms, resolving light index swapping artifacts and matching sky states with the clock.
-*   [x] **Meteorological Overcast Transitions:** Coordinate `WeatherService.gd` state changes (sunny, rainy, snowy) with the sky shader to smoothly interpolate cloud density, sky coloration, and sun dimming.
-*   [x] **Minimalist Hotbar & Fading Toasts:** Redesign the HUD to shrink hotbar space, replace static text with procedural color-coded item blocks, and add a fading selected-item name notification to enhance game immersion.
-*   [x] **Procedural NPC Rigging and Animations:** Implement the `_body_bob_node` walking joint on `PassiveEntity.gd` to simulate realistic footstep bouncing. Overhaul Villager, Merchant, Guard, and Farmer 3D programmatic models.
-
----
-
-## Phase 3: Expanded Domain Economy & Inventory Systems (In-Progress)
-*Focus: Expand the Domain Layer to support complex item manipulation, crafting matrices, and container tracking.*
-
-*   [ ] **Full Grid Inventory UI (The "E" Menu):** Implement a full-screen inventory GUI overlay, allowing players to drag and drop items, manage storage, and organize blocks between their main backpack and the 8 quick-slots.
-*   [ ] **Extensible Crafting Matrix Service:** Establish a decoupled `CraftingService` that reads recipe matrices from an external `recipes.json` configuration file, allowing players to combine items into tools.
-*   [ ] **Persistent Container System:** Extend the `WorldState` aggregate to track and save the inventory states of individual physical props (such as chests) generated procedurally in the world.
-*   [ ] **Economic Transactions Overhaul:** Refactor `TradingService` to support dynamic currency exchange (using copper/silver equivalents) instead of single-item direct barter.
+| Milestone | Phase Title | Status | Target / Release |
+| :--- | :--- | :---: | :--- |
+| **Milestone 1** | Core Voxel & Procedural World | **COMPLETED** | Release v1.0.0 |
+| **Milestone 2** | SOLID Infrastructure & Decoupled UI | **COMPLETED** | Release v1.1.0 |
+| **Milestone 3** | Minecraft HUD, 24-Slot Inventory & Crafting | **COMPLETED** | Release v1.2.0 (Current) |
+| **Milestone 4** | Spatial & Foley Audio Engine | *IN PROGRESS* | Target v1.3.0 |
+| **Milestone 5** | Greedy Meshing & Chunk Compression | *PLANNED* | Target v1.4.0 |
+| **Milestone 6** | Extended Sandbox Mechanics & Farming | *PLANNED* | Target v1.5.0 |
+| **Milestone 7** | Client-Server Headless Multiplayer | *LONG-TERM* | Target v2.0.0 |
 
 ---
 
-## Phase 4: Advanced Generation, Cave Carvers & Multi-Threading (Planned)
-*Focus: Optimize world generation and chunk loading performance to completely eliminate frame stuttering.*
+## 🟢 Completed Milestones
 
-*   [ ] **Strict OCP Landmark Registry:** Move the hardcoded landmark-to-blueprint mapping currently residing in `WorldGenerator.gd` into a dynamic, registration-based system within `StructureLibrary`.
-*   [ ] **Multithreaded Mesh Compilation:** Offload the generation of `ArrayMesh` surfaces from the main thread to worker threads using Godot's `WorkerThreadPool`, eliminating rendering lag spikes when crossing chunk boundaries.
-*   [ ] **Cave Carver Noise Service:** Add a 3D Simplex Noise service to carve hollow, subterranean tunnels and ore veins beneath the Craggy Peaks biome.
-*   [ ] **Cellular Automata Fluids:** Implement a CPU-bound cellular automata fluid simulation to allow water and lava blocks to flow dynamically when adjacent blocks are mined.
+### Milestone 1: Core Voxel & Procedural World (v1.0.0)
+*   **Infinite Vertical Grid:** Created an optimized 3D chunk loader loading vertical layers $Y=0$ and $Y=1$ (height range 0 to 31) to prevent rendering clipping and support high-altitude building.
+*   **Procedural Biomes:** Implemented `IBiome` strategy patterns to define 10 geographically distinct regions (Bay of Sails, Warp Plateau, Golden Bazaar, Craggy Peaks, etc.).
+*   **Weather-Integrated GPU Shader:** Developed a custom sky dome shader processing astronomical sun/moon orbits, twinkling stars, and dynamic overcast fades (0.0 to 1.0) during rain/snow transitions.
+*   **Regional Precipitation:** Positioned wind-blown snowflakes above the player's head inside glaciers, and fast-falling translucent rain needles in temperate biomes.
 
----
+### Milestone 2: SOLID Infrastructure & Decoupled UI (v1.1.0)
+*   **Asynchronous Thread Pool:** Offloaded chunk procedurals and JSON loading modification deltas to background threads via Godot's `WorkerThreadPool` to prevent main-thread physics stuttering.
+*   **Stateless Meshing (SRP):** Extracted 3D MultiMesh and physics collider generation out of the `WorldController` into the stateless helper `ChunkVisualBuilder`.
+*   **Dynamic Mob Spawner (OCP):** Created `MobRegistry` to register entity factory Callables at boot time, decoupling custom wildlife and NPC instantiation from the spawning loop.
+*   **Zero-Warning Strict Typing:** Refactored dynamic script loading (`load().new()`) to clean global class instantiations, clearing all `UNSAFE_CAST` and `UNSAFE_CALL_ARGUMENT` parser warnings.
 
-## Phase 5: Combat Overhaul, Weapon Classes & Enemy AI (Planned)
-*Focus: Deepen the combat mechanics, introduce ranged weaponry, and establish pathfinding algorithms for hostile mobs.*
-
-*   [ ] **Ranged Weaponry Integration:** Introduce bows, projectiles (arrows), and throwables, separating projectile physics into an isolated infrastructure component.
-*   [ ] **A\* Voxel Pathfinding Service:** Build a high-performance 3D A* pathfinding system that maps the local solid voxel grid, allowing zombies to navigate around walls and climb steps intelligently.
-*   [ ] **Lunar Event Spawning Cycles:** Connect monster spawn rates and stats with the 28-day lunar phase tracked by `CelestialService.gd` (e.g., higher aggression and elite spawns during Full Moons).
-*   [ ] **Entity Combat Stats:** Expand `VoxelEntity.gd` to encapsulate modular defense, knockback resistance, and attack damage attributes, separating stats calculations from physics nodes.
-
----
-
-## Phase 6: Town Generation & Dynamic Structure Blueprints (Planned)
-*Focus: Scale structure blueprints into multi-building, procedurally generated village settlements.*
-
-*   [ ] **Procedural Town Planner:** Develop a village layout algorithm that scans flat coordinates in plains biomes, carves dirt roads, and spawns houses, market cabins, and streetlights deterministically.
-*   [ ] **Connected Streetlight Power Grid:** Connect registered village streetlights to a local grid controller, letting them toggle on and off based on ambient power lines instead of polling the clock individually.
-*   [ ] **Dynamic Structure Rotations:** Update `IStructureBlueprint` to support 90, 180, and 270-degree rotation matrices during generation, allowing buildings to face roads naturally.
-
----
-
-## Phase 7: Modding API, Extensibility & Custom Blocks (Long-Term)
-*Focus: Transform the engine into a highly moddable platform via data-driven registries.*
-
-*   [ ] **Data-Driven Block Registry:** Refactor `BlockLibrary.gd` to load block definitions, colors, and textures dynamically from external JSON files, letting users register new blocks without modifying the source.
-*   [ ] **GDExtension API Bridges:** Compile core voxel meshing and chunk generation modules into high-speed C++ via Godot's `GDExtension`, exposing clean API endpoints for heavy gameplay scripts.
-*   [ ] **Custom Blueprint Importer:** Develop a tool to import standard `.vox` (MagicaVoxel) files directly into `IStructureBlueprint` instances at runtime.
+### Milestone 3: Minecraft HUD, 24-Slot Inventory & Crafting (v1.2.0 - Current)
+*   **Minecraft Responsive HUD Layout:**
+	*   Designed a unified, center-bottom docked Hotbar container.
+	*   Positioned detailed Red Hearts (`❤`) directly above the Hotbar left corner.
+	*   Positioned Fried Chicken drumsticks (`🍗`) directly above the Hotbar right corner.
+	*   Docked clickable Backpack (`🎒 [I]`) and Workshop (`🛠️ [C]`) shortcut buttons to the sides for ergonomic mouse play.
+	*   Applied 3D inner shaded relief borders to all HUD block icons.
+*   **Stack-Based 24-Slot Grid Inventory:**
+	*   Partitioned inventory into 8 Hotbar slots and 16 Backpack storage slots.
+	*   Implemented items stacking (up to 64 units) and OCP-compliant dynamic block pickup routing.
+	*   Created the **Sequential Swapping Engine** allowing players to click Slot A and then Slot B to physically rearrange items in the grids.
+	*   Built an Item Inspector displaying detailed specs, stock counts, usage descriptions, and direct Use/Eat actions.
+*   **Context-Aware Crafting Workshop:**
+	*   Designed a dual-pane workshop parsing 12 dynamic recipes from `recipes.json`.
+	*   Implemented an ingredients checklist displaying green (`✔`) or red (`✘`) checkmarks based on total inventory counts.
+	*   Wired the fabrication pipeline to deduct inputs globally across the grid, add the output to empty/stackable slots, and trigger viewmodel hand-swings.
 
 ---
 
-## Phase 8: Multiplayer Networking & Client-Server Replication (Long-Term)
-*Focus: Establish a high-performance multi-client synchronization layer with authoritative server physics.*
+## 🟡 Short-Term Goals (In Progress)
 
-*   [ ] **UDP Voxel Replication Protocol:** Build a client-server sync pipeline using high-performance UDP packets to stream chunk modification deltas only to players within rendering range.
-*   [ ] **Authoritative Physics & Prediction:** Implement server-authoritative movement physics with local client prediction and interpolation to guarantee smooth movement under high latency.
-*   [ ] **Synchronized Celestial Clock:** Replicate timeline and weather states from the server's authoritative `CelestialService` and `WeatherService` across all connected client sessions.
+### Milestone 4: Spatial & Foley Audio Engine (v1.3.0)
+*   [ ] **Block-Dependent Footstep Foley:** Wire `PlayerController` to run quick vertical raycasts down to the ground. Play unique step sounds (`AudioStreamPlayer3D`) depending on the surface material (e.g., resonance on Stone, grass rumbles on Turf, hollow thuds on Wood).
+*   [ ] **Spatial Environmental Audio:**
+	*   Assign spatial audio streams to active mobs (bellowing cows, oinking pigs, chicken clucks, zombie groans).
+	*   Attach spatial 3D wind soundscapes to mountain ranges and rustling leaf sounds inside forest biomes.
+*   [ ] **Action Feedback sounds:** Add muffled impacts when mining blocks, metallic hits when attacking zombies, paper ruffles when opening menus, and eating gulps when consuming fried chicken.
+
+---
+
+## 🔵 Mid-Term Goals (Planned)
+
+### Milestone 5: Greedy Meshing & Chunk Compression (v1.4.0)
+*   [ ] **Greedy Meshing Implementation:** Upgrade the chunk renderer. Instead of instantiating individual 1x1x1 boxes inside the MultiMesh, implement a greedy-meshing compiler that merges adjacent, identical block faces into larger, singular rectangular prisms. This will reduce GPU vertex count in dense regions by up to 80% and optimize memory allocation.
+*   [ ] **Run-Length Encoding (RLE) Delta Saving:** Compress modified block dictionaries written to disk (e.g. `chunk_0_0_0.json`) using RLE compression, minimizing file size and directory footprint during massive, long-term construction sessions.
+
+### Milestone 6: Extended Sandbox Mechanics & Farming (v1.5.0)
+*   [ ] **Agricultural Growth Ticks:**
+	*   Add wheat/crop seeds as collectable foliage drops.
+	*   Implement plant growth stages (Seed ➔ Sprout ➔ Ripe) triggered by random chunk ticks.
+	*   Utilize the Guard/Farmer NPC AI task loops to dynamically harvest ripe crops.
+*   [ ] **Interactive Voxel Wiring (Neon Signals):** Use `NEON_CYAN` and `NEON_MAGENTA` blocks as logical signals (comparable to redstone wire). Powering a neon pathway can trigger dynamic actions, such as sliding open glass cabin doors or activating streetlights.
+
+---
+
+## 🟣 Long-Term Vision (Future Milestones)
+
+### Milestone 7: Client-Server Headless Multiplayer (v2.0.0)
+*   **Headless Server Compilation:** Since CraftDomain uses strict Domain-Driven Design (DDD) where `WorldState` and `VoxelEntity` contain pure logical rules with zero engine node dependencies, compile a Headless Server build that runs the game logic blindly on Linux servers.
+*   **Godot RPC Synchronization:**
+	*   Wire player movements, block edits, and crafting transactions to synchronize over network sockets using Godot's High-Level Multiplayer API.
+    *   Implement server-authoritative coordinate checks to prevent physics clipping.
+    *   Ensure thread-safe chunk data streaming to clients as they navigate the infinite procedural coordinate grid.

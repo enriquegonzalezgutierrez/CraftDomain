@@ -3,9 +3,11 @@
 # Description: Infrastructure UI controller acting as a lightweight Orchestrator.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by delegating visual operations to widgets.
-#              STRICT MODE UPDATE: Replaced dynamic script injection with strong
-#              global class instantiations (DialogueManager, LoadingScreen, SettingsMenu)
-#              to eliminate UNSAFE_CAST and allow direct typed method calls.
+#              UX HIGH-FIDELITY UPGRADE (MINECRAFT RESPONSIVE HUDBAR):
+#              - Center-bottom docked hotbar scaled to 8.5% screen height.
+#              - Large format slots (54x54) and block icons (32x32).
+#              - High-readability hearts and drumsticks status bars (Font 20).
+#              - Complete responsive scaling across any resolution (1080p, 2K, 4K).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -24,19 +26,32 @@ var quest_panel: QuestTrackerWidget
 # Sibling UI nodes managed locally
 var _item_name_toast: Label
 var _toast_tween: Tween
-var health_label: Label
 var hotbar_slots: Array[Panel] = []
 
-# UX Overlays
+# Dynamic Status Bars (Minecraft-style!)
+var _hearts_container: HBoxContainer
+var _food_container: HBoxContainer
+
+# UX Overlays, Workshops & Backpacks
 var damage_overlay: ColorRect
 var _pause_overlay: Panel
-
-# STRICT MODE FIX: Statically typed sub-managers
 var _settings_overlay: SettingsMenu
 var dialogue_manager: DialogueManager
+var _crafting_overlay: CraftingOverlay
+var _inventory_overlay: InventoryOverlay
 
-# Modern 8-Slot Hotbar items mapping
-const HOTBAR_ITEMS = ["Stone Block", "Dirt Block", "Grass Block", "Wood Log", "Leaves", "Lava Bucket", "Fried Chicken", "Wooden Sword"]
+# Theme palette colors matching our Hotbar Block IDs
+const BLOCK_COLORS = {
+	-1: Color(0, 0, 0, 0),       
+	1: Color(0.55, 0.55, 0.55), # Stone
+	2: Color(0.55, 0.38, 0.25), # Dirt
+	3: Color(0.42, 0.78, 0.25), # Grass
+	4: Color(0.72, 0.55, 0.35), # Wood
+	5: Color(0.25, 0.65, 0.18), # Leaves
+	15: Color(1.0, 0.45, 0.0),  # Lava
+	16: Color(0.92, 0.62, 0.62),# Chicken
+	17: Color(0.75, 0.75, 0.80) # Sword
+}
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -48,18 +63,17 @@ func _ready() -> void:
 	_setup_navigation_gps_panel() 
 	_setup_quest_tracker_panel()  
 	
-	_setup_hotbar()
+	_setup_unified_hotbar_dock() # Replaces old scattered buttons and bars
 	_setup_item_name_toast()
-	_setup_health_display()
 	_setup_pause_menu()
 	
-	# STRICT MODE FIX: Direct instantiation of DialogueManager
+	# Instantiate standard dialogue manager
 	dialogue_manager = DialogueManager.new()
 	dialogue_manager.name = "DialogueManager"
 	dialogue_manager.player = player
 	add_child(dialogue_manager)
 	
-	# STRICT MODE FIX: Direct instantiation of LoadingScreen
+	# Instantiate standard loading screen
 	var loading_screen := LoadingScreen.new(player)
 	add_child(loading_screen) 
 	
@@ -131,72 +145,116 @@ func _setup_quest_tracker_panel() -> void:
 	quest_panel = QuestTrackerWidget.new()
 	quest_panel.player = player
 	
-	# Positioning (Top Left under Health Bar)
 	quest_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	quest_panel.offset_left = 20
 	quest_panel.offset_top = 80
 	
 	add_child(quest_panel)
 
-func _setup_hotbar() -> void:
+## HIGH-FIDELITY HUDBAR DESIGN: Builds a single cohesive, highly polished bottom toolbar
+func _setup_unified_hotbar_dock() -> void:
+	# 1. Base Container centered at the bottom (PROPORTIONS SCALED UP BY 1.35x)
+	var main_dock := Control.new()
+	main_dock.name = "HudBottomDock"
+	main_dock.custom_minimum_size = Vector2(760, 140)
+	main_dock.size = Vector2(760, 140)
+	main_dock.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	main_dock.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	main_dock.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	main_dock.offset_bottom = -15
+	main_dock.offset_top = -155
+	main_dock.offset_left = -380
+	main_dock.offset_right = 380
+	add_child(main_dock)
+	
+	# 2. Status Containers (Perfect aligned, 1.4x larger font metrics)
+	_hearts_container = HBoxContainer.new()
+	_hearts_container.name = "HeartsContainer"
+	_hearts_container.add_theme_constant_override("separation", 3)
+	_hearts_container.custom_minimum_size = Vector2(200, 32)
+	_hearts_container.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_hearts_container.offset_left = 82 # Aligns perfectly above Slot 0
+	_hearts_container.offset_bottom = -84 # floats 6px above the taller hotbar
+	_hearts_container.offset_top = -116
+	main_dock.add_child(_hearts_container)
+	
+	_food_container = HBoxContainer.new()
+	_food_container.name = "FoodContainer"
+	_food_container.alignment = BoxContainer.ALIGNMENT_END
+	_food_container.add_theme_constant_override("separation", 3)
+	_food_container.custom_minimum_size = Vector2(200, 32)
+	_food_container.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_food_container.offset_right = -82 # Aligns perfectly above Slot 7
+	_food_container.offset_bottom = -84 
+	_food_container.offset_top = -116
+	main_dock.add_child(_food_container)
+	
+	# 3. Unified Glassmorphic Hotbar Container (Holds Shortcuts + 8 slots)
 	var hotbar_bg := Panel.new()
 	hotbar_bg.name = "HotbarBackground"
-	hotbar_bg.custom_minimum_size = Vector2(560, 70)
-	hotbar_bg.size = Vector2(560, 70)
-	
-	hotbar_bg.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	hotbar_bg.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	hotbar_bg.custom_minimum_size = Vector2(680, 78) # Increased height and width
+	hotbar_bg.size = Vector2(680, 78)
 	hotbar_bg.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	
-	hotbar_bg.offset_left = -280
-	hotbar_bg.offset_right = 280
-	hotbar_bg.offset_bottom = -20
-	hotbar_bg.offset_top = -90
+	hotbar_bg.offset_bottom = -4
+	hotbar_bg.offset_top = -82
+	hotbar_bg.offset_left = -340
+	hotbar_bg.offset_right = 340
 	
 	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(12)
-	style.bg_color = Color(0.05, 0.05, 0.05, 0.8)
-	style.shadow_size = 8
-	style.shadow_color = Color(0, 0, 0, 0.3)
+	style.set_corner_radius_all(14) # Smoother corner rounding
+	style.bg_color = Color(0.04, 0.04, 0.05, 0.85)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.22, 0.22, 0.28, 0.7)
+	style.shadow_size = 15
+	style.shadow_color = Color(0, 0, 0, 0.6)
 	hotbar_bg.add_theme_stylebox_override("panel", style)
-	add_child(hotbar_bg)
+	main_dock.add_child(hotbar_bg)
 	
 	var hbox := HBoxContainer.new()
 	hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 10) # More spacing between cards
 	hotbar_bg.add_child(hbox)
 	
-	var item_colors = [
-		Color(0.55, 0.55, 0.55), # Stone Block 
-		Color(0.55, 0.38, 0.25), # Dirt Block 
-		Color(0.42, 0.78, 0.25), # Grass Block 
-		Color(0.72, 0.55, 0.35), # Wood Log 
-		Color(0.25, 0.65, 0.18), # Leaves 
-		Color(1.0, 0.45, 0.0),   # Lava Bucket 
-		Color(0.92, 0.62, 0.62), # Fried Chicken 
-		Color(0.75, 0.75, 0.80)  # Wooden Sword 
-	]
+	# A. Left Docked Button: Backpack (🎒)
+	var bp_btn := Button.new()
+	bp_btn.name = "BackpackShortcut"
+	bp_btn.text = "🎒"
+	bp_btn.custom_minimum_size = Vector2(50, 54) # Match slots heights
+	bp_btn.tooltip_text = "Open Backpack Inventory [I]"
+	_setup_hud_shortcut_button_style(bp_btn)
+	bp_btn.pressed.connect(func() -> void: toggle_inventory_backpack(not is_instance_valid(_inventory_overlay)))
+	hbox.add_child(bp_btn)
 	
+	# Splitter line
+	var sep_left := VSeparator.new()
+	sep_left.add_theme_constant_override("separation", 6)
+	hbox.add_child(sep_left)
+	
+	# B. Middle Area: Slots 0 to 7 (UPGRADED TO 54x54 GIANTS SHAPES)
 	for i in range(8):
 		var slot := Panel.new()
 		slot.name = "Slot_%d" % i
-		slot.custom_minimum_size = Vector2(46, 46)
-		slot.pivot_offset = Vector2(23, 23) 
+		slot.custom_minimum_size = Vector2(54, 54) # Large layout
+		slot.pivot_offset = Vector2(27, 27) 
 		
 		var slot_style := StyleBoxFlat.new()
-		slot_style.set_corner_radius_all(6)
+		slot_style.set_corner_radius_all(8)
 		slot_style.bg_color = Color(0.12, 0.12, 0.12, 0.6)
 		slot.add_theme_stylebox_override("panel", slot_style)
 		hbox.add_child(slot)
 		
+		# Giant Inner Color Icon Rect (Updated dynamically on sync)
 		var icon := ColorRect.new()
 		icon.name = "ItemIcon"
-		icon.custom_minimum_size = Vector2(22, 22)
-		icon.size = Vector2(22, 22)
+		icon.custom_minimum_size = Vector2(32, 32) # Shaded 3D voxel look
+		icon.size = Vector2(32, 32)
 		icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		icon.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		icon.grow_vertical = Control.GROW_DIRECTION_BOTH
-		icon.color = item_colors[i]
 		slot.add_child(icon)
 		
 		var qty_label := Label.new()
@@ -207,7 +265,7 @@ func _setup_hotbar() -> void:
 		qty_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 		
 		var label_style := LabelSettings.new()
-		label_style.font_size = 14
+		label_style.font_size = 15 # Larger counter font
 		label_style.outline_size = 4
 		label_style.outline_color = Color.BLACK
 		qty_label.label_settings = label_style
@@ -215,21 +273,39 @@ func _setup_hotbar() -> void:
 		var margin := MarginContainer.new()
 		margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		margin.add_theme_constant_override("margin_right", 4)
-		margin.add_theme_constant_override("margin_bottom", -2)
+		margin.add_theme_constant_override("margin_bottom", -1)
 		margin.add_child(qty_label)
 		
 		slot.add_child(margin)
 		hotbar_slots.append(slot)
+		
+	# Splitter line
+	var sep_right := VSeparator.new()
+	sep_right.add_theme_constant_override("separation", 6)
+	hbox.add_child(sep_right)
+	
+	# C. Right Docked Button: Workshop (🛠️)
+	var cr_btn := Button.new()
+	cr_btn.name = "WorkshopShortcut"
+	cr_btn.text = "🛠️"
+	cr_btn.custom_minimum_size = Vector2(50, 54)
+	cr_btn.tooltip_text = "Open Crafting Workshop [C]"
+	_setup_hud_shortcut_button_style(cr_btn)
+	cr_btn.pressed.connect(func() -> void: toggle_crafting_workshop(not is_instance_valid(_crafting_overlay)))
+	hbox.add_child(cr_btn)
+		
+	# Draw initial state of status bars
+	update_health_display(3)
 
 func _setup_item_name_toast() -> void:
 	_item_name_toast = Label.new()
 	_item_name_toast.name = "ItemNameToast"
 	_item_name_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_item_name_toast.offset_bottom = -85 
+	_item_name_toast.offset_bottom = -175 # Elevated further up to clear the larger dock safely
 	_item_name_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	
 	var style := LabelSettings.new()
-	style.font_size = 20
+	style.font_size = 22 # Larger toast text
 	style.font_color = Color(1.0, 1.0, 1.0)
 	style.outline_size = 5
 	style.outline_color = Color.BLACK
@@ -237,49 +313,6 @@ func _setup_item_name_toast() -> void:
 	
 	_item_name_toast.modulate.a = 0.0 
 	add_child(_item_name_toast)
-
-func _setup_health_display() -> void:
-	var health_bg := Panel.new()
-	health_bg.name = "HealthBackground"
-	health_bg.custom_minimum_size = Vector2(160, 45)
-	health_bg.size = Vector2(160, 45)
-	health_bg.grow_horizontal = ColorRect.GROW_DIRECTION_END
-	health_bg.grow_vertical = ColorRect.GROW_DIRECTION_END
-	health_bg.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	health_bg.offset_left = 20
-	health_bg.offset_top = 20
-	
-	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(8)
-	style.bg_color = Color(0.12, 0.12, 0.12, 0.5)
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.border_color = Color(0.25, 0.25, 0.25, 0.8)
-	style.shadow_size = 4
-	style.shadow_color = Color(0, 0, 0, 0.2)
-	health_bg.add_theme_stylebox_override("panel", style)
-	add_child(health_bg)
-	
-	health_label = Label.new()
-	health_label.name = "HealthLabel"
-	health_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	health_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	health_label.grow_vertical = Control.GROW_DIRECTION_BOTH
-	health_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	health_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	
-	var label_style := LabelSettings.new()
-	label_style.font_size = 18
-	label_style.font_color = Color(0.95, 0.15, 0.15)
-	label_style.outline_size = 4
-	label_style.outline_color = Color.BLACK
-	
-	health_label.label_settings = label_style
-	
-	health_bg.add_child(health_label)
-	update_health_display(3)
 
 func _setup_pause_menu() -> void:
 	_pause_overlay = Panel.new()
@@ -343,6 +376,36 @@ func _setup_pause_menu() -> void:
 	_pause_overlay.visible = false
 	add_child(_pause_overlay)
 
+func _setup_hud_shortcut_button_style(btn: Button) -> void:
+	var sn := StyleBoxFlat.new()
+	sn.bg_color = Color(0.12, 0.12, 0.15, 0.4)
+	sn.set_corner_radius_all(8)
+	sn.border_width_left = 1
+	sn.border_width_top = 1
+	sn.border_width_right = 1
+	sn.border_width_bottom = 1
+	sn.border_color = Color(0.25, 0.25, 0.3, 0.3)
+	
+	var sh := sn.duplicate() as StyleBoxFlat
+	sh.bg_color = Color(0.18, 0.18, 0.22, 0.7)
+	sh.border_color = Color(1.0, 0.85, 0.2, 0.9) 
+	
+	btn.add_theme_stylebox_override("normal", sn)
+	btn.add_theme_stylebox_override("hover", sh)
+	btn.add_theme_stylebox_override("pressed", sn)
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	btn.add_theme_font_size_override("font_size", 18) # Larger icon symbol
+	
+	btn.pivot_offset = Vector2(25, 27) # Adjusted for the new 50x54 dimensions
+	btn.mouse_entered.connect(func() -> void:
+		var tw := create_tween()
+		tw.tween_property(btn, "scale", Vector2(1.1, 1.1), 0.08).set_trans(Tween.TRANS_SINE)
+	)
+	btn.mouse_exited.connect(func() -> void:
+		var tw := create_tween()
+		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.08).set_trans(Tween.TRANS_SINE)
+	)
+
 func _process(_delta: float) -> void:
 	if is_instance_valid(minimap):
 		minimap.update_widget()
@@ -352,13 +415,68 @@ func _process(_delta: float) -> void:
 		quest_panel.update_widget()
 
 func open_dialogue(node: Resource, speaker_name: String) -> void:
-	# STRICT MODE FIX: Direct method call on the statically typed manager
 	if is_instance_valid(dialogue_manager):
 		dialogue_manager.open_dialogue(node, speaker_name)
+
+func toggle_crafting_workshop(p_visible: bool) -> void:
+	if _pause_overlay.visible or is_instance_valid(_inventory_overlay):
+		return 
+		
+	if p_visible:
+		if is_instance_valid(_crafting_overlay):
+			return
+			
+		_crafting_overlay = CraftingOverlay.new()
+		_crafting_overlay.player = player
+		_crafting_overlay.closed.connect(func() -> void: toggle_crafting_workshop(false))
+		add_child(_crafting_overlay)
+		
+		if is_instance_valid(player):
+			player.set("is_active", false)
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		if is_instance_valid(_crafting_overlay):
+			_crafting_overlay.queue_free()
+			_crafting_overlay = null
+			
+		if is_instance_valid(player):
+			player.set("is_active", true)
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func toggle_inventory_backpack(p_visible: bool) -> void:
+	if _pause_overlay.visible or is_instance_valid(_crafting_overlay):
+		return 
+		
+	if p_visible:
+		if is_instance_valid(_inventory_overlay):
+			return
+			
+		_inventory_overlay = InventoryOverlay.new()
+		_inventory_overlay.player = player
+		_inventory_overlay.closed.connect(func() -> void: toggle_inventory_backpack(false))
+		add_child(_inventory_overlay)
+		
+		if is_instance_valid(player):
+			player.set("is_active", false)
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		if is_instance_valid(_inventory_overlay):
+			_inventory_overlay.queue_free()
+			_inventory_overlay = null
+			
+		if is_instance_valid(player):
+			player.set("is_active", true)
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func toggle_pause_menu(p_visible: bool) -> void:
 	if not is_instance_valid(_pause_overlay):
 		return
+		
+	if p_visible:
+		if is_instance_valid(_crafting_overlay):
+			toggle_crafting_workshop(false)
+		if is_instance_valid(_inventory_overlay):
+			toggle_inventory_backpack(false)
 		
 	var tween := create_tween().set_parallel(true)
 	
@@ -451,10 +569,11 @@ func _on_resume_pressed() -> void:
 	toggle_pause_menu(false)
 
 func _on_settings_pressed() -> void:
-	# STRICT MODE FIX: Direct class instantiation
-	_settings_overlay = SettingsMenu.new()
-	_settings_overlay.connect("closed", Callable(self, "_on_settings_closed"))
-	add_child(_settings_overlay)
+	var sm_script: Script = load("res://src/Infrastructure/UI/SettingsMenu.gd")
+	if sm_script != null:
+		_settings_overlay = sm_script.new() as Control
+		_settings_overlay.connect("closed", Callable(self, "_on_settings_closed"))
+		add_child(_settings_overlay)
 
 func _on_settings_closed() -> void:
 	if is_instance_valid(_settings_overlay):
@@ -465,6 +584,7 @@ func _on_quit_pressed() -> void:
 	if is_instance_valid(bootstrap) and bootstrap.has_method("return_to_main_menu"):
 		bootstrap.call("return_to_main_menu")
 
+## HIGH-FIDELITY UPDATE: Reads the dynamic item name of whichever item occupies this slot index
 func update_active_slot(active_index: int) -> void:
 	for i in range(hotbar_slots.size()):
 		var slot: Panel = hotbar_slots[i]
@@ -483,9 +603,12 @@ func update_active_slot(active_index: int) -> void:
 			
 			tween.tween_property(slot, "scale", Vector2(1.15, 1.15), 0.1).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
 			
-			if is_instance_valid(_item_name_toast):
-				_item_name_toast.text = HOTBAR_ITEMS[i].to_upper()
-				_show_toast_notification()
+			if is_instance_valid(player) and is_instance_valid(_item_name_toast):
+				var inventory = player.get("inventory") as InventoryComponent
+				if is_instance_valid(inventory):
+					var item_name := inventory.get_slot_item_name(i)
+					_item_name_toast.text = item_name.to_upper()
+					_show_toast_notification()
 		else:
 			style.bg_color = Color(0.12, 0.12, 0.12, 0.5)
 			style.border_width_left = 1
@@ -505,19 +628,87 @@ func _show_toast_notification() -> void:
 	_toast_tween.tween_interval(1.8) 
 	_toast_tween.tween_property(_item_name_toast, "modulate:a", 0.0, 0.4).set_trans(Tween.TRANS_SINE)
 
-func update_slot_quantity(slot_index: int, _item_name: String, quantity: int) -> void:
+## HIGH-FIDELITY UPDATE: Dynamic 3D Voxel Shaded Block Icons inside HUD slots
+func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 	if slot_index >= 0 and slot_index < hotbar_slots.size():
 		var slot: Panel = hotbar_slots[slot_index]
-		var label: Label = slot.get_node_or_null("MarginContainer/QtyLabel")
+		var icon := slot.get_node_or_null("ItemIcon") as ColorRect
+		var label := slot.get_node_or_null("MarginContainer/QtyLabel") as Label
+		
+		# 1. Update visual icon colors and apply an internal 3D voxel shadow relief!
+		if is_instance_valid(icon):
+			for child in icon.get_children():
+				child.queue_free()
+				
+			icon.color = BLOCK_COLORS.get(item_id, Color(0, 0, 0, 0))
+			icon.visible = (item_id != -1) 
+			
+			# If it is a solid block, draw a dark inner relief border representing a voxel edge
+			if item_id >= 1 and item_id <= 15:
+				var shadow := ColorRect.new()
+				shadow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+				shadow.offset_left = 3 # Increased relief spacing
+				shadow.offset_top = 3
+				shadow.color = Color(0, 0, 0, 0.18) 
+				shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				icon.add_child(shadow)
+				
+		# 2. Update numeric stack count dynamically
 		if is_instance_valid(label):
-			if quantity < 0:
+			if item_id == -1 or quantity == 0:
+				label.text = ""
+			elif quantity == -1:
 				label.text = "" 
 			else:
 				label.text = str(quantity)
 
+## HIGH-FIDELITY UPDATE: True Minecraft Hearts & Food/Drumsticks dynamic rendering (Font 20!)
 func update_health_display(current_hp: int) -> void:
-	if is_instance_valid(health_label):
-		var hearts_text: String = "HP: "
-		for i in range(max(0, current_hp)):
-			hearts_text += "❤ "
-		health_label.text = hearts_text
+	if not is_instance_valid(_hearts_container) or not is_instance_valid(_food_container):
+		return
+		
+	for child in _hearts_container.get_children(): child.queue_free()
+	for child in _food_container.get_children(): child.queue_free()
+	
+	# 2. Redraw Hearts based on current health (max 3 HP - Font 20!)
+	for i in range(3):
+		var heart := Label.new()
+		var hs := LabelSettings.new()
+		hs.font_size = 20 # Increased visibility
+		hs.outline_size = 4
+		hs.outline_color = Color.BLACK
+		
+		if i < current_hp:
+			heart.text = "❤" 
+			hs.font_color = Color(0.95, 0.15, 0.15) 
+		else:
+			heart.text = "🖤" 
+			hs.font_color = Color(0.22, 0.22, 0.26) 
+			
+		heart.label_settings = hs
+		_hearts_container.add_child(heart)
+		
+	# 3. Redraw Food Drumsticks based on active Fried Chicken quantity in Backpack!
+	var drumsticks_count := 0
+	if is_instance_valid(player):
+		var inventory = player.get("inventory") as InventoryComponent
+		if is_instance_valid(inventory):
+			drumsticks_count = inventory.get_item_total_quantity(16)
+			
+	var display_drumsticks := clamp(drumsticks_count, 1, 10)
+	
+	for i in range(display_drumsticks):
+		var drumstick := Label.new()
+		drumstick.text = "🍗"
+		var ds := LabelSettings.new()
+		ds.font_size = 20 # Match hearts font size
+		ds.outline_size = 4
+		ds.outline_color = Color.BLACK
+		
+		if drumsticks_count == 0:
+			ds.font_color = Color(0.22, 0.22, 0.26)
+		else:
+			ds.font_color = Color(1.0, 0.65, 0.3) 
+			
+		drumstick.label_settings = ds
+		_food_container.add_child(drumstick)

@@ -1,0 +1,117 @@
+[
+  {
+	"recipe_id": "compost_foliage",
+	"recipe_name": "Organic Composting",
+	"inputs": {
+	  "4": 3
+	},
+	"output_item_index": 1,
+	"output_quantity": 1
+  },
+  {
+	"recipe_id": "sod_cultivation",
+	"recipe_name": "Sod Cultivation",
+	"inputs": {
+	  "1": 2,
+	  "4": 1
+	},
+	"output_item_index": 2,
+	"output_quantity": 2
+  },
+  {
+	"recipe_id": "wood_cleaving",
+	"recipe_name": "Thatch Harvesting",
+	"inputs": {
+	  "3": 1
+	},
+	"output_item_index": 4,
+	"output_quantity": 4
+  },
+  {
+	"recipe_id": "stone_crushing",
+	"recipe_name": "Soil Pulverizer",
+	"inputs": {
+	  "0": 1
+	},
+	"output_item_index": 1,
+	"output_quantity": 3
+  },
+  {
+	"recipe_id": "magma_smelting",
+	"recipe_name": "Igneous Cobbling",
+	"inputs": {
+	  "1": 4,
+	  "5": 1
+	},
+	"output_item_index": 0,
+	"output_quantity": 4
+  },
+  {
+	"recipe_id": "craft_wooden_sword",
+	"recipe_name": "Wooden Sword",
+	"inputs": {
+	  "3": 4
+	},
+	"output_item_index": 7,
+	"output_quantity": 1
+  },
+  {
+	"recipe_id": "emergency_rations",
+	"recipe_name": "Emergency Herbal Rations",
+	"inputs": {
+	  "4": 10,
+	  "3": 1
+	},
+	"output_item_index": 6,
+	"output_quantity": 1
+  },
+  {
+	"recipe_id": "charcoal_enrichment",
+	"recipe_name": "Geothermal Charcoal Fuel",
+	"inputs": {
+	  "3": 6,
+	  "5": 1
+	},
+	"output_item_index": 5,
+	"output_quantity": 3
+  },
+  {
+	"recipe_id": "stone_masonry",
+	"recipe_name": "Reinforced Stone Slabs",
+	"inputs": {
+	  "0": 2,
+	  "1": 1
+	},
+	"output_item_index": 0,
+	"output_quantity": 3
+  },
+  {
+	"recipe_id": "reinforced_planks",
+	"recipe_name": "Composite Planks",
+	"inputs": {
+	  "3": 2,
+	  "0": 1
+	},
+	"output_item_index": 3,
+	"output_quantity": 4
+  },
+  {
+	"recipe_id": "lava_transmutation",
+	"recipe_name": "Magma Core Synthesis",
+	"inputs": {
+	  "0": 15,
+	  "5": 1
+	},
+	"output_item_index": 5,
+	"output_quantity": 2
+  },
+  {
+	"recipe_id": "herbal_poultice",
+	"recipe_name": "Soothing Herbal Poultice",
+	"inputs": {
+	  "4": 6
+	},
+	"output_item_index": 6,
+	"output_quantity": 1
+  }
+]
