@@ -64,6 +64,10 @@
   
   "BIOME_NETHER_OUTPOST": "Avanzada del Nether",
   "BIOME_STEVES_CABIN": "Cabaña de Steve",
+  
+  "The Grand Stone Castle": "El Gran Castillo de Piedra",
+  "The Port of Sails & Galleon": "El Puerto de Velas y Galeón",
+  "GPS_CLOSEST_POI_HEADER": "Punto cercano",
 
   "HUD_ACTIVE_MISSION": "➔ MISIÓN ACTIVA",
   "HUD_PAUSE_TITLE": "JUEGO PAUSADO",
@@ -117,5 +121,14 @@
   "QUEST_REACHED_INTERACT": "ALCANZADO: ¡Clic-Derecho al Objetivo!",
   "QUEST_DISTANCE_PREFIX": "Distancia",
   "CAMPAIGN_COMPLETE_TOAST_HEADER": "Campaña Completada",
-  "QUEST_COMPLETED_TOAST_HEADER": "Misión Completada"
+  "QUEST_COMPLETED_TOAST_HEADER": "Misión Completada",
+  
+  "DIR_N": "N",
+  "DIR_NE": "NE",
+  "DIR_E": "E",
+  "DIR_SE": "SE",
+  "DIR_S": "Sur",
+  "DIR_SW": "SO",
+  "DIR_W": "O",
+  "DIR_NW": "NO"
 }

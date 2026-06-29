@@ -1,9 +1,12 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Domain Registry and Router for Mega-Structures.
-#              OCP COMPLIANT: Evaluates chunk AABBs against structure boundaries.
-#              FIXED: Integer division warnings resolved using safe float casting.
-# Author: Enrique González Gutiérrez
+# Description: Domain Service managing registration and lookup of large procedural 
+#              Mega-Structures (POIs).
+#              SOLID COMPLIANCE: Adheres to OCP by allowing dynamic registrations.
+#              UPGRADE: Added get_structures() to expose registered landmarks 
+#              for the HUD GPS dynamic tracking.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/MegaStructureService.gd
 # ==============================================================================
 class_name MegaStructureService
 extends RefCounted
@@ -25,7 +28,6 @@ static func apply_mega_structures(chunk: Chunk) -> void:
 	var chunk_rect := Rect2i(c_pos.x, c_pos.z, Chunk.SIZE, Chunk.SIZE)
 	
 	for s in _structures:
-		# FIXED: Safe float division to eliminate INTEGER_DIVISION warnings
 		var s_rect := Rect2i(
 			s.global_center.x - int(s.bounds_size.x / 2.0),
 			s.global_center.y - int(s.bounds_size.y / 2.0),
@@ -43,3 +45,7 @@ static func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 	for s in _structures:
 		entities.append_array(s.get_entities_for_chunk(chunk_pos))
 	return entities
+
+## Public API: Returns all globally registered fixed points of interest (DIP/i18n compliant)
+static func get_structures() -> Array[IMegaStructure]:
+	return _structures

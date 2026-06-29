@@ -64,6 +64,10 @@
   
   "BIOME_NETHER_OUTPOST": "Nether Outpost",
   "BIOME_STEVES_CABIN": "Steve's Cabin",
+  
+  "The Grand Stone Castle": "The Grand Stone Castle",
+  "The Port of Sails & Galleon": "The Port of Sails & Galleon",
+  "GPS_CLOSEST_POI_HEADER": "Closest Landmark",
 
   "HUD_ACTIVE_MISSION": "➔ ACTIVE MISSION",
   "HUD_PAUSE_TITLE": "GAME PAUSED",
@@ -117,5 +121,14 @@
   "QUEST_REACHED_INTERACT": "REACHED: Right-Click Target!",
   "QUEST_DISTANCE_PREFIX": "Distance",
   "CAMPAIGN_COMPLETE_TOAST_HEADER": "Campaign Complete",
-  "QUEST_COMPLETED_TOAST_HEADER": "Quest Completed"
+  "QUEST_COMPLETED_TOAST_HEADER": "Quest Completed",
+  
+  "DIR_N": "N",
+  "DIR_NE": "NE",
+  "DIR_E": "E",
+  "DIR_SE": "SE",
+  "DIR_S": "S",
+  "DIR_SW": "SW",
+  "DIR_W": "W",
+  "DIR_NW": "NW"
 }
