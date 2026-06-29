@@ -41,6 +41,11 @@ static func set_active_quest(quest_id: String) -> void:
 static func get_active_quest() -> Quest:
 	return _active_quest
 
+## Clears the active quest track (Used when loading a fully completed campaign save)
+static func clear_active_quest() -> void:
+	_active_quest = null
+	print("[QuestService] Active quest cleared (Campaign previously completed).")
+
 ## Marks the active quest as completed, grants rewards, and chains the next one
 ## SOLID SRP: Accepts an optional player_node parameter to grant physical rewards.
 ## SOLID OCP: Uses next_quest_id to chain story progression dynamically.

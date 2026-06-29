@@ -3,7 +3,7 @@
 # Description: Infrastructure Repository concrete implementation handling file I/O,
 #              JSON serialization, and delta chunk saving to Godot's user directory.
 #              FIXED: Corrected the chunk path Z-coordinate overwrite collision bug.
-#              UPDATED: Added persistence for player inventory items in global saves.
+#              UPDATED: Added persistence for player inventory and active quests.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Persistence/DiskWorldRepository.gd
 # ==============================================================================
@@ -71,8 +71,8 @@ func load_chunk_modifications(chunk_pos: Vector3i) -> Dictionary:
 					
 	return modifications
 
-## Concrete Implementation: Saves global metadata alongside player inventory.
-func save_global_state(player_pos: Vector3, player_rot: Vector3, seed_val: int, inventory_quantities: Array = []) -> void:
+## Concrete Implementation: Saves global metadata alongside player inventory and quest state.
+func save_global_state(player_pos: Vector3, player_rot: Vector3, seed_val: int, inventory_quantities: Array = [], active_quest_id: String = "") -> void:
 	var json_data := {
 		"player_pos": {
 			"x": player_pos.x,
@@ -85,14 +85,15 @@ func save_global_state(player_pos: Vector3, player_rot: Vector3, seed_val: int, 
 			"z": player_rot.z
 		},
 		"seed": seed_val,
-		"inventory": inventory_quantities # Persists active slot quantities
+		"inventory": inventory_quantities,
+		"active_quest_id": active_quest_id
 	}
 	
 	var file := FileAccess.open(GLOBAL_SAVE_PATH, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify(json_data))
 		file.close()
-		print("[DiskWorldRepository] Global state & inventory saved successfully.")
+		print("[DiskWorldRepository] Global state, inventory & quests saved successfully.")
 
 ## Concrete Implementation: Loads global metadata.
 func load_global_state() -> Dictionary:
@@ -118,11 +119,13 @@ func load_global_state() -> Dictionary:
 			var p_rot: Dictionary = json_data["player_rot"]
 			state["player_rot"] = Vector3(float(p_rot["x"]), float(p_rot["y"]), float(p_rot["z"]))
 			
-			# Load inventory quantities if they exist, otherwise default to empty
 			if json_data.has("inventory"):
 				state["inventory"] = json_data["inventory"]
 			else:
 				state["inventory"] = []
+				
+			if json_data.has("active_quest_id"):
+				state["active_quest_id"] = str(json_data["active_quest_id"])
 				
 	return state
 

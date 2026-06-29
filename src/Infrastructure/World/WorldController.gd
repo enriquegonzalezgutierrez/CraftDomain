@@ -6,7 +6,8 @@
 #              by delegating voxel MultiMesh rendering math to `ChunkVisualBuilder`,
 #              inventory serialization directly to the `InventoryComponent`, and 
 #              agricultural random growth loops directly to the `AgricultureService`.
-#              LSP COMPLIANCE: Tracks polymorphic Array[Node] entities for clean unloads.
+#              CAMPAIGN UPGRADE: Extracts and saves `active_quest_id` to disk to 
+#              ensure persistence across game reboots.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -93,6 +94,14 @@ func _initialize_systems() -> void:
 			spawn_rot = saved_global["player_rot"]
 		if saved_global.has("inventory"):
 			_loaded_inventory_data = saved_global["inventory"] as Array
+			
+		# Overwrite the campaign registry's default initialization
+		if saved_global.has("active_quest_id"):
+			var saved_q_id: String = saved_global["active_quest_id"]
+			if saved_q_id == "COMPLETED":
+				QuestService.clear_active_quest() # Player finished the game before!
+			elif saved_q_id != "":
+				QuestService.set_active_quest(saved_q_id)
 	else:
 		randomize()
 		active_seed = randi()
@@ -288,7 +297,7 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	_chunk_nodes.erase(chunk_pos)
 	world_state.remove_chunk(chunk_pos)
 
-## HIGH COHESION UPGRADE: Delegate inventory layout serialization directly to InventoryComponent
+## HIGH COHESION UPGRADE: Delegate inventory layout serialization and save Active Quest ID
 func save_all() -> void:
 	print("[WorldController] Executing clean save operations...")
 	for chunk_pos in world_state._chunk_modifications.keys():
@@ -300,12 +309,21 @@ func save_all() -> void:
 		var inventory = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
 			inv_data = inventory.get_serialize_data()
+			
+		# Parse the active quest state
+		var active_q_id := ""
+		var active_q := QuestService.get_active_quest()
+		if active_q != null:
+			active_q_id = active_q.quest_id
+		else:
+			active_q_id = "COMPLETED" # Marker to know player finished all quests!
 				
 		repository.save_global_state(
 			player.global_position, 
 			player.rotation, 
 			generator._terrain_noise.seed,
-			inv_data 
+			inv_data,
+			active_q_id
 		)
 	print("[WorldController] All data serialized and saved successfully.")
 
