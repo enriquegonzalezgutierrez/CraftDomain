@@ -1,11 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure Service acting as the orchestrator for dialogues.
-#              SRP COMPLIANT: Responsible ONLY for opening/closing dialogue panels,
-#              binding branch choices, managing trade transactions, and freezing player.
-#              STRICT MODE UPDATE: Replaced dynamic script injection with strong
-#              global class instantiation (DialogueOverlay.new()) and connected
-#              signals natively to eliminate UNSAFE_CAST.
+#              SRP COMPLIANCE: Responsible ONLY for opening/closing dialogue panels.
+#              STRICT MODE UPDATE: Connected signals natively to eliminate UNSAFE_CAST.
+#              TRADE FIX: Replaced broken, slot-based TradingService calls with 
+#              robust ID-based safe inventory transactions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Dialogue/DialogueManager.gd
 # ==============================================================================
@@ -34,7 +33,6 @@ func open_dialogue(node: Resource, speaker_name: String) -> void:
 	active_dialogue.choice_selected.connect(_on_dialogue_choice_selected)
 	active_dialogue.dialogue_closed.connect(close_dialogue)
 	
-	# Direct typed method call (No more .call())
 	active_dialogue.load_dialogue_node(node, speaker_name)
 	
 	# Lock standard player physics inputs and show mouse cursor
@@ -46,10 +44,13 @@ func open_dialogue(node: Resource, speaker_name: String) -> void:
 func _on_dialogue_choice_selected(target_node_id: String) -> void:
 	# --- TRANSACTION TRIGGER: Trade execution evaluated securely inside the Dialogue Loop ---
 	if target_node_id == "merchant_trade_execute" and is_instance_valid(player):
-		var inventory = player.get("inventory")
+		var inventory = player.get("inventory") as IInventory
 		if is_instance_valid(inventory):
-			# Execute the transaction in the domain TradingService (consume 1 Lava, reward 1 Chicken)
-			if TradingService.execute_trade(inventory, 5, 1, 6, 1):
+			# ID-BASED SAFE TRANSACTION: Consumes 1x Lava Bucket (ID 15), grants 1x Fried Chicken (ID 16)
+			if inventory.get_item_total_quantity(15) >= 1 and inventory.can_receive_item(16, 1):
+				inventory.consume_item(15, 1)
+				inventory.add_item(16, 1)
+				
 				# Make the merchant hop in the air with physical joy!
 				var raycast = player.get("raycast")
 				if is_instance_valid(raycast) and raycast.is_colliding():
@@ -57,7 +58,7 @@ func _on_dialogue_choice_selected(target_node_id: String) -> void:
 					if is_instance_valid(merchant) and merchant.has_method("take_damage"): 
 						merchant.velocity.y = 5.0 # Hop!
 						
-				# --- MISSION 2 TRIGGER: Complete Fuel the Fryer ---
+				# --- MISSION 4 TRIGGER: Complete Fuel the Fryer ---
 				var active_q := QuestService.get_active_quest()
 				if active_q != null and active_q.quest_id == "fuel_fryer":
 					QuestService.complete_active_quest(player)

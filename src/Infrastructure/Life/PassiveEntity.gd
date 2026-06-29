@@ -3,9 +3,10 @@
 # Description: Infrastructure physics controller node representing a passive entity.
 #              SOLID COMPLIANCE: 
 #              - Liskov Substitution Principle (LSP): Acts as an Abstract Base Class. 
-#              AI UPGRADE: Implemented Intelligent Wall Avoidance (Vector Bouncing)
-#              and a new PANIC state when receiving damage to simulate organic life.
+#              AI UPGRADE: Added a 12-meter safety tether and a dynamic visual 
+#              quest indicator bubble above the target NPC's head.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
@@ -36,6 +37,9 @@ var _task_timer: float = 2.0
 var _wander_direction: Vector3 = Vector3.ZERO
 var _animation_time: float = 0.0
 
+# original Spawn Point used to anchor human NPCs so they never get lost (Tethering)
+var _spawn_point: Vector3
+
 # AI Obstacle Avoidance Tracker
 var _stuck_timer: float = 0.0
 
@@ -47,6 +51,10 @@ var _arms_node: Node3D
 var _left_eye: MeshInstance3D
 var _right_eye: MeshInstance3D
 
+# Dynamic floating Speech Bubble reference
+var _bubble: Node3D
+var _quest_check_timer: float = 0.5
+
 # Procedural blinking trackers
 var _blink_timer: float = randf_range(2.0, 5.0)
 var _blink_duration: float = 0.0
@@ -57,6 +65,7 @@ const GREET_DISTANCE: float = 3.5
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
+	_spawn_point = spawn_pos # Cache spawning coordinate
 	
 	domain_entity = VoxelEntity.new(initial_health)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
@@ -155,8 +164,44 @@ func _physics_process(delta: float) -> void:
 	_process_blinking_cycle(delta)
 	_process_ai_state_machine(delta)
 	_process_procedural_animations(delta)
+	
+	# UX PROACTIVE CHECK: Dynamic Quest Target visual updating
+	_quest_check_timer -= delta
+	if _quest_check_timer <= 0.0:
+		_quest_check_timer = 0.5
+		_update_quest_bubble_state()
 
 	move_and_slide()
+
+## UX UPGRADE: Automatically updates the floating bubble text to gold stars if this NPC is the active target!
+func _update_quest_bubble_state() -> void:
+	if not is_instance_valid(_bubble):
+		return
+		
+	var active_q := QuestService.get_active_quest()
+	if active_q != null:
+		# Check if this specific entity is the synced target of the active quest
+		var is_target := false
+		if active_q.quest_id == "lost_bazaar" and name.contains("VILLAGER"):
+			is_target = true
+		elif active_q.quest_id == "fuel_fryer" and name.contains("MERCHANT"):
+			is_target = true
+		elif active_q.quest_id == "plains_defender" and name.contains("GUARD"):
+			is_target = true
+			
+		if is_target:
+			_bubble.call("set_text", "⭐ [ ACTIVE MISSION ] ⭐")
+			return
+			
+	# Default Fallback texts based on entity type
+	if name.contains("VILLAGER"):
+		_bubble.call("set_text", "RIGHT-CLICK TO TALK!")
+	elif name.contains("MERCHANT"):
+		_bubble.call("set_text", "RIGHT-CLICK TO TRADE!")
+	elif name.contains("GUARD"):
+		_bubble.call("set_text", "RIGHT-CLICK TO TALK!")
+	elif name.contains("FARMER"):
+		_bubble.call("set_text", "FARMER")
 
 func _process_blinking_cycle(delta: float) -> void:
 	if not _is_blinking:
@@ -187,7 +232,6 @@ func _process_ai_state_machine(delta: float) -> void:
 		
 	var can_socialize := _can_socialize()
 	
-	# Only greet if not currently panicking
 	if can_socialize and distance_to_player <= GREET_DISTANCE and current_task != TaskState.PANIC:
 		current_task = TaskState.GREETING
 		var look_dir := (player_node.global_position - global_position).normalized()
@@ -211,34 +255,35 @@ func _process_ai_state_machine(delta: float) -> void:
 			_stuck_timer = 0.0
 			
 		TaskState.WANDERING, TaskState.PANIC:
-			# Panicking makes them run extremely fast
 			var speed_mult := 2.6 if current_task == TaskState.PANIC else 1.0
 			velocity.x = _wander_direction.x * BASE_SPEED * speed_mult
 			velocity.z = _wander_direction.z * BASE_SPEED * speed_mult
 			
-			# INTELLIGENT WALL AVOIDANCE
+			var is_human: bool = name.contains("VILLAGER") or name.contains("MERCHANT") or name.contains("GUARD") or name.contains("FARMER")
+			if is_human and global_position.distance_to(_spawn_point) > 12.0:
+				_wander_direction = (_spawn_point - global_position).normalized()
+				_wander_direction.y = 0
+			
 			if is_on_wall():
 				if is_on_floor():
-					velocity.y = JUMP_VELOCITY # Try to jump over (1-block steps)
+					velocity.y = JUMP_VELOCITY 
 					
 				_stuck_timer += delta
-				if _stuck_timer > 0.4: # Stuck for half a second? It's a tall wall!
+				if _stuck_timer > 0.4: 
 					_stuck_timer = 0.0
 					var wall_normal := get_wall_normal()
 					var flat_normal := Vector3(wall_normal.x, 0, wall_normal.z).normalized()
 					
 					if flat_normal != Vector3.ZERO:
-						# Physically bounce off the wall angle and add a slight random twist to avoid getting trapped in corners
 						_wander_direction = _wander_direction.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
 					else:
-						# Failsafe turn around
 						var angle := randf() * TAU
 						_wander_direction = Vector3(cos(angle), 0, sin(angle))
 			else:
 				_stuck_timer = 0.0
 				
 		TaskState.WORKING:
-			pass # The subclass (e.g. Farmer) handles its own velocity safely
+			pass 
 
 func _can_socialize() -> bool:
 	return false

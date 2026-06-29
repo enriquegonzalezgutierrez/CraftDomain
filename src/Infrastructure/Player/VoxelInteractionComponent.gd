@@ -5,8 +5,8 @@
 #              consumable eating, and dynamic agricultural planting/harvesting.
 #              SOLID COMPLIANCE: Strictly satisfies the Single Responsibility 
 #              Principle (SRP) by isolating block interactions from physics controllers.
-#              MEMORY SECURITY FIX: Bound particles directly to the timer using
-#              a native method to eliminate lambda memory leaks on game exit.
+#              AI QUEST UPGRADE: Safely increments the active quest's incremental 
+#              progress_counter when mining required voxel items.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -98,7 +98,7 @@ func _mine_or_attack() -> void:
 	var active_slot := player.active_slot_index
 	var inventory := player.get("inventory") as InventoryComponent
 	
-	# COMBAT CASE: Equip sword (ID 17 sitting in any active slot) and hit entities
+	# COMBAT CASE: Equip sword and hit entities
 	if is_instance_valid(inventory) and is_instance_valid(collider) and collider is CharacterBody3D:
 		var slot_data := inventory.get_slot_data(active_slot)
 		if slot_data != null and slot_data.item_id == 17:
@@ -121,24 +121,40 @@ func _mine_or_attack() -> void:
 			# Spawn dynamic, color-matching physics particles before removal
 			_spawn_mining_particles(Vector3(block_coord), mined_type)
 			
+			var target_id := int(mined_type)
+			
 			# FASE A: Special Harvesting Rules
 			if mined_type == BlockType.Type.CROP_RIPE:
-				# Harvest Success: Gives 1x Wheat (ID 20) and 1-2x Seeds (ID 18)
 				var _w_success := inventory.add_item(20, 1)
 				var _s_success := inventory.add_item(18, randi_range(1, 2))
 				player._sync_hud_counters()
+				target_id = 20 # Harvested Wheat ID
 				if is_instance_valid(hud):
 					hud.show_quest_notification("Harvest Success", "Gathered 1x Ripe Wheat and Seeds!")
 			elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
-				# Early Uproot: Refund only 1x Seed (ID 18)
 				var _s_success := inventory.add_item(18, 1)
 				player._sync_hud_counters()
+				target_id = 18 # Seed ID
 				if is_instance_valid(hud):
 					hud.show_quest_notification("Crop Uprooted", "Refunded 1x Crop Seed.")
 			else:
 				# Standard Voxel Block collection
 				inventory.add_block_by_type(mined_type)
 				player._sync_hud_counters()
+				
+				# Smart ID translation matching inventory mappings
+				match mined_type:
+					BlockType.Type.SAND, BlockType.Type.RED_SAND, BlockType.Type.MUD:
+						target_id = 2 # Map to Dirt (ID 2)
+					BlockType.Type.SNOW, BlockType.Type.ICE, BlockType.Type.NEON_CYAN, BlockType.Type.NEON_MAGENTA:
+						target_id = 1 # Map to Stone (ID 1)
+					BlockType.Type.CLOUD:
+						target_id = 5 # Map to Leaves (ID 5)
+						
+			# INCREMENT ACTIVE QUEST PROGRESSION
+			var active_q := QuestService.get_active_quest()
+			if active_q != null and active_q.required_item_index == target_id:
+				active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
 				
 		world_controller.call("set_block_globally", block_coord, BlockType.Type.AIR)
 
@@ -167,20 +183,16 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	pm.initial_velocity_min = 2.5
 	pm.initial_velocity_max = 4.5
 	pm.gravity = Vector3(0.0, -9.8, 0.0) 
-	
 	pm.scale_min = 0.6
 	pm.scale_max = 1.3
-	
 	particles.process_material = pm
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.12, 0.12, 0.12)
-	
 	var mat := ORMMaterial3D.new()
 	mat.albedo_color = def.color_top
 	mat.roughness = 0.8
 	mesh.material = mat
-	
 	particles.draw_pass_1 = mesh
 	
 	if is_instance_valid(world_controller):
@@ -188,8 +200,6 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 		particles.global_position = global_pos + Vector3(0.5, 0.5, 0.5)
 		
 	particles.emitting = true
-	
-	# MEMORY FIX: Bind particles reference cleanly
 	get_tree().create_timer(0.6).timeout.connect(_cleanup_particles.bind(particles))
 
 func _cleanup_particles(particles_node: GPUParticles3D) -> void:

@@ -72,9 +72,9 @@ func _get_collision_box_position() -> Vector3:
 func _setup_floating_bubble() -> void:
 	var sb_script: Script = load("res://src/Infrastructure/UI/SpeechBubble.gd")
 	if sb_script != null:
-		var bubble = sb_script.new() as Node3D
-		add_child(bubble)
-		bubble.call("set_text", "VILLAGER")
+		_bubble = sb_script.new() as Node3D # Bind to parent class member
+		add_child(_bubble)
+		_bubble.call("set_text", "RIGHT-CLICK TO TALK!")
 
 ## Trigger custom dialogue and handle quest progression
 func interact(player_node: CharacterBody3D) -> void:

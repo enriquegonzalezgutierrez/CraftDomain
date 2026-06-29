@@ -4,8 +4,8 @@
 #              SOLID COMPLIANCE: Adheres to the Single Responsibility Principle (SRP)
 #              by handling only the physical instantiation, collision box setup,
 #              and interaction/loot granting logic of the chest asset.
-#              MATHEMATICAL FIX: Calibrated Y position precisely to 0.373 based 
-#              on vertices telemetry to ensure the chest rests perfectly on the ground.
+#              AI QUEST UPGRADE: Safely increments the active quest's incremental 
+#              progress_counter when looting chest reward items.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChestEntity.gd
 # ==============================================================================
@@ -76,7 +76,14 @@ func interact(player_node: CharacterBody3D) -> void:
 		inventory.modify_slot_quantity(reward_slot, 1)
 		player_node.call("_sync_hud_counters")
 		
-		# Trigger our newly created sliding toast notification (Micro-Phase 5 API)
+		# ======================================================================
+		# INCREMENT ACTIVE QUEST PROGRESSION ON CHEST OPEN
+		# ======================================================================
+		var active_q := QuestService.get_active_quest()
+		if active_q != null and active_q.required_item_index == reward_slot:
+			active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
+		
+		# Trigger our newly created sliding toast notification
 		if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
 			hud.call("show_quest_notification", "Loot Found!", "You gathered 1x " + item_name + "!")
 			

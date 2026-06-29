@@ -5,8 +5,9 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Only manages crafting logic.
 #              - Dependency Inversion Principle (DIP): Depends strictly on the
-#                abstract interface `IInventory`, allowing recipe evaluations
-#                on any generic backpack structure.
+#                abstract interface `IInventory`, allowing recipe evaluations.
+#              AI QUEST UPGRADE: Safely increments the active quest's incremental 
+#              progress_counter when crafting required recipe items.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Crafting/CraftingService.gd
 # ==============================================================================
@@ -46,6 +47,13 @@ static func craft(inventory: IInventory, recipe: Recipe) -> bool:
 		
 	# 2. Grant manufactured output item (appends to existing stack or fills an empty slot)
 	inventory.add_item(recipe.output_item_index, recipe.output_quantity)
+	
+	# ==========================================================================
+	# INCREMENT ACTIVE QUEST PROGRESSION ON CRAFTING
+	# ==========================================================================
+	var active_q := QuestService.get_active_quest()
+	if active_q != null and active_q.required_item_index == recipe.output_item_index:
+		active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + recipe.output_quantity)
 	
 	print("[CraftingService] Crafted successfully: ", recipe.recipe_name)
 	return true

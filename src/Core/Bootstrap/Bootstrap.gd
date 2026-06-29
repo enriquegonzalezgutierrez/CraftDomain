@@ -6,8 +6,7 @@
 #              and Open-Closed Principle (OCP).
 #              STRICT MODE UPDATE: Replaced dynamic script loading with strong class
 #              instantiations to eliminate UNSAFE_CAST.
-#              OCP UPGRADE: Initializes the static databases (Quests, Mobs, Crafting Recipes)
-#              at application startup, decoupling game data from core loops.
+#              DIALOGUE FIX: Added DialogueRegistry initialization call to applications boot.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -41,6 +40,9 @@ func _initialize_application() -> void:
 	# Load external campaign quests
 	CampaignRegistry.initialize_campaign()
 	
+	# Load dialogue trees (FIXED: Dialogue was never initialized!)
+	DialogueRegistry.initialize_dialogue_database()
+	
 	# --- FASE 1 UPGRADE: Load dynamic crafting recipes ---
 	RecipeRegistry.initialize_recipes()
 	
@@ -61,7 +63,6 @@ func _setup_biomes() -> void:
 	BiomeService.register_biome(CloudKingdomBiome.new())
 
 func _setup_structures() -> void:
-	# Local Scatter & Landmark Blueprints
 	StructureLibrary.register_blueprint(OakTreeBlueprint.new())
 	StructureLibrary.register_blueprint(RedwoodTreeBlueprint.new())
 	StructureLibrary.register_blueprint(GiantMushroomBlueprint.new())

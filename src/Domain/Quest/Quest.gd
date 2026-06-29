@@ -5,6 +5,8 @@
 #              SOLID COMPLIANCE: Added required_item_index and required_quantity 
 #              to enable dynamic, non-monotonous gathering, mining, and foraging 
 #              objectives without adding hardcoded logic to UI layers (OCP).
+#              UX UPGRADE: Added progress_counter to track fresh quest objectives
+#              and completely eliminate quest-skipping cascades.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Quest/Quest.gd
 # ==============================================================================
@@ -43,3 +45,6 @@ enum Status {
 
 # State
 var status: Status = Status.UNSTARTED
+
+# Dynamic runtime progress (Resets cleanly on startup, preventing pre-existing cascades)
+var progress_counter: int = 0

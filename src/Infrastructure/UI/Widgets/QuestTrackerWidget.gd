@@ -1,12 +1,11 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI Widget responsible ONLY for rendering the 
-#              active quest objectives, distance, and inventory progress bars.
+#              active quest objectives, distance, and inventory progress.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating quest tracking layouts and metrics.
-#              FASE 1 FIX: Updated objective progress evaluator to utilize the new
-#              stack-based dynamic `get_item_total_quantity` DIP method instead
-#              of the nonexistent get_slot_quantity, resolving runtime crash errors.
+#              UX UPDATE: Renders actual incremental progress_counter instead of
+#              global inventory sums to eliminate quest cascades.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
 # ==============================================================================
@@ -79,7 +78,6 @@ func update_widget() -> void:
 		return
 		
 	var active_quest := QuestService.get_active_quest()
-	
 	_process_quest_notification_dispatch(active_quest)
 	
 	if active_quest != null:
@@ -89,7 +87,7 @@ func update_widget() -> void:
 		var p_pos := player.global_position
 		var dist_q := int(p_pos.distance_to(active_quest.target_position))
 		
-		# --- CASE A: SPECIAL HEIGHT COMPLETION (The Cloud Ascent) ---
+		# --- CASE A: SPECIAL HEIGHT COMPLETION ---
 		if active_quest.quest_id == "cloud_ascent":
 			var current_y := int(round(p_pos.y))
 			_objective_label.text = "%s\nCurrent Height: Y=%d / 18" % [active_quest.objective_text, current_y]
@@ -98,22 +96,24 @@ func update_widget() -> void:
 				
 		# --- CASE B: INVENTORY GATHERING COMPLETION ---
 		elif active_quest.required_item_index >= 0 and active_quest.required_quantity > 0:
-			var inv := player.get("inventory") as IInventory
-			var current_qty := 0
-			if is_instance_valid(inv):
-				# FASE 1 FIX: Use the new dynamic stack-based API method (DIP compliant)
-				current_qty = inv.get_item_total_quantity(active_quest.required_item_index)
-				
-			_objective_label.text = "%s\nProgress: %d / %d" % [active_quest.objective_text, current_qty, active_quest.required_quantity]
+			_objective_label.text = "%s\nProgress: %d / %d" % [
+				active_quest.objective_text, 
+				active_quest.progress_counter, 
+				active_quest.required_quantity
+			]
 			
-			if current_qty >= active_quest.required_quantity:
+			if active_quest.progress_counter >= active_quest.required_quantity:
 				QuestService.complete_active_quest(player)
 				
 		# --- CASE C: GEOGRAPHIC ARRIVAL COMPLETION ---
 		else:
-			_objective_label.text = "%s\nDistance: %dm" % [active_quest.objective_text, dist_q]
-			if active_quest.autocomplete_on_arrival and dist_q <= active_quest.target_range:
-				QuestService.complete_active_quest(player)
+			if dist_q <= active_quest.target_range:
+				if active_quest.autocomplete_on_arrival:
+					QuestService.complete_active_quest(player)
+				else:
+					_objective_label.text = "%s\n[ REACHED: Right-Click Target! ]" % active_quest.objective_text
+			else:
+				_objective_label.text = "%s\nDistance: %dm" % [active_quest.objective_text, dist_q]
 	else:
 		visible = false
 
