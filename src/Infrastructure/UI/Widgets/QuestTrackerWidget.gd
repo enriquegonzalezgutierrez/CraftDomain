@@ -2,10 +2,9 @@
 # Project: CraftDomain
 # Description: Infrastructure UI Widget responsible ONLY for rendering the 
 #              active quest objectives, distance, and inventory progress.
-#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by isolating quest tracking layouts and metrics.
-#              UX UPDATE: Renders actual incremental progress_counter instead of
-#              global inventory sums to eliminate quest cascades.
+#              SOLID COMPLIANCE: Adheres strictly to SRP by isolating quest tracking.
+#              i18n UPGRADE: Localized all UI text labels, headings, and dynamic
+#              JSON quest objectives using tr() for full OCP compliance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
 # ==============================================================================
@@ -15,6 +14,7 @@ extends Control
 # Dependency injected by the HUD orchestrator
 var player: CharacterBody3D
 
+var _header_label: Label
 var _title_label: Label
 var _objective_label: Label
 
@@ -39,18 +39,18 @@ func _ready() -> void:
 	vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
 	margin.add_child(vbox)
 	
-	# Header Label
-	var header := Label.new()
-	header.text = "➔ ACTIVE MISSION"
+	# Header Label (Localized)
+	_header_label = Label.new()
+	_header_label.text = tr("HUD_ACTIVE_MISSION")
 	var hs := LabelSettings.new()
 	hs.font_size = 11
 	hs.font_color = Color(1.0, 0.85, 0.2) # Gold
 	hs.outline_size = 3
 	hs.outline_color = Color(0.0, 0.0, 0.0, 0.9)
-	header.label_settings = hs
-	vbox.add_child(header)
+	_header_label.label_settings = hs
+	vbox.add_child(_header_label)
 	
-	# Quest Title
+	# Quest Title (Localized)
 	_title_label = Label.new()
 	var ts := LabelSettings.new()
 	ts.font_size = 14
@@ -61,7 +61,7 @@ func _ready() -> void:
 	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	vbox.add_child(_title_label)
 	
-	# Quest Objective
+	# Quest Objective (Localized)
 	_objective_label = Label.new()
 	var os := LabelSettings.new()
 	os.font_size = 12
@@ -82,7 +82,8 @@ func update_widget() -> void:
 	
 	if active_quest != null:
 		visible = true
-		_title_label.text = active_quest.title
+		_title_label.text = tr(active_quest.title) # Localize dynamic JSON title
+		_header_label.text = tr("HUD_ACTIVE_MISSION") # Localize heading
 		
 		var p_pos := player.global_position
 		var dist_q := int(p_pos.distance_to(active_quest.target_position))
@@ -90,14 +91,19 @@ func update_widget() -> void:
 		# --- CASE A: SPECIAL HEIGHT COMPLETION ---
 		if active_quest.quest_id == "cloud_ascent":
 			var current_y := int(round(p_pos.y))
-			_objective_label.text = "%s\nCurrent Height: Y=%d / 18" % [active_quest.objective_text, current_y]
+			_objective_label.text = "%s\n%s: Y=%d / 18" % [
+				tr(active_quest.objective_text), 
+				tr("QUEST_CURRENT_HEIGHT"), 
+				current_y
+			]
 			if current_y >= 18:
 				QuestService.complete_active_quest(player)
 				
 		# --- CASE B: INVENTORY GATHERING COMPLETION ---
 		elif active_quest.required_item_index >= 0 and active_quest.required_quantity > 0:
-			_objective_label.text = "%s\nProgress: %d / %d" % [
-				active_quest.objective_text, 
+			_objective_label.text = "%s\n%s: %d / %d" % [
+				tr(active_quest.objective_text), 
+				tr("QUEST_PROGRESS"),
 				active_quest.progress_counter, 
 				active_quest.required_quantity
 			]
@@ -111,9 +117,16 @@ func update_widget() -> void:
 				if active_quest.autocomplete_on_arrival:
 					QuestService.complete_active_quest(player)
 				else:
-					_objective_label.text = "%s\n[ REACHED: Right-Click Target! ]" % active_quest.objective_text
+					_objective_label.text = "%s\n[ %s ]" % [
+						tr(active_quest.objective_text), 
+						tr("QUEST_REACHED_INTERACT")
+					]
 			else:
-				_objective_label.text = "%s\nDistance: %dm" % [active_quest.objective_text, dist_q]
+				_objective_label.text = "%s\n%s: %dm" % [
+					tr(active_quest.objective_text), 
+					tr("QUEST_DISTANCE_PREFIX"), 
+					dist_q
+				]
 	else:
 		visible = false
 
@@ -129,7 +142,7 @@ func _process_quest_notification_dispatch(active_quest: Quest) -> void:
 	if active_quest == null and _last_active_quest_id != "":
 		var parent_hud = get_parent()
 		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
-			parent_hud.call("show_quest_notification", "Campaign Complete", _last_active_quest_title)
+			parent_hud.call("show_quest_notification", "CAMPAIGN_COMPLETE_TOAST_HEADER", _last_active_quest_title)
 		_last_active_quest_id = ""
 		_last_active_quest_title = ""
 		
@@ -137,6 +150,6 @@ func _process_quest_notification_dispatch(active_quest: Quest) -> void:
 	elif active_quest != null and active_quest.quest_id != _last_active_quest_id:
 		var parent_hud = get_parent()
 		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
-			parent_hud.call("show_quest_notification", "Quest Completed", _last_active_quest_title)
+			parent_hud.call("show_quest_notification", "QUEST_COMPLETED_TOAST_HEADER", _last_active_quest_title)
 		_last_active_quest_id = active_quest.quest_id
 		_last_active_quest_title = active_quest.title

@@ -1,11 +1,11 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: SRP-compliant UI Widget responsible ONLY for building and managing
-#              the unified bottom HUD dock, which includes:
-#              - Backpack (🎒) and Workshop (🛠️) shortcut buttons.
-#              - 8 dynamic quickbar slots.
-#              - Floating Hearts (HP) and Drumsticks (Food) status bars.
-#              - Item name selection toast notifications.
+#              the unified bottom HUD dock.
+#              RESPONSIVE RESOLUTION FIX: Built using nested, elastically centered
+#              VBox and HBox Containers. All elements (hearts, hotbar, drumsticks)
+#              maintain pixel-perfect alignment across any screen resolution.
+#              i18n UPGRADE: Uses dynamic tr() translations for tooltips.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd
 # ==============================================================================
@@ -16,7 +16,7 @@ extends Control
 var player: CharacterBody3D
 var hud_orchestrator: PlayerHUD
 
-# Internal UI node references
+# Internal UI node references (Kept inside a single vertical layout)
 var _hotbar_slots: Array[Panel] = []
 var _hearts_container: HBoxContainer
 var _food_container: HBoxContainer
@@ -34,49 +34,60 @@ const BLOCK_COLORS = {
 func _ready() -> void:
 	name = "HotbarDockWidget"
 	
-	var main_dock := Control.new()
-	main_dock.name = "HudBottomDock"
-	main_dock.custom_minimum_size = Vector2(760, 140)
-	main_dock.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	main_dock.offset_bottom = -15
-	main_dock.offset_top = -155
-	main_dock.offset_left = -380
-	main_dock.offset_right = 380
-	add_child(main_dock)
+	# Set this controller as a bottom-centered responsive container
+	set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	grow_horizontal = Control.GROW_DIRECTION_BOTH
+	grow_vertical = Control.GROW_DIRECTION_BEGIN
 	
-	_hearts_container = HBoxContainer.new()
-	_hearts_container.add_theme_constant_override("separation", 3)
-	_hearts_container.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	_hearts_container.offset_left = 82 
-	_hearts_container.offset_bottom = -84 
-	main_dock.add_child(_hearts_container)
+	# Dimensions scaled up symmetrically (Total 680x135)
+	custom_minimum_size = Vector2(680, 135)
+	size = Vector2(680, 135)
 	
-	_food_container = HBoxContainer.new()
-	_food_container.alignment = BoxContainer.ALIGNMENT_END
-	_food_container.add_theme_constant_override("separation", 3)
-	_food_container.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_food_container.offset_right = -82 
-	_food_container.offset_bottom = -84
-	main_dock.add_child(_food_container)
+	# Move 15px up from the absolute screen bottom edge for aesthetic margins
+	offset_bottom = -15
+	offset_top = -150
+	offset_left = -340
+	offset_right = 340
 	
-	var hotbar_bg := _create_hotbar_background_panel()
-	main_dock.add_child(hotbar_bg)
-	
-	var hbox := _create_hotbar_hbox(main_dock)
-	hotbar_bg.add_child(hbox)
-	
+	_setup_responsive_ui_layout()
 	_setup_item_name_toast()
 	update_health_display(3)
 
-func _create_hotbar_background_panel() -> Panel:
+## Builds the structured VBox so status bars stack elegantly over the hotbar Panel
+func _setup_responsive_ui_layout() -> void:
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.add_theme_constant_override("separation", 6) # Clean gap between bars and hotbar
+	add_child(vbox)
+	
+	# ==================== ROW 1: STATUS BARS (HEARTS & FOOD) ====================
+	# Margin wrapper ensures Hearts align with Slot 0 and Food with Slot 7
+	var status_margin := MarginContainer.new()
+	status_margin.custom_minimum_size = Vector2(0, 32)
+	status_margin.add_theme_constant_override("margin_left", 54) # Symmetrical offset
+	status_margin.add_theme_constant_override("margin_right", 54)
+	vbox.add_child(status_margin)
+	
+	var status_hbox := HBoxContainer.new()
+	status_hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	status_margin.add_child(status_hbox)
+	
+	_hearts_container = HBoxContainer.new()
+	_hearts_container.add_theme_constant_override("separation", 3)
+	status_hbox.add_child(_hearts_container)
+	
+	# Elastic spacer pushes food container strictly to the right side
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_hbox.add_child(spacer)
+	
+	_food_container = HBoxContainer.new()
+	_food_container.add_theme_constant_override("separation", 3)
+	status_hbox.add_child(_food_container)
+	
+	# ==================== ROW 2: UNIFIED HOTBAR DOCK ====================
 	var hotbar_bg := Panel.new()
 	hotbar_bg.custom_minimum_size = Vector2(680, 78)
-	hotbar_bg.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	hotbar_bg.offset_bottom = -4
-	hotbar_bg.offset_top = -82
-	hotbar_bg.offset_left = -340
-	hotbar_bg.offset_right = 340
-	
 	var style := StyleBoxFlat.new()
 	style.set_corner_radius_all(14)
 	style.bg_color = Color(0.04, 0.04, 0.05, 0.85)
@@ -84,95 +95,90 @@ func _create_hotbar_background_panel() -> Panel:
 	style.border_color = Color(0.22, 0.22, 0.28, 0.7)
 	style.shadow_size = 15; style.shadow_color = Color(0, 0, 0, 0.6)
 	hotbar_bg.add_theme_stylebox_override("panel", style)
-	return hotbar_bg
-
-func _create_hotbar_hbox(main_dock: Control) -> HBoxContainer:
+	vbox.add_child(hotbar_bg)
+	
 	var hbox := HBoxContainer.new()
 	hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hbox.add_theme_constant_override("separation", 10)
+	hotbar_bg.add_child(hbox)
 	
-	var bp_btn := _create_shortcut_button("🎒", tr("HUD_TOOLTIP_BACKPACK"))
+	# A. Left-docked Button: Backpack (🎒)
+	var bp_btn := Button.new()
+	bp_btn.text = "🎒"
+	bp_btn.custom_minimum_size = Vector2(50, 54)
+	bp_btn.tooltip_text = tr("HUD_TOOLTIP_BACKPACK")
+	_setup_hud_shortcut_button_style(bp_btn)
 	bp_btn.pressed.connect(_on_backpack_shortcut_pressed)
 	hbox.add_child(bp_btn)
-	_add_hotkey_label(main_dock, "[I]", 40, true)
 	
+	_add_hotkey_label(hotbar_bg, "[I]", 40, true)
+	
+	# Splitter line
 	var sep_left := VSeparator.new()
 	sep_left.add_theme_constant_override("separation", 6)
 	hbox.add_child(sep_left)
 	
+	# B. Middle Area: Slots 0 to 7 (UPGRADED TO 54x54 GIANTS SHAPES)
 	for i in range(8):
-		_hotbar_slots.append(_create_hotbar_slot(i, hbox))
+		var slot := Panel.new()
+		slot.name = "Slot_%d" % i
+		slot.custom_minimum_size = Vector2(54, 54)
+		slot.pivot_offset = Vector2(27, 27) 
 		
+		var slot_style := StyleBoxFlat.new()
+		slot_style.set_corner_radius_all(8)
+		slot_style.bg_color = Color(0.12, 0.12, 0.12, 0.6)
+		slot.add_theme_stylebox_override("panel", slot_style)
+		hbox.add_child(slot)
+		
+		# Giant Inner Color Icon Rect (Updated dynamically on sync)
+		var icon := ColorRect.new()
+		icon.name = "ItemIcon"
+		icon.custom_minimum_size = Vector2(32, 32)
+		icon.size = Vector2(32, 32)
+		icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		icon.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		icon.grow_vertical = Control.GROW_DIRECTION_BOTH
+		slot.add_child(icon)
+		
+		var qty_label := Label.new()
+		qty_label.name = "QtyLabel"
+		qty_label.text = ""
+		qty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		qty_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		qty_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		
+		var label_style := LabelSettings.new()
+		label_style.font_size = 15
+		label_style.outline_size = 4
+		label_style.outline_color = Color.BLACK
+		qty_label.label_settings = label_style
+		
+		var margin := MarginContainer.new()
+		margin.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		margin.add_theme_constant_override("margin_right", 4)
+		margin.add_theme_constant_override("margin_bottom", -1)
+		margin.add_child(qty_label)
+		
+		slot.add_child(margin)
+		_hotbar_slots.append(slot)
+		
+	# Splitter line
 	var sep_right := VSeparator.new()
 	sep_right.add_theme_constant_override("separation", 6)
 	hbox.add_child(sep_right)
 	
-	var cr_btn := _create_shortcut_button("🛠️", tr("HUD_TOOLTIP_WORKSHOP"))
+	# C. Right-docked Button: Workshop (🛠️)
+	var cr_btn := Button.new()
+	cr_btn.text = "🛠️"
+	cr_btn.custom_minimum_size = Vector2(50, 54)
+	cr_btn.tooltip_text = tr("HUD_TOOLTIP_WORKSHOP")
+	_setup_hud_shortcut_button_style(cr_btn)
 	cr_btn.pressed.connect(_on_workshop_shortcut_pressed)
 	hbox.add_child(cr_btn)
-	_add_hotkey_label(main_dock, "[C]", -40, false)
 	
-	return hbox
-
-func _create_hotbar_slot(index: int, parent: HBoxContainer) -> Panel:
-	var slot := Panel.new()
-	slot.name = "Slot_%d" % index
-	slot.custom_minimum_size = Vector2(54, 54)
-	slot.pivot_offset = Vector2(27, 27)
-	
-	var slot_style := StyleBoxFlat.new()
-	slot_style.set_corner_radius_all(8)
-	slot_style.bg_color = Color(0.12, 0.12, 0.12, 0.6)
-	slot.add_theme_stylebox_override("panel", slot_style)
-	
-	var icon := ColorRect.new(); icon.name = "ItemIcon"; icon.custom_minimum_size = Vector2(32, 32)
-	icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER); slot.add_child(icon)
-	
-	var qty_label := Label.new(); qty_label.name = "QtyLabel"
-	qty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	qty_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	var ls := LabelSettings.new(); ls.font_size = 15; ls.outline_size = 4; ls.outline_color = Color.BLACK
-	qty_label.label_settings = ls
-	
-	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	margin.add_theme_constant_override("margin_right", 4); margin.add_theme_constant_override("margin_bottom", -1)
-	margin.add_child(qty_label); slot.add_child(margin)
-	
-	parent.add_child(slot)
-	return slot
-
-func _create_shortcut_button(text: String, tooltip: String) -> Button:
-	var btn := Button.new()
-	btn.text = text
-	btn.custom_minimum_size = Vector2(50, 54)
-	btn.tooltip_text = tooltip
-	btn.pivot_offset = Vector2(25, 27)
-	
-	var sn := StyleBoxFlat.new(); sn.bg_color = Color(0.12, 0.12, 0.15, 0.4); sn.set_corner_radius_all(8)
-	sn.border_width_left = 1; sn.border_width_top = 1; sn.border_width_right = 1; sn.border_width_bottom = 1
-	sn.border_color = Color(0.25, 0.25, 0.3, 0.3)
-	var sh := sn.duplicate() as StyleBoxFlat; sh.bg_color = Color(0.18, 0.18, 0.22, 0.7)
-	sh.border_color = Color(1.0, 0.85, 0.2, 0.9)
-	
-	btn.add_theme_stylebox_override("normal", sn); btn.add_theme_stylebox_override("hover", sh)
-	btn.add_theme_stylebox_override("pressed", sn); btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	btn.add_theme_font_size_override("font_size", 14)
-	
-	btn.mouse_entered.connect(_on_shortcut_hover.bind(btn, true))
-	btn.mouse_exited.connect(_on_shortcut_hover.bind(btn, false))
-	return btn
-
-func _add_hotkey_label(dock: Control, text: String, offset: int, is_left: bool) -> void:
-	var label := Label.new(); label.text = text; label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls := LabelSettings.new(); ls.font_size = 9; ls.font_color = Color(0.65, 0.65, 0.7)
-	ls.outline_size = 2; ls.outline_color = Color.BLACK; label.label_settings = ls
-	label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT if is_left else Control.PRESET_BOTTOM_RIGHT)
-	if is_left: label.offset_left = offset; label.offset_right = offset + 40
-	else: label.offset_right = offset; label.offset_left = offset - 40
-	label.offset_bottom = 2; label.offset_top = -10
-	dock.add_child(label)
+	_add_hotkey_label(hotbar_bg, "[C]", -40, false)
 
 func _setup_item_name_toast() -> void:
 	_item_name_toast = Label.new(); _item_name_toast.name = "ItemNameToast"
@@ -264,3 +270,33 @@ func update_health_display(hp: int) -> void:
 		ds.font_size = 20; ds.outline_size = 4; ds.outline_color = Color.BLACK
 		ds.font_color = Color(1.0, 0.7, 0.35) if food_count > 0 else Color(0.22, 0.22, 0.26)
 		food.label_settings = ds; _food_container.add_child(food)
+
+func _setup_hud_shortcut_button_style(btn: Button) -> void:
+	var sn := StyleBoxFlat.new()
+	sn.bg_color = Color(0.12, 0.12, 0.15, 0.4)
+	sn.set_corner_radius_all(8)
+	sn.border_width_left = 1; sn.border_width_top = 1; sn.border_width_right = 1; sn.border_width_bottom = 1
+	sn.border_color = Color(0.25, 0.25, 0.3, 0.3)
+	
+	var sh := sn.duplicate() as StyleBoxFlat
+	sh.bg_color = Color(0.18, 0.18, 0.22, 0.7)
+	sh.border_color = Color(1.0, 0.85, 0.2, 0.9) 
+	
+	btn.add_theme_stylebox_override("normal", sn)
+	btn.add_theme_stylebox_override("hover", sh)
+	btn.add_theme_stylebox_override("pressed", sn)
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	btn.add_theme_font_size_override("font_size", 14)
+	
+	btn.mouse_entered.connect(_on_shortcut_hover.bind(btn, true))
+	btn.mouse_exited.connect(_on_shortcut_hover.bind(btn, false))
+
+func _add_hotkey_label(dock: Control, text: String, offset: int, is_left: bool) -> void:
+	var label := Label.new(); label.text = text; label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ls := LabelSettings.new(); ls.font_size = 9; ls.font_color = Color(0.65, 0.65, 0.7)
+	ls.outline_size = 2; ls.outline_color = Color.BLACK; label.label_settings = ls
+	label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT if is_left else Control.PRESET_BOTTOM_RIGHT)
+	if is_left: label.offset_left = offset; label.offset_right = offset + 40
+	else: label.offset_right = offset; label.offset_left = offset - 40
+	label.offset_bottom = 2; label.offset_top = -10
+	dock.add_child(label)

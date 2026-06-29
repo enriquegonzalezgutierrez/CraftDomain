@@ -5,7 +5,8 @@
 #              tables into Godot's TranslationServer at boot.
 #              SOLID COMPLIANCE: Adheres strictly to OCP, closed to core code 
 #              modification, allowing simple addition of future locales.
-#              i18n ADDITION: Localized all 10 survival item descriptions.
+#              i18n ADDITION: Localized all 10 survival item descriptions, 
+#              active campaign quests, objective logs, and notification toasts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/TranslationRegistry.gd
 # ==============================================================================
@@ -44,11 +45,12 @@ static func _setup_english_locale() -> void:
 	translation.add_message("BLOCK_CROP_GROWING", "Young Sprout")
 	translation.add_message("BLOCK_CROP_RIPE", "Ripe Wheat")
 
-	# Items & Inventory
+	# Items & Inventory Names
 	translation.add_message("ITEM_FRIED_CHICKEN", "Fried Chicken")
 	translation.add_message("ITEM_WOODEN_SWORD", "Wooden Sword")
 	translation.add_message("INVENTORY_EMPTY", "Empty")
 	translation.add_message("INVENTORY_UNKNOWN", "Unknown Block")
+	translation.add_message("INVENTORY_INFINITE", "Infinite Quantity")
 	
 	# UI Inspector Strings
 	translation.add_message("INVENTORY_EMPTY_TITLE", "Backpack Inspector")
@@ -78,7 +80,7 @@ static func _setup_english_locale() -> void:
 	translation.add_message("ITEM_20_DESC", "Golden, sun-ripened wheat grains harvested from mature crops... essential baking material.")
 	translation.add_message("ITEM_20_USE", "Gather enough grains to craft advanced survival rations.")
 
-	# Biomes
+	# Biomes Names
 	translation.add_message("BIOME_BAY_OF_SAILS", "Bay of Sails (Spawn Ocean)")
 	translation.add_message("BIOME_WARP_PLATEAU", "Warp Plateau (Mario Steps)")
 	translation.add_message("BIOME_GOLDEN_BAZAAR", "Golden Bazaar (Village Plains)")
@@ -122,6 +124,30 @@ static func _setup_english_locale() -> void:
 	translation.add_message("SETTINGS_LANGUAGE", "Interface Language")
 	translation.add_message("SETTINGS_BACK", "BACK")
 
+	# Dynamic JSON Quests Titles Localizer (Map strings loaded from JSON)
+	translation.add_message("The Lost Bazaar", "The Lost Bazaar")
+	translation.add_message("Thatch Harvesting", "Thatch Harvesting")
+	translation.add_message("Organic Composting", "Organic Composting")
+	translation.add_message("Fuel the Fryer", "Fuel the Fryer")
+	translation.add_message("Plains Defender", "Plains Defender")
+	translation.add_message("Cloud Ascent", "Cloud Ascent")
+
+	# Dynamic JSON Quests Objective Logs Localizer
+	translation.add_message("Travel to the Golden Bazaar coordinates to meet the merchant. Look at your GPS and Minimap to find the path.", "Travel to the Golden Bazaar coordinates to meet the merchant. Look at your GPS and Minimap to find the path.")
+	translation.add_message("Collect 10 leaf blocks to help repair the village roofs. Punch tree leaves to harvest them.", "Collect 10 leaf blocks to help repair the village roofs. Punch tree leaves to harvest them.")
+	translation.add_message("Craft 3 soil blocks in your blueprint workshop (C Key) by combining leaves and dirt.", "Craft 3 soil blocks in your blueprint workshop (C Key) by combining leaves and dirt.")
+	translation.add_message("Bring 1 Lava Bucket (Slot 6) to the Merchant. Select the Lava Bucket and Right-Click him.", "Bring 1 Lava Bucket (Slot 6) to the Merchant. Select the Lava Bucket and Right-Click him.")
+	translation.add_message("Defeat the mountain zombie outside the castle gates. Select your wooden sword (Slot 8) and Left-Click him.", "Defeat the mountain zombie outside the castle gates. Select your wooden sword (Slot 8) and Left-Click him.")
+	translation.add_message("Ascend high into the sky! Build upwards up to height Y=18 using your blocks.", "Ascend high into the sky! Build upwards up to height Y=18 using your blocks.")
+
+	# HUD Quest Tracker Helpers
+	translation.add_message("QUEST_CURRENT_HEIGHT", "Current Height")
+	translation.add_message("QUEST_PROGRESS", "Progress")
+	translation.add_message("QUEST_REACHED_INTERACT", "REACHED: Right-Click Target!")
+	translation.add_message("QUEST_DISTANCE_PREFIX", "Distance")
+	translation.add_message("CAMPAIGN_COMPLETE_TOAST_HEADER", "Campaign Complete")
+	translation.add_message("QUEST_COMPLETED_TOAST_HEADER", "Quest Completed")
+
 	TranslationServer.add_translation(translation)
 
 static func _setup_spanish_locale() -> void:
@@ -130,10 +156,10 @@ static func _setup_spanish_locale() -> void:
 	
 	# Bloques
 	translation.add_message("BLOCK_AIR", "Aire")
-	translation.add_message("BLOCK_STONE", "Piedra")
-	translation.add_message("BLOCK_DIRT", "Tierra")
-	translation.add_message("BLOCK_GRASS", "Césped")
-	translation.add_message("BLOCK_WOOD", "Tronco de Roble")
+	translation.add_message("BLOCK_STONE", "Bloque de Piedra")
+	translation.add_message("BLOCK_DIRT", "Bloque de Tierra")
+	translation.add_message("BLOCK_GRASS", "Bloque de Césped")
+	translation.add_message("BLOCK_WOOD", "Tronco de Madera")
 	translation.add_message("BLOCK_LEAVES", "Hojas")
 	translation.add_message("BLOCK_WATER", "Agua")
 	translation.add_message("BLOCK_SAND", "Arena")
@@ -154,6 +180,7 @@ static func _setup_spanish_locale() -> void:
 	translation.add_message("ITEM_WOODEN_SWORD", "Espada de Madera")
 	translation.add_message("INVENTORY_EMPTY", "Vacío")
 	translation.add_message("INVENTORY_UNKNOWN", "Bloque Desconocido")
+	translation.add_message("INVENTORY_INFINITE", "Cantidad Infinita")
 	
 	# UI Inspector Strings (Spanish)
 	translation.add_message("INVENTORY_EMPTY_TITLE", "Inspector de Mochila")
@@ -226,5 +253,29 @@ static func _setup_spanish_locale() -> void:
 	translation.add_message("SETTINGS_APPLY", "APLICAR")
 	translation.add_message("SETTINGS_LANGUAGE", "Idioma de la Interfaz")
 	translation.add_message("SETTINGS_BACK", "VOLVER")
+
+	# Dynamic JSON Quests Titles Localizer (Spanish)
+	translation.add_message("The Lost Bazaar", "El Bazar Perdido")
+	translation.add_message("Thatch Harvesting", "Cosecha de Paja")
+	translation.add_message("Organic Composting", "Compostaje Orgánico")
+	translation.add_message("Fuel the Fryer", "Alimenta la Freidora")
+	translation.add_message("Plains Defender", "Defensor de las Praderas")
+	translation.add_message("Cloud Ascent", "Ascenso a las Nubes")
+
+	# Dynamic JSON Quests Objective Logs Localizer (Spanish)
+	translation.add_message("Travel to the Golden Bazaar coordinates to meet the merchant. Look at your GPS and Minimap to find the path.", "Viaja a las coordenadas del Bazar Dorado para encontrarte con el mercader. Mira tu GPS y Minimapa para hallar el camino.")
+	translation.add_message("Collect 10 leaf blocks to help repair the village roofs. Punch tree leaves to harvest them.", "Reúne 10 bloques de hojas para ayudar a reparar los techos de la aldea. Golpea las hojas de los árboles para cosecharlas.")
+	translation.add_message("Craft 3 soil blocks in your blueprint workshop (C Key) by combining leaves and dirt.", "Fabrica 3 bloques de tierra en tu taller (Tecla C) combinando hojas y tierra.")
+	translation.add_message("Bring 1 Lava Bucket (Slot 6) to the Merchant. Select the Lava Bucket and Right-Click him.", "Lleva 1 Cubo de Lava (Ranura 6) al Mercader. Selecciona el Cubo de Lava y haz Clic-Derecho sobre él.")
+	translation.add_message("Defeat the mountain zombie outside the castle gates. Select your wooden sword (Slot 8) and Left-Click him.", "Derrota al zombi de la montaña fuera de las puertas del castillo. Selecciona tu espada de madera (Ranura 8) y haz Clic-Izquierdo.")
+	translation.add_message("Ascend high into the sky! Build upwards up to height Y=18 using your blocks.", "¡Asciende alto en el cielo! Construye hacia arriba hasta la altura Y=18 usando tus bloques.")
+
+	# HUD Quest Tracker Helpers (Spanish)
+	translation.add_message("QUEST_CURRENT_HEIGHT", "Altura Actual")
+	translation.add_message("QUEST_PROGRESS", "Progreso")
+	translation.add_message("QUEST_REACHED_INTERACT", "ALCANZADO: ¡Clic-Derecho al Objetivo!")
+	translation.add_message("QUEST_DISTANCE_PREFIX", "Distancia")
+	translation.add_message("CAMPAIGN_COMPLETE_TOAST_HEADER", "Campaña Completada")
+	translation.add_message("QUEST_COMPLETED_TOAST_HEADER", "Misión Completada")
 
 	TranslationServer.add_translation(translation)
