@@ -1,13 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure component responsible ONLY for handling player 
-#              gaze raycasting, targeted voxel highlighting, block mining,
-#              block construction, eating consumables, and NPC interactions.
+# Description: Infrastructure component responsible for handling player gaze
+#              raycasting, target highlighting, block mining, placements,
+#              consumable eating, and dynamic agricultural planting/harvesting.
 #              SOLID COMPLIANCE: Strictly satisfies the Single Responsibility 
-#              Principle (SRP) by decoupling voxel interactions from PlayerController.
-#              UPGRADED: Integrated dynamic GPUParticles3D voxel debris systems 
-#              matching the exact color of the mined block for visceral feedback.
-#              FIXED: Reordered add_child() sequence to prevent !is_inside_tree() warnings.
+#              Principle (SRP) by isolating block interactions from physics controllers.
+#              FASE A UPGRADE:
+#              - Implements contextual seed planting (Right-Clicking top of soil).
+#              - Implements ripe crop harvesting with 100% dynamic wheat and seed drops.
+#              - Implements early uproot seed refund.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -15,7 +16,7 @@ class_name VoxelInteractionComponent
 extends Node3D
 
 # Sibling dependencies injected by the Player on startup (DIP compliant)
-var player: CharacterBody3D
+var player: PlayerController
 var camera: Camera3D
 var world_controller: Node3D
 var hud: PlayerHUD
@@ -40,7 +41,6 @@ func _setup_raycast() -> void:
 	raycast.collide_with_areas = false
 	raycast.collide_with_bodies = true
 	
-	# Exclude player from self-collisions to prevent physics glitching
 	if is_instance_valid(player):
 		raycast.add_exception(player)
 		
@@ -89,47 +89,62 @@ func _update_target_highlight() -> void:
 
 ## Executes mining block removal or direct weapon hit scans
 func _mine_or_attack() -> void:
-	var viewmodel = player.get("viewmodel")
-	if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
-		viewmodel.call("play_swing_animation")
+	var viewmodel := player.get("viewmodel") as PlayerViewModel
+	if is_instance_valid(viewmodel):
+		viewmodel.play_swing_animation()
 	
 	if not raycast.is_colliding(): 
 		return
 		
-	var collider = raycast.get_collider()
-	var active_slot: int = player.get("active_slot_index")
+	var collider := raycast.get_collider()
+	var active_slot := player.active_slot_index
+	var inventory := player.get("inventory") as InventoryComponent
 	
-	# COMBAT CASE: Equip sword (Slot 7) and hit physics entities (Zombies, Fauna)
-	if active_slot == 7 and is_instance_valid(collider) and collider is CharacterBody3D:
-		if collider.get("domain_entity") is VoxelEntity:
-			var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
-			knockback_dir.y = 2.5
-			if collider.has_method("take_damage"):
-				collider.call("take_damage", 1, knockback_dir)
-			return
+	# COMBAT CASE: Equip sword (ID 17 sitting in any active slot) and hit entities
+	if is_instance_valid(inventory) and is_instance_valid(collider) and collider is CharacterBody3D:
+		var slot_data := inventory.get_slot_data(active_slot)
+		if slot_data != null and slot_data.item_id == 17:
+			if collider.get("domain_entity") is VoxelEntity:
+				var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
+				knockback_dir.y = 2.5
+				if collider.has_method("take_damage"):
+					collider.call("take_damage", 1, knockback_dir)
+				return
 
 	# MINING CASE: Chop and collect voxels polymorphically
-	if is_instance_valid(world_controller):
+	if is_instance_valid(world_controller) and is_instance_valid(inventory):
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
 		var block_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
 		
-		var world_state = world_controller.get("world_state")
+		var world_state = world_controller.get("world_state") as WorldState
 		if is_instance_valid(world_state):
-			var mined_type: BlockType.Type = world_state.call("get_block", block_coord)
+			var mined_type := world_state.get_block(block_coord)
 			
 			# Spawn dynamic, color-matching physics particles before removal
 			_spawn_mining_particles(Vector3(block_coord), mined_type)
 			
-			var inventory = player.get("inventory")
-			if inventory is InventoryComponent:
+			# FASE A: Special Harvesting Rules
+			if mined_type == BlockType.Type.CROP_RIPE:
+				# Harvest Success: Gives 1x Wheat (ID 20) and 1-2x Seeds (ID 18)
+				var _w_success := inventory.add_item(20, 1)
+				var _s_success := inventory.add_item(18, randi_range(1, 2))
+				player._sync_hud_counters()
+				if is_instance_valid(hud):
+					hud.show_quest_notification("Harvest Success", "Gathered 1x Ripe Wheat and Seeds!")
+			elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
+				# Early Uproot: Refund only 1x Seed (ID 18)
+				var _s_success := inventory.add_item(18, 1)
+				player._sync_hud_counters()
+				if is_instance_valid(hud):
+					hud.show_quest_notification("Crop Uprooted", "Refunded 1x Crop Seed.")
+			else:
+				# Standard Voxel Block collection
 				inventory.add_block_by_type(mined_type)
-				player.call("_sync_hud_counters")
+				player._sync_hud_counters()
 				
 		world_controller.call("set_block_globally", block_coord, BlockType.Type.AIR)
 
-# ==============================================================================
-# UPGRADE: Programmatic, GPU-optimized voxel debris emitter
-# ==============================================================================
+## Programmatic, GPU-optimized voxel debris emitter
 func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) -> void:
 	if block_type == BlockType.Type.AIR:
 		return
@@ -146,7 +161,6 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	particles.explosiveness = 0.95
 	particles.lifetime = 0.45
 	
-	# Configure particle movement physical process
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 	pm.emission_box_extents = Vector3(0.35, 0.35, 0.35)
@@ -161,7 +175,6 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	
 	particles.process_material = pm
 	
-	# Generate a miniature voxel-chunk geometry
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.12, 0.12, 0.12)
 	
@@ -172,14 +185,12 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	
 	particles.draw_pass_1 = mesh
 	
-	# FIXED: Attach emitter to the scene tree FIRST before setting global_position
 	if is_instance_valid(world_controller):
 		world_controller.add_child(particles)
 		particles.global_position = global_pos + Vector3(0.5, 0.5, 0.5)
 		
 	particles.emitting = true
 	
-	# Auto-free completed particle nodes to prevent leaks
 	get_tree().create_timer(0.6).timeout.connect(func() -> void:
 		if is_instance_valid(particles):
 			particles.queue_free()
@@ -187,43 +198,77 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 
 ## Executes block construction, item consumption, or NPC interactions
 func _build_or_interact() -> void:
-	var viewmodel = player.get("viewmodel")
-	if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
-		viewmodel.call("play_swing_animation")
+	var viewmodel := player.get("viewmodel") as PlayerViewModel
+	if is_instance_valid(viewmodel):
+		viewmodel.play_swing_animation()
 	
 	if not raycast.is_colliding(): 
 		return
 		
-	var collider = raycast.get_collider()
+	var collider := raycast.get_collider()
 	
 	# NPC INTERACTION CASE: Speak with Villagers, Merchants, or Guards
 	if is_instance_valid(collider) and collider is CharacterBody3D and collider.has_method("interact"):
 		collider.call("interact", player)
-		player.call("_sync_hud_counters")
+		player._sync_hud_counters()
 		return
 		
-	# HEALING CASE: Consume 1x Fried Chicken (Slot 6) to restore health
-	var active_slot: int = player.get("active_slot_index")
-	var inventory = player.get("inventory")
+	var active_slot := player.active_slot_index
+	var inventory := player.get("inventory") as InventoryComponent
 	
-	if active_slot == 6 and is_instance_valid(inventory):
-		if inventory.can_modify_slot_quantity(6, -1) and player.domain_entity.health < 3:
-			inventory.modify_slot_quantity(6, -1)
+	if not is_instance_valid(inventory) or not is_instance_valid(world_controller):
+		return
+		
+	var slot_data := inventory.get_slot_data(active_slot)
+	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:
+		return
+		
+	var item_id := slot_data.item_id
+	var world_state := world_controller.get("world_state") as WorldState
+	
+	# HEALING CASE: Consume 1x Fried Chicken (Item ID 16) to restore health
+	if item_id == 16:
+		if player.domain_entity.health < 3:
+			slot_data.quantity -= 1
+			if slot_data.quantity <= 0:
+				slot_data.item_id = -1
 			player.domain_entity.health = min(3, player.domain_entity.health + 1)
 			if is_instance_valid(hud):
 				hud.update_health_display(player.domain_entity.health)
-			player.call("_sync_hud_counters")
+				hud.show_quest_notification("Yummy!", "Consumed 1x Fried Chicken. Healed 1 Heart.")
+			player._sync_hud_counters()
 		return
 
-	# CONSTRUCTION CASE: Place selected block in the 3D voxel grid
-	var is_block_selected = player.get("is_item_selected")
-	if is_block_selected and is_instance_valid(world_controller) and is_instance_valid(inventory):
-		var inv_comp := inventory as InventoryComponent
-		var build_type: BlockType.Type = inv_comp.get_slot_build_type(active_slot)
-		
-		if not inventory.can_modify_slot_quantity(active_slot, -1): 
-			return
+	# FASE A: SEED PLANTING CASE (Item ID 18 - Crop Seed)
+	if item_id == 18:
+		# Check if we clicked the TOP face of a Grass (3) or Dirt (2) block
+		var hit_normal := raycast.get_collision_normal()
+		if hit_normal.y == 1.0: # Top face click only!
+			var hit_pos := raycast.get_collision_point() - (hit_normal * 0.5)
+			var soil_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
+			var soil_type := world_state.get_block(soil_coord)
 			
+			if soil_type == BlockType.Type.GRASS or soil_type == BlockType.Type.DIRT:
+				var crop_coord := soil_coord + Vector3i(0, 1, 0)
+				# Ensure space above soil is completely empty (AIR)
+				if world_state.get_block(crop_coord) == BlockType.Type.AIR:
+					# Consume seed and update HUD
+					slot_data.quantity -= 1
+					if slot_data.quantity <= 0:
+						slot_data.item_id = -1
+					player._sync_hud_counters()
+					
+					# Plant the seed block globally!
+					world_controller.call("set_block_globally", crop_coord, BlockType.Type.CROP_SEED)
+					if is_instance_valid(hud):
+						hud.show_quest_notification("Planted Seed", "Sowed 1x Crop Seed on tilled soil!")
+					return
+		return
+
+	# STANDARD CONSTRUCTION CASE: Place selected block in the 3D voxel grid
+	var is_block_selected = player.is_item_selected
+	if is_block_selected:
+		var build_type := slot_data.item_id as BlockType.Type
 		var build_pos: Vector3 = raycast.get_collision_point() + (raycast.get_collision_normal() * 0.5)
 		var block_coord := Vector3i(floor(build_pos.x), floor(build_pos.y), floor(build_pos.z))
 		
@@ -233,6 +278,9 @@ func _build_or_interact() -> void:
 		if block_coord == player_feet or block_coord == player_head: 
 			return
 			
-		inventory.modify_slot_quantity(active_slot, -1)
-		player.call("_sync_hud_counters")
+		slot_data.quantity -= 1
+		if slot_data.quantity <= 0:
+			slot_data.item_id = -1
+			
+		player._sync_hud_counters()
 		world_controller.call("set_block_globally", block_coord, build_type)

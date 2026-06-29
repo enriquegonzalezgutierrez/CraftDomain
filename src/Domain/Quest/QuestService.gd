@@ -4,6 +4,9 @@
 #              game Quests, tracking active objectives and global progression.
 #              SOLID COMPLIANCE: Stripped of hardcoded registries (SRP). Now 
 #              autonomously processes rewards and chain transitions (OCP).
+#              STRICT MODE & FASE 1 FIX: Updated complete_active_quest to utilize 
+#              the new stack-based dynamic `add_item` DIP method instead of the 
+#              nonexistent modify_slot_quantity, completely resolving crash errors.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Quest/QuestService.gd
 # ==============================================================================
@@ -50,7 +53,8 @@ static func complete_active_quest(player_node: CharacterBody3D = null) -> void:
 		if player_node != null and _active_quest.reward_item_index >= 0:
 			var inv: IInventory = player_node.get("inventory")
 			if is_instance_valid(inv):
-				inv.modify_slot_quantity(_active_quest.reward_item_index, _active_quest.reward_quantity)
+				# FASE 1 FIX: Use the new dynamic stack-based API method (DIP compliant)
+				var _success := inv.add_item(_active_quest.reward_item_index, _active_quest.reward_quantity)
 				player_node.call("_sync_hud_counters")
 				
 		# Cache the next quest link before clearing

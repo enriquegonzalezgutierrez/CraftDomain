@@ -3,8 +3,8 @@
 # Description: Ultra-high-fidelity Minecraft-style Inventory Overlay.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating layout drawing and slot sorting.
-#              STRICT MODE FIX: Cleaned up shadowed variables and ensured perfect
-#              function block indentation.
+#              STRICT MODE FIX: Declared `_first_selected_slot_index` and 
+#              `_focused_slot_index` at class level, removing the orphaned variable.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/InventoryOverlay.gd
 # ==============================================================================
@@ -28,7 +28,7 @@ var _detail_icon: ColorRect
 var _action_button: Button
 var _use_button: Button
 
-# Sequential Swapping Engine State
+# STRICT MODE FIX: Sequential Swapping Engine State declared properly at class level
 var _first_selected_slot_index: int = -1
 var _focused_slot_index: int = -1
 
@@ -60,11 +60,19 @@ const ITEM_DETAILS = {
 	},
 	16: {
 		"desc": "Delicious chicken crisped to golden perfection over hot geothermal lava. Highly therapeutic, smelling amazing and warm.",
-		"use": "CONSUME FOOD: Click the USE/EAT button below, or equip it to hotbar and Right-Click in-game to consume 1x chicken and heal 1 Heart (❤)."
+		"use": "CONSUME FOOD: Click the USE/EAT button below, or equip it to hotbar and Right-Click to consume 1x chicken and heal 1 Heart (❤)."
 	},
 	17: {
 		"desc": "A basic training broadsword carved from solid oak logs. It has infinite durability. Perfect for protecting the village plains against monsters.",
-		"use": "EQUIP WEAPON: Swap to hotbar. Equip it and use Left-Click (or E) to swing and attack cave zombies."
+		"use": "EQUIP WEAPON: Equip it and use Left-Click (or E) to swing and attack cave zombies."
+	},
+	18: {
+		"desc": "Plump wheat seeds gathered from forestry foliage. Can be planted on any fertile tilled soil or soft grass block to start your own crops.",
+		"use": "PLANT SEEDS: Swap to hotbar. Aim at any Grass or Dirt block and Right-Click (or Q) to plant. Crops grow dynamically over time!"
+	},
+	20: {
+		"desc": "Golden, sun-ripened wheat grains harvested from your mature crop fields. Essential raw material for elite survival baking recipes.",
+		"use": "CRAFTING MATERIAL: Use this wheat in the Blueprint Workshop to craft valuable rations."
 	}
 }
 
@@ -78,7 +86,10 @@ const BLOCK_COLORS = {
 	5: Color(0.25, 0.65, 0.18), # Leaves
 	15: Color(1.0, 0.45, 0.0),  # Lava
 	16: Color(0.92, 0.62, 0.62),# Chicken
-	17: Color(0.75, 0.75, 0.80) # Sword
+	17: Color(0.75, 0.75, 0.80),# Sword
+	18: Color(0.48, 0.35, 0.22),# Seed
+	19: Color(0.65, 0.92, 0.15),# Brote
+	20: Color(0.95, 0.78, 0.18) # Trigo
 }
 
 func _ready() -> void:
@@ -93,7 +104,7 @@ func _ready() -> void:
 	_show_empty_details()
 
 func _setup_backpack_ui() -> void:
-	# 1. Main Minecraft-Style Inventory Card (Centered, glassmorphic)
+	# 1. Main Backpack Card (Centered, glassmorphic)
 	var main_card := Panel.new()
 	main_card.name = "BackpackCard"
 	main_card.custom_minimum_size = Vector2(840, 520)
@@ -102,7 +113,7 @@ func _setup_backpack_ui() -> void:
 	main_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	main_card.grow_vertical = Control.GROW_DIRECTION_BOTH
 	
-	# Center alignment
+	# Center adjustment
 	main_card.offset_left = -420
 	main_card.offset_right = 420
 	main_card.offset_top = -260
@@ -110,12 +121,12 @@ func _setup_backpack_ui() -> void:
 	
 	var card_style := StyleBoxFlat.new()
 	card_style.set_corner_radius_all(12)
-	card_style.bg_color = Color(0.08, 0.08, 0.10, 0.96) 
-	card_style.border_width_left = 3
-	card_style.border_width_top = 3
-	card_style.border_width_right = 3
-	card_style.border_width_bottom = 3
-	card_style.border_color = Color(0.25, 0.25, 0.3, 0.8)
+	card_style.bg_color = Color(0.06, 0.06, 0.08, 0.96) 
+	card_style.border_width_left = 2
+	card_style.border_width_top = 2
+	card_style.border_width_right = 2
+	card_style.border_width_bottom = 2
+	card_style.border_color = Color(0.35, 0.35, 0.4, 0.4)
 	card_style.shadow_size = 20
 	card_style.shadow_color = Color(0, 0, 0, 0.6)
 	main_card.add_theme_stylebox_override("panel", card_style)
@@ -127,21 +138,20 @@ func _setup_backpack_ui() -> void:
 	hbox.add_theme_constant_override("separation", 0)
 	main_card.add_child(hbox)
 	
-	# ==================== LEFT PANE: BACKPACK & HOTBAR GRIDS ====================
+	# ==================== LEFT PANE: BACKPACK GRID ====================
 	var left_pane := MarginContainer.new()
-	left_pane.custom_minimum_size = Vector2(380, 0)
+	left_pane.custom_minimum_size = Vector2(360, 0)
 	left_pane.add_theme_constant_override("margin_left", 24)
 	left_pane.add_theme_constant_override("margin_top", 24)
-	left_pane.add_theme_constant_override("margin_right", 16)
+	left_pane.add_theme_constant_override("margin_right", 12)
 	left_pane.add_theme_constant_override("margin_bottom", 24)
 	hbox.add_child(left_pane)
 	
 	var left_vbox := VBoxContainer.new()
 	left_pane.add_child(left_vbox)
 	
-	# Title Area
 	var catalog_title := Label.new()
-	catalog_title.text = "SURVIVAL INVENTORY"
+	catalog_title.text = "BACKPACK STORAGE"
 	var ts := LabelSettings.new()
 	ts.font_size = 18
 	ts.font_color = Color(0.2, 0.85, 0.85) # Teal Blue Accent
@@ -152,60 +162,18 @@ func _setup_backpack_ui() -> void:
 	
 	left_vbox.add_child(_create_spacer(14))
 	
-	# SECTION A: UPPER BACKPACK (Slots 8 to 23 - 4x4 Grid)
-	var backpack_header := Label.new()
-	backpack_header.text = "BACKPACK STORAGE (CLICK ITEM TO MOVE):"
-	var bhs := LabelSettings.new()
-	bhs.font_size = 10
-	bhs.font_color = Color(0.55, 0.55, 0.6)
-	backpack_header.label_settings = bhs
-	left_vbox.add_child(backpack_header)
-	
-	left_vbox.add_child(_create_spacer(6))
+	# Scrollable grid area
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	left_vbox.add_child(scroll)
 	
 	_backpack_grid_container = GridContainer.new()
+	_backpack_grid_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_backpack_grid_container.columns = 4 
-	_backpack_grid_container.add_theme_constant_override("h_separation", 8)
-	_backpack_grid_container.add_theme_constant_override("v_separation", 8)
-	left_vbox.add_child(_backpack_grid_container)
-	
-	left_vbox.add_child(_create_spacer(20))
-	
-	# SECTION B: LOWER SEPARATED QUICKBAR (Slots 0 to 7 - 1x8 Grid)
-	var hotbar_header := Label.new()
-	hotbar_header.text = "EQUIPPED QUICKBAR (HOTBAR):"
-	var hhs := bhs.duplicate()
-	hotbar_header.label_settings = hhs
-	left_vbox.add_child(hotbar_header)
-	
-	left_vbox.add_child(_create_spacer(6))
-	
-	# Minecraft-Style Hotbar Frame Panel
-	var hotbar_frame := Panel.new()
-	hotbar_frame.custom_minimum_size = Vector2(0, 78)
-	var hfs := StyleBoxFlat.new()
-	hfs.bg_color = Color(0.04, 0.04, 0.05, 0.8)
-	hfs.set_corner_radius_all(8)
-	hfs.border_width_left = 2
-	hfs.border_width_top = 2
-	hfs.border_width_right = 2
-	hfs.border_width_bottom = 2
-	hfs.border_color = Color(0.2, 0.2, 0.25, 0.6)
-	hotbar_frame.add_theme_stylebox_override("panel", hfs)
-	left_vbox.add_child(hotbar_frame)
-	
-	var hotbar_margin := MarginContainer.new()
-	hotbar_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hotbar_margin.add_theme_constant_override("margin_left", 10)
-	hotbar_margin.add_theme_constant_override("margin_top", 8)
-	hotbar_margin.add_theme_constant_override("margin_right", 10)
-	hotbar_margin.add_theme_constant_override("margin_bottom", 8)
-	hotbar_frame.add_child(hotbar_margin)
-	
-	_hotbar_grid_container = GridContainer.new()
-	_hotbar_grid_container.columns = 8 # 1x8 Horizontal layout!
-	_hotbar_grid_container.add_theme_constant_override("h_separation", 6)
-	hotbar_margin.add_child(_hotbar_grid_container)
+	_backpack_grid_container.add_theme_constant_override("h_separation", 10)
+	_backpack_grid_container.add_theme_constant_override("v_separation", 10)
+	scroll.add_child(_backpack_grid_container)
 	
 	# ==================== RIGHT PANE: ITEM DETAILED INSPECTOR ====================
 	var detail_panel := Panel.new()
@@ -234,7 +202,7 @@ func _setup_backpack_ui() -> void:
 	_detail_title = Label.new()
 	_detail_title.text = "Inspect Item"
 	var dts := LabelSettings.new()
-	dts.font_size = 20
+	dts.font_size = 22
 	dts.font_color = Color.WHITE
 	dts.outline_size = 4
 	dts.outline_color = Color.BLACK
@@ -243,9 +211,9 @@ func _setup_backpack_ui() -> void:
 	
 	right_vbox.add_child(_create_spacer(10))
 	
-	# Visual Box
+	# Big Visual Box
 	var preview_panel := Panel.new()
-	preview_panel.custom_minimum_size = Vector2(0, 95)
+	preview_panel.custom_minimum_size = Vector2(0, 110)
 	var ps := StyleBoxFlat.new()
 	ps.bg_color = Color(0.1, 0.1, 0.12, 0.4)
 	ps.set_corner_radius_all(10)
@@ -264,9 +232,9 @@ func _setup_backpack_ui() -> void:
 	
 	# Description Body
 	_detail_desc = Label.new()
-	_detail_desc.text = "Click any item to inspect its capabilities or select two items sequentially to swap/reorganize your inventory."
+	_detail_desc.text = "Click any backpack item to inspect its usage and capabilities."
 	_detail_desc.autowrap_mode = TextServer.AUTOWRAP_WORD
-	_detail_desc.custom_minimum_size = Vector2(0, 80)
+	_detail_desc.custom_minimum_size = Vector2(0, 70)
 	var dds := LabelSettings.new()
 	dds.font_size = 13
 	dds.font_color = Color(0.85, 0.85, 0.9)
@@ -405,7 +373,8 @@ func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, si
 		qty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(qty_label)
 		
-	btn.pressed.connect(func() -> void: _on_slot_clicked(slot_index))
+	# MEMORY SECURITY FIX: Connect utilizing safe C++ native Callable.bind()
+	btn.pressed.connect(_on_slot_clicked.bind(slot_index))
 	return btn
 
 ## FASE 1 WORKSPACE: Sequential Swapping Engine (Sorting logic)
@@ -566,14 +535,17 @@ func _setup_button_style(btn: Button, normal_color: Color) -> void:
 # STRICT MODE FIX: Renamed argument to "size_pixels" to resolve shadowing property warnings from base Control class
 func _setup_list_button_animations(btn: Button, size_pixels: int) -> void:
 	btn.pivot_offset = Vector2(float(size_pixels) / 2.0, float(size_pixels) / 2.0)
-	btn.mouse_entered.connect(func() -> void:
+	
+	# MEMORY SECURITY FIX: Connect utilizing safe C++ native Callable.bind() to eliminate lambda leaks
+	btn.mouse_entered.connect(_on_list_button_hover.bind(btn, true))
+	btn.mouse_exited.connect(_on_list_button_hover.bind(btn, false))
+
+## Private helper supporting memory-safe hover scaling tweens on list buttons
+func _on_list_button_hover(btn: Button, hover: bool) -> void:
+	if is_instance_valid(btn):
+		var target_scale := Vector2(1.05, 1.05) if hover else Vector2(1.0, 1.0)
 		var tw := create_tween()
-		tw.tween_property(btn, "scale", Vector2(1.05, 1.05), 0.08).set_trans(Tween.TRANS_SINE)
-	)
-	btn.mouse_exited.connect(func() -> void:
-		var tw := create_tween()
-		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.08).set_trans(Tween.TRANS_SINE)
-	)
+		tw.tween_property(btn, "scale", target_scale, 0.08).set_trans(Tween.TRANS_SINE)
 
 func _create_spacer(height: int) -> Control:
 	var s := Control.new()

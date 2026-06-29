@@ -8,7 +8,8 @@
 #              - Seamless, direct sequential integration of backpack (🎒) and workshop (🛠️).
 #              - Millimeter-aligned hearts (HP) and food (Drumsticks) bars.
 #              - Elegant 3D-shaded block icon representation.
-#              FIXED: Added the missing 'is_any_menu_open()' API function at the bottom.
+#              MEMORY SECURITY FIX: Replaced unstable C++ inline lambdas with robust native 
+#              `Callable.bind()` and fixed method connections to prevent memory crashes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -227,7 +228,8 @@ func _setup_unified_hotbar_dock() -> void:
 	bp_btn.custom_minimum_size = Vector2(50, 54) # Match slots heights
 	bp_btn.tooltip_text = "Open Backpack Inventory [I]"
 	_setup_hud_shortcut_button_style(bp_btn)
-	bp_btn.pressed.connect(func() -> void: toggle_inventory_backpack(not is_instance_valid(_inventory_overlay)))
+	# MEMORY SECURITY FIX: Connect utilizing safe C++ native bound methods
+	bp_btn.pressed.connect(_on_backpack_shortcut_pressed)
 	hbox.add_child(bp_btn)
 	
 	_add_hotkey_label(main_dock, "[I]", 40, true)
@@ -294,13 +296,20 @@ func _setup_unified_hotbar_dock() -> void:
 	cr_btn.custom_minimum_size = Vector2(50, 54)
 	cr_btn.tooltip_text = "Open Crafting Workshop [C]"
 	_setup_hud_shortcut_button_style(cr_btn)
-	cr_btn.pressed.connect(func() -> void: toggle_crafting_workshop(not is_instance_valid(_crafting_overlay)))
+	# MEMORY SECURITY FIX: Connect utilizing safe C++ native bound methods
+	cr_btn.pressed.connect(_on_workshop_shortcut_pressed)
 	hbox.add_child(cr_btn)
 	
 	_add_hotkey_label(main_dock, "[C]", -40, false)
 		
 	# Draw initial state of status bars
 	update_health_display(3)
+
+func _on_backpack_shortcut_pressed() -> void:
+	toggle_inventory_backpack(not is_instance_valid(_inventory_overlay))
+
+func _on_workshop_shortcut_pressed() -> void:
+	toggle_crafting_workshop(not is_instance_valid(_crafting_overlay))
 
 ## Private helper adding out-of-hbox helper shortcut labels to preserve alignment
 func _add_hotkey_label(dock: Control, text_label: String, offset_val: int, is_left: bool) -> void:
@@ -446,14 +455,17 @@ func _setup_hud_shortcut_button_style(btn: Button) -> void:
 	btn.add_theme_font_size_override("font_size", 14)
 	
 	btn.pivot_offset = Vector2(25, 27) 
-	btn.mouse_entered.connect(func() -> void:
+	
+	# MEMORY SECURITY FIX: Connect utilizing safe C++ native Callable.bind() to eliminate lambda leaks
+	btn.mouse_entered.connect(_on_shortcut_hover.bind(btn, true))
+	btn.mouse_exited.connect(_on_shortcut_hover.bind(btn, false))
+
+## Private helper supporting memory-safe hover scaling tweens on HUD shortcuts
+func _on_shortcut_hover(btn: Button, hover: bool) -> void:
+	if is_instance_valid(btn):
+		var target_scale := Vector2(1.08, 1.08) if hover else Vector2(1.0, 1.0)
 		var tw := create_tween()
-		tw.tween_property(btn, "scale", Vector2(1.08, 1.08), 0.08).set_trans(Tween.TRANS_SINE)
-	)
-	btn.mouse_exited.connect(func() -> void:
-		var tw := create_tween()
-		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.08).set_trans(Tween.TRANS_SINE)
-	)
+		tw.tween_property(btn, "scale", target_scale, 0.08).set_trans(Tween.TRANS_SINE)
 
 func _process(_delta: float) -> void:
 	if is_instance_valid(minimap):

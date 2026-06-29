@@ -2,8 +2,13 @@
 # Project: CraftDomain
 # Description: Infrastructure Service responsible for calculating and spawning
 #              NPC, Fauna, and interactive prop classes dynamically inside chunks.
-#              SOLID COMPLIANCE: Adheres strictly to the Open-Closed Principle (OCP)
-#              by utilizing `MobRegistry`, eliminating rigid script imports.
+#              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
+#              and Liskov Substitution Principle (LSP) by utilizing `MobRegistry`.
+#              FASE A & BUG 1 FIX:
+#              - Implemented a smart vertical scanner that prevents suffocation by
+#                ensuring the two blocks above spawn feet are non-solid.
+#              - Replaced the low 8.0 fallback with a safe tilled village-plains
+#                surface fallback level (11.0) to prevent NPCs spawning underground.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -80,12 +85,19 @@ func _spawn_and_register_entity(
 				print("[MobSpawningService] GPS Quest Target [", quest_sync_id, "] synced to exact spawn coordinate: ", pos)
 
 ## Helper method to scan a block column from top to bottom (31 down to 0) globally
+## BUG 1 FIXED: Prevents suffocation/underground spawning by checking the two spaces above
 func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
 	for y in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
 		var block_type := world_state.get_block(check_pos)
 		
 		if BlockType.is_solid(block_type):
-			return float(y) + 1.0 
+			# Ensure the two spaces directly above are empty to prevent suffocation
+			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
+			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
 			
-	return 8.0
+			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
+				return float(y) + 1.0 
+			
+	# Safe tilled village-plains surface level fallback if the column scan gets lost/buried
+	return 11.0

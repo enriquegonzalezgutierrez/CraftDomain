@@ -4,9 +4,10 @@
 #              Slots 0-7 represent the active Hotbar. Slots 8-23 represent the Backpack.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) and implements `IInventory` (DIP).
-#              FEATURES: Advanced item stacking (up to 64), empty slot auto-discovery,
-#              global item-id quantity aggregation, slot swapping, and complete 
-#              self-serialization/deserialization for save files (SRP).
+#              FASE A UPGRADE:
+#              - Registers Item IDs 18 (Crop Seed) and 20 (Harvested Wheat).
+#              - Pre-populates Slot 8 with 16x starting Crop Seeds.
+#              - Implements a 25% organic seed drop rate when harvesting Leaves.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/InventoryComponent.gd
 # ==============================================================================
@@ -43,8 +44,11 @@ func _setup_starting_survival_inventory() -> void:
 	_slots[6] = SlotData.new(16, 5)   # 5x Fried Chicken (ID 16 - Food)
 	_slots[7] = SlotData.new(17, -1, 1)  # 1x Wooden Sword (ID 17 - Infinite weapon, max_stack 1)
 	
-	# Slots 8 to 23: Backpack Storage (Starts completely empty)
-	for i in range(8, 24):
+	# FASE A: Pre-populate Slot 8 (first backpack slot) with 16x starting Crop Seeds to test farming!
+	_slots[8] = SlotData.new(18, 16)  # 16x Crop Seeds (ID 18)
+	
+	# Slots 9 to 23: Backpack Storage (Starts completely empty)
+	for i in range(9, 24):
 		_slots[i] = SlotData.new(-1, 0)
 
 # ==============================================================================
@@ -187,6 +191,10 @@ func get_slot_item_name(index: int) -> String:
 		15: return "Lava Bucket"
 		16: return "Fried Chicken"
 		17: return "Wooden Sword"
+		# FASE A: Agricultural Item names
+		18: return "Crop Seed"
+		19: return "Young Sprout"
+		20: return "Harvested Wheat"
 		_: return "Unknown block"
 
 ## Helper to find the first completely empty slot index
@@ -209,6 +217,11 @@ func add_block_by_type(block_type: BlockType.Type) -> void:
 		BlockType.Type.CLOUD:
 			target_id = 5 # Map to Leaves (ID 5)
 			
+	# FASE A: 25% organic seed drop rate when harvesting Leaves
+	if block_type == BlockType.Type.LEAVES and randf() < 0.25:
+		var _seed_success := add_item(18, 1) # Crop Seed (ID 18)
+		print("[InventoryComponent] Foraged 1x Crop Seed from leaves!")
+			
 	var _success := add_item(target_id, 1)
 
 # ==============================================================================
@@ -229,6 +242,12 @@ func get_serialize_data() -> Array:
 ## Restores and deserializes the entire 24-slot inventory state from loaded save file data
 func deserialize_data(data: Array) -> void:
 	if data.size() == 0:
+		return
+		
+	# Wipes legacy format to prevent crashes (Safe migrator)
+	if data[0] is float or data[0] is int:
+		print("[InventoryComponent] Warning: Legacy flat-quantity save format detected. Auto-wiping to prevent crashes.")
+		_setup_starting_survival_inventory() 
 		return
 		
 	_slots.clear()

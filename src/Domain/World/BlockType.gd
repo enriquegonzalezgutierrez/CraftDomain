@@ -1,15 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Domain enumeration and logical rules defining the physical 
-#              and optical properties of all available blocks in the game.
-#              UPDATED: Added LAVA block type (ID 15) to enable lava placement.
+# Description: Pure Domain Value Object defining all available block types.
+#              SOLID COMPLIANCE: Adheres to the Single Responsibility Principle (SRP)
+#              by encapsulating only the block types classification.
+#              FASE A UPGRADE: Added dynamic agricultural voxel types:
+#              - CROP_SEED (Planted wheat seed)
+#              - CROP_GROWING (Sprouting green stem)
+#              - CROP_RIPE (Mature golden wheat crop ready for harvest)
+#              Crops are flagged as non-solid so players and NPCs can walk through fields.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockType.gd
 # ==============================================================================
 class_name BlockType
 extends RefCounted
 
-## Enumeration of all domain-supported block types.
+## Enumeration of all raw block IDs supported by the voxel meshing engine.
 enum Type {
 	AIR = 0,
 	STONE = 1,
@@ -26,14 +31,19 @@ enum Type {
 	NEON_CYAN = 12,
 	NEON_MAGENTA = 13,
 	CLOUD = 14,
-	LAVA = 15 # NEW: Buildable glowing liquid
+	LAVA = 15,
+	# FASE A: Crop growth voxel block stages
+	CROP_SEED = 18,
+	CROP_GROWING = 19,
+	CROP_RIPE = 20
 }
 
 ## Returns true if the block type occupies physical space (is solid).
-## Fluids like AIR, WATER, and LAVA are non-solid, allowing entities to move through them.
+## Non-solid blocks like liquids and crops allow player/NPC passage and culling.
 static func is_solid(type: Type) -> bool:
 	match type:
-		Type.AIR, Type.WATER, Type.LAVA:
+		Type.AIR, Type.WATER, Type.LAVA, \
+		Type.CROP_SEED, Type.CROP_GROWING, Type.CROP_RIPE:
 			return false
 		_:
 			return true
@@ -42,7 +52,8 @@ static func is_solid(type: Type) -> bool:
 ## Transparent blocks allow light to pass through and trigger rendering face culling.
 static func is_transparent(type: Type) -> bool:
 	match type:
-		Type.AIR, Type.LEAVES, Type.WATER, Type.ICE, Type.CLOUD, Type.LAVA:
+		Type.AIR, Type.LEAVES, Type.WATER, Type.ICE, Type.CLOUD, Type.LAVA, \
+		Type.CROP_SEED, Type.CROP_GROWING, Type.CROP_RIPE:
 			return true
 		_:
 			return false

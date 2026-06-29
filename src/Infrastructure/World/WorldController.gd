@@ -4,7 +4,8 @@
 #              generation, dynamic loading, and saving/loading block modifications.
 #              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
 #              by delegating voxel MultiMesh rendering math to `ChunkVisualBuilder`,
-#              and inventory serialization directly to the `InventoryComponent`.
+#              inventory serialization directly to the `InventoryComponent`, and 
+#              agricultural random growth loops directly to the `AgricultureService`.
 #              LSP COMPLIANCE: Tracks polymorphic Array[Node] entities for clean unloads.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
@@ -26,6 +27,9 @@ var player: CharacterBody3D
 # Decoupled Private helper services (SRP compliant)
 var _mob_spawning_service: MobSpawningService
 var _streetlight_service: StreetlightService
+
+# FASE A: Agricultural ticks processor service
+var _agriculture_service: AgricultureService
 
 ## Tracking map for active ChunkNode representations: Vector3i -> ChunkNode
 var _chunk_nodes: Dictionary = {}
@@ -73,6 +77,9 @@ func _initialize_systems() -> void:
 	_mob_spawning_service = MobSpawningService.new()
 	_streetlight_service = StreetlightService.new(self, world_state)
 	
+	# FASE A: Instantiate the Agricultural Simulation Service (SRP)
+	_agriculture_service = AgricultureService.new(self, world_state)
+	
 	var saved_global := repository.load_global_state()
 	var active_seed: int
 	var spawn_pos := Vector3(8.5, 14.0, 8.5)
@@ -107,6 +114,10 @@ func _target_spawn_chunk_calculation(block_pos: Vector3i) -> void:
 func _process(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
+		
+	# FASE A: Feed delta time continuously to process Random Crop ticks
+	if is_instance_valid(_agriculture_service):
+		_agriculture_service.process_agriculture_ticks(delta)
 		
 	_update_timer += delta
 	if _update_timer >= UPDATE_INTERVAL:
@@ -354,6 +365,7 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		add_child(chunk_node)
 		_chunk_nodes[chunk_pos] = chunk_node
 	
+	# SRP FIX: Delegate visual rebuild extraction to the builder
 	var visual_data := ChunkVisualBuilder.extract_render_data(chunk_node.chunk)
 	var render_data := visual_data["multimesh"] as Dictionary
 	var collision_transforms := visual_data["collision"] as Array[Transform3D]
