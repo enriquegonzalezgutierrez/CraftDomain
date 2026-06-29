@@ -10,8 +10,8 @@
 #              unregistered world_controller scope accesses.
 #              TELEPORT FIXED: Swapped int() casts for floori() to guarantee negative
 #              coordinate chunks (like Z=-300) map perfectly to physical bounds.
-#              SAFE SPAWN FIX: Redirected all 4 POI teleport destinations to open-air
-#              courtyards and walkways, completely preventing collision interpenetration!
+#              TRANSITION UPGRADE: Triggers the dynamic loading screen overlay 
+#              immediately during teleportation to prevent "world popping" artifacts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MapOverlay.gd
 # ==============================================================================
@@ -230,25 +230,29 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	var target_x := float(landmark.global_center.x) + 0.5
 	var target_z := float(landmark.global_center.y) + 0.5
 	
-	# ==========================================================================
-	# COLLISION INTERPENETRATION SAFE SHIELDS (OCP Safe Spawns)
-	# Redirects target coordinates to open-air courtyards instead of solid blocks.
-	# ==========================================================================
+	# Safety re-alignment: Redirection to open-air courtyards
 	if landmark is StevesCabinMegaStructure:
-		target_z = -294.5 # Symmetrical fenced grass yard
+		target_z = -294.5 
 	elif landmark is NetherPortalMegaStructure:
-		target_x = -290.5 # Fortress open red sand courtyard
+		target_x = -290.5 
 		target_z = -290.5
 	elif landmark is GrandCastleMegaStructure:
-		target_z = 208.5 # South Gate open brick bridge courtyard
+		target_z = 208.5 
 	elif landmark is HarborCityMegaStructure:
-		target_x = -136.5 # Wooden harbor pier walkway
+		target_x = -136.5 
 		target_z = 3.5
 	
 	# Freeze physics, set high floating coordinate, and clear accumulated velocities
 	player.global_position = Vector3(target_x, 35.0, target_z) 
 	player.velocity = Vector3.ZERO
 	player.set("is_active", false) 
+	
+	# ---> TRANSITION UPGRADE <---
+	# Trigger the glassmorphic loading screen transition on the HUD.
+	# This ensures the player never sees empty chunks generating/pops!
+	var hud_node := player.get("hud") as PlayerHUD
+	if is_instance_valid(hud_node):
+		hud_node.show_loading_screen()
 	
 	# Set target spawn chunk coordinates on the World Controller
 	var world_node: Node = player.world_controller as Node

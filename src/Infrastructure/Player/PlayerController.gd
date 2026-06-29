@@ -9,6 +9,8 @@
 #              M key to trigger the Fullscreen Tactical Map Overlay.
 #              FAILSAFE UPGRADE: Added a dynamic Void Rescue Shield to automatically
 #              teleport the player back to the surface if they clip through the ground.
+#              TRANSITION UPGRADE: Triggers the loading screen transition during death
+#              to prevent visual pops and float stutters on player respawns.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -394,13 +396,27 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 		if hud.has_method("flash_damage_screen"):
 			hud.call("flash_damage_screen")
 
+## FIXED: Freezes physics loop and deploys cinematic Loading Screen during respawn teleports 
+## to prevent ground pops, falls, or stuttering frames on death events.
 func _on_domain_entity_died() -> void:
 	domain_entity.health = 3
 	domain_entity.is_dead = false
+	
+	# Freeze physics and display the loading screen before respawning!
+	is_active = false
+	if is_instance_valid(hud):
+		hud.show_loading_screen()
+		
 	position = Vector3(8.5, 14.0, 8.5)
 	velocity = Vector3.ZERO
+	
 	if is_instance_valid(hud):
 		hud.update_health_display(domain_entity.health)
+		
+	# Re-track and reload starting chunks coordinates safely
+	if is_instance_valid(world_controller):
+		var chunk_pos: Vector3i = world_controller.get("world_state").global_to_chunk_pos(Vector3i(8, 0, 8))
+		world_controller.set("_target_spawn_chunk_pos", chunk_pos)
 
 func _sync_hud_counters() -> void:
 	if not is_instance_valid(hud) or not is_instance_valid(inventory): 

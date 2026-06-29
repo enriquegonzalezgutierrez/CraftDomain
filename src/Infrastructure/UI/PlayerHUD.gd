@@ -6,8 +6,8 @@
 #                rendering, drawing, and menu components to specialized widgets.
 #              - Open-Closed Principle (OCP): All text titles, labels, and toasts
 #                are fully i18n localized using tr() for future translation packs.
-#              FIX: Removed obsolete _setup_damage_overlay() and _setup_crosshair()
-#              calls from _ready() since they are now delegated to widgets.
+#              TRANSITION UPGRADE: Added public show_loading_screen() API to allow
+#              seamless, cinematic fading transitions during dynamic teleportations.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -146,6 +146,13 @@ func _process(_delta: float) -> void:
 func open_dialogue(node: Resource, speaker_name: String) -> void:
 	if is_instance_valid(dialogue_manager):
 		dialogue_manager.open_dialogue(node, speaker_name)
+
+## Instantiates a fresh loading screen transition on-demand during teleports or respawns
+func show_loading_screen() -> void:
+	if has_node("LoadingScreenOverlay"):
+		return # Already active
+	var loading_screen := LoadingScreen.new(player)
+	add_child(loading_screen)
 
 func toggle_world_map(p_visible: bool) -> void:
 	if (_pause_widget and _pause_widget.visible) or is_instance_valid(_crafting_overlay) or is_instance_valid(_inventory_overlay):
