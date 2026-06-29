@@ -1,6 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Pure domain model representing a chunk containing voxel grid data.
+#              PERFORMANCE UPGRADE: 
+#              - Manual inlining of boundary checks and 1D index mapping to avoid 
+#                Call Stack overhead during high-frequency occlusion culling lookups.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/Chunk.gd
 # ==============================================================================
@@ -23,20 +26,19 @@ func _init(p_position: Vector3i) -> void:
 	_blocks.fill(BlockType.Type.AIR)
 
 ## Checks if coordinates are within local chunk boundaries.
+## Maintained for external abstraction consistency.
 func is_within_bounds(x: int, y: int, z: int) -> bool:
 	return x >= 0 and x < SIZE and y >= 0 and y < SIZE and z >= 0 and z < SIZE
 
-## Converts 3D coordinates to flat 1D index.
-func get_index(x: int, y: int, z: int) -> int:
-	return x + SIZE * (y + SIZE * z)
-
 ## Gets the block type at the local coordinates.
+## INLINED for maximum CPU cache performance (Eliminates GDScript function call overhead).
 func get_block(x: int, y: int, z: int) -> BlockType.Type:
-	if not is_within_bounds(x, y, z):
+	if x < 0 or x >= SIZE or y < 0 or y >= SIZE or z < 0 or z >= SIZE:
 		return BlockType.Type.AIR
-	return _blocks[get_index(x, y, z)] as BlockType.Type
+	return _blocks[x + SIZE * (y + SIZE * z)] as BlockType.Type
 
 ## Sets the block type at the local coordinates.
+## INLINED for maximum CPU cache performance (Eliminates GDScript function call overhead).
 func set_block(x: int, y: int, z: int, type: BlockType.Type) -> void:
-	if is_within_bounds(x, y, z):
-		_blocks[get_index(x, y, z)] = type
+	if x >= 0 and x < SIZE and y >= 0 and y < SIZE and z >= 0 and z < SIZE:
+		_blocks[x + SIZE * (y + SIZE * z)] = type

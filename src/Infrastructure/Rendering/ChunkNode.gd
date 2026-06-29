@@ -3,10 +3,12 @@
 # Description: Infrastructure rendering node representing a single chunk.
 #              Manages individual MultiMeshInstance3D nodes per BlockType to 
 #              support customized material shading (PBR, Water, Lava, and Wind-Sway).
-#              SOLID COMPLIANCE: Adheres to OCP and SRP by isolating material 
-#              and rendering logic from raw physical chunk data.
-#              UPDATED: Optimized Water material with higher opacity and rich 
-#              tropical albedo to prevent high transparency on seamless rendering.
+#              PERFORMANCE UPGRADE: 
+#              - Accepts pre-compiled PackedFloat32Array buffers directly from 
+#                background threads to achieve zero-cost Main Thread instantiation.
+#              - Triplanar Shaders optimized from 3 texture reads down to exactly 
+#                1 texture read per pixel, vastly increasing GPU fill-rate!
+#              FIX: Resolved Integer Division warning by casting division explicitly.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -106,6 +108,7 @@ static func _get_friendly_format_name(format: Image.Format) -> String:
 		_: return "Other (" + str(format) + ")"
 
 ## Compiles and caches our custom voxel shader to blend texture alpha gaps with solid colors
+## OPTIMIZED: 1 Texture read per pixel instead of 3!
 static func _get_triplanar_shader() -> Shader:
 	if _triplanar_shader == null:
 		_triplanar_shader = Shader.new()
@@ -117,21 +120,24 @@ static func _get_triplanar_shader() -> Shader:
 		uniform vec4 block_color : source_color;
 		uniform float roughness_val : hint_range(0.0, 1.0) = 0.75;
 		
-		varying vec3 power_normal;
 		varying vec3 triplanar_pos;
 		
 		void vertex() {
-			power_normal = pow(abs(NORMAL), vec3(150.0));
-			power_normal /= (power_normal.x + power_normal.y + power_normal.z);
 			triplanar_pos = VERTEX;
 		}
 		
 		void fragment() {
-			vec4 col_x = texture(albedo_texture, triplanar_pos.zy);
-			vec4 col_y = texture(albedo_texture, triplanar_pos.xz);
-			vec4 col_z = texture(albedo_texture, triplanar_pos.xy);
+			vec3 abs_n = abs(NORMAL);
+			vec2 uv = triplanar_pos.xy;
 			
-			vec4 tex_color = col_x * power_normal.x + col_y * power_normal.y + col_z * power_normal.z;
+			// Extract correct UV map based on box normal facing direction (Single read!)
+			if (abs_n.x > 0.5) {
+				uv = triplanar_pos.zy;
+			} else if (abs_n.y > 0.5) {
+				uv = triplanar_pos.xz;
+			}
+			
+			vec4 tex_color = texture(albedo_texture, uv);
 			
 			ALBEDO = mix(block_color.rgb, tex_color.rgb, tex_color.a);
 			ROUGHNESS = roughness_val;
@@ -140,6 +146,7 @@ static func _get_triplanar_shader() -> Shader:
 	return _triplanar_shader
 
 ## Compiles and caches our custom leaves shader with wind-sway and organic rounding
+## OPTIMIZED: 1 Texture read per pixel instead of 3!
 static func _get_leaves_wind_shader() -> Shader:
 	if _leaves_wind_shader == null:
 		_leaves_wind_shader = Shader.new()
@@ -151,12 +158,9 @@ static func _get_leaves_wind_shader() -> Shader:
 		uniform vec4 block_color : source_color;
 		uniform float roughness_val : hint_range(0.0, 1.0) = 0.85;
 		
-		varying vec3 power_normal;
 		varying vec3 triplanar_pos;
 		
 		void vertex() {
-			power_normal = pow(abs(NORMAL), vec3(150.0));
-			power_normal /= (power_normal.x + power_normal.y + power_normal.z);
 			triplanar_pos = VERTEX;
 			
 			// 1. ORGANIC VOXEL FLUFFINESS
@@ -168,11 +172,17 @@ static func _get_leaves_wind_shader() -> Shader:
 		}
 		
 		void fragment() {
-			vec4 col_x = texture(albedo_texture, triplanar_pos.zy);
-			vec4 col_y = texture(albedo_texture, triplanar_pos.xz);
-			vec4 col_z = texture(albedo_texture, triplanar_pos.xy);
+			vec3 abs_n = abs(NORMAL);
+			vec2 uv = triplanar_pos.xy;
 			
-			vec4 tex_color = col_x * power_normal.x + col_y * power_normal.y + col_z * power_normal.z;
+			// Extract correct UV map based on box normal facing direction (Single read!)
+			if (abs_n.x > 0.5) {
+				uv = triplanar_pos.zy;
+			} else if (abs_n.y > 0.5) {
+				uv = triplanar_pos.xz;
+			}
+			
+			vec4 tex_color = texture(albedo_texture, uv);
 			
 			if (tex_color.a < 0.4) {
 				discard;
@@ -185,7 +195,7 @@ static func _get_leaves_wind_shader() -> Shader:
 	return _leaves_wind_shader
 
 ## Configures the segmented MultiMeshes and registers the physics body.
-## HYBRID UPDATE: Accepts custom ArrayMeshes representing seamless, unified liquids.
+## OPTIMIZED: Directly injects the pre-compiled PackedFloat32Array from the background thread.
 func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D, p_liquid_meshes: Dictionary = {}) -> void:
 	# 1. Clear old visual nodes if they exist
 	for node in _multimeshes.values():
@@ -195,8 +205,12 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 	
 	# 2. Re-create a visual MultiMeshInstance3D for terrain blocks
 	for block_type in p_multimesh_data.keys():
-		var transforms: Array = p_multimesh_data[block_type]
-		if transforms.size() == 0:
+		var bulk_array: PackedFloat32Array = p_multimesh_data[block_type]
+		
+		# FIX: Safe integer division casting to resolve GDScript warning
+		var instance_count: int = int(bulk_array.size() / 12.0)
+		
+		if instance_count == 0:
 			continue
 			
 		var mm_instance := MultiMeshInstance3D.new()
@@ -206,28 +220,9 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = false 
 		mm.mesh = BoxMesh.new() 
-		mm.instance_count = transforms.size()
+		mm.instance_count = instance_count
+		mm.buffer = bulk_array # Direct instantaneous zero-cost assignment!
 		
-		var bulk_array := PackedFloat32Array()
-		bulk_array.resize(transforms.size() * 12)
-		
-		for i in range(transforms.size()):
-			var t: Transform3D = transforms[i]
-			var offset := i * 12
-			bulk_array[offset + 0] = t.basis.x.x
-			bulk_array[offset + 1] = t.basis.y.x
-			bulk_array[offset + 2] = t.basis.z.x
-			bulk_array[offset + 3] = t.origin.x
-			bulk_array[offset + 4] = t.basis.x.y
-			bulk_array[offset + 5] = t.basis.y.y
-			bulk_array[offset + 6] = t.basis.z.y
-			bulk_array[offset + 7] = t.origin.y
-			bulk_array[offset + 8] = t.basis.x.z
-			bulk_array[offset + 9] = t.basis.y.z
-			bulk_array[offset + 10] = t.basis.z.z
-			bulk_array[offset + 11] = t.origin.z
-			
-		mm.buffer = bulk_array
 		mm_instance.multimesh = mm
 		mm_instance.material_override = _get_material_for_block(block_type)
 		
@@ -270,7 +265,6 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 	if block_type == BlockType.Type.WATER:
 		var mat := ORMMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		# UX UPGRADE: Enriched tropical turquoise-blue with high opacity (0.84)
 		mat.albedo_color = Color(0.05, 0.35, 0.82, 0.84) 
 		mat.roughness = 0.08 
 		mat.metallic = 0.15
