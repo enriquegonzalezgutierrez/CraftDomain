@@ -3,9 +3,8 @@
 # Description: Domain Generator responsible for procedurally carving chunk block data.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Only handles world carving rules.
-#              FIXED: Removed the generation of physical 3D CLOUD blocks (Y=12..14).
-#              These blocky transparent grids are now fully redundant and caused 
-#              unwanted transparency sorting conflicts with our advanced GPU Sky Shader.
+#              MEGA-STRUCTURES UPGRADE: Added Pass 5 to overlay global handcrafted 
+#              fixed points of interest flawlessly over procedural terrain.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldGenerator.gd
 # ==============================================================================
@@ -26,7 +25,6 @@ const LANDMARK_TO_BLUEPRINT: Dictionary = {
 }
 
 func _init(p_seed: int = 42) -> void:
-	# Primary Macro Terrain Noise
 	_terrain_noise = FastNoiseLite.new()
 	_terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_terrain_noise.seed = p_seed
@@ -36,7 +34,6 @@ func _init(p_seed: int = 42) -> void:
 	_terrain_noise.fractal_lacunarity = 2.0
 	_terrain_noise.fractal_gain = 0.45
 
-	# Secondary Detail Noise
 	_detail_noise = FastNoiseLite.new()
 	_detail_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	_detail_noise.seed = p_seed + 101
@@ -59,7 +56,7 @@ func generate_chunk(chunk: Chunk) -> void:
 	var landmark_ids: Array[int] = []
 	landmark_ids.resize(Chunk.SIZE * Chunk.SIZE)
 
-	# PASS 1: Gather raw heights and blend them with high-frequency details
+	# PASS 1: Gather raw heights
 	for x in range(Chunk.SIZE):
 		var global_x: int = chunk_offset_x + x
 		for z in range(Chunk.SIZE):
@@ -92,8 +89,7 @@ func generate_chunk(chunk: Chunk) -> void:
 			var idx: int = x + Chunk.SIZE * z
 			var b_id: int = biome_ids[idx]
 			
-			var is_mountainous: bool = (b_id == 3 or b_id == 6 or b_id == 7)
-			if is_mountainous:
+			if b_id == 3 or b_id == 6 or b_id == 7:
 				smoothed_heights[idx] = int(lerp(float(raw_heights[idx]), float(blur_height), 0.40))
 			else:
 				smoothed_heights[idx] = blur_height
@@ -122,14 +118,10 @@ func generate_chunk(chunk: Chunk) -> void:
 						block_type = BlockType.Type.WATER
 					elif biome_id == 8 and global_y <= 4:
 						block_type = BlockType.Type.WATER
-						
-					# FIX: Removed the physical, overlapping 3D voxel clouds.
-					# They are now fully replaced by our weather-integrated, moving 
-					# perspective GPU clouds to eliminate alpha sorting conflicts.
 				
 				chunk.set_block(x, y, z, block_type)
 
-	# PASS 4: Spawn Organic Forests & Rare Landmarks
+	# PASS 4: Spawn Organic Forests & Local Landmarks
 	for x in range(Chunk.SIZE):
 		var global_x: int = chunk_offset_x + x
 		for z in range(Chunk.SIZE):
@@ -154,6 +146,11 @@ func generate_chunk(chunk: Chunk) -> void:
 			if l_id > 0 and LANDMARK_TO_BLUEPRINT.has(l_id):
 				var blueprint_id: int = int(LANDMARK_TO_BLUEPRINT[l_id])
 				_spawn_blueprint(chunk, x, z, local_ground_y, blueprint_id)
+
+	# =======================================================
+	# PASS 5: OVERWRITE WITH GLOBAL MEGA-STRUCTURES
+	# =======================================================
+	MegaStructureService.apply_mega_structures(chunk)
 
 func _determine_surface_block(
 	x: int, z: int, gx: int, gz: int, 

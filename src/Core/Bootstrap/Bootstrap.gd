@@ -61,6 +61,7 @@ func _setup_biomes() -> void:
 	BiomeService.register_biome(CloudKingdomBiome.new())
 
 func _setup_structures() -> void:
+	# Local Scatter & Landmark Blueprints
 	StructureLibrary.register_blueprint(OakTreeBlueprint.new())
 	StructureLibrary.register_blueprint(RedwoodTreeBlueprint.new())
 	StructureLibrary.register_blueprint(GiantMushroomBlueprint.new())
@@ -72,6 +73,10 @@ func _setup_structures() -> void:
 	StructureLibrary.register_blueprint(HarborPierBlueprint.new())
 	StructureLibrary.register_blueprint(SakuraTreeBlueprint.new())
 	StructureLibrary.register_blueprint(UnderworldFungusBlueprint.new())
+	
+	# GLOBAL MEGA-STRUCTURES (Fixed Points of Interest)
+	MegaStructureService.register_structure(GrandCastleMegaStructure.new())
+	MegaStructureService.register_structure(HarborCityMegaStructure.new())
 
 ## Registers the dynamic entity factories (OCP Compliant)
 func _setup_mobs() -> void:
