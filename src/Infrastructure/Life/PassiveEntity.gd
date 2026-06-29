@@ -3,13 +3,9 @@
 # Description: Infrastructure physics controller node representing a passive entity.
 #              SOLID COMPLIANCE: 
 #              - Liskov Substitution Principle (LSP): Acts as an Abstract Base Class. 
-#              - Single Responsibility Principle (SRP): Only manages physics, state,
-#                and material assignment.
-#              ANIMATION UPGRADE: Implemented a robust procedural animation engine.
-#              Added `_body_bob_node` to simulate actual footstep bouncing.
-#              Improved idle breathing and walking arm/head sway for organic life.
+#              AI UPGRADE: Implemented Intelligent Wall Avoidance (Vector Bouncing)
+#              and a new PANIC state when receiving damage to simulate organic life.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
@@ -18,8 +14,10 @@ extends CharacterBody3D
 enum TaskState {
 	IDLE,       # Resting in place
 	WANDERING,  # Walking randomly
-	EXAMINING,  # Performing a farming/inspecting work loop on a block
-	GREETING    # Stopping to look at and nod to the nearby player
+	EXAMINING,  # Performing a slow inspecting loop on a block
+	GREETING,   # Stopping to look at and nod to the nearby player
+	PANIC,      # Running away quickly after taking damage!
+	WORKING     # Custom pathfinding managed by subclasses (e.g., Farmer)
 }
 
 # Base physics movement constants
@@ -38,9 +36,12 @@ var _task_timer: float = 2.0
 var _wander_direction: Vector3 = Vector3.ZERO
 var _animation_time: float = 0.0
 
+# AI Obstacle Avoidance Tracker
+var _stuck_timer: float = 0.0
+
 # Dynamic Node references for subclass procedural animations
 var _visual_root: Node3D
-var _body_bob_node: Node3D # NEW: Root node for entire body bouncing (footsteps)
+var _body_bob_node: Node3D 
 var _head_node: Node3D
 var _arms_node: Node3D
 var _left_eye: MeshInstance3D
@@ -66,7 +67,6 @@ func _ready() -> void:
 	_visual_root.name = "Visuals"
 	add_child(_visual_root)
 	
-	# NEW: Add a bobbing root inside visuals to handle procedural walking bounce
 	_body_bob_node = Node3D.new()
 	_body_bob_node.name = "BodyBobJoint"
 	_visual_root.add_child(_body_bob_node)
@@ -82,8 +82,6 @@ func _ready() -> void:
 	col.position = _get_collision_box_position()
 	add_child(col)
 
-## Abstract Contract: Subclasses must override this to assemble their 3D voxel models
-## Note: Subclasses should attach their geometry to `_body_bob_node` instead of `_visual_root`
 func _build_visual_representation() -> void:
 	assert(false, "[PassiveEntity] _build_visual_representation() must be implemented by subclass.")
 
@@ -101,7 +99,6 @@ func _setup_floating_bubble() -> void:
 func interact(_player: CharacterBody3D) -> void:
 	pass
 
-## Helper factory to construct 3D boxes programmatically
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -125,6 +122,12 @@ func take_damage(amount: int, knockback_force: Vector3) -> void:
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
+	
+	# ORGANIC AI REACTION: Freak out and run away!
+	current_task = TaskState.PANIC
+	_task_timer = randf_range(3.0, 5.0)
+	var angle := randf() * TAU
+	_wander_direction = Vector3(cos(angle), 0, sin(angle))
 
 func _on_domain_entity_died() -> void:
 	_try_drop_player_loot()
@@ -184,7 +187,8 @@ func _process_ai_state_machine(delta: float) -> void:
 		
 	var can_socialize := _can_socialize()
 	
-	if can_socialize and distance_to_player <= GREET_DISTANCE:
+	# Only greet if not currently panicking
+	if can_socialize and distance_to_player <= GREET_DISTANCE and current_task != TaskState.PANIC:
 		current_task = TaskState.GREETING
 		var look_dir := (player_node.global_position - global_position).normalized()
 		look_dir.y = 0
@@ -199,24 +203,48 @@ func _process_ai_state_machine(delta: float) -> void:
 		TaskState.IDLE, TaskState.GREETING:
 			velocity.x = move_toward(velocity.x, 0, BASE_SPEED)
 			velocity.z = move_toward(velocity.z, 0, BASE_SPEED)
+			_stuck_timer = 0.0
 			
 		TaskState.EXAMINING:
 			velocity.x = _wander_direction.x * (BASE_SPEED * 0.25)
 			velocity.z = _wander_direction.z * (BASE_SPEED * 0.25)
+			_stuck_timer = 0.0
 			
-		TaskState.WANDERING:
-			velocity.x = _wander_direction.x * BASE_SPEED
-			velocity.z = _wander_direction.z * BASE_SPEED
+		TaskState.WANDERING, TaskState.PANIC:
+			# Panicking makes them run extremely fast
+			var speed_mult := 2.6 if current_task == TaskState.PANIC else 1.0
+			velocity.x = _wander_direction.x * BASE_SPEED * speed_mult
+			velocity.z = _wander_direction.z * BASE_SPEED * speed_mult
 			
-			if is_on_wall() and is_on_floor():
-				velocity.y = JUMP_VELOCITY
+			# INTELLIGENT WALL AVOIDANCE
+			if is_on_wall():
+				if is_on_floor():
+					velocity.y = JUMP_VELOCITY # Try to jump over (1-block steps)
+					
+				_stuck_timer += delta
+				if _stuck_timer > 0.4: # Stuck for half a second? It's a tall wall!
+					_stuck_timer = 0.0
+					var wall_normal := get_wall_normal()
+					var flat_normal := Vector3(wall_normal.x, 0, wall_normal.z).normalized()
+					
+					if flat_normal != Vector3.ZERO:
+						# Physically bounce off the wall angle and add a slight random twist to avoid getting trapped in corners
+						_wander_direction = _wander_direction.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
+					else:
+						# Failsafe turn around
+						var angle := randf() * TAU
+						_wander_direction = Vector3(cos(angle), 0, sin(angle))
+			else:
+				_stuck_timer = 0.0
+				
+		TaskState.WORKING:
+			pass # The subclass (e.g. Farmer) handles its own velocity safely
 
 func _can_socialize() -> bool:
 	return false
 
 func _select_next_random_task() -> void:
 	var roll := randf()
-	
 	if roll < 0.35:
 		current_task = TaskState.WANDERING
 		var angle := randf() * TAU
@@ -231,33 +259,27 @@ func _select_next_random_task() -> void:
 		current_task = TaskState.IDLE
 		_task_timer = randf_range(1.5, 4.0)
 
-## ANIMATION UPGRADE: Advanced Procedural Bouncing and Sway
 func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
-	var is_moving: bool = current_task == TaskState.WANDERING
+	var is_moving: bool = current_task == TaskState.WANDERING or current_task == TaskState.PANIC or current_task == TaskState.WORKING
 	
-	# Face the wandering/examining direction
 	if is_instance_valid(_visual_root) and _wander_direction != Vector3.ZERO:
 		var target_look := global_position + _wander_direction
 		_visual_root.look_at(target_look, Vector3.UP)
 		_visual_root.rotation.x = 0
 		_visual_root.rotation.z = 0
 		
-	# 1. Body Bobbing (Footsteps)
 	if is_instance_valid(_body_bob_node):
 		if is_moving and is_on_floor():
-			var speed_mult := 12.0 if _is_avian() else 10.0
+			var speed_mult := 18.0 if current_task == TaskState.PANIC else (12.0 if _is_avian() else 10.0)
 			var bounce_height := 0.05 if _is_avian() else 0.035
-			# Absolute sine wave creates a bounce on every step
 			_body_bob_node.position.y = abs(sin(_animation_time * speed_mult)) * bounce_height
 		else:
-			# Idle breathing
 			_body_bob_node.position.y = lerp(_body_bob_node.position.y, sin(_animation_time * 2.0) * 0.015, delta * 5.0)
 			
-	# 2. State-Specific Sway (Head and Arms)
 	if current_task == TaskState.GREETING:
 		if is_instance_valid(_head_node):
-			_head_node.rotation.x = sin(_animation_time * 5.0) * 0.15 # Nodding slowly
+			_head_node.rotation.x = sin(_animation_time * 5.0) * 0.15 
 			_head_node.rotation.y = 0.0
 		if is_instance_valid(_arms_node):
 			_arms_node.rotation.x = 0.0
@@ -265,16 +287,14 @@ func _process_procedural_animations(delta: float) -> void:
 			
 	elif current_task == TaskState.EXAMINING:
 		if is_instance_valid(_head_node):
-			# Look down
 			_head_node.rotation.x = lerp(_head_node.rotation.x, deg_to_rad(25), delta * 5.0)
 			_head_node.rotation.y = sin(_animation_time * 2.0) * 0.05
 		if is_instance_valid(_arms_node):
-			# Digging/Hoeing motion
 			_arms_node.rotation.x = sin(_animation_time * 8.0) * 0.15
 			_arms_node.position.y = -0.21 + sin(_animation_time * 8.0) * 0.03
 			
 	elif is_moving:
-		var speed_mult := 8.0 if _is_avian() else 5.0
+		var speed_mult := 12.0 if current_task == TaskState.PANIC else (8.0 if _is_avian() else 5.0)
 		var sway_amount := 0.2 if _is_avian() else 0.08
 		
 		if is_instance_valid(_head_node):
@@ -282,11 +302,10 @@ func _process_procedural_animations(delta: float) -> void:
 			_head_node.rotation.y = cos(_animation_time * (speed_mult * 0.5)) * 0.05
 			
 		if is_instance_valid(_arms_node):
-			# Arm swing opposite to footstep
 			_arms_node.rotation.x = cos(_animation_time * speed_mult) * 0.1
 			_arms_node.position.y = -0.21 + sin(_animation_time * 10.0) * 0.02
 			
-	else: # IDLE
+	else: 
 		if is_instance_valid(_head_node):
 			_head_node.rotation.x = lerp(_head_node.rotation.x, 0.0, delta * 5.0)
 			_head_node.rotation.y = lerp(_head_node.rotation.y, 0.0, delta * 5.0)
