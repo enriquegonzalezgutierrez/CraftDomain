@@ -4,8 +4,8 @@
 #              handling dynamic, decoupled dependency injection.
 #              SOLID COMPLIANCE: Adheres to SRP and OCP.
 #              i18n UPGRADE: Seeds programmatically created English and Spanish 
-#              translation tables into the TranslationServer at application startup,
-#              fully resolving the raw-keys display issue!
+#              translation tables into the TranslationServer at application startup.
+#              POI UPGRADE: Registered Minecraft-themed dynamic Mega-Structures.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -82,6 +82,12 @@ func _setup_structures() -> void:
 	print("[Bootstrap] Registering fixed POI Mega-Structures...")
 	MegaStructureService.register_structure(GrandCastleMegaStructure.new())
 	MegaStructureService.register_structure(HarborCityMegaStructure.new())
+	
+	# --- POI UPGRADE: MINECRAFT-THEMED FIXED SITES ---
+	# Coordinates: X=-300, Z=-300
+	MegaStructureService.register_structure(NetherPortalMegaStructure.new())
+	# Coordinates: X=300, Z=-300
+	MegaStructureService.register_structure(StevesCabinMegaStructure.new())
 
 ## Registers the dynamic entity factories (OCP Compliant)
 func _setup_mobs() -> void:

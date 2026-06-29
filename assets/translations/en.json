@@ -61,6 +61,9 @@
   "BIOME_NEON_RUINS": "Neon Ruins (Cyber Basin)",
   "BIOME_SWAMP_OF_SIGHS": "Swamp of Sighs (Mist Bay)",
   "BIOME_CLOUD_KINGDOM": "Cloud Kingdom (Floating Isles)",
+  
+  "BIOME_NETHER_OUTPOST": "Nether Outpost",
+  "BIOME_STEVES_CABIN": "Steve's Cabin",
 
   "HUD_ACTIVE_MISSION": "➔ ACTIVE MISSION",
   "HUD_PAUSE_TITLE": "GAME PAUSED",
