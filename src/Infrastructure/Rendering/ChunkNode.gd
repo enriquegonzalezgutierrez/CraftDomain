@@ -5,8 +5,8 @@
 #              support customized material shading (PBR, Water, Lava, and Wind-Sway).
 #              SOLID COMPLIANCE: Adheres to OCP and SRP by isolating material 
 #              and rendering logic from raw physical chunk data.
-#              UPDATED: Added native support for Sakura Tree leaves (NEON_MAGENTA)
-#              using the specialized foliage wind shader and custom texture.
+#              UPDATED: Optimized Water material with higher opacity and rich 
+#              tropical albedo to prevent high transparency on seamless rendering.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -19,7 +19,7 @@ var chunk: Chunk
 ## Collision body reference
 var _collision_body: StaticBody3D
 
-## Active registered MultiMeshInstance3D children: BlockType.Type -> MultiMeshInstance3D
+## Active registered MultiMeshInstance3D and MeshInstance3D children: BlockType.Type -> Node
 var _multimeshes: Dictionary = {}
 
 ## Static cache of materials and textures to save GPU memory across all chunks
@@ -43,7 +43,7 @@ const TEXTURE_MAP = {
 	BlockType.Type.LEAVES: "leaves.png",
 	BlockType.Type.SAND: "sand.png",
 	BlockType.Type.RED_SAND: "red_sand.png",
-	BlockType.Type.NEON_MAGENTA: "sakura_leaves.png" # Sakura leaves texture mapping
+	BlockType.Type.NEON_MAGENTA: "sakura_leaves.png"
 }
 
 func _init(p_chunk: Chunk) -> void:
@@ -52,8 +52,6 @@ func _init(p_chunk: Chunk) -> void:
 	
 	# Set position in the world space
 	position = Vector3(chunk.position * Chunk.SIZE)
-	
-	# Pre-load textures instantly on the first chunk initialization to avoid mid-game lags
 	_preload_all_textures()
 
 ## Static Preloader with Smart Diagnostic Logging
@@ -86,7 +84,6 @@ static func _preload_all_textures() -> void:
 				
 				if is_normal_map:
 					print("     [WARNING] '", TEXTURE_MAP[block_type], "' is imported as a NormalMap instead of a Texture2D!")
-					print("     [WARNING] To fix this: Select '", TEXTURE_MAP[block_type], "' in your FileSystem dock, go to the Import tab, change 'Import As' to 'Texture2D', and click Reimport.")
 			else:
 				print("  -> [ERROR] File exists but is not a valid Texture2D: ", file_path)
 		else:
@@ -94,7 +91,6 @@ static func _preload_all_textures() -> void:
 			
 	print("[ChunkNode] ========================================================\n")
 
-## Helper to translate Godot's raw image formats into friendly human-readable strings
 static func _get_friendly_format_name(format: Image.Format) -> String:
 	match format:
 		Image.FORMAT_L8: return "L8 (Grayscale)"
@@ -168,10 +164,7 @@ static func _get_leaves_wind_shader() -> Shader:
 			VERTEX.xyz += NORMAL * round_wave;
 			
 			// 2. WIND SWAY
-			float wind_x = sin(TIME * 2.2 + VERTEX.x * 3.0 + VERTEX.y * 2.0) * 0.04;
-			float wind_z = cos(TIME * 1.8 + VERTEX.z * 2.5 + VERTEX.y * 3.0) * 0.03;
-			VERTEX.x += wind_x;
-			VERTEX.z += wind_z;
+			VERTEX.x += sin(TIME * 1.5 + VERTEX.y) * 0.08;
 		}
 		
 		void fragment() {
@@ -181,7 +174,6 @@ static func _get_leaves_wind_shader() -> Shader:
 			
 			vec4 tex_color = col_x * power_normal.x + col_y * power_normal.y + col_z * power_normal.z;
 			
-			// Alpha Scissor transparent cutout for leaves
 			if (tex_color.a < 0.4) {
 				discard;
 			}
@@ -193,14 +185,15 @@ static func _get_leaves_wind_shader() -> Shader:
 	return _leaves_wind_shader
 
 ## Configures the segmented MultiMeshes and registers the physics body.
-func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D) -> void:
-	# 1. Clear old visual MultiMeshes if they exist
-	for mesh_instance in _multimeshes.values():
-		if is_instance_valid(mesh_instance):
-			mesh_instance.queue_free()
+## HYBRID UPDATE: Accepts custom ArrayMeshes representing seamless, unified liquids.
+func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D, p_liquid_meshes: Dictionary = {}) -> void:
+	# 1. Clear old visual nodes if they exist
+	for node in _multimeshes.values():
+		if is_instance_valid(node):
+			node.queue_free()
 	_multimeshes.clear()
 	
-	# 2. Re-create a visual MultiMeshInstance3D for each BlockType present in the chunk
+	# 2. Re-create a visual MultiMeshInstance3D for terrain blocks
 	for block_type in p_multimesh_data.keys():
 		var transforms: Array = p_multimesh_data[block_type]
 		if transforms.size() == 0:
@@ -212,10 +205,9 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = false 
-		mm.mesh = BoxMesh.new() # Native 1x1x1 Cube
+		mm.mesh = BoxMesh.new() 
 		mm.instance_count = transforms.size()
 		
-		# Pack transforms into the float buffer
 		var bulk_array := PackedFloat32Array()
 		bulk_array.resize(transforms.size() * 12)
 		
@@ -237,14 +229,26 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 			
 		mm.buffer = bulk_array
 		mm_instance.multimesh = mm
-		
-		# Apply specialized material
 		mm_instance.material_override = _get_material_for_block(block_type)
 		
 		add_child(mm_instance)
 		_multimeshes[block_type] = mm_instance
 
-	# 3. Register physical Concave Collision body (Main-Thread Sync)
+	# 3. HYBRID ADDITION: Create continuous MeshInstance3D nodes for liquids!
+	for block_type in p_liquid_meshes.keys():
+		var mesh: ArrayMesh = p_liquid_meshes[block_type]
+		if mesh == null:
+			continue
+			
+		var mi := MeshInstance3D.new()
+		mi.name = "Liquid_" + BlockType.Type.keys()[block_type]
+		mi.mesh = mesh
+		mi.material_override = _get_material_for_block(block_type)
+		
+		add_child(mi)
+		_multimeshes[block_type] = mi # Safe registration for unified unloads!
+
+	# 4. Register physical Concave Collision body (Main-Thread Sync)
 	if is_instance_valid(_collision_body):
 		if _collision_body.get_parent() == self:
 			remove_child(_collision_body)
@@ -266,9 +270,10 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 	if block_type == BlockType.Type.WATER:
 		var mat := ORMMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.albedo_color = Color(0.12, 0.45, 0.85, 0.65) 
-		mat.roughness = 0.05 
-		mat.metallic = 0.1
+		# UX UPGRADE: Enriched tropical turquoise-blue with high opacity (0.84)
+		mat.albedo_color = Color(0.05, 0.35, 0.82, 0.84) 
+		mat.roughness = 0.08 
+		mat.metallic = 0.15
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		_materials_cache[block_type] = mat
 		return mat
@@ -302,8 +307,7 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 			var tex: Texture2D = _loaded_textures[block_type]
 			has_custom_texture = true
 			
-			# SPECIAL FOLIAGE SHADER: Applies vertex waving, rounds block corners, and supports wind-sway
-			# Applied to both Oak leaves (LEAVES) and Sakura leaves (NEON_MAGENTA)
+			# SPECIAL FOLIAGE SHADER
 			if block_type == BlockType.Type.LEAVES or block_type == BlockType.Type.NEON_MAGENTA:
 				var mat := ShaderMaterial.new()
 				mat.shader = _get_leaves_wind_shader()
@@ -313,8 +317,7 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 				_materials_cache[block_type] = mat
 				return mat
 			
-			# SOLID BLOCKS (Stone, Dirt, Wood, Sand, Red Sand)
-			# Apply custom GPU Blending Shader to safely replace alpha black holes with base colors
+			# SOLID BLOCKS
 			else:
 				var mat := ShaderMaterial.new()
 				mat.shader = _get_triplanar_shader()

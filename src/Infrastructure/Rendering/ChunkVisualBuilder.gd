@@ -4,8 +4,9 @@
 #              domain chunks and compiling their physical and visual transformation
 #              data for rendering.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by offloading 3D matrix math and MultiMesh packaging
-#              away from the WorldController.
+#              Principle (SRP) by offloading 3D matrix math and MultiMesh packaging.
+#              HYBRID UPGRADE: Excludes Water and Lava from MultiMesh generation 
+#              to render them as beautiful, seamless custom procedural meshes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkVisualBuilder.gd
 # ==============================================================================
@@ -13,8 +14,6 @@ class_name ChunkVisualBuilder
 extends RefCounted
 
 ## Extracts block data from a chunk and packages it into Transform3D arrays 
-## for MultiMesh rendering and StaticBody3D collision generation.
-## Returns a Dictionary containing "multimesh" and "collision" keys.
 static func extract_render_data(chunk: Chunk) -> Dictionary:
 	var render_data: Dictionary = {}
 	var collision_transforms: Array[Transform3D] = []
@@ -25,6 +24,11 @@ static func extract_render_data(chunk: Chunk) -> Dictionary:
 				var block_type: BlockType.Type = chunk.get_block(x, y, z)
 				
 				if block_type == BlockType.Type.AIR:
+					continue
+					
+				# HYBRID EXCLUSION: Do not generate MultiMesh boxes for Water or Lava
+				# They are dynamically compiled into seamless meshes instead!
+				if block_type == BlockType.Type.WATER or block_type == BlockType.Type.LAVA:
 					continue
 					
 				# Calculate the local origin offset for the 1x1x1 cube

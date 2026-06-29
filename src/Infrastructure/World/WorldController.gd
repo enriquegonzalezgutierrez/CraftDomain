@@ -2,12 +2,13 @@
 # Project: CraftDomain
 # Description: Infrastructure coordinator orchestrating world state, procedural
 #              generation, dynamic loading, and saving/loading block modifications.
-#              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
-#              by delegating voxel MultiMesh rendering math to `ChunkVisualBuilder`,
-#              inventory serialization directly to the `InventoryComponent`, and 
-#              agricultural random growth loops directly to the `AgricultureService`.
-#              CAMPAIGN UPGRADE: Extracts and saves `active_quest_id` to disk to 
-#              ensure persistence across game reboots.
+#              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP).
+#              HYBRID UPGRADE: Compiles seamless liquid procedural meshes in the 
+#              background thread and dispatches them to render.
+#              SEAMLESS SEWING UPGRADE: Automatically triggers dynamic boundary 
+#              rebuilds on neighboring chunks to guarantee 100% seamless fluid 
+#              connections across chunk borders (curing chunk lines).
+#              STRICT MODE FIX: Declared strong typing on vector additions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -65,6 +66,7 @@ class GeneratedChunkTask:
 	var chunk: Chunk
 	var multimesh_data: Dictionary = {} # BlockType.Type -> Array[Transform3D]
 	var collision_transforms: Array[Transform3D] = []
+	var liquid_meshes: Dictionary = {} # BlockType.Type -> ArrayMesh 
 
 func _ready() -> void:
 	assert(repository != null, "[WorldController] Fatal: WorldRepository must be injected before _ready()!")
@@ -196,11 +198,19 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	# SRP FIX: Delegate visual and collision evaluation to the builder
 	var visual_data := ChunkVisualBuilder.extract_render_data(chunk)
 	
+	# HYBRID ADDITION: Compile seamless procedural liquid meshes on background thread!
+	var liquids: Dictionary = {}
+	for l_type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
+		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type)
+		if l_mesh != null:
+			liquids[l_type] = l_mesh
+	
 	# Queue the task result
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
 	task_result.collision_transforms = visual_data["collision"] as Array[Transform3D]
+	task_result.liquid_meshes = liquids
 	
 	_queue_mutex.lock()
 	_chunk_task_cache[chunk_pos] = task_result
@@ -243,7 +253,14 @@ func _render_completed_chunks_from_queue() -> void:
 				collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
 				collision_body.shape_owner_set_transform(owner_id, t)
 			
-			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body)
+			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
+			
+			# DYNAMIC SEAM SEWING: Rebuild the 4 horizontal neighbor Chunks (Explicit typed list)
+			var horizontal_dirs: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+			for dir in horizontal_dirs:
+				var neighbor_pos: Vector3i = chunk_pos + dir
+				if _chunk_nodes.has(neighbor_pos):
+					rebuild_chunk_visuals(neighbor_pos)
 			
 			# Spawning Community check
 			if is_instance_valid(_mob_spawning_service):
@@ -359,46 +376,39 @@ func _restore_player_inventory() -> void:
 			inventory.deserialize_data(_loaded_inventory_data)
 			player.call("_sync_hud_counters")
 
-## Places/Deletes a block globally and forces a visual refresh.
+## Recompiles the MultiMesh and Procedural Liquid meshes for a specific Chunk in real-time
+func rebuild_chunk_visuals(chunk_pos: Vector3i) -> void:
+	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
+	if is_instance_valid(chunk_node) and chunk_node.chunk != null:
+		var visual_data := ChunkVisualBuilder.extract_render_data(chunk_node.chunk)
+		var render_data := visual_data["multimesh"] as Dictionary
+		var collision_transforms := visual_data["collision"] as Array[Transform3D]
+		
+		# Compile continuous dynamic liquid meshes
+		var liquids: Dictionary = {}
+		for l_type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
+			var l_mesh := ChunkMesher.generate_liquid_mesh(chunk_node.chunk, world_state, l_type)
+			if l_mesh != null:
+				liquids[l_type] = l_mesh
+				
+		var collision_body := StaticBody3D.new()
+		collision_body.name = "StaticCollisionBody"
+		var shared_box_shape := BoxShape3D.new()
+		for t in collision_transforms:
+			var owner_id := collision_body.create_shape_owner(collision_body)
+			collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
+			collision_body.shape_owner_set_transform(owner_id, t)
+			
+		chunk_node.setup_chunk_visuals(render_data, collision_body, liquids)
+
+## Places/Deletes a block globally and forces a visual refresh of the chunk and its horizontal neighbors.
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	world_state.set_block(global_pos, type)
-	
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
-	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 	
-	if not is_instance_valid(chunk_node):
-		var chunk := world_state.get_chunk(chunk_pos)
-		if chunk == null:
-			chunk = Chunk.new(chunk_pos)
-			generator.generate_chunk(chunk)
-			
-			var saved_edits := repository.load_chunk_modifications(chunk_pos)
-			if saved_edits.size() > 0:
-				for local_pos in saved_edits.keys():
-					chunk.set_block(local_pos.x, local_pos.y, local_pos.z, saved_edits[local_pos])
-					
-			world_state.add_chunk(chunk)
-			
-		chunk_node = ChunkNode.new(chunk)
-		add_child(chunk_node)
-		_chunk_nodes[chunk_pos] = chunk_node
+	# Rebuild the central chunk and its 4 neighbors to update borders dynamically on dynamic placements!
+	rebuild_chunk_visuals(chunk_pos)
 	
-	# SRP FIX: Delegate visual rebuild extraction to the builder
-	var visual_data := ChunkVisualBuilder.extract_render_data(chunk_node.chunk)
-	var render_data := visual_data["multimesh"] as Dictionary
-	var collision_transforms := visual_data["collision"] as Array[Transform3D]
-		
-	var collision_body := StaticBody3D.new()
-	collision_body.name = "StaticCollisionBody"
-	var shared_box_shape := BoxShape3D.new()
-	for t in collision_transforms:
-		var owner_id := collision_body.create_shape_owner(collision_body)
-		collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
-		collision_body.shape_owner_set_transform(owner_id, t)
-		
-	chunk_node.setup_chunk_visuals(render_data, collision_body)
-	
-	if _chunk_task_cache.has(chunk_pos):
-		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos]
-		cached_task.multimesh_data = render_data
-		cached_task.collision_transforms = collision_transforms
+	var horizontal_dirs: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+	for dir in horizontal_dirs:
+		rebuild_chunk_visuals(chunk_pos + dir)
