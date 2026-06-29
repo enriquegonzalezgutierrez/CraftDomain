@@ -3,13 +3,8 @@
 # Description: Infrastructure UI controller acting as a lightweight Orchestrator.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by delegating visual operations to widgets.
-#              UX HIGH-FIDELITY REDESIGN (UNIFIED HUD DOCK):
-#              - Unified, center-bottom docked modular hotbar (8.5% screen height).
-#              - Seamless, direct sequential integration of backpack (🎒) and workshop (🛠️).
-#              - Millimeter-aligned hearts (HP) and food (Drumsticks) bars.
-#              - Elegant 3D-shaded block icon representation.
-#              MEMORY SECURITY FIX: Replaced unstable C++ inline lambdas with robust native 
-#              `Callable.bind()` and fixed method connections to prevent memory crashes.
+#              PERFORMANCE UPGRADE: Added a dynamic, color-coded FPS counter 
+#              to easily monitor engine performance and identify frame drops.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -30,9 +25,12 @@ var _item_name_toast: Label
 var _toast_tween: Tween
 var hotbar_slots: Array[Panel] = []
 
-# Dynamic Status Bars (Minecraft-style!)
+# Dynamic Status Bars
 var _hearts_container: HBoxContainer
 var _food_container: HBoxContainer
+
+# Performance HUD
+var _fps_label: Label
 
 # UX Overlays, Workshops & Backpacks
 var damage_overlay: ColorRect
@@ -61,11 +59,12 @@ func _ready() -> void:
 	
 	_setup_damage_overlay()
 	_setup_crosshair()
+	_setup_fps_counter()          # FPS Counter Added
 	_setup_minimap()             
 	_setup_navigation_gps_panel() 
 	_setup_quest_tracker_panel()  
 	
-	_setup_unified_hotbar_dock() # Replaces old scattered buttons and bars
+	_setup_unified_hotbar_dock() 
 	_setup_item_name_toast()
 	_setup_pause_menu()
 	
@@ -84,6 +83,22 @@ func _ready() -> void:
 		
 	# Trigger the first selection visually
 	update_active_slot(0)
+
+func _setup_fps_counter() -> void:
+	_fps_label = Label.new()
+	_fps_label.name = "FPSCounter"
+	_fps_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_fps_label.offset_left = 15
+	_fps_label.offset_top = 15
+	
+	var ls := LabelSettings.new()
+	ls.font_size = 18
+	ls.font_color = Color(0.2, 1.0, 0.2) # Empezamos en verde
+	ls.outline_size = 4
+	ls.outline_color = Color.BLACK
+	_fps_label.label_settings = ls
+	
+	add_child(_fps_label)
 
 func _setup_damage_overlay() -> void:
 	damage_overlay = ColorRect.new()
@@ -148,8 +163,8 @@ func _setup_quest_tracker_panel() -> void:
 	quest_panel.player = player
 	
 	quest_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	quest_panel.offset_left = 20
-	quest_panel.offset_top = 80
+	quest_panel.offset_left = 15
+	quest_panel.offset_top = 50 # Bajado un poco para hacerle espacio al FPS Counter
 	
 	add_child(quest_panel)
 
@@ -408,7 +423,7 @@ func _setup_pause_menu() -> void:
 	quit_btn.pressed.connect(_on_quit_pressed)
 	box.add_child(quit_btn)
 	
-	# STRICT MODE & CLEAN SRP: Stylize pause buttons directly inside scope (No more dynamic p_visible helper)
+	# STRICT MODE & CLEAN SRP: Stylize pause buttons directly inside scope
 	var btn_size := Vector2(250, 48)
 	var sn := StyleBoxFlat.new()
 	sn.bg_color = Color(0.12, 0.12, 0.15, 0.6)
@@ -456,11 +471,9 @@ func _setup_hud_shortcut_button_style(btn: Button) -> void:
 	
 	btn.pivot_offset = Vector2(25, 27) 
 	
-	# MEMORY SECURITY FIX: Connect utilizing safe C++ native Callable.bind() to eliminate lambda leaks
 	btn.mouse_entered.connect(_on_shortcut_hover.bind(btn, true))
 	btn.mouse_exited.connect(_on_shortcut_hover.bind(btn, false))
 
-## Private helper supporting memory-safe hover scaling tweens on HUD shortcuts
 func _on_shortcut_hover(btn: Button, hover: bool) -> void:
 	if is_instance_valid(btn):
 		var target_scale := Vector2(1.08, 1.08) if hover else Vector2(1.0, 1.0)
@@ -474,6 +487,19 @@ func _process(_delta: float) -> void:
 		gps_panel.update_widget()
 	if is_instance_valid(quest_panel):
 		quest_panel.update_widget()
+		
+	# Actualización del Contador de FPS Dinámico
+	if is_instance_valid(_fps_label):
+		var fps := Engine.get_frames_per_second()
+		_fps_label.text = "FPS: " + str(fps)
+		
+		# Feedback Visual por color basado en el rendimiento
+		if fps >= 55:
+			_fps_label.label_settings.font_color = Color(0.2, 1.0, 0.2) # Verde (Excelente)
+		elif fps >= 30:
+			_fps_label.label_settings.font_color = Color(1.0, 0.85, 0.2) # Amarillo (Caída Moderada)
+		else:
+			_fps_label.label_settings.font_color = Color(1.0, 0.2, 0.2) # Rojo (Lag/Problema)
 
 func open_dialogue(node: Resource, speaker_name: String) -> void:
 	if is_instance_valid(dialogue_manager):
@@ -688,14 +714,12 @@ func _show_toast_notification() -> void:
 	_toast_tween.tween_interval(1.8) 
 	_toast_tween.tween_property(_item_name_toast, "modulate:a", 0.0, 0.4).set_trans(Tween.TRANS_SINE)
 
-## HIGH-FIDELITY UPDATE: Dynamic 3D Voxel Shaded Block Icons inside HUD slots
 func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 	if slot_index >= 0 and slot_index < hotbar_slots.size():
 		var slot: Panel = hotbar_slots[slot_index]
 		var icon := slot.get_node_or_null("ItemIcon") as ColorRect
 		var label := slot.get_node_or_null("MarginContainer/QtyLabel") as Label
 		
-		# 1. Update visual icon colors and apply an internal 3D voxel shadow relief!
 		if is_instance_valid(icon):
 			for child in icon.get_children():
 				child.queue_free()
@@ -703,7 +727,6 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 			icon.color = BLOCK_COLORS.get(item_id, Color(0, 0, 0, 0))
 			icon.visible = (item_id != -1) 
 			
-			# If it is a solid block, draw a dark inner relief border representing a voxel edge
 			if item_id >= 1 and item_id <= 15:
 				var shadow := ColorRect.new()
 				shadow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -713,7 +736,6 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 				shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 				icon.add_child(shadow)
 				
-		# 2. Update numeric stack count dynamically
 		if is_instance_valid(label):
 			if item_id == -1 or quantity == 0:
 				label.text = ""
@@ -722,7 +744,6 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 			else:
 				label.text = str(quantity)
 
-## HIGH-FIDELITY UPDATE: True Minecraft Hearts & Food/Drumsticks dynamic rendering (Font 20!)
 func update_health_display(current_hp: int) -> void:
 	if not is_instance_valid(_hearts_container) or not is_instance_valid(_food_container):
 		return
@@ -730,11 +751,10 @@ func update_health_display(current_hp: int) -> void:
 	for child in _hearts_container.get_children(): child.queue_free()
 	for child in _food_container.get_children(): child.queue_free()
 	
-	# 2. Redraw Hearts based on current health (max 3 HP - Font 20!)
 	for i in range(3):
 		var heart := Label.new()
 		var hs := LabelSettings.new()
-		hs.font_size = 20 # Increased visibility
+		hs.font_size = 20 
 		hs.outline_size = 4
 		hs.outline_color = Color.BLACK
 		
@@ -748,7 +768,6 @@ func update_health_display(current_hp: int) -> void:
 		heart.label_settings = hs
 		_hearts_container.add_child(heart)
 		
-	# 3. Redraw Food Drumsticks based on active Fried Chicken quantity in Backpack!
 	var drumsticks_count := 0
 	if is_instance_valid(player):
 		var inventory = player.get("inventory") as InventoryComponent
@@ -761,7 +780,7 @@ func update_health_display(current_hp: int) -> void:
 		var drumstick := Label.new()
 		drumstick.text = "🍗"
 		var ds := LabelSettings.new()
-		ds.font_size = 20 # Match hearts font size
+		ds.font_size = 20 
 		ds.outline_size = 4
 		ds.outline_color = Color.BLACK
 		
@@ -773,7 +792,6 @@ func update_health_display(current_hp: int) -> void:
 		drumstick.label_settings = ds
 		_food_container.add_child(drumstick)
 
-## FASE 1: Public API returning if any interactive glassmorphic menu is currently open on screen
 func is_any_menu_open() -> bool:
 	return (
 		_pause_overlay.visible or
