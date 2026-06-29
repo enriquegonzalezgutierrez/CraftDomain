@@ -3,9 +3,8 @@
 # Description: Infrastructure physics controller node representing a hostile zombie.
 #              Acts as an Infrastructure Wrapper that uses Composition to hold
 #              a pure Domain VoxelEntity, reacting to Domain Events (Signals).
-#              UPDATED: Added a Quest completion trigger. If defeated under the
-#              "Plains Defender" quest, completes it, grants 3x extra Lava Buckets,
-#              and synchronizes the HUD to show victory.
+#              MEMORY SECURITY FIX: Replaced timer and tween lambdas with safe 
+#              native callbacks to prevent crash on game exit.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -113,12 +112,13 @@ func _flash_red() -> void:
 		mat.emission_enabled = true
 		mat.emission = Color(0.8, 0.0, 0.0) # Red glow
 		
-	# Create a quick 0.15-second timer to restore original colors
-	get_tree().create_timer(0.15).timeout.connect(func() -> void:
-		for mat in _visual_materials:
-			if is_instance_valid(mat):
-				mat.emission_enabled = false
-	)
+	# MEMORY FIX: Connect to safe native method
+	get_tree().create_timer(0.15).timeout.connect(_reset_damage_flash)
+
+func _reset_damage_flash() -> void:
+	for mat in _visual_materials:
+		if is_instance_valid(mat):
+			mat.emission_enabled = false
 
 ## Infrastructure Event Handler: Reacts to the Domain Event
 func _on_domain_entity_died() -> void:
@@ -148,9 +148,8 @@ func _on_domain_entity_died() -> void:
 		death_tween.tween_property(visuals_node, "rotation:z", deg_to_rad(-90), 0.2)
 		death_tween.tween_property(visuals_node, "position:y", -0.4, 0.2)
 		
-	death_tween.chain().tween_callback(func() -> void:
-		queue_free()
-	)
+	# MEMORY FIX: Direct native method pointer
+	death_tween.chain().tween_callback(queue_free)
 
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:

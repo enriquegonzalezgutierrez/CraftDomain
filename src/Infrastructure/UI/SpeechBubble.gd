@@ -4,6 +4,8 @@
 #              3D Billboard Speech Bubble floating above NPC heads.
 #              Uses an isolated SubViewport and a Sprite3D to render crisp 2D 
 #              Label elements cleanly in 3D space.
+#              MEMORY SECURITY FIX: Replaced infinite process_frame lambda with 
+#              a native CONNECT_ONE_SHOT method callback to prevent memory leaks on exit.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/SpeechBubble.gd
 # ==============================================================================
@@ -69,11 +71,12 @@ func _setup_speech_bubble() -> void:
 	_sprite.position = Vector3(0, 1.9, 0)
 	add_child(_sprite)
 	
-	# Bind texture dynamically (Wait 1 frame to ensure viewport buffer is ready)
-	get_tree().process_frame.connect(func() -> void:
-		if is_instance_valid(_sprite) and is_instance_valid(_viewport):
-			_sprite.texture = _viewport.get_texture()
-	)
+	# MEMORY FIX: Bind texture dynamically using a safe, one-shot native method
+	get_tree().process_frame.connect(_apply_texture, CONNECT_ONE_SHOT)
+
+func _apply_texture() -> void:
+	if is_instance_valid(_sprite) and is_instance_valid(_viewport):
+		_sprite.texture = _viewport.get_texture()
 
 ## Public API: Allows dynamic updating of floating dialogue or alerts from outside
 func set_text(new_text: String) -> void:

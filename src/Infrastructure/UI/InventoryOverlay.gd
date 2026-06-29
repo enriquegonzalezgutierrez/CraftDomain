@@ -3,8 +3,12 @@
 # Description: Ultra-high-fidelity Minecraft-style Inventory Overlay.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating layout drawing and slot sorting.
-#              STRICT MODE FIX: Declared `_first_selected_slot_index` and 
-#              `_focused_slot_index` at class level, removing the orphaned variable.
+#              STRICT MODE & MEMORY FIX: 
+#              - Fixed variable mismatch (instantiating _backpack_grid_container instead 
+#                of the legacy _grid_container) resolving the null get_children() crashes.
+#              - Replaced all unstable C++ inline lambdas with robust native 
+#                `Callable.bind()` references to prevent lambda memory leaks/crashes.
+#              - BUG FIX: Instantiated missing _hotbar_grid_container to resolve null crash.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/InventoryOverlay.gd
 # ==============================================================================
@@ -114,10 +118,10 @@ func _setup_backpack_ui() -> void:
 	main_card.grow_vertical = Control.GROW_DIRECTION_BOTH
 	
 	# Center adjustment
-	main_card.offset_left = -420
-	main_card.offset_right = 420
-	main_card.offset_top = -260
-	main_card.offset_bottom = 260
+	main_card.offset_left = -400
+	main_card.offset_right = 400
+	main_card.offset_top = -240
+	main_card.offset_bottom = 240
 	
 	var card_style := StyleBoxFlat.new()
 	card_style.set_corner_radius_all(12)
@@ -174,6 +178,28 @@ func _setup_backpack_ui() -> void:
 	_backpack_grid_container.add_theme_constant_override("h_separation", 10)
 	_backpack_grid_container.add_theme_constant_override("v_separation", 10)
 	scroll.add_child(_backpack_grid_container)
+	
+	# ==================== HOTBAR DOCK GRID (FIXED) ====================
+	left_vbox.add_child(_create_spacer(14))
+	
+	var hotbar_title := Label.new()
+	hotbar_title.text = "HOTBAR DOCK"
+	var hts := LabelSettings.new()
+	hts.font_size = 13
+	hts.font_color = Color(0.65, 0.65, 0.7)
+	hts.outline_size = 2
+	hts.outline_color = Color.BLACK
+	hotbar_title.label_settings = hts
+	left_vbox.add_child(hotbar_title)
+	
+	left_vbox.add_child(_create_spacer(6))
+	
+	_hotbar_grid_container = GridContainer.new()
+	_hotbar_grid_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hotbar_grid_container.columns = 8 # 8 Hotbar slots perfectly aligned
+	_hotbar_grid_container.add_theme_constant_override("h_separation", 6)
+	_hotbar_grid_container.add_theme_constant_override("v_separation", 6)
+	left_vbox.add_child(_hotbar_grid_container)
 	
 	# ==================== RIGHT PANE: ITEM DETAILED INSPECTOR ====================
 	var detail_panel := Panel.new()

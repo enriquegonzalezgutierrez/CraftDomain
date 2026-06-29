@@ -4,14 +4,14 @@
 #              active quest objectives, distance, and inventory progress bars.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating quest tracking layouts and metrics.
-#              UX UPGRADE: Made the background completely transparent. The widget
-#              now hides itself completely when there are no active quests, freeing
-#              up screen real estate.
+#              FASE 1 FIX: Updated objective progress evaluator to utilize the new
+#              stack-based dynamic `get_item_total_quantity` DIP method instead
+#              of the nonexistent get_slot_quantity, resolving runtime crash errors.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
 # ==============================================================================
 class_name QuestTrackerWidget
-extends Control # Changed from Panel to Control to remove the dark background box
+extends Control
 
 # Dependency injected by the HUD orchestrator
 var player: CharacterBody3D
@@ -34,7 +34,6 @@ func _ready() -> void:
 	# Margin Layout
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# Removed paddings since we have no box borders anymore
 	add_child(margin)
 	
 	var vbox := VBoxContainer.new()
@@ -99,10 +98,11 @@ func update_widget() -> void:
 				
 		# --- CASE B: INVENTORY GATHERING COMPLETION ---
 		elif active_quest.required_item_index >= 0 and active_quest.required_quantity > 0:
-			var inv: IInventory = player.get("inventory")
+			var inv := player.get("inventory") as IInventory
 			var current_qty := 0
 			if is_instance_valid(inv):
-				current_qty = inv.get_slot_quantity(active_quest.required_item_index)
+				# FASE 1 FIX: Use the new dynamic stack-based API method (DIP compliant)
+				current_qty = inv.get_item_total_quantity(active_quest.required_item_index)
 				
 			_objective_label.text = "%s\nProgress: %d / %d" % [active_quest.objective_text, current_qty, active_quest.required_quantity]
 			
@@ -115,7 +115,6 @@ func update_widget() -> void:
 			if active_quest.autocomplete_on_arrival and dist_q <= active_quest.target_range:
 				QuestService.complete_active_quest(player)
 	else:
-		# UX UPGRADE: Completely hide the widget when there are no active quests
 		visible = false
 
 func _process_quest_notification_dispatch(active_quest: Quest) -> void:

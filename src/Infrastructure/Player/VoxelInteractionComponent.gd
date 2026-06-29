@@ -5,10 +5,8 @@
 #              consumable eating, and dynamic agricultural planting/harvesting.
 #              SOLID COMPLIANCE: Strictly satisfies the Single Responsibility 
 #              Principle (SRP) by isolating block interactions from physics controllers.
-#              FASE A UPGRADE:
-#              - Implements contextual seed planting (Right-Clicking top of soil).
-#              - Implements ripe crop harvesting with 100% dynamic wheat and seed drops.
-#              - Implements early uproot seed refund.
+#              MEMORY SECURITY FIX: Bound particles directly to the timer using
+#              a native method to eliminate lambda memory leaks on game exit.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -191,10 +189,12 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 		
 	particles.emitting = true
 	
-	get_tree().create_timer(0.6).timeout.connect(func() -> void:
-		if is_instance_valid(particles):
-			particles.queue_free()
-	)
+	# MEMORY FIX: Bind particles reference cleanly
+	get_tree().create_timer(0.6).timeout.connect(_cleanup_particles.bind(particles))
+
+func _cleanup_particles(particles_node: GPUParticles3D) -> void:
+	if is_instance_valid(particles_node):
+		particles_node.queue_free()
 
 ## Executes block construction, item consumption, or NPC interactions
 func _build_or_interact() -> void:
