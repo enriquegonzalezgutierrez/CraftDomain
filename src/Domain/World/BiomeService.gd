@@ -3,10 +3,8 @@
 # Description: Domain Service acting as a Registry and Router for voxel biomes.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating biome calculations.
-#              UPDATED: Implemented a Deterministic Starter Village Overwrite. 
-#              Only spawns the Village Cabin Landmark at the local center coordinate (8, 8)
-#              of chunk [19, 0] to prevent spawning 256 overlapping cabins, which
-#              glitched the chunk and suffocated the NPCs.
+#              TERRAIN UPGRADE: Removed artificial forced villages to allow 
+#              unrivaled, beautiful natural procedural generation.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BiomeService.gd
 # ==============================================================================
@@ -45,31 +43,6 @@ static func get_biome(biome_id: int) -> IBiome:
 ## Evaluates any global coordinate and returns its mapped biome profile.
 static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: FastNoiseLite) -> BiomeProfile:
 	var profile := BiomeProfile.new()
-	
-	# Translate global coordinates to chunk grid coordinates
-	var chunk_x := int(floor(float(global_x) / 16.0))
-	var chunk_z := int(floor(float(global_z) / 16.0))
-	
-	# --- DETERMINISTIC STARTER VILLAGE FORCING (RTX / SOLID Voxel Fix) ---
-	# Forces chunk coordinates [19, 0] (which matches global X 304..319, Z 0..15) 
-	# to always generate a flat Golden Bazaar village bazaar on every single Seed.
-	if chunk_x == 19 and chunk_z == 0:
-		var local_x := int(global_x) % Chunk.SIZE
-		var local_z := int(global_z) % Chunk.SIZE
-		if local_x < 0: local_x += Chunk.SIZE
-		if local_z < 0: local_z += Chunk.SIZE
-		
-		profile.biome_id = 2 # Golden Bazaar Plains
-		profile.base_height = 10
-		
-		# FIXED: Only spawn the single Market Cabin at the exact local center coordinate (8, 8)
-		# of the chunk. This prevents spawning 256 overlapping cabins, which suffocated the NPCs!
-		if local_x == 8 and local_z == 8:
-			profile.landmark_id = 3 # Village Cabin
-		else:
-			profile.landmark_id = 0
-			
-		return profile
 	
 	# 1. Determine the geographical sector ID for this coordinate
 	profile.biome_id = _calculate_sector_biome_id(global_x, global_z)

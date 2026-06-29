@@ -3,7 +3,10 @@
 # Description: Concrete MegaStructure. A massive 40x40 Stone Castle at X=200, Z=200.
 #              DETAILED UPGRADE: Added entrance gates, an ornate throne room,
 #              courtyard market stalls, glowing neon lanterns, and NPC populations!
-#              STRICT MODE FIX: Removed unused variables to clear compiler warnings.
+#              MISSION 5 SPAWN: Forces the spawn of a quest Zombie (ID 10) directly 
+#              outside the castle gates when "Plains Defender" is active!
+#              COLLISION VOID FIX: Adjusted Zombie coordinate strictly to Chunk 13 
+#              to prevent it from falling through unloaded collision bounds.
 # Author: Enrique González Gutiérrez
 # ==============================================================================
 class_name GrandCastleMegaStructure
@@ -135,6 +138,9 @@ func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 		# Villager at the East courtyard stall
 		entities.append({"mob_id": 100, "pos": Vector3(212.5, 13.5, 195.5)})
 		
+		# Farmer tending the castle courtyard garden!
+		entities.append({"mob_id": 103, "pos": Vector3(200.5, 13.5, 208.5)})
+		
 		# A special Loot Chest inside the throne room!
 		entities.append({"mob_id": 200, "pos": Vector3(196.5, 13.5, 193.5)})
 		
@@ -143,5 +149,12 @@ func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 		# Two guards standing exactly outside the massive gate
 		entities.append({"mob_id": 102, "pos": Vector3(197.5, 13.5, 222.5)})
 		entities.append({"mob_id": 102, "pos": Vector3(202.5, 13.5, 222.5)})
+		
+		# --- MISSION 5 FORCE SPAWN: Spawn the Quest Zombie right outside the gates! ---
+		var active_q := QuestService.get_active_quest()
+		if active_q != null and active_q.quest_id == "plains_defender":
+			# FIXED: Moved safely to Z=218.5 (inside Chunk 13 collision mesh!)
+			entities.append({"mob_id": 10, "pos": Vector3(200.0, 13.5, 218.5)})
+			print("[GrandCastle] Plains Defender active! Spawning Quest Zombie safely on the bridge.")
 		
 	return entities

@@ -1,26 +1,36 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure physics controller node representing a hostile zombie.
-#              AI UPGRADE: Added intelligent wall bouncing logic to prevent
-#              zombies from getting stuck walking endlessly into mountains.
+#              Acts as an Infrastructure Wrapper that uses Composition to hold
+#              a pure Domain VoxelEntity, reacting to Domain Events (Signals).
+#              STRICT MODE FIX: Removed unused variables and safeguarded 3D rotations.
+#              AI QUEST UPGRADE: Corrected player dynamic hierarchy location,
+#              and added automated floating quest TARGET bubble above head!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
 class_name HostileEntity
 extends CharacterBody3D
 
+# Combat configurations
 const SPEED: float = 2.2
 const JUMP_VELOCITY: float = 5.0
 const CHASE_RANGE: float = 16.0
 const ATTACK_RANGE: float = 1.2
 
+# Physics and state
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+
+# Domain Model Composition (DDD Compliance)
 var domain_entity: VoxelEntity
+
+# Sibling node references (loosely typed to prevent compile loops)
 var player: CharacterBody3D
 var _visual_materials: Array[ORMMaterial3D] = []
 
+# AI wandering/chasing state variables
 var _wander_timer: float = 0.0
 var _wander_direction: Vector3 = Vector3.ZERO
-var _is_chasing: bool = false
 var _is_wandering: bool = false
 
 # Obstacle Avoidance Tracker
@@ -29,6 +39,8 @@ var _stuck_timer: float = 0.0
 func _init(spawn_pos: Vector3) -> void:
 	position = spawn_pos
 	name = "Entity_ZOMBIE"
+	
+	# Instantiate pure domain model and subscribe to its Domain Events
 	domain_entity = VoxelEntity.new(3)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
@@ -37,6 +49,7 @@ func _ready() -> void:
 	_build_visual_representation()
 	_setup_collision()
 	_locate_player()
+	_setup_quest_bubble()
 
 func _setup_collision() -> void:
 	var col := CollisionShape3D.new()
@@ -47,20 +60,34 @@ func _setup_collision() -> void:
 	col.position = Vector3(0, 0.7, 0)
 	add_child(col)
 
+## UX / HIERARCHY FIX: Resolves player location by fetching the world controller's injected reference!
 func _locate_player() -> void:
-	var parent_node := get_parent()
-	if is_instance_valid(parent_node):
-		player = parent_node.get_node_or_null("Player") as CharacterBody3D
+	var world_node := get_parent()
+	if is_instance_valid(world_node) and "player" in world_node:
+		player = world_node.get("player") as CharacterBody3D
+
+## UX UPGRADE: Automatically instantiates a floating red target bubble above the zombie's head during plains_defender!
+func _setup_quest_bubble() -> void:
+	var active_q := QuestService.get_active_quest()
+	if active_q != null and active_q.quest_id == "plains_defender":
+		var sb_script: Script = load("res://src/Infrastructure/UI/SpeechBubble.gd")
+		if sb_script != null:
+			var bubble = sb_script.new() as Node3D
+			add_child(bubble)
+			bubble.call("set_text", "☠️ [ TARGET MONSTER ] ☠️")
 
 func _build_visual_representation() -> void:
 	var visual_root := Node3D.new()
 	visual_root.name = "Visuals"
 	add_child(visual_root)
-	_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.15, 0.35, 0.15)) 
-	_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.25, 0.6, 0.25)) 
-	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(-0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) 
-	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) 
-	_create_box(visual_root, Vector3(0.15, 0.45, 0.15), Vector3(-0.1, 0.225, 0), Color(0.1, 0.1, 0.25)) 
+	
+	# Create Zombie Box Composition (Rotated forward along -Z)
+	_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.15, 0.35, 0.15)) # Torso
+	_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.25, 0.6, 0.25)) # Head
+	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(-0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) # Left arm
+	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) # Right arm
+	# Legs
+	_create_box(visual_root, Vector3(0.15, 0.45, 0.15), Vector3(-0.1, 0.225, 0), Color(0.1, 0.1, 0.25)) # Blue trousers
 	_create_box(visual_root, Vector3(0.15, 0.45, 0.15), Vector3(0.1, 0.225, 0), Color(0.1, 0.1, 0.25))
 
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> void:
@@ -75,48 +102,78 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	mat.roughness = 0.95
 	mesh_instance.material_override = mat
 	_visual_materials.append(mat)
+	
 	parent.add_child(mesh_instance)
 
+## Infrastructure Method: Receives combat interaction, applies physics, and delegates logic to Domain.
 func take_damage(amount: int, knockback_force: Vector3) -> void:
-	if domain_entity.is_dead: return
+	if domain_entity.is_dead:
+		return
+		
+	# Apply infrastructure physical knockback
 	velocity += knockback_force
+	
+	# Delegate purely logical health reduction to Domain
 	domain_entity.take_damage(amount)
 
+## Infrastructure Event Handler: Reacts to the Domain Event
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	_flash_red()
 
 func _flash_red() -> void:
 	for mat in _visual_materials:
 		mat.emission_enabled = true
-		mat.emission = Color(0.8, 0.0, 0.0) 
+		mat.emission = Color(0.8, 0.0, 0.0) # Red glow
+		
+	# Create a quick 0.15-second timer to restore original colors
 	get_tree().create_timer(0.15).timeout.connect(_reset_damage_flash)
 
 func _reset_damage_flash() -> void:
 	for mat in _visual_materials:
-		if is_instance_valid(mat): mat.emission_enabled = false
+		if is_instance_valid(mat):
+			mat.emission_enabled = false
 
+## Infrastructure Event Handler: Reacts to the Domain Event
 func _on_domain_entity_died() -> void:
+	print("[Zombie] Blegh... Zombie died.")
+	
+	# Drop standard and quest-specific rewards
 	if is_instance_valid(player):
-		var inv = player.get("inventory")
+		var inv := player.get("inventory") as IInventory
 		if is_instance_valid(inv):
-			inv.modify_slot_quantity(5, 1) 
+			# Standard drop: 1x Lava Bucket (ID 15) using safe stack-based API
+			print("[Zombie] Loot dropped: 1x Lava Bucket added.")
+			inv.add_item(15, 1) 
+			
+			# --- CAMPAIGN MISSION 5 TRIGGER: Complete Plains Defender ---
 			var active_q := QuestService.get_active_quest()
 			if active_q != null and active_q.quest_id == "plains_defender":
-				inv.modify_slot_quantity(active_q.reward_item_index, active_q.reward_quantity)
-				QuestService.complete_active_quest()
-			player.call("_sync_hud_counters") 
+				# Grant the extra campaign reward (3x additional Lava Buckets!)
+				inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
+				QuestService.complete_active_quest(player)
+				
+			player.call("_sync_hud_counters") # Sync HUD UI instantly
 	
+	# Play a quick spinning/falling animation before deleting
 	var death_tween := create_tween().set_parallel(true)
 	var visuals_node: Node3D = get_node("Visuals")
 	if is_instance_valid(visuals_node):
 		death_tween.tween_property(visuals_node, "rotation:z", deg_to_rad(-90), 0.2)
 		death_tween.tween_property(visuals_node, "position:y", -0.4, 0.2)
+		
 	death_tween.chain().tween_callback(queue_free)
 
 func _physics_process(delta: float) -> void:
-	if domain_entity.is_dead: return
-	if not is_on_floor(): velocity.y -= gravity * delta
-	if not is_instance_valid(player): _locate_player()
+	if domain_entity.is_dead:
+		return
+
+	# Apply gravity
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+
+	# Dynamic target search fallback if player spawned late
+	if not is_instance_valid(player):
+		_locate_player()
 
 	_process_ai_intelligence(delta)
 	move_and_slide()
@@ -124,7 +181,6 @@ func _physics_process(delta: float) -> void:
 func _process_ai_intelligence(delta: float) -> void:
 	var _wander_direction_tmp: Vector3 = Vector3.ZERO
 	_wander_timer -= delta
-	
 	if _wander_timer <= 0:
 		_is_wandering = randf() > 0.4
 		if _is_wandering:
@@ -155,16 +211,17 @@ func _process_ai_intelligence(delta: float) -> void:
 		velocity.z = _wander_direction.z * speed_mult
 		
 		var visuals_node: Node3D = get_node("Visuals")
-		if is_instance_valid(visuals_node) and _wander_direction != Vector3.ZERO:
+		# STRICT MODE & MATH SAFE FIX: Rotate only if the target vector is physically significant
+		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
 			var target_look_at: Vector3 = global_position + _wander_direction
-			visuals_node.look_at(target_look_at, Vector3.UP)
-			visuals_node.rotation.x = 0
-			visuals_node.rotation.z = 0
+			if not global_position.is_equal_approx(target_look_at):
+				visuals_node.look_at(target_look_at, Vector3.UP)
+				visuals_node.rotation.x = 0
+				visuals_node.rotation.z = 0
 		
-		# INTELLIGENT WALL AVOIDANCE (Zombie variant)
 		if is_on_wall():
 			if is_on_floor():
-				velocity.y = JUMP_VELOCITY # Try to climb 1-block steps
+				velocity.y = JUMP_VELOCITY
 				
 			_stuck_timer += delta
 			var patience := 1.0 if is_player_trackable else 0.4 # Persistent if chasing

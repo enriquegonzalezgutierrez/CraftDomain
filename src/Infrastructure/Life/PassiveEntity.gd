@@ -5,6 +5,7 @@
 #              - Liskov Substitution Principle (LSP): Acts as an Abstract Base Class. 
 #              AI UPGRADE: Added a 12-meter safety tether and a dynamic visual 
 #              quest indicator bubble above the target NPC's head.
+#              STRICT MODE FIX: Safeguarded look_at() rotations against float collisions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -190,7 +191,8 @@ func _update_quest_bubble_state() -> void:
 			is_target = true
 			
 		if is_target:
-			_bubble.call("set_text", "⭐ [ ACTIVE MISSION ] ⭐")
+			# Dynamic title injection (E.g. ⭐ [ ACTIVE MISSION: FUEL THE FRYER ] ⭐)
+			_bubble.call("set_text", "⭐ [ ACTIVE MISSION: " + active_q.title.to_upper() + " ] ⭐")
 			return
 			
 	# Default Fallback texts based on entity type
@@ -264,6 +266,7 @@ func _process_ai_state_machine(delta: float) -> void:
 				_wander_direction = (_spawn_point - global_position).normalized()
 				_wander_direction.y = 0
 			
+			# INTELLIGENT WALL AVOIDANCE
 			if is_on_wall():
 				if is_on_floor():
 					velocity.y = JUMP_VELOCITY 
@@ -308,7 +311,8 @@ func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
 	var is_moving: bool = current_task == TaskState.WANDERING or current_task == TaskState.PANIC or current_task == TaskState.WORKING
 	
-	if is_instance_valid(_visual_root) and _wander_direction != Vector3.ZERO:
+	# STRICT MODE & MATH SAFE FIX: Rotate only if the target vector is physically significant (length_squared > 0.05)
+	if is_instance_valid(_visual_root) and _wander_direction.length_squared() > 0.05:
 		var target_look := global_position + _wander_direction
 		_visual_root.look_at(target_look, Vector3.UP)
 		_visual_root.rotation.x = 0

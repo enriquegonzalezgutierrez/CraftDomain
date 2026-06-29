@@ -94,6 +94,9 @@ func _setup_mobs() -> void:
 	MobRegistry.register_mob(102, func(pos: Vector3) -> Node: return GuardEntity.new(pos))
 	MobRegistry.register_mob(103, func(pos: Vector3) -> Node: return FarmerEntity.new(pos))
 	
+	# Hostile Mobs (ZOMBIE registered as ID 10!)
+	MobRegistry.register_mob(10, func(pos: Vector3) -> Node: return HostileEntity.new(pos))
+	
 	# Interactive Props (Loot Chests)
 	MobRegistry.register_mob(200, func(pos: Vector3) -> Node: 
 		var chest := ChestEntity.new()
