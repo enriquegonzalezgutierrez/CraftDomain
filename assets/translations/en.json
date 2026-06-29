@@ -130,5 +130,18 @@
   "DIR_S": "S",
   "DIR_SW": "SW",
   "DIR_W": "W",
+  "DIR_NW": "NW",
+
+  "MAP_TITLE": "Tactical World Map",
+  "GPS_CLOSEST_POI_HEADER": "Closest Landmark",
+  "The Grand Stone Castle": "The Grand Stone Castle",
+  "The Port of Sails & Galleon": "The Port of Sails & Galleon",
+  "DIR_N": "N",
+  "DIR_NE": "NE",
+  "DIR_E": "E",
+  "DIR_SE": "SE",
+  "DIR_S": "S",
+  "DIR_SW": "SW",
+  "DIR_W": "W",
   "DIR_NW": "NW"
 }

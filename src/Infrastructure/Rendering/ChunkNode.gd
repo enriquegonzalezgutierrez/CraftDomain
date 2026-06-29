@@ -3,12 +3,10 @@
 # Description: Infrastructure rendering node representing a single chunk.
 #              Manages individual MultiMeshInstance3D nodes per BlockType to 
 #              support customized material shading (PBR, Water, Lava, and Wind-Sway).
-#              PERFORMANCE UPGRADE: 
-#              - Accepts pre-compiled PackedFloat32Array buffers directly from 
-#                background threads to achieve zero-cost Main Thread instantiation.
-#              - Triplanar Shaders optimized from 3 texture reads down to exactly 
-#                1 texture read per pixel, vastly increasing GPU fill-rate!
-#              FIX: Resolved Integer Division warning by casting division explicitly.
+#              SOLID COMPLIANCE: Adheres to OCP and SRP by isolating material 
+#              and rendering logic from raw physical chunk data.
+#              FIX: Resolved out-of-bounds enum keys() crash when rendering non-contiguous
+#              crop block IDs (like CROP_RIPE ID 20) on line 217.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -206,15 +204,15 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 	# 2. Re-create a visual MultiMeshInstance3D for terrain blocks
 	for block_type in p_multimesh_data.keys():
 		var bulk_array: PackedFloat32Array = p_multimesh_data[block_type]
-		
-		# FIX: Safe integer division casting to resolve GDScript warning
 		var instance_count: int = int(bulk_array.size() / 12.0)
 		
 		if instance_count == 0:
 			continue
 			
 		var mm_instance := MultiMeshInstance3D.new()
-		mm_instance.name = "MM_" + BlockType.Type.keys()[block_type]
+		
+		# FIXED: String format used instead of keys() array lookup to prevent out-of-bounds enum crashes
+		mm_instance.name = "MM_" + str(block_type)
 		
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D

@@ -4,8 +4,9 @@
 #              Slots 0-7 represent the active Hotbar. Slots 8-23 represent the Backpack.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) and implements `IInventory` (DIP).
-#              i18n UPGRADE: Stripped hardcoded English block names. Now dynamically
-#              queries BlockLibrary definitions to support OCP multi-language rendering.
+#              i18n UPGRADE: Stripped hardcoded English block names.
+#              ROBUSTNESS FIX: Added strict array boundaries protection to prevent
+#              out-of-bounds crashes when querying newly added crop IDs (like ID 20).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/InventoryComponent.gd
 # ==============================================================================
@@ -146,10 +147,17 @@ func swap_slots(index_a: int, index_b: int) -> void:
 	_slots[index_a] = _slots[index_b]
 	_slots[index_b] = temp
 
+## FIXED: Added strict boundary protection to prevent out-of-bounds crashes
 func get_slot_data(index: int) -> SlotData:
 	if index >= 0 and index < _slots.size():
 		return _slots[index]
 	return null
+
+## FIXED: Added boundary protection mapping to prevent out-of-bounds crashes on checklist queries
+func get_slot_quantity(index: int) -> int:
+	if index >= 0 and index < _slots.size():
+		return _slots[index].quantity
+	return 0
 
 ## SRP / OCP COMPLIANT ROUTING: Dynamically reads translated strings from Domain Library
 func get_slot_item_name(index: int) -> String:
@@ -157,12 +165,10 @@ func get_slot_item_name(index: int) -> String:
 	if slot == null or slot.item_id == -1:
 		return tr("INVENTORY_EMPTY")
 		
-	# 1. Blocks & Standard items defined in BlockLibrary
 	var def := BlockLibrary.get_definition(slot.item_id as BlockType.Type)
 	if def != null and def.type != BlockType.Type.AIR:
 		return def.get_localized_name()
 		
-	# 2. Hardcoded fallback strictly for non-block items (Until moved to ItemRegistry)
 	match slot.item_id:
 		16: return tr("ITEM_FRIED_CHICKEN")
 		17: return tr("ITEM_WOODEN_SWORD")

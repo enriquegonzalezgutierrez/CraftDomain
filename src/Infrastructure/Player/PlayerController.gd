@@ -5,13 +5,8 @@
 #              Principle (SRP) by delegating all voxel raycasting, mining, building,
 #              eating, and NPC interactions to VoxelInteractionComponent, and 
 #              UI window orchestration to PlayerHUD.
-#              STRICT TYPING UPDATE: Replaced dynamic script loading with direct typed
-#              class instantiations.
-#              FASE 1 BACKPACK UPGRADE: Made block building, weapon equipping, and 
-#              tool rendering 100% dynamic, executing logic based on whatever 
-#              Voxel Block or Item ID currently occupies the active hotbar slot.
-#              FIXED: Applied strict casting "as Key" on programmatic keyboard layout 
-#              to resolve INT_AS_ENUM_WITHOUT_CAST compilation warnings on line 103.
+#              i18n / INPUT UPGRADE: Added dynamic, automatic key mapping for the 
+#              M key to trigger the Fullscreen Tactical Map Overlay.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -91,7 +86,8 @@ func _setup_inputs() -> void:
 		"select_sword": KEY_8,
 		"craft_item": KEY_C,
 		"toggle_backpack": KEY_I,
-		"free_cursor": KEY_ALT
+		"free_cursor": KEY_ALT,
+		"toggle_world_map": KEY_M # MAP KEY BINDING ADDED
 	}
 	
 	for action_name in primary_inputs.keys():
@@ -100,10 +96,7 @@ func _setup_inputs() -> void:
 		InputMap.action_erase_events(action_name)
 		
 		var primary_event := InputEventKey.new()
-		
-		# STRICT MODE FIX: Cast integer representation to Key enum safely (Line 103 resolved!)
 		primary_event.keycode = primary_inputs[action_name] as Key
-		
 		InputMap.action_add_event(action_name, primary_event)
 
 func _setup_player_geometry() -> void:
@@ -165,7 +158,7 @@ func _input(event: InputEvent) -> void:
 				world_controller.call("save_all")
 		else:
 			# Safeguard: Let active workshops/inventories capture Escape first
-			if is_instance_valid(hud) and (hud.get("_crafting_overlay") != null or hud.get("_inventory_overlay") != null):
+			if is_instance_valid(hud) and (hud.get("_crafting_overlay") != null or hud.get("_inventory_overlay") != null or hud.get("_world_map_overlay") != null):
 				return
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			if is_instance_valid(hud):
@@ -189,7 +182,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_scroll_hotbar(1)
 
 func _physics_process(delta: float) -> void:
-	# FASE 1: Dynamic Cursor Release state machine
+	# Controls hardware cursor visibility when holding Left Alt
 	_process_cursor_grab_state()
 
 	if not is_active:
@@ -200,19 +193,23 @@ func _physics_process(delta: float) -> void:
 		elif Input.is_action_just_pressed("toggle_backpack") and is_instance_valid(hud):
 			var is_backpack_active := hud.get("_inventory_overlay") != null
 			hud.toggle_inventory_backpack(not is_backpack_active)
+		elif Input.is_action_just_pressed("toggle_world_map") and is_instance_valid(hud):
+			var is_map_active := hud.get("_world_map_overlay") != null
+			hud.toggle_world_map(not is_map_active)
 		return
 
 	_process_hotbar_keys()
 
-	# FASE 1: Workshop Crafting Overlay Trigger (C Key)
+	# Contextual HUD overlays toggling loops
 	if Input.is_action_just_pressed("craft_item") and is_instance_valid(hud):
 		var is_workshop_active := hud.get("_crafting_overlay") != null
 		hud.toggle_crafting_workshop(not is_workshop_active)
-		
-	# FASE 1: Backpack Inventory Trigger (I Key)
 	elif Input.is_action_just_pressed("toggle_backpack") and is_instance_valid(hud):
 		var is_backpack_active := hud.get("_inventory_overlay") != null
 		hud.toggle_inventory_backpack(not is_backpack_active)
+	elif Input.is_action_just_pressed("toggle_world_map") and is_instance_valid(hud):
+		var is_map_active := hud.get("_world_map_overlay") != null
+		hud.toggle_world_map(not is_map_active)
 
 	# Delegates all targeted raycasting, mining, building, and eating calculations
 	if is_instance_valid(interaction_component):
@@ -309,7 +306,7 @@ func _process_hotbar_keys() -> void:
 	elif Input.is_action_just_pressed("select_chicken"): _apply_hotbar_selection(6)
 	elif Input.is_action_just_pressed("select_sword"): _apply_hotbar_selection(7)
 
-## FASE 1 BACKPACK UPGRADE: Decoupled contextual Hotbar selection mapping
+## Decoupled contextual Hotbar selection mapping
 func _apply_hotbar_selection(slot: int) -> void:
 	active_slot_index = slot
 	if is_instance_valid(hud):
@@ -321,7 +318,6 @@ func _apply_hotbar_selection(slot: int) -> void:
 	var inv_comp := inventory as InventoryComponent
 	var slot_data := inv_comp.get_slot_data(slot)
 	
-	# If the selected hotbar slot is completely empty
 	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:
 		is_item_selected = false
 		active_build_type = BlockType.Type.AIR
@@ -330,24 +326,21 @@ func _apply_hotbar_selection(slot: int) -> void:
 		
 	var item_id := slot_data.item_id
 	
-	# BlockType.Type block IDs are numbered 1 to 15
 	if item_id >= 1 and item_id <= 15:
 		is_item_selected = true
 		active_build_type = item_id as BlockType.Type
 		
-		# Specialized viewmodel tool mapping
-		if item_id == 15: # Lava Bucket
+		if item_id == 15: 
 			_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
 		else:
 			_set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
 	else:
-		# Non-block inventory items (Chicken or Sword)
 		is_item_selected = false
 		active_build_type = BlockType.Type.AIR
 		
-		if item_id == 16: # Fried Chicken
+		if item_id == 16: 
 			_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
-		elif item_id == 17: # Wooden Sword
+		elif item_id == 17: 
 			_set_viewmodel_tool(PlayerViewModel.ToolType.SWORD)
 		else:
 			_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
@@ -376,7 +369,6 @@ func _on_domain_entity_died() -> void:
 	if is_instance_valid(hud):
 		hud.update_health_display(domain_entity.health)
 
-## FASE 1 BACKPACK UPGRADE: Reads dynamic Item IDs and Stack counts for the 8 HUD slots
 func _sync_hud_counters() -> void:
 	if not is_instance_valid(hud) or not is_instance_valid(inventory): 
 		return
@@ -386,22 +378,19 @@ func _sync_hud_counters() -> void:
 		var slot := inv_comp.get_slot_data(i)
 		hud.update_slot_quantity(i, slot.item_id, slot.quantity)
 
-## STRICT TYPING: Rewrote method to assign buttons explicitly, preventing INT_AS_ENUM warnings
 func _setup_inputs_mouse_actions() -> void:
-	# 1. Register Left-Click / E Action
 	if not InputMap.has_action("click_left"):
 		InputMap.add_action("click_left")
 	InputMap.action_erase_events("click_left")
 	
 	var left_btn := InputEventMouseButton.new()
-	left_btn.button_index = MOUSE_BUTTON_LEFT # Direct Enum assignation (no warnings!)
+	left_btn.button_index = MOUSE_BUTTON_LEFT 
 	InputMap.action_add_event("click_left", left_btn)
 	
 	var left_key := InputEventKey.new()
 	left_key.keycode = KEY_E
 	InputMap.action_add_event("click_left", left_key)
 	
-	# 2. Register Right-Click / Q Action
 	if not InputMap.has_action("click_right"):
 		InputMap.add_action("click_right")
 	InputMap.action_erase_events("click_right")

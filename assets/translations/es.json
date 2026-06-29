@@ -130,5 +130,18 @@
   "DIR_S": "Sur",
   "DIR_SW": "SO",
   "DIR_W": "O",
+  "DIR_NW": "NO",
+
+  "MAP_TITLE": "Mapa Táctico del Mundo",
+  "GPS_CLOSEST_POI_HEADER": "Punto cercano",
+  "The Grand Stone Castle": "El Gran Castillo de Piedra",
+  "The Port of Sails & Galleon": "El Puerto de Velas y Galeón",
+  "DIR_N": "N",
+  "DIR_NE": "NE",
+  "DIR_E": "E",
+  "DIR_SE": "SE",
+  "DIR_S": "Sur",
+  "DIR_SW": "SO",
+  "DIR_W": "O",
   "DIR_NW": "NO"
 }
