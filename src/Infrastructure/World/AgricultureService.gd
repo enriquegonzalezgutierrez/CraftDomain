@@ -3,11 +3,8 @@
 # Description: Infrastructure Service responsible for simulating agricultural 
 #              growth dynamics across all loaded chunks.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by isolating farming tick algorithms from 
-#              renderers and physics controllers.
-#              OPTIMIZATION: Implements Minecraft's high-performance "Random Tick Rate"
-#              algorithm, polling only 3 random voxel coords per active chunk 
-#              to ensure 0ms CPU overhead.
+#              Principle (SRP) by isolating farming tick algorithms.
+#              i18n UPGRADE: Uses clean dynamic proxy calls to retrieve active nodes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/AgricultureService.gd
 # ==============================================================================
@@ -38,8 +35,8 @@ func _execute_random_crop_ticks() -> void:
 	if not is_instance_valid(world_controller) or world_state == null:
 		return
 		
-	# Fetch the active renderable chunk nodes list dynamically
-	var active_nodes: Dictionary = world_controller.get("_chunk_nodes")
+	# Fetch the active renderable chunk nodes list dynamically via clean SRP API
+	var active_nodes: Dictionary = world_controller.call("get_active_chunk_nodes")
 	if active_nodes.is_empty():
 		return
 		
@@ -58,14 +55,12 @@ func _execute_random_crop_ticks() -> void:
 			
 			# Check and apply biological stage transformations
 			if current_block == BlockType.Type.CROP_SEED:
-				# 40% chance to sprout into young green sprout
 				if randf() < 0.40:
 					var global_pos := Vector3i(chunk_pos * Chunk.SIZE) + Vector3i(rx, ry, rz)
 					world_controller.call("set_block_globally", global_pos, BlockType.Type.CROP_GROWING)
 					print("[AgricultureService] Seed sprouted to YOUNG_SPROUT at global: ", global_pos)
 					
 			elif current_block == BlockType.Type.CROP_GROWING:
-				# 30% chance to mature into golden ripe wheat crop
 				if randf() < 0.30:
 					var global_pos := Vector3i(chunk_pos * Chunk.SIZE) + Vector3i(rx, ry, rz)
 					world_controller.call("set_block_globally", global_pos, BlockType.Type.CROP_RIPE)

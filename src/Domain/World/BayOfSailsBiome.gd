@@ -2,7 +2,8 @@
 # Project: CraftDomain
 # Description: Concrete Biome Strategy implementing the geographic and visual 
 #              rules for the tropical starter bay (Bay of Sails).
-#              Fully encapsulated and OCP compliant.
+#              SOLID/i18n UPGRADE: Replaced hardcoded English biome name with a 
+#              localized translation key (OCP compliant).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BayOfSailsBiome.gd
 # ==============================================================================
@@ -13,9 +14,9 @@ extends IBiome
 func get_biome_id() -> int:
 	return 0
 
-## Concrete Implementation: Returns the HUD friendly name
+## Concrete Implementation: Returns the dynamic localized name of the biome
 func get_biome_name() -> String:
-	return "Bay of Sails (Spawn Ocean)"
+	return tr("BIOME_BAY_OF_SAILS")
 
 ## Concrete Implementation: Returns the vibrant tropical blue color for the minimap
 func get_minimap_color() -> Color:

@@ -3,8 +3,8 @@
 # Description: Pure Domain Interface defining the strategic contract for any
 #              procedural biome. Decouples physical, visual, and landmark
 #              rules into independent, extensible classes.
-#              UPDATED: Added get_scatter_blueprint_id() contract to make 
-#              terrain scattering fully OCP compliant.
+#              SOLID/i18n UPGRADE: Prepared contract methods for standardized 
+#              i18n localization, ensuring strict OCP compliance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/IBiome.gd
 # ==============================================================================
@@ -16,7 +16,8 @@ func get_biome_id() -> int:
 	assert(false, "[IBiome] get_biome_id() must be implemented by concrete subclass.")
 	return 0
 
-## Abstract contract: Returns the user-friendly name of the biome for GPS HUD overlay.
+## Abstract contract: Returns the dynamically localized name of the biome (OCP compliant).
+## Subclasses must implement this using Godot's built-in tr() TranslationServer.
 func get_biome_name() -> String:
 	assert(false, "[IBiome] get_biome_name() must be implemented by concrete subclass.")
 	return ""
