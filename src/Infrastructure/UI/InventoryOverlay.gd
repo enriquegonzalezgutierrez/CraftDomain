@@ -453,15 +453,14 @@ func _on_slot_selected(slot_index: int) -> void:
 	_detail_icon.color = BLOCK_COLORS.get(slot.item_id, Color.WHITE)
 	_detail_icon.visible = true
 	
-	# Fetch usage info based on item_id
-	var info: Dictionary = ITEM_DETAILS.get(slot.item_id, {"desc": "No details available.", "use": ""})
-	_detail_desc.text = info["desc"]
-	_detail_instruction.text = "USAGE: " + info["use"]
+	# Dynamically read localized item lore and usage guide from TranslationServer (OCP)
+	_detail_desc.text = tr("ITEM_" + str(slot.item_id) + "_DESC")
+	_detail_instruction.text = tr("ITEM_USAGE_PREFIX") + ": " + tr("ITEM_" + str(slot.item_id) + "_USE")
 	
 	if slot.quantity == -1:
-		_detail_qty.text = "STOCKED: Infinite Quantity"
+		_detail_qty.text = tr("ITEM_STOCKED_PREFIX") + ": " + tr("INVENTORY_INFINITE")
 	else:
-		_detail_qty.text = "STOCKED: " + str(slot.quantity) + " units"
+		_detail_qty.text = tr("ITEM_STOCKED_PREFIX") + ": " + str(slot.quantity) + " units"
 		
 	# Setup actions
 	_action_button.visible = true
@@ -523,9 +522,9 @@ func _on_use_pressed() -> void:
 		_refresh_backpack_grids()
 
 func _show_empty_details() -> void:
-	_detail_title.text = " Backpack Inspector"
+	_detail_title.text = tr("INVENTORY_EMPTY_TITLE")
 	_detail_icon.visible = false
-	_detail_desc.text = "Click any backpack item to inspect its usage instructions and operational details."
+	_detail_desc.text = tr("INVENTORY_EMPTY_DESC")
 	_detail_instruction.text = ""
 	_detail_qty.text = ""
 	_action_button.visible = false

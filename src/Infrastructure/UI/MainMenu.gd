@@ -1,11 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI controller representing the main menu overlay.
-#              UX IMPROVED: Added premium glassmorphic button styling, tactile 
-#              hover scale animations, and a floating sine-wave game title.
-#              SAVE SYSTEM UPGRADE: Added dynamic CONTINUE / NEW GAME detection.
-#              NEW GAME CONFIRMATION: Added a glassmorphic confirmation modal 
-#              that automatically wipes old JSON save files and chunks from disk!
+#              SOLID COMPLIANCE: Adheres to SRP by handling only menu presentation.
+#              i18n UPGRADE: Uses standardized translation keys (OCP compliant).
+#              REACTIVITY: Implements NOTIFICATION_TRANSLATION_CHANGED with safe
+#              lifecycle guards to prevent "Nil text assignment" crashes during boot.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MainMenu.gd
 # ==============================================================================
@@ -15,13 +14,24 @@ extends Control
 ## Emitted when the player requests to launch the world (new or loaded)
 signal play_pressed
 
-# STRICT MODE FIX: Statically type the variable to its concrete class
+# STRICT TYPING: Private references to settings overlays and animators
 var _settings_overlay: SettingsMenu
 var _title_label: Label
 var _time_passed: float = 0.0
 
+# Dynamic button references for locale refreshes
+var _play_continue_btn: Button
+var _reset_btn: Button
+var _settings_btn: Button
+var _exit_btn: Button
+
 # Confirmation Modal Nodes
 var _confirm_modal: Panel
+var _modal_title: Label
+var _modal_desc: Label
+var _modal_confirm_btn: Button
+var _modal_cancel_btn: Button
+
 var _has_save_game: bool = false
 
 func _ready() -> void:
@@ -77,49 +87,77 @@ func _ready() -> void:
 	_title_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	box.add_child(title_wrapper)
 	
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 30)
-	box.add_child(spacer)
+	box.add_child(_create_spacer(30))
 	
-	# 5. Create Dynamic Premium Buttons based on Save State
+	# 5. Instantiate all UI buttons programmatically (Texts assigned in refresh)
+	_play_continue_btn = _create_premium_button(Color(0.12, 0.55, 0.32, 0.7) if _has_save_game else Color(0.12, 0.55, 0.82, 0.7))
+	_play_continue_btn.pressed.connect(_on_play_pressed)
+	box.add_child(_play_continue_btn)
+	
 	if _has_save_game:
-		var continue_btn := _create_premium_button("CONTINUE GAME", Color(0.12, 0.55, 0.32, 0.7)) # Greenish glow
-		continue_btn.pressed.connect(_on_continue_pressed)
-		box.add_child(continue_btn)
 		box.add_child(_create_spacer(15))
+		_reset_btn = _create_premium_button(Color(0.1, 0.1, 0.12, 0.7))
+		_reset_btn.pressed.connect(_on_new_game_clicked_with_save)
+		box.add_child(_reset_btn)
 		
-		var new_game_btn := _create_premium_button("NEW GAME (RESET)", Color(0.1, 0.1, 0.12, 0.7))
-		new_game_btn.pressed.connect(_on_new_game_clicked_with_save)
-		box.add_child(new_game_btn)
-	else:
-		var play_btn := _create_premium_button("NEW GAME", Color(0.12, 0.55, 0.82, 0.7)) # Blueish glow
-		play_btn.pressed.connect(_on_play_pressed)
-		box.add_child(play_btn)
+	box.add_child(_create_spacer(15))
+	
+	_settings_btn = _create_premium_button(Color(0.1, 0.1, 0.12, 0.7))
+	_settings_btn.pressed.connect(_on_settings_pressed)
+	box.add_child(_settings_btn)
 	
 	box.add_child(_create_spacer(15))
 	
-	var settings_btn := _create_premium_button("SETTINGS", Color(0.1, 0.1, 0.12, 0.7))
-	settings_btn.pressed.connect(_on_settings_pressed)
-	box.add_child(settings_btn)
-	
-	box.add_child(_create_spacer(15))
-	
-	var exit_btn := _create_premium_button("EXIT GAME", Color(0.1, 0.1, 0.12, 0.7))
-	exit_btn.pressed.connect(_on_exit_pressed)
-	box.add_child(exit_btn)
+	_exit_btn = _create_premium_button(Color(0.1, 0.1, 0.12, 0.7))
+	_exit_btn.pressed.connect(_on_exit_pressed)
+	box.add_child(_exit_btn)
 	
 	# 6. Setup confirmation Modal (Hidden by default)
 	_setup_confirmation_modal()
+	
+	# 7. Render dynamic localized texts
+	_refresh_localized_text()
+
+## REACTIVITY: Captures dynamic i18n locale changes from Godot's Translation Server on-the-fly
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED:
+		_refresh_localized_text()
 
 func _process(delta: float) -> void:
 	if is_instance_valid(_title_label):
 		_time_passed += delta * 2.0
 		_title_label.position.y = sin(_time_passed) * 8.0
 
+## Dynamically refreshes all visible text elements with the active translation database
+## FIXED: Added strict is_instance_valid() checks to prevent early SceneTree call crashes.
+func _refresh_localized_text() -> void:
+	if _has_save_game:
+		if is_instance_valid(_play_continue_btn):
+			_play_continue_btn.text = tr("MENU_CONTINUE")
+		if is_instance_valid(_reset_btn):
+			_reset_btn.text = tr("MENU_NEW_GAME")
+	else:
+		if is_instance_valid(_play_continue_btn):
+			_play_continue_btn.text = tr("MENU_PLAY_WORLD")
+			
+	if is_instance_valid(_settings_btn):
+		_settings_btn.text = tr("MENU_SETTINGS")
+	if is_instance_valid(_exit_btn):
+		_exit_btn.text = tr("MENU_EXIT")
+		
+	# Overwrite warning modal translations (Guarded against Null/Early calls)
+	if is_instance_valid(_modal_title):
+		_modal_title.text = tr("MENU_RESET_WARNING_TITLE")
+	if is_instance_valid(_modal_desc):
+		_modal_desc.text = tr("MENU_RESET_WARNING_DESC")
+	if is_instance_valid(_modal_confirm_btn):
+		_modal_confirm_btn.text = tr("MENU_RESET_CONFIRM")
+	if is_instance_valid(_modal_cancel_btn):
+		_modal_cancel_btn.text = tr("MENU_RESET_CANCEL")
+
 ## Factory method to programmatically construct highly polished glassmorphic buttons
-func _create_premium_button(text: String, normal_color: Color) -> Button:
+func _create_premium_button(normal_color: Color) -> Button:
 	var btn := Button.new()
-	btn.text = text
 	btn.custom_minimum_size = Vector2(280, 55)
 	btn.pivot_offset = Vector2(140, 27.5)
 	
@@ -127,25 +165,17 @@ func _create_premium_button(text: String, normal_color: Color) -> Button:
 	var style_normal := StyleBoxFlat.new()
 	style_normal.bg_color = normal_color
 	style_normal.set_corner_radius_all(12)
-	style_normal.border_width_left = 2
-	style_normal.border_width_top = 2
-	style_normal.border_width_right = 2
-	style_normal.border_width_bottom = 2
+	style_normal.border_width_left = 2; style_normal.border_width_top = 2; style_normal.border_width_right = 2; style_normal.border_width_bottom = 2
 	style_normal.border_color = Color(0.3, 0.3, 0.35, 0.8)
-	style_normal.shadow_size = 4
-	style_normal.shadow_color = Color(0, 0, 0, 0.3)
+	style_normal.shadow_size = 4; style_normal.shadow_color = Color(0, 0, 0, 0.3)
 	
 	# Hover State Style (Brighter with Golden Border)
 	var style_hover := StyleBoxFlat.new()
 	style_hover.bg_color = normal_color + Color(0.08, 0.08, 0.08, 0.0)
 	style_hover.set_corner_radius_all(12)
-	style_hover.border_width_left = 2
-	style_hover.border_width_top = 2
-	style_hover.border_width_right = 2
-	style_hover.border_width_bottom = 2
+	style_hover.border_width_left = 2; style_hover.border_width_top = 2; style_hover.border_width_right = 2; style_hover.border_width_bottom = 2
 	style_hover.border_color = Color(1.0, 0.85, 0.2, 1.0) # Golden glow
-	style_hover.shadow_size = 8
-	style_hover.shadow_color = Color(0, 0, 0, 0.5)
+	style_hover.shadow_size = 8; style_hover.shadow_color = Color(0, 0, 0, 0.5)
 	
 	var style_pressed := style_normal.duplicate() as StyleBoxFlat
 	style_pressed.bg_color = normal_color - Color(0.05, 0.05, 0.05, 0.0)
@@ -190,50 +220,34 @@ func _setup_confirmation_modal() -> void:
 	var cs := StyleBoxFlat.new()
 	cs.set_corner_radius_all(14)
 	cs.bg_color = Color(0.08, 0.08, 0.1, 0.96)
-	cs.border_width_left = 2
-	cs.border_width_top = 2
-	cs.border_width_right = 2
-	cs.border_width_bottom = 2
+	cs.border_width_left = 2; cs.border_width_top = 2; cs.border_width_right = 2; cs.border_width_bottom = 2
 	cs.border_color = Color(0.85, 0.15, 0.15, 0.6) # Red warning border
-	cs.shadow_size = 15
-	cs.shadow_color = Color(0, 0, 0, 0.6)
+	cs.shadow_size = 15; cs.shadow_color = Color(0, 0, 0, 0.6)
 	card.add_theme_stylebox_override("panel", cs)
 	center.add_child(card)
 	
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_top", 20)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_bottom", 20)
+	margin.add_theme_constant_override("margin_left", 24); margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_right", 24); margin.add_theme_constant_override("margin_bottom", 20)
 	card.add_child(margin)
 	
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	margin.add_child(vbox)
 	
-	var title := Label.new()
-	title.text = "⚠️ OVERWRITE PROGRESS?"
-	var ts := LabelSettings.new()
-	ts.font_size = 20
-	ts.font_color = Color(0.95, 0.15, 0.15) # Warning Red
-	ts.outline_size = 3
-	ts.outline_color = Color.BLACK
-	title.label_settings = ts
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
+	_modal_title = Label.new()
+	var ts := LabelSettings.new(); ts.font_size = 20; ts.font_color = Color(0.95, 0.15, 0.15); ts.outline_size = 3; ts.outline_color = Color.BLACK
+	_modal_title.label_settings = ts; _modal_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(_modal_title)
 	
 	vbox.add_child(_create_spacer(10))
 	
-	var desc := Label.new()
-	desc.text = "Warning: Starting a new game will permanently delete your saved castle, inventory blocks, and quest progression on disk. This cannot be undone."
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD
-	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ds := LabelSettings.new()
-	ds.font_size = 12
-	ds.font_color = Color(0.85, 0.85, 0.9)
-	desc.label_settings = ds
-	vbox.add_child(desc)
+	_modal_desc = Label.new()
+	_modal_desc.autowrap_mode = TextServer.AUTOWRAP_WORD; _modal_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ds := LabelSettings.new(); ds.font_size = 12; ds.font_color = Color(0.85, 0.85, 0.9)
+	_modal_desc.label_settings = ds
+	vbox.add_child(_modal_desc)
 	
 	vbox.add_child(_create_spacer(20))
 	
@@ -242,19 +256,17 @@ func _setup_confirmation_modal() -> void:
 	hbox.add_theme_constant_override("separation", 15)
 	vbox.add_child(hbox)
 	
-	var confirm_btn := Button.new()
-	confirm_btn.text = "DELETE & OVERWRITE"
-	confirm_btn.custom_minimum_size = Vector2(180, 42)
-	_setup_modal_button_style(confirm_btn, Color(0.7, 0.12, 0.12, 0.8)) # Hard Red
-	confirm_btn.pressed.connect(_on_overwrite_confirmed)
-	hbox.add_child(confirm_btn)
+	_modal_confirm_btn = Button.new()
+	_modal_confirm_btn.custom_minimum_size = Vector2(180, 42)
+	_setup_modal_button_style(_modal_confirm_btn, Color(0.7, 0.12, 0.12, 0.8)) # Hard Red
+	_modal_confirm_btn.pressed.connect(_on_overwrite_confirmed)
+	hbox.add_child(_modal_confirm_btn)
 	
-	var cancel_btn := Button.new()
-	cancel_btn.text = "CANCEL"
-	cancel_btn.custom_minimum_size = Vector2(120, 42)
-	_setup_modal_button_style(cancel_btn, Color(0.2, 0.2, 0.25, 0.8)) # Gray
-	cancel_btn.pressed.connect(_on_overwrite_cancelled)
-	hbox.add_child(cancel_btn)
+	_modal_cancel_btn = Button.new()
+	_modal_cancel_btn.custom_minimum_size = Vector2(120, 42)
+	_setup_modal_button_style(_modal_cancel_btn, Color(0.2, 0.2, 0.25, 0.8)) # Gray
+	_modal_cancel_btn.pressed.connect(_on_overwrite_cancelled)
+	hbox.add_child(_modal_cancel_btn)
 	
 	_confirm_modal.visible = false
 	add_child(_confirm_modal)
@@ -263,10 +275,7 @@ func _setup_modal_button_style(btn: Button, color: Color) -> void:
 	var sn := StyleBoxFlat.new()
 	sn.bg_color = color
 	sn.set_corner_radius_all(8)
-	sn.border_width_left = 1
-	sn.border_width_top = 1
-	sn.border_width_right = 1
-	sn.border_width_bottom = 1
+	sn.border_width_left = 1; sn.border_width_top = 1; sn.border_width_right = 1; sn.border_width_bottom = 1
 	sn.border_color = Color(1.0, 1.0, 1.0, 0.15)
 	
 	var sh := sn.duplicate() as StyleBoxFlat
@@ -283,16 +292,15 @@ func _create_spacer(height: int) -> Control:
 	spacer.custom_minimum_size = Vector2(0, height)
 	return spacer
 
-func _on_continue_pressed() -> void:
-	print("[MainMenu] Continuing existing campaign exploration...")
+func _on_play_pressed() -> void:
 	play_pressed.emit()
 
 func _on_new_game_clicked_with_save() -> void:
-	# Show warning overlay
+	# Show warning overlay with scale animation
 	_confirm_modal.visible = true
 	_confirm_modal.modulate.a = 0.0
 	_confirm_modal.scale = Vector2(0.95, 0.96)
-	_confirm_modal.pivot_offset = Vector2(640, 360)
+	_confirm_modal.pivot_offset = get_viewport_rect().size / 2.0
 	
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(_confirm_modal, "modulate:a", 1.0, 0.2).set_trans(Tween.TRANS_SINE)
@@ -300,8 +308,18 @@ func _on_new_game_clicked_with_save() -> void:
 
 func _on_overwrite_confirmed() -> void:
 	_confirm_modal.visible = false
+	_has_save_game = false
+	_setup_starting_play_button_layout()
 	_delete_save_files_on_disk()
 	play_pressed.emit()
+
+func _setup_starting_play_button_layout() -> void:
+	if is_instance_valid(_play_continue_btn):
+		var style := _play_continue_btn.get_theme_stylebox("normal") as StyleBoxFlat
+		if style != null:
+			style.bg_color = Color(0.12, 0.55, 0.82, 0.7) # Smooth back to solid Blue
+	if is_instance_valid(_reset_btn):
+		_reset_btn.queue_free()
 
 func _on_overwrite_cancelled() -> void:
 	var tween := create_tween().set_parallel(true)
@@ -309,15 +327,11 @@ func _on_overwrite_cancelled() -> void:
 	tween.tween_property(_confirm_modal, "scale", Vector2(0.95, 0.95), 0.18).set_trans(Tween.TRANS_SINE)
 	tween.chain().tween_callback(func() -> void: _confirm_modal.visible = false)
 
-## UX / DISK HARD DISPOSAL: Deletes all previous campaign and chunk JSONs on disk
 func _delete_save_files_on_disk() -> void:
-	print("[MainMenu] Deleting old save directory contents on player request...")
-	
-	# 1. Delete main save
-	if FileAccess.file_exists("user://world_save/global_save.json"):
-		DirAccess.remove_absolute("user://world_save/global_save.json")
+	var global_path := "user://world_save/global_save.json"
+	if FileAccess.file_exists(global_path):
+		DirAccess.remove_absolute(global_path)
 		
-	# 2. Sweep all chunk modification files
 	var chunks_dir := "user://world_save/chunks/"
 	if DirAccess.dir_exists_absolute(chunks_dir):
 		var dir := DirAccess.open(chunks_dir)
@@ -332,13 +346,9 @@ func _delete_save_files_on_disk() -> void:
 			
 	print("[MainMenu] Save wiping finished successfully. Ready for a new world!")
 
-func _on_play_pressed() -> void:
-	# Fresh start (no save detected, no confirm needed)
-	play_pressed.emit()
-
 func _on_settings_pressed() -> void:
 	_settings_overlay = SettingsMenu.new()
-	_settings_overlay.connect("closed", Callable(self, "_on_settings_closed"))
+	_settings_overlay.closed.connect(_on_settings_closed)
 	add_child(_settings_overlay)
 
 func _on_settings_closed() -> void:

@@ -2,7 +2,10 @@
 # Project: CraftDomain
 # Description: Infrastructure UI component providing a dynamic Settings menu
 #              to control Music Volume, SFX Volume, and Display Resolutions.
-#              Uses OS feature flags to prevent Editor-embedded window crashes.
+#              SOLID COMPLIANCE: Adheres to SRP by managing configuration UI.
+#              REACTIVITY: Implements safe checks to prevent early SceneTree Null crashes.
+#              FIX: Swapped initialization order in _ready() to populate dropdown
+#              items before attempting selection, resolving index out of bounds error.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/SettingsMenu.gd
 # ==============================================================================
@@ -12,13 +15,23 @@ extends Panel
 ## Emitted when the user clicks the BACK button to close the settings.
 signal closed
 
+# Dynamic UI elements cached for localization refreshes (SRP)
+var _title_label: Label
+var _music_label: Label
+var _sfx_label: Label
+var _res_label: Label
+var _lang_label: Label
+
 var _res_opt: OptionButton
+var _lang_opt: OptionButton
+var _apply_btn: Button
+var _back_btn: Button
 
 func _ready() -> void:
 	# Full-screen glassmorphic overlay
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.05, 0.05, 0.08, 0.9) # Deep dark blue/grey wash
+	style.bg_color = Color(0.05, 0.05, 0.08, 0.95) # Deep dark blue/grey wash
 	add_theme_stylebox_override("panel", style)
 	
 	var center := CenterContainer.new()
@@ -30,25 +43,25 @@ func _ready() -> void:
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	center.add_child(box)
 	
-	# 1. Title
-	var title := Label.new()
-	title.text = "SETTINGS"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# 1. Main Title
+	_title_label = Label.new()
+	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var title_style := LabelSettings.new()
 	title_style.font_size = 32
 	title_style.font_color = Color(1.0, 0.95, 0.85)
 	title_style.outline_size = 4
 	title_style.outline_color = Color.BLACK
-	title.label_settings = title_style
-	box.add_child(title)
+	_title_label.label_settings = title_style
+	box.add_child(_title_label)
 	
-	box.add_child(_create_spacer(30))
+	box.add_child(_create_spacer(20))
 	
 	# 2. Music Volume Slider
-	box.add_child(_create_label("Music Volume"))
+	_music_label = _create_label()
+	box.add_child(_music_label)
 	var music_slider := HSlider.new()
-	music_slider.min_value = -40.0 # -40 dB is essentially silent
-	music_slider.max_value = 0.0   # 0 dB is max original volume
+	music_slider.min_value = -40.0 
+	music_slider.max_value = 0.0   
 	music_slider.value = AudioServer.get_bus_volume_db(_get_or_create_bus("Music"))
 	music_slider.value_changed.connect(_on_music_changed)
 	box.add_child(music_slider)
@@ -56,7 +69,8 @@ func _ready() -> void:
 	box.add_child(_create_spacer(15))
 	
 	# 3. SFX Volume Slider
-	box.add_child(_create_label("Effects Volume"))
+	_sfx_label = _create_label()
+	box.add_child(_sfx_label)
 	var sfx_slider := HSlider.new()
 	sfx_slider.min_value = -40.0
 	sfx_slider.max_value = 0.0
@@ -64,50 +78,100 @@ func _ready() -> void:
 	sfx_slider.value_changed.connect(_on_sfx_changed)
 	box.add_child(sfx_slider)
 	
-	box.add_child(_create_spacer(25))
+	box.add_child(_create_spacer(15))
 	
 	# 4. Display Resolution Dropdown
-	box.add_child(_create_label("Display Resolution"))
+	_res_label = _create_label()
+	box.add_child(_res_label)
 	
 	var res_hbox := HBoxContainer.new()
 	res_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_child(res_hbox)
 	
 	_res_opt = OptionButton.new()
-	_res_opt.add_item("Windowed (1280 x 720)", 0)
-	_res_opt.add_item("Windowed (1920 x 1080)", 1)
-	_res_opt.add_item("Fullscreen", 2)
 	_res_opt.custom_minimum_size = Vector2(250, 40)
+	res_hbox.add_child(_res_opt)
 	
-	# Sync dropdown state with current high-level Root Window mode (Safe check)
+	_apply_btn = Button.new()
+	_apply_btn.custom_minimum_size = Vector2(80, 40)
+	_apply_btn.pressed.connect(_on_apply_resolution_pressed)
+	res_hbox.add_child(_apply_btn)
+	
+	box.add_child(_create_spacer(15))
+	
+	# 5. Interface Language Selector
+	_lang_label = _create_label()
+	box.add_child(_lang_label)
+	
+	_lang_opt = OptionButton.new()
+	_lang_opt.custom_minimum_size = Vector2(340, 40)
+	_lang_opt.add_item("English", 0)
+	_lang_opt.add_item("Español", 1)
+	
+	# Check and select current active language
+	var current_locale := TranslationServer.get_locale()
+	if current_locale.begins_with("es"):
+		_lang_opt.select(1)
+	else:
+		_lang_opt.select(0)
+		
+	_lang_opt.item_selected.connect(_on_language_changed)
+	box.add_child(_lang_opt)
+	
+	box.add_child(_create_spacer(30))
+	
+	# 6. Back / Close Button
+	_back_btn = Button.new()
+	_back_btn.custom_minimum_size = Vector2(0, 48)
+	_back_btn.pressed.connect(func() -> void: closed.emit())
+	box.add_child(_back_btn)
+	
+	# 7. FIXED: Render dynamic localized texts FIRST (Populates dropdown options)
+	_refresh_localized_text()
+	
+	# Initialize Resolution list state on boot safely (Now safe to select since items exist!)
+	_setup_resolution_dropdown_state()
+
+## REACTIVITY: Captures dynamic i18n locale changes from Godot's Translation Server on-the-fly
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED:
+		_refresh_localized_text()
+
+## Dynamically refreshes all visible text elements with the active translation database
+## FIXED: Added strict is_instance_valid() checks to prevent early SceneTree call crashes.
+func _refresh_localized_text() -> void:
+	if is_instance_valid(_title_label): _title_label.text = tr("SETTINGS_TITLE")
+	if is_instance_valid(_music_label): _music_label.text = tr("SETTINGS_MUSIC")
+	if is_instance_valid(_sfx_label): _sfx_label.text = tr("SETTINGS_SFX")
+	if is_instance_valid(_res_label): _res_label.text = tr("SETTINGS_RESOLUTION")
+	if is_instance_valid(_lang_label): _lang_label.text = tr("SETTINGS_LANGUAGE")
+	if is_instance_valid(_back_btn): _back_btn.text = tr("SETTINGS_BACK")
+	if is_instance_valid(_apply_btn): _apply_btn.text = tr("SETTINGS_APPLY")
+	
+	# Redraw resolution drop-down items cleanly with active language (SRP)
+	if is_instance_valid(_res_opt):
+		var active_index := _res_opt.selected
+		_res_opt.clear()
+		_res_opt.add_item(tr("SETTINGS_RESOLUTION_720"), 0)
+		_res_opt.add_item(tr("SETTINGS_RESOLUTION_1080"), 1)
+		_res_opt.add_item(tr("SETTINGS_RESOLUTION_FULLSCREEN"), 2)
+		_res_opt.select(active_index)
+
+func _setup_resolution_dropdown_state() -> void:
 	if not OS.has_feature("editor"):
 		var main_window: Window = get_tree().root
 		if main_window.mode == Window.MODE_FULLSCREEN or main_window.mode == Window.MODE_EXCLUSIVE_FULLSCREEN:
-			_res_opt.select(2)
+			if is_instance_valid(_res_opt): _res_opt.select(2)
 		elif main_window.size.x > 1280:
-			_res_opt.select(1)
+			if is_instance_valid(_res_opt): _res_opt.select(1)
 		else:
+			if is_instance_valid(_res_opt): _res_opt.select(0)
+	else:
+		if is_instance_valid(_res_opt):
 			_res_opt.select(0)
-	res_hbox.add_child(_res_opt)
-	
-	var apply_btn := Button.new()
-	apply_btn.text = "APPLY"
-	apply_btn.custom_minimum_size = Vector2(80, 40)
-	apply_btn.pressed.connect(_on_apply_resolution_pressed)
-	res_hbox.add_child(apply_btn)
-	
-	box.add_child(_create_spacer(40))
-	
-	# 5. Back / Close Button
-	var close_btn := Button.new()
-	close_btn.text = "BACK"
-	close_btn.custom_minimum_size = Vector2(0, 48)
-	close_btn.pressed.connect(func() -> void: closed.emit())
-	box.add_child(close_btn)
 
-func _create_label(txt: String) -> Label:
+func _create_label() -> Label:
 	var l := Label.new()
-	l.text = txt
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ls := LabelSettings.new()
 	ls.font_size = 18
@@ -139,15 +203,13 @@ func _on_sfx_changed(val: float) -> void:
 	AudioServer.set_bus_mute(bus_idx, val <= -39.0)
 
 func _on_apply_resolution_pressed() -> void:
-	# Safely intercept Godot embedded editor constraints using native OS features
 	if OS.has_feature("editor"):
-		print("[SettingsMenu] Resolution ignored: Running in Godot Editor debug wrapper. Fullscreen API will work flawlessly in your final exported game!")
+		print("[SettingsMenu] Resolution ignored inside Godot Editor debug wrapper.")
 		return
 		
 	var idx := _res_opt.get_selected_id()
 	var main_window: Window = get_tree().root
 	
-	# Apply resolution to the native OS window
 	match idx:
 		0:
 			main_window.mode = Window.MODE_WINDOWED
@@ -159,3 +221,12 @@ func _on_apply_resolution_pressed() -> void:
 			main_window.move_to_center()
 		2:
 			main_window.mode = Window.MODE_FULLSCREEN
+
+## Triggered when the user picks English or Spanish in the language dropdown
+func _on_language_changed(index: int) -> void:
+	if index == 0:
+		TranslationServer.set_locale("en")
+		print("[SettingsMenu] Language changed to English (en).")
+	elif index == 1:
+		TranslationServer.set_locale("es")
+		print("[SettingsMenu] Idioma cambiado a Español (es).")

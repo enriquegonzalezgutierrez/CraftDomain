@@ -2,11 +2,10 @@
 # Project: CraftDomain
 # Description: Composition root that bootstraps the DDD application lifecycle, 
 #              handling dynamic, decoupled dependency injection.
-#              SOLID COMPLIANCE: Adheres to Single Responsibility Principle (SRP)
-#              and Open-Closed Principle (OCP).
-#              STRICT MODE UPDATE: Replaced dynamic script loading with strong class
-#              instantiations to eliminate UNSAFE_CAST.
-#              DIALOGUE FIX: Added DialogueRegistry initialization call to applications boot.
+#              SOLID COMPLIANCE: Adheres to SRP and OCP.
+#              i18n UPGRADE: Seeds programmatically created English and Spanish 
+#              translation tables into the TranslationServer at application startup,
+#              fully resolving the raw-keys display issue!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -31,6 +30,10 @@ func _ready() -> void:
 func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
 	
+	# ---> INITIALIZE INTERNATIONAL LOCALES DATABASE (i18n) <---
+	# Registers programmatically created English & Spanish locales into Godot's TranslationServer
+	TranslationRegistry.initialize_translations()
+	
 	_setup_biomes()      
 	_setup_structures() 
 	_setup_mobs()       # Registers dynamic spawners (OCP)
@@ -40,10 +43,10 @@ func _initialize_application() -> void:
 	# Load external campaign quests
 	CampaignRegistry.initialize_campaign()
 	
-	# Load dialogue trees (FIXED: Dialogue was never initialized!)
+	# Load dialogue trees
 	DialogueRegistry.initialize_dialogue_database()
 	
-	# --- FASE 1 UPGRADE: Load dynamic crafting recipes ---
+	# Load dynamic crafting recipes
 	RecipeRegistry.initialize_recipes()
 	
 	_setup_celestial()
@@ -76,6 +79,7 @@ func _setup_structures() -> void:
 	StructureLibrary.register_blueprint(UnderworldFungusBlueprint.new())
 	
 	# GLOBAL MEGA-STRUCTURES (Fixed Points of Interest)
+	print("[Bootstrap] Registering fixed POI Mega-Structures...")
 	MegaStructureService.register_structure(GrandCastleMegaStructure.new())
 	MegaStructureService.register_structure(HarborCityMegaStructure.new())
 
