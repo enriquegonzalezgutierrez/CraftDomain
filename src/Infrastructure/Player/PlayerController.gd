@@ -7,6 +7,8 @@
 #              UI window orchestration to PlayerHUD.
 #              i18n / INPUT UPGRADE: Added dynamic, automatic key mapping for the 
 #              M key to trigger the Fullscreen Tactical Map Overlay.
+#              FAILSAFE UPGRADE: Added a dynamic Void Rescue Shield to automatically
+#              teleport the player back to the surface if they clip through the ground.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -87,7 +89,7 @@ func _setup_inputs() -> void:
 		"craft_item": KEY_C,
 		"toggle_backpack": KEY_I,
 		"free_cursor": KEY_ALT,
-		"toggle_world_map": KEY_M # MAP KEY BINDING ADDED
+		"toggle_world_map": KEY_M 
 	}
 	
 	for action_name in primary_inputs.keys():
@@ -185,6 +187,12 @@ func _physics_process(delta: float) -> void:
 	# Controls hardware cursor visibility when holding Left Alt
 	_process_cursor_grab_state()
 
+	# ---> VOID RESCUE FAILSAFE SHIELD <---
+	# If the player slips below the ground level (Y < 2.0) due to physics glitches or knockbacks,
+	# automatically teleport them back safely to the surface of the nearest solid block!
+	if global_position.y < 2.0:
+		_rescue_player_from_void()
+
 	if not is_active:
 		# Process UI workspace toggles even when movement physics are frozen
 		if Input.is_action_just_pressed("craft_item") and is_instance_valid(hud):
@@ -234,6 +242,31 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_process_camera_effects(delta)
+
+## Scan downwards to rescue player back to the surface of the topmost solid block
+func _rescue_player_from_void() -> void:
+	print("[PlayerController] Failsafe Shield triggered: Player fell into the void! Relocalizing to surface...")
+	velocity = Vector3.ZERO
+	
+	var block_x := floori(global_position.x)
+	var block_z := floori(global_position.z)
+	var found_safe_y: float = -1.0
+	
+	if is_instance_valid(world_controller):
+		var world_state_ref = world_controller.get("world_state") as WorldState
+		if world_state_ref != null:
+			# Scan downwards from max generation height limit
+			for y in range(31, -1, -1):
+				var check_coord := Vector3i(block_x, y, block_z)
+				var block_type := world_state_ref.get_block(check_coord)
+				if BlockType.is_solid(block_type):
+					found_safe_y = float(y) + 2.0 
+					break
+					
+	if found_safe_y >= 0.0:
+		global_position.y = found_safe_y
+	else:
+		global_position.y = 15.0 # Fallback safety height above ocean level
 
 ## FASE 1: Controls hardware cursor visibility when holding Left Alt
 func _process_cursor_grab_state() -> void:

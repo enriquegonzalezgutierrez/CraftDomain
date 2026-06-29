@@ -1,11 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a hostile zombie.
-#              Acts as an Infrastructure Wrapper that uses Composition to hold
-#              a pure Domain VoxelEntity, reacting to Domain Events (Signals).
-#              STRICT MODE FIX: Removed unused variables and safeguarded 3D rotations.
-#              AI QUEST UPGRADE: Corrected player dynamic hierarchy location,
-#              and added automated floating quest TARGET bubble above head!
+# Description: Hostile zombie physics controller wrapper.
+#              SOLID COMPLIANCE: Adheres strictly to SRP by isolating AI behaviors.
+#              FIX: Added a strict 1.5-second attack cooldown timer to prevent
+#              the 120Hz physics loop from instant-killing the player and forcing
+#              respawn teleports back to (8.5, 14.0, 8.5).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -17,6 +16,7 @@ const SPEED: float = 2.2
 const JUMP_VELOCITY: float = 5.0
 const CHASE_RANGE: float = 16.0
 const ATTACK_RANGE: float = 1.2
+const ATTACK_COOLDOWN_INTERVAL: float = 1.5 # 1.5 seconds cooldown between bites
 
 # Physics and state
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -32,6 +32,9 @@ var _visual_materials: Array[ORMMaterial3D] = []
 var _wander_timer: float = 0.0
 var _wander_direction: Vector3 = Vector3.ZERO
 var _is_wandering: bool = false
+
+# Cooldown Tracker (SRP)
+var _attack_cooldown_timer: float = 0.0
 
 # Obstacle Avoidance Tracker
 var _stuck_timer: float = 0.0
@@ -141,14 +144,12 @@ func _on_domain_entity_died() -> void:
 	if is_instance_valid(player):
 		var inv := player.get("inventory") as IInventory
 		if is_instance_valid(inv):
-			# Standard drop: 1x Lava Bucket (ID 15) using safe stack-based API
 			print("[Zombie] Loot dropped: 1x Lava Bucket added.")
 			inv.add_item(15, 1) 
 			
 			# --- CAMPAIGN MISSION 5 TRIGGER: Complete Plains Defender ---
 			var active_q := QuestService.get_active_quest()
 			if active_q != null and active_q.quest_id == "plains_defender":
-				# Grant the extra campaign reward (3x additional Lava Buckets!)
 				inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
 				QuestService.complete_active_quest(player)
 				
@@ -170,6 +171,10 @@ func _physics_process(delta: float) -> void:
 	# Apply gravity
 	if not is_on_floor():
 		velocity.y -= gravity * delta
+
+	# Process bite cooldown tick (SRP)
+	if _attack_cooldown_timer > 0.0:
+		_attack_cooldown_timer -= delta
 
 	# Dynamic target search fallback if player spawned late
 	if not is_instance_valid(player):
@@ -199,8 +204,11 @@ func _process_ai_intelligence(delta: float) -> void:
 			_wander_direction.y = 0
 			is_player_trackable = true
 			
+			# Check distance and execute attack only if the cooldown has elapsed!
 			if global_position.distance_to(player.global_position) <= ATTACK_RANGE:
-				_bite_player()
+				if _attack_cooldown_timer <= 0.0:
+					_bite_player()
+					_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL # Start cooldown!
 				
 	if not is_player_trackable and _wander_direction_tmp != Vector3.ZERO:
 		_wander_direction = _wander_direction_tmp
@@ -211,7 +219,6 @@ func _process_ai_intelligence(delta: float) -> void:
 		velocity.z = _wander_direction.z * speed_mult
 		
 		var visuals_node: Node3D = get_node("Visuals")
-		# STRICT MODE & MATH SAFE FIX: Rotate only if the target vector is physically significant
 		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
 			var target_look_at: Vector3 = global_position + _wander_direction
 			if not global_position.is_equal_approx(target_look_at):
@@ -224,7 +231,7 @@ func _process_ai_intelligence(delta: float) -> void:
 				velocity.y = JUMP_VELOCITY
 				
 			_stuck_timer += delta
-			var patience := 1.0 if is_player_trackable else 0.4 # Persistent if chasing
+			var patience := 1.0 if is_player_trackable else 0.4 
 			
 			if _stuck_timer > patience:
 				_stuck_timer = 0.0
@@ -243,9 +250,10 @@ func _process_ai_intelligence(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0, SPEED)
 		velocity.z = move_toward(velocity.z, 0, SPEED)
 
+## FIXED: Reduced y-knockback to prevent throwing player into tight ceilings (prevents physics clipping glitches)
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var bite_knockback: Vector3 = (player.global_position - global_position).normalized() * 4.5
-		bite_knockback.y = 2.0 
+		bite_knockback.y = 0.25 # Extremely safe low-arc lift
 		if player.has_method("take_damage"):
 			player.call("take_damage", 1, bite_knockback)
