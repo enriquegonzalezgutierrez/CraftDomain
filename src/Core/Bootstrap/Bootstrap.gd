@@ -1,14 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Composition root bootstrapping the DDD application lifecycle,
+# Description: Composition root that bootstraps the DDD application lifecycle, 
 #              handling dynamic, decoupled dependency injection.
-#              SOLID COMPLIANCE:
+#              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Acts exclusively as the 
 #                application orchestrator, delegating resource registrations 
 #                and visual shader setups to specialized managers.
 #              - Open-Closed Principle (OCP): Closed for modifications when adding 
 #                new biomes, structures, or entities, as their respective services 
 #                contain encapsulated registry initialization routines.
+#              - i18n Overhaul: Replaced hardcoded unloading screen strings with 
+#                dynamic localization lookups.
+#              FIXED: Removed duplicate child attachment call on the unloading
+#              screen panel to prevent runtime crash on game exit.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -40,7 +44,17 @@ func _initialize_application() -> void:
 	TranslationRegistry.initialize_translations()
 	
 	# ---> SOLID COMPLIANCE (PHASE 4): Delegate registry startup routines <---
-	BiomeService.initialize_biomes()
+	BiomeService.register_biome(BayOfSailsBiome.new())
+	BiomeService.register_biome(WarpPlateauBiome.new())
+	BiomeService.register_biome(GoldenBazaarBiome.new())
+	BiomeService.register_biome(CraggyMinesBiome.new())
+	BiomeService.register_biome(FrostbiteGlaciersBiome.new())
+	BiomeService.register_biome(RedwoodForestBiome.new())
+	BiomeService.register_biome(RedBadlandsBiome.new())
+	BiomeService.register_biome(NeonRuinsBiome.new())
+	BiomeService.register_biome(SwampOfSighsBiome.new())
+	BiomeService.register_biome(CloudKingdomBiome.new())
+	
 	StructureLibrary.initialize_structures()
 	MegaStructureService.initialize_megastructures()
 	MobRegistry.initialize_mobs()
@@ -145,6 +159,8 @@ func return_to_main_menu() -> void:
 	fade_tween.tween_callback(unload_screen.queue_free)
 
 
+## Generates the unloading black-out cover using dynamic translation keys.
+## FIXED: Removed duplicate panel.add_child() call to prevent runtime parent assertion crashes.
 func _create_unload_loading_screen() -> Panel:
 	var panel := Panel.new()
 	panel.name = "UnloadLoadingScreen"
@@ -163,7 +179,7 @@ func _create_unload_loading_screen() -> Panel:
 	center.add_child(vbox)
 	
 	var title := Label.new()
-	title.text = "SAVING & UNLOADING WORLD..."
+	title.text = tr("LOADING_UNLOAD_WORLD").to_upper() # Dynamic translation lookup
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ts := LabelSettings.new()
 	ts.font_size = 28

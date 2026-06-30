@@ -23,12 +23,6 @@
   "ITEM_WOODEN_SWORD": "Espada de Madera",
   "INVENTORY_EMPTY": "Vacío",
   "INVENTORY_UNKNOWN": "Bloque Desconocido",
-  "INVENTORY_INFINITE": "Cantidad Infinita",
-
-  "INVENTORY_EMPTY_TITLE": "Inspector de Mochila",
-  "INVENTORY_EMPTY_DESC": "Haz clic en cualquier objeto de la mochila para inspeccionar sus instrucciones de uso y detalles operativos.",
-  "ITEM_USAGE_PREFIX": "USO",
-  "ITEM_STOCKED_PREFIX": "ALMACENADO",
 
   "ITEM_1_DESC": "Bloques de piedra gris lisos y pesados extraídos de cuevas profundas... útiles para muros defensivos estructurados.",
   "ITEM_1_USE": "Presiona Clic Derecho para construir estructuras sólidas.",
@@ -50,6 +44,12 @@
   "ITEM_18_USE": "Equípalas y haz Clic Derecho sobre bloques de césped/tierra. ¡Los cultivos crecen dinámicamente con el tiempo!",
   "ITEM_20_DESC": "Granos de trigo dorados madurados al sol cosechados de tus campos de cultivo maduros. Material crudo esencial para recetas de panadería de supervivencia avanzadas.",
   "ITEM_20_USE": "Usa este trigo en el Taller de Creación para fabricar valiosas raciones.",
+
+  "ITEM_STOCKED_PREFIX": "ALMACENADO",
+  "ITEM_USAGE_PREFIX": "MANUAL OPERATIVO",
+  "INVENTORY_INFINITE": "INFINITO",
+  "INVENTORY_EMPTY_TITLE": "Inspector de Mochila",
+  "INVENTORY_EMPTY_DESC": "Haz clic en cualquier objeto de la mochila para inspeccionar sus instrucciones de uso y detalles operativos.",
 
   "BIOME_BAY_OF_SAILS": "Bahía de las Velas (Océano Inicial)",
   "BIOME_WARP_PLATEAU": "Meseta de Tuberías (Pasos de Mario)",
@@ -179,5 +179,23 @@
   "DIALOGUE_GUARD_GLACIERS": "¡Mi armadura de placas de acero se está congelando en este glaciar! Pero el deber de un guardia nunca se congele.",
   "DIALOGUE_GUARD_NEON": "Las ciber-redes automatizadas están en línea. Ningún zombi invadirá la cuenca cibernética mientras yo esté vigilando.",
   "DIALOGUE_GUARD_PLAINS_A": "¡Saludos, viajero! Vigilo este bazar de la aldea. ¡Descansa tranquilo; mi espada de acero mantendrá a raya a los zombis de las cuevas!",
-  "DIALOGUE_GUARD_PLAINS_B": "Patrullar las llanuras ha sido pacífico hoy. Pero siempre mantengo un ojo en esas grietas oscuras de la montaña."
+  "DIALOGUE_GUARD_PLAINS_B": "Patrullar las llanuras ha sido pacífico hoy. Pero siempre mantengo un ojo en esas grietas oscuras de la montaña.",
+
+  "MENU_GAME_TITLE": "Craft Domain",
+  "LOADING_UNLOAD_WORLD": "Guardando y Descargando el Mundo...",
+  "LOADING_STATUS": "Generando Mundo Procedural",
+  "LOADING_TIP": "CONSEJO: Revisa tu brújula en la parte superior. Camina hacia los píxeles naranjas del radar para descubrir asentamientos en las aldeas.",
+
+  "NOTIFICATION_HARVEST_SUCCESS_HEADER": "Cosecha Exitosa",
+  "NOTIFICATION_HARVEST_SUCCESS_DESC": "¡Has recolectado 1x Trigo Maduro y Semillas!",
+  "NOTIFICATION_CROP_UPROOTED_HEADER": "Cultivo Arrancado",
+  "NOTIFICATION_CROP_UPROOTED_DESC": "Se te ha devuelto 1x Semilla de Cultivo.",
+  "NOTIFICATION_CONSUME_FOOD_HEADER": "¡Delicioso!",
+  "NOTIFICATION_CONSUME_FOOD_DESC": "Has consumido 1x Pollo Frito. Curado 1 Corazón.",
+  "NOTIFICATION_PLANTED_SEED_HEADER": "Semilla Plantada",
+  "NOTIFICATION_PLANTED_SEED_DESC": "¡Has sembrado 1x Semilla de Cultivo en suelo labrado!",
+
+  "NOTIFICATION_LOOT_FOUND_HEADER": "¡Botín Encontrado!",
+  "NOTIFICATION_LOOT_FOUND_DESC_CHICKEN": "¡Has conseguido 1x Pollo Frito!",
+  "NOTIFICATION_LOOT_FOUND_DESC_LAVA": "¡Has conseguido 1x Balde de Lava!"
 }

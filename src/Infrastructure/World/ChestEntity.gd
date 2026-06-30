@@ -1,9 +1,11 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure World Prop representing an interactive 3D loot chest.
-#              SOLID COMPLIANCE: Adheres to the Single Responsibility Principle (SRP)
-#              by handling only the physical instantiation, collision box setup,
-#              and interaction/loot granting logic of the chest asset.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Handles exclusively the 
+#                physical loading of the chest asset, colliders, and animation.
+#              - i18n Overhaul: Replaced hardcoded string concatenations with 
+#                clean localized translation keys (NOTIFICATION_LOOT_FOUND_...).
 #              AI QUEST UPGRADE: Safely increments the active quest's incremental 
 #              progress_counter when looting chest reward items.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -22,12 +24,14 @@ const VERTICAL_OFFSET: float = 0.373  # Elevates center-pivot model perfectly to
 # Internal model instance reference
 var _model_node: Node3D
 
+
 func _ready() -> void:
 	name = "Prop_CHEST"
 	_setup_model()
 	_setup_collision()
 
-## Programmatically loads, instantiates and configures the GLB model
+
+## Programmatically loads, instantiates and configures the GLB model.
 func _setup_model() -> void:
 	var model_scene := load(MODEL_PATH) as PackedScene
 	if model_scene != null:
@@ -50,7 +54,8 @@ func _setup_model() -> void:
 		mesh_instance.material_override = mat
 		add_child(mesh_instance)
 
-## Generates the physical collision box for highlighting and raycast detection
+
+## Generates the physical collision box for highlighting and raycast detection.
 func _setup_collision() -> void:
 	var col_shape := CollisionShape3D.new()
 	col_shape.name = "ChestCollider"
@@ -62,30 +67,31 @@ func _setup_collision() -> void:
 	col_shape.position = Vector3(0.0, 0.425, 0.0) # Ground level offset
 	add_child(col_shape)
 
-## Public Interaction API: Triggered when player aims and clicks right mouse button
+
+## Public Interaction API: Triggered when player aims and clicks right mouse button.
 func interact(player_node: CharacterBody3D) -> void:
 	var inventory = player_node.get("inventory")
 	var hud = player_node.get("hud")
 	
 	if is_instance_valid(inventory):
-		# Roll a random professional loot reward: 50% chance for food, 50% for lava fuel
+		# Roll a random reward: 50% chance for food, 50% for lava fuel
 		var reward_slot := 6 if randf() > 0.5 else 5
-		var item_name := "Fried Chicken" if reward_slot == 6 else "Lava Bucket"
+		
+		# Symmetrically fetch the correct translation description key (i18n compliance)
+		var desc_key := "NOTIFICATION_LOOT_FOUND_DESC_CHICKEN" if reward_slot == 6 else "NOTIFICATION_LOOT_FOUND_DESC_LAVA"
 		
 		# Grant the physical reward inside the inventory component
 		inventory.modify_slot_quantity(reward_slot, 1)
 		player_node.call("_sync_hud_counters")
 		
-		# ======================================================================
-		# INCREMENT ACTIVE QUEST PROGRESSION ON CHEST OPEN
-		# ======================================================================
+		# Increment active quest progression on chest open if applicable
 		var active_q := QuestService.get_active_quest()
 		if active_q != null and active_q.required_item_index == reward_slot:
 			active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
 		
-		# Trigger our newly created sliding toast notification
+		# Trigger sliding toast notification with localized keys
 		if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-			hud.call("show_quest_notification", "Loot Found!", "You gathered 1x " + item_name + "!")
+			hud.call("show_quest_notification", "NOTIFICATION_LOOT_FOUND_HEADER", desc_key)
 			
 		# Disable collider immediately to prevent double-interactions during animation
 		var collider = get_node_or_null("ChestCollider")

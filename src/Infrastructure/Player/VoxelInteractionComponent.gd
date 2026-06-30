@@ -8,8 +8,9 @@
 #                interaction mechanics and block modification triggers.
 #              - Dependency Inversion Principle (DIP): Rather than hardcoding 
 #                static references to global singletons, it holds injectable 
-#                references to the block library and quest service, allowing 
-#                mock injections for testing.
+#                references to the block library and quest service.
+#              - i18n Overhaul: Replaced all hardcoded notification toast strings 
+#                with clean localization keys.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -141,20 +142,20 @@ func _mine_or_attack() -> void:
 			
 			var target_id := int(mined_type)
 			
-			# Special Agricultural Harvesting Rules
+			# Special Agricultural Harvesting Rules (Using localized keys)
 			if mined_type == BlockType.Type.CROP_RIPE:
 				inventory.add_item(20, 1) # Ripe Wheat ID
 				inventory.add_item(18, randi_range(1, 2)) # Plump Seeds ID
 				player._sync_hud_counters()
 				target_id = 20 
 				if is_instance_valid(hud):
-					hud.show_quest_notification("Harvest Success", "Gathered 1x Ripe Wheat and Seeds!")
+					hud.show_quest_notification("NOTIFICATION_HARVEST_SUCCESS_HEADER", "NOTIFICATION_HARVEST_SUCCESS_DESC")
 			elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
 				inventory.add_item(18, 1)
 				player._sync_hud_counters()
 				target_id = 18 
 				if is_instance_valid(hud):
-					hud.show_quest_notification("Crop Uprooted", "Refunded 1x Crop Seed.")
+					hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
 			else:
 				# Standard block collection
 				inventory.add_block_by_type(mined_type)
@@ -258,7 +259,7 @@ func _build_or_interact() -> void:
 	var item_id := slot_data.item_id
 	var world_state := world_controller.get("world_state") as WorldState
 	
-	# Consume food to restore health (ID 16: Fried Chicken)
+	# HEALING CASE: Consume 1x Fried Chicken (Item ID 16) to restore health (Using localized keys)
 	if item_id == 16:
 		if player.domain_entity.health < 3:
 			slot_data.quantity -= 1
@@ -267,11 +268,11 @@ func _build_or_interact() -> void:
 			player.domain_entity.health = min(3, player.domain_entity.health + 1)
 			if is_instance_valid(hud):
 				hud.update_health_display(player.domain_entity.health)
-				hud.show_quest_notification("Yummy!", "Consumed 1x Fried Chicken. Healed 1 Heart.")
+				hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "NOTIFICATION_CONSUME_FOOD_DESC")
 			player._sync_hud_counters()
 		return
 
-	# Plant crop seeds on top of solid soil blocks (ID 18: Crop Seed)
+	# SEED PLANTING: Plant crop seeds on top of solid soil blocks (Item ID 18: Crop Seed) (Using localized keys)
 	if item_id == 18:
 		var hit_normal := raycast.get_collision_normal()
 		if hit_normal.y == 1.0: # Top face interactions only
@@ -289,7 +290,7 @@ func _build_or_interact() -> void:
 					
 					world_controller.call("set_block_globally", crop_coord, BlockType.Type.CROP_SEED)
 					if is_instance_valid(hud):
-						hud.show_quest_notification("Planted Seed", "Sowed 1x Crop Seed on tilled soil!")
+						hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")
 					return
 		return
 
