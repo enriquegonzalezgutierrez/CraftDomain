@@ -10,6 +10,9 @@
 #                scanning, agricultural AI work, and harvesting hoe animations.
 #              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
 #                keys to prevent hardcoded string leakage in codebase.
+#              CONVERSATION LOCK FIXED:
+#              - Bypasses agricultural pathfinding loops and freezes velocity to 
+#                zero when is_talking is active, allowing clean gaze locks.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
@@ -133,24 +136,53 @@ func _setup_floating_bubble() -> void:
 
 
 ## Public Gaze Interaction: Localized dialogue trees.
-## REFACTORING: Replaced hardcoded dialogue text with dynamic i18n translation keys.
+## REFACTORING: Passes 'self' as the third parameter to trigger conversational locks.
 func interact(player_node: CharacterBody3D) -> void:
 	var hud = player_node.get("hud")
 	if is_instance_valid(hud):
-		var intro_node: Resource = DialogueService.get_dialogue_node("farmer_intro")
-		if intro_node == null:
-			var fallback_node := DialogueNode.new()
-			fallback_node.node_id = "farmer_intro"
-			fallback_node.text = "DIALOGUE_FARMER_INTRO"
-			DialogueService.register_node(fallback_node)
-			intro_node = fallback_node
-		hud.call("open_dialogue", intro_node, "Farmer")
+		var intro_node := DialogueNode.new()
+		intro_node.node_id = "farmer_intro_temp"
+		intro_node.text = _select_procedural_greeting_key()
+		
+		# Pass "self" as the third argument to freeze and lock gaze during dialog
+		hud.call("open_dialogue", intro_node, "Farmer", self)
+
+
+## Selects a unique localized dialogue key based on time, biome, and variety index.
+func _select_procedural_greeting_key() -> String:
+	var celestial := get_node_or_null("/root/Bootstrap/CelestialService")
+	var is_night := false
+	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
+		is_night = celestial.call("is_night_time") as bool
+		
+	# 1. Night-time reactive prompts (Worried about cold frost on crops)
+	if is_night:
+		return "DIALOGUE_FARMER_NIGHT"
+		
+	# 2. Biome-specific environmental prompts
+	var biome_id := _detect_current_biome()
+	match biome_id:
+		4: return "DIALOGUE_FARMER_GLACIERS"   # Freezing soil tilling
+		7: return "DIALOGUE_FARMER_NEON"       # Automatic hydroponics
+		
+	# 3. Standard Plains randomized pool (Uses coordinate-based variety index)
+	var variety_index := npc_seed % 2
+	match variety_index:
+		0: return "DIALOGUE_FARMER_PLAINS_A"
+		_: return "DIALOGUE_FARMER_PLAINS_B"
 
 
 ## Main Loop ticker.
+## FIXED: Freezes physical velocity and bypasses tilling loops during conversations.
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
+		
+	if is_talking:
+		velocity = Vector3.ZERO
+		super(delta)
+		return
+		
 	_process_farming_ai_intelligence(delta)
 	super(delta)
 

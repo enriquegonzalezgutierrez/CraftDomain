@@ -51,12 +51,6 @@
   "ITEM_20_DESC": "Granos de trigo dorados madurados al sol cosechados de tus campos de cultivo maduros. Material crudo esencial para recetas de panadería de supervivencia avanzadas.",
   "ITEM_20_USE": "Usa este trigo en el Taller de Creación para fabricar valiosas raciones.",
 
-  "ITEM_STOCKED_PREFIX": "ALMACENADO",
-  "ITEM_USAGE_PREFIX": "MANUAL OPERATIVO",
-  "INVENTORY_INFINITE": "INFINITO",
-  "INVENTORY_EMPTY_TITLE": "Inspector de Mochila",
-  "INVENTORY_EMPTY_DESC": "Haz clic en cualquier objeto de la mochila para inspeccionar sus instrucciones de uso y detalles operativos.",
-
   "BIOME_BAY_OF_SAILS": "Bahía de las Velas (Océano Inicial)",
   "BIOME_WARP_PLATEAU": "Meseta de Tuberías (Pasos de Mario)",
   "BIOME_GOLDEN_BAZAAR": "Bazar Dorado (Llanuras de la Aldea)",
@@ -162,5 +156,28 @@
   "DIALOGUE_MERCHANT_ABOUT": "Soy el Maestro Mercader de estas llanuras. ¡Recojo lava geotérmica para freír nuestros legendarios pollos! Los mantiene calientes, crujientes y altamente terapéuticos.",
   "DIALOGUE_MERCHANT_CHOICE_BACK": "Volver a la introducción",
   "DIALOGUE_MERCHANT_TRADE_INFO": "¡Ah, excelente! Mis freidoras de pollo-lava tienen hambre de combustible. ¡Un Balde de Lava (Ranura 6) te consigue un famoso Pollo Frito!",
-  "DIALOGUE_MERCHANT_CHOICE_EXECUTE": "[EJECUTAR CAMBIO] Entregar 1x Balde de Lava"
+  "DIALOGUE_MERCHANT_CHOICE_EXECUTE": "[EJECUTAR CAMBIO] Entregar 1x Balde de Lava",
+
+  "DIALOGUE_VILLAGER_NIGHT": "El sol se ha puesto, viajero... ten cuidado, los zombis de la montaña emergen en la oscuridad.",
+  "DIALOGUE_VILLAGER_OCEAN": "La brisa tropical del océano se siente maravillosa hoy. ¡Es un buen día para navegar por la bahía!",
+  "DIALOGUE_VILLAGER_GLACIERS": "¡Brrr! Los glaciares polares son heladores... ¡el frío penetra hasta en nuestras capuchas de lana más pesadas!",
+  "DIALOGUE_VILLAGER_NEON": "Los caminos de energía de estas ruinas están pulsando intensamente. Cuidado con no tocar los senderos brillantes.",
+  "DIALOGUE_VILLAGER_SWAMP": "Agua estancada, lodo espeso... este pantano de los suspiros esconde muchos secretos antiguos en su niebla.",
+  "DIALOGUE_VILLAGER_CLOUD": "¡Mira hacia abajo, viajero! Flotar tan alto en el reino de las nubes me hace sentir más cerca del cielo.",
+  "DIALOGUE_VILLAGER_PLAINS_A": "¡Saludos! El suelo del Bazar Dorado es rico, lo que lo convierte en el lugar perfecto para instalar puestos de mercaderes.",
+  "DIALOGUE_VILLAGER_PLAINS_B": "¡Bienvenido a nuestro bazar de la aldea! Avísame si necesitas indicaciones a través de estas mesetas escarpadas.",
+  "DIALOGUE_VILLAGER_PLAINS_C": "¡Saludos, viajero! Vivimos una vida pacífica aquí, siempre y cuando los zombis de la montaña se queden dentro de sus cuevas oscuras.",
+
+  "DIALOGUE_FARMER_NIGHT": "Debo retirarme pronto, pero me preocupa... si cae una helada esta noche, podría arruinar nuestros brotes jóvenes.",
+  "DIALOGUE_FARMER_GLACIERS": "Labrar la tierra congelada es un trabajo duro, pero debemos cultivar raíces de invierno resistentes para sobrevivir.",
+  "DIALOGUE_FARMER_NEON": "La tecnología hidropónica en estas ruinas es fascinante... ¡estos bloques de cian brillante ayudan a estimular el crecimiento!",
+  "DIALOGUE_FARMER_PLAINS_A": "¡Hola! Estoy cuidando estos cultivos para mantener el mercado bien abastecido. ¡El suelo del Bazar Dorado es rico y abundante!",
+  "DIALOGUE_FARMER_PLAINS_B": "¡Un gran día para la cosecha! Recuerda, golpea los cultivos de trigo de oro maduro para obtener trigo y semillas.",
+
+  "SETTINGS_RESOLUTION_1080": "Ventana (1920 x 1080)",
+  "DIALOGUE_GUARD_NIGHT": "¡Alto, viajero! La noche es oscura y está llena de peligros. Desenvaina tu espada de madera si exploras los valles.",
+  "DIALOGUE_GUARD_GLACIERS": "¡Mi armadura de placas de acero se está congelando en este glaciar! Pero el deber de un guardia nunca se congele.",
+  "DIALOGUE_GUARD_NEON": "Las ciber-redes automatizadas están en línea. Ningún zombi invadirá la cuenca cibernética mientras yo esté vigilando.",
+  "DIALOGUE_GUARD_PLAINS_A": "¡Saludos, viajero! Vigilo este bazar de la aldea. ¡Descansa tranquilo; mi espada de acero mantendrá a raya a los zombis de las cuevas!",
+  "DIALOGUE_GUARD_PLAINS_B": "Patrullar las llanuras ha sido pacífico hoy. Pero siempre mantengo un ojo en esas grietas oscuras de la montaña."
 }

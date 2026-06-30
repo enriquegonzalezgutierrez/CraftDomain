@@ -7,6 +7,11 @@
 #                fully satisfies all base physics, AI state, and blinking loops.
 #              - Single Responsibility Principle (SRP): Handles exclusively merchant 
 #                visual variations and dialog triggers.
+#              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
+#                keys to prevent hardcoded string leakage in codebase.
+#              CONVERSATION LOCK FIXED:
+#              - Passes 'self' as the third argument during HUD dialogue opening
+#                to correctly register and lock pathfinding during trades.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MerchantEntity.gd
 # ==============================================================================
@@ -130,6 +135,7 @@ func _setup_floating_bubble() -> void:
 
 
 ## Public Interaction: Triggers centralized trading dialogue overlays.
+## FIXED: Passes 'self' as the third parameter to trigger conversational locks.
 func interact(player_node: CharacterBody3D) -> void:
 	var hud = player_node.get("hud")
 	if is_instance_valid(hud):
@@ -140,7 +146,7 @@ func interact(player_node: CharacterBody3D) -> void:
 			intro_node = DialogueService.get_dialogue_node("merchant_intro")
 			
 		if intro_node != null:
-			hud.call("open_dialogue", intro_node, "Merchant")
+			hud.call("open_dialogue", intro_node, "Merchant", self)
 
 
 ## Queries coordinate biomes.

@@ -10,6 +10,9 @@
 #                visual variations and dialog triggers.
 #              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
 #                keys to prevent hardcoded string leakage in codebase.
+#              PROCEDURAL DIALOG OVERHAUL:
+#              - Replaced all fallback dialogues with a biome and coordinate-seeded 
+#                conversational router (No repetitive dialogues).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
@@ -158,7 +161,6 @@ func _build_custom_headwear(biome_id: int, hair_color: Color) -> void:
 
 
 ## Public Gaze Interaction: Triggers localized village dialogue progression.
-## REFACTORING: Replaced hardcoded dialogue text with dynamic i18n translation keys.
 func interact(player_node: CharacterBody3D) -> void:
 	var active_q := QuestService.get_active_quest()
 	
@@ -173,20 +175,41 @@ func interact(player_node: CharacterBody3D) -> void:
 		
 		var hud = player_node.get("hud")
 		if is_instance_valid(hud):
-			hud.call("open_dialogue", complete_node, "Villager")
+			hud.call("open_dialogue", complete_node, "Villager", self)
 	else:
-		# Standard localized chat
+		# Standard procedural dialogue routing
 		var hud = player_node.get("hud")
 		if is_instance_valid(hud):
-			var intro_node: Resource = DialogueService.get_dialogue_node("villager_intro")
-			if intro_node == null:
-				var fallback_node := DialogueNode.new()
-				fallback_node.node_id = "villager_intro"
-				fallback_node.text = "DIALOGUE_VILLAGER_INTRO"
-				DialogueService.register_node(fallback_node)
-				intro_node = fallback_node
-			hud.call("open_dialogue", intro_node, "Villager")
+			var intro_node := DialogueNode.new()
+			intro_node.node_id = "villager_intro_temp"
+			intro_node.text = _select_procedural_greeting_key()
+			
+			hud.call("open_dialogue", intro_node, "Villager", self)
 
 
-func _can_socialize() -> bool:
-	return true
+## Selects a unique localized dialogue key based on time, biome, and variety index.
+func _select_procedural_greeting_key() -> String:
+	var celestial := get_node_or_null("/root/Bootstrap/CelestialService")
+	var is_night := false
+	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
+		is_night = celestial.call("is_night_time") as bool
+		
+	# 1. Night-time reactive prompts (Worried/fearful prompts)
+	if is_night:
+		return "DIALOGUE_VILLAGER_NIGHT"
+		
+	# 2. Biome-specific environmental prompts
+	var biome_id := _detect_current_biome()
+	match biome_id:
+		0: return "DIALOGUE_VILLAGER_OCEAN"     # Sailor harbor talk
+		4: return "DIALOGUE_VILLAGER_GLACIERS"   # Shivering in the polar cold
+		7: return "DIALOGUE_VILLAGER_NEON"        # Cyber ruins techways
+		8: return "DIALOGUE_VILLAGER_SWAMP"       # Stagnant mist and mud
+		9: return "DIALOGUE_VILLAGER_CLOUD"       # Heavenly cloud floating
+		
+	# 3. Standard Plains randomized pool (Uses coordinate-based variety index)
+	var variety_index := npc_seed % 3
+	match variety_index:
+		0: return "DIALOGUE_VILLAGER_PLAINS_A"
+		1: return "DIALOGUE_VILLAGER_PLAINS_B"
+		_: return "DIALOGUE_VILLAGER_PLAINS_C"

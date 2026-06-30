@@ -4,12 +4,15 @@
 #              interface, blocking/unblocking player input, and routing selections.
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Only coordinates the UI 
-#                lifecycle, delegating inventory transaction rules to the pure 
-#                domain service (TradingService).
+#                lifecycle and speaker state locks, delegating inventory 
+#                transaction rules to the pure domain service (TradingService).
 #              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
 #                keys to prevent hardcoded string leakage in codebase.
 #              - Dependency Inversion Principle (DIP): Connects directly with 
 #                IInventory abstractions.
+#              CONVERSATION LOCK UPGRADE:
+#              - Tracks the active speaker's 3D node to freeze pathfinding and 
+#                lock gaze during interactions, resolving the 'walking away' bug.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Dialogue/DialogueManager.gd
 # ==============================================================================
@@ -25,18 +28,27 @@ var active_dialogue: DialogueOverlay
 # The name of the speaker currently interacting with the player.
 var _active_speaker_name: String = ""
 
+# Symmetrically tracked 3D node of the active speaker NPC (SRP/Gaze Lock)
+var _active_speaker_node: CharacterBody3D = null
+
 # Define concrete transaction IDs (ID 15: Lava Bucket, ID 16: Fried Chicken)
 const LAVA_BUCKET_ID := 15
 const FRIED_CHICKEN_ID := 16
 
 
 ## Instantiates the Dialogue Overlay panel, freezes player movement, and 
-## displays the target dialogue tree node.
-func open_dialogue(node: Resource, speaker_name: String) -> void:
+## locks the NPC's pathfinding and gaze onto the player.
+func open_dialogue(node: Resource, speaker_name: String, speaker_node: CharacterBody3D = null) -> void:
 	if is_instance_valid(active_dialogue):
 		active_dialogue.queue_free()
 		
 	_active_speaker_name = speaker_name
+	
+	# If a concrete speaker node is passed, trigger conversation freeze & lock
+	if is_instance_valid(speaker_node):
+		_active_speaker_node = speaker_node
+		if _active_speaker_node.has_method("start_talking") and is_instance_valid(player):
+			_active_speaker_node.call("start_talking", player)
 	
 	# Instantiate presentation overlay
 	active_dialogue = DialogueOverlay.new()
@@ -54,11 +66,18 @@ func open_dialogue(node: Resource, speaker_name: String) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
-## Closes the active dialogue overlay and restores normal first-person controls.
+## Closes the active dialogue overlay, restores normal player controls, 
+## and releases the NPC speaker to resume normal AI loops.
 func close_dialogue() -> void:
 	if is_instance_valid(active_dialogue):
 		active_dialogue.queue_free()
 		active_dialogue = null
+		
+	# If a speaker was locked in conversation, release them safely
+	if is_instance_valid(_active_speaker_node):
+		if _active_speaker_node.has_method("stop_talking"):
+			_active_speaker_node.call("stop_talking")
+		_active_speaker_node = null
 		
 	# Restore standard movement parameters and re-capture mouse pointer
 	if is_instance_valid(player):
@@ -100,7 +119,6 @@ func _process_merchant_trade_transaction() -> void:
 
 
 ## Handles success visual feedback, quest triggers, and state synchronization.
-## FIXED: Prefixed the unused inventory variable with an underscore to prevent compiler warnings.
 func _on_trade_success(_inventory: IInventory) -> void:
 	# Visual physical bounce feedback on the NPC if available
 	var raycast = player.get("raycast")

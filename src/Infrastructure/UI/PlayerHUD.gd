@@ -6,8 +6,6 @@
 #                rendering, drawing, and menu components to specialized widgets.
 #              - Open-Closed Principle (OCP): All text titles, labels, and toasts
 #                are fully i18n localized using tr() for future translation packs.
-#              TRANSITION UPGRADE: Added public show_loading_screen() API to allow
-#              seamless, cinematic fading transitions during dynamic teleportations.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -44,6 +42,7 @@ const HOTBAR_DOCK_WIDGET_PATH = "res://src/Infrastructure/UI/Widgets/HotbarDockW
 const PAUSE_MENU_WIDGET_PATH = "res://src/Infrastructure/UI/Widgets/PauseMenuWidget.gd"
 const WORLD_MAP_WIDGET_PATH = "res://src/Infrastructure/UI/MapOverlay.gd"
 
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -58,6 +57,7 @@ func _ready() -> void:
 		
 	# Trigger the first selection visually on the hotbar dock
 	update_active_slot(0)
+
 
 ## Programmatically instantiates and wires extracted SRP widgets
 func _setup_sub_components() -> void:
@@ -121,15 +121,18 @@ func _setup_sub_components() -> void:
 		_pause_widget.set("hud_orchestrator", self)
 		add_child(_pause_widget)
 
+
 func _setup_dialogue_system() -> void:
 	dialogue_manager = DialogueManager.new()
 	dialogue_manager.name = "DialogueManager"
 	dialogue_manager.player = player
 	add_child(dialogue_manager)
 
+
 func _setup_loading_screen() -> void:
 	var loading_screen := LoadingScreen.new(player)
 	add_child(loading_screen)
+
 
 func _process(_delta: float) -> void:
 	if is_instance_valid(minimap):
@@ -139,20 +142,24 @@ func _process(_delta: float) -> void:
 	if is_instance_valid(quest_panel):
 		quest_panel.update_widget()
 
+
 # ==============================================================================
 # COORDINATION DELEGATION APIS (DIP/SRP Compliant)
 # ==============================================================================
 
-func open_dialogue(node: Resource, speaker_name: String) -> void:
+## Proxy overlay deployment. Supports passing the active speaker node.
+func open_dialogue(node: Resource, speaker_name: String, speaker_node: CharacterBody3D = null) -> void:
 	if is_instance_valid(dialogue_manager):
-		dialogue_manager.open_dialogue(node, speaker_name)
+		dialogue_manager.open_dialogue(node, speaker_name, speaker_node)
 
-## Instantiates a fresh loading screen transition on-demand during teleports or respawns
+
+## Instantiates a fresh loading screen transition on-demand during teleports or respawns.
 func show_loading_screen() -> void:
 	if has_node("LoadingScreenOverlay"):
 		return # Already active
 	var loading_screen := LoadingScreen.new(player)
 	add_child(loading_screen)
+
 
 func toggle_world_map(p_visible: bool) -> void:
 	if (_pause_widget and _pause_widget.visible) or is_instance_valid(_crafting_overlay) or is_instance_valid(_inventory_overlay):
@@ -176,6 +183,7 @@ func toggle_world_map(p_visible: bool) -> void:
 			player.set("is_active", true)
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
+
 func toggle_crafting_workshop(p_visible: bool) -> void:
 	if (_pause_widget and _pause_widget.visible) or is_instance_valid(_inventory_overlay) or is_instance_valid(_world_map_overlay):
 		return 
@@ -197,6 +205,7 @@ func toggle_crafting_workshop(p_visible: bool) -> void:
 		if is_instance_valid(player):
 			player.set("is_active", true)
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
 
 func toggle_inventory_backpack(p_visible: bool) -> void:
 	if (_pause_widget and _pause_widget.visible) or is_instance_valid(_crafting_overlay) or is_instance_valid(_world_map_overlay):
@@ -220,6 +229,7 @@ func toggle_inventory_backpack(p_visible: bool) -> void:
 			player.set("is_active", true)
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
+
 func toggle_pause_menu(p_visible: bool) -> void:
 	if is_instance_valid(_pause_widget):
 		if p_visible:
@@ -227,6 +237,7 @@ func toggle_pause_menu(p_visible: bool) -> void:
 			if is_instance_valid(_inventory_overlay): toggle_inventory_backpack(false)
 			if is_instance_valid(_world_map_overlay): toggle_world_map(false)
 		_pause_widget.call("toggle_menu", p_visible)
+
 
 func show_quest_notification(header: String, quest_title: String) -> void:
 	var toast := Panel.new()
@@ -281,21 +292,26 @@ func show_quest_notification(header: String, quest_title: String) -> void:
 	toast_tween.tween_property(toast, "offset_top", -90, 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	toast_tween.tween_callback(toast.queue_free)
 
+
 func update_active_slot(active_index: int) -> void:
 	if is_instance_valid(_hotbar_dock_widget):
 		_hotbar_dock_widget.call("update_active_slot", active_index)
+
 
 func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 	if is_instance_valid(_hotbar_dock_widget):
 		_hotbar_dock_widget.call("update_slot_quantity", slot_index, item_id, quantity)
 
+
 func update_health_display(current_hp: int) -> void:
 	if is_instance_valid(_hotbar_dock_widget):
 		_hotbar_dock_widget.call("update_health_display", current_hp)
 
+
 func flash_damage_screen() -> void:
 	if is_instance_valid(_damage_widget):
 		_damage_widget.call("flash")
+
 
 func is_any_menu_open() -> bool:
 	return (

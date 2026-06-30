@@ -13,8 +13,9 @@
 #              - Added social peer detection for greeting/chatting routines.
 #              - REFACTORING: Replaced hardcoded speech bubble text with dynamic 
 #                i18n translation keys (BUBBLE_TALK, BUBBLE_TRADE, BUBBLE_FARMER).
-#              FIXED: Corrected invalid C-style comment syntax to prevent GDScript
-#              compilation parser errors.
+#              CONVERSATION LOCK UPGRADE:
+#              - Added start_talking() and stop_talking() states with dynamic 
+#                real-time gaze slerp targeting to prevent walking away during dialogues.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -84,6 +85,12 @@ var variant_skin_color: Color
 var variant_clothing_color: Color
 var variant_hair_color: Color
 var variant_height_scale: float = 1.0
+
+# ==============================================================================
+# CONVERSATION STATE MACHINE: Dynamic player gaze-lock variables
+# ==============================================================================
+var is_talking: bool = false
+var _talking_partner: CharacterBody3D = null
 
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
@@ -182,6 +189,28 @@ func interact(_player: CharacterBody3D) -> void:
 	pass
 
 
+# ==============================================================================
+# CONVERSATION LIFECYCLE: Freeze movement and enable player gaze-lock
+# ==============================================================================
+
+## Locks the NPC, freezing physical velocity and assigning the conversational partner.
+func start_talking(partner: CharacterBody3D) -> void:
+	is_talking = true
+	_talking_partner = partner
+	
+	# Freeze physical velocities instantly
+	velocity = Vector3.ZERO
+
+
+## Unlocks the NPC and resumes standard autonomous wandering routines.
+func stop_talking() -> void:
+	is_talking = false
+	_talking_partner = null
+	
+	# Force a direct reset of state timers to prevent lingering animations
+	_select_next_random_task()
+
+
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -201,6 +230,11 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 
 func take_damage(amount: int, knockback_force: Vector3) -> void:
 	if domain_entity.is_dead: return
+	
+	# Force release talk states if NPC takes damage (e.g., hit by zombi during talk)
+	if is_talking:
+		stop_talking()
+		
 	velocity += knockback_force
 	domain_entity.take_damage(amount)
 
@@ -307,6 +341,13 @@ func _set_eyes_vertical_scale(y_scale: float) -> void:
 
 
 func _process_ai_state_machine(delta: float) -> void:
+	# If currently locked in conversation, freeze completely and skip normal state ticks
+	if is_talking:
+		velocity.x = 0.0
+		velocity.z = 0.0
+		_stuck_timer = 0.0
+		return
+
 	# 1. CORE AI ROUTINE: SIGHT & THREAT SENSING
 	var closest_hostile: Node3D = _detect_closest_zombie_threat()
 	if closest_hostile != null:
@@ -461,21 +502,30 @@ func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
 	var is_moving: bool = current_task == TaskState.WANDERING or current_task == TaskState.PANIC or current_task == TaskState.WORKING
 	
-	if is_instance_valid(_visual_root) and _wander_direction.length_squared() > 0.05:
+	# If talking, force the visual root to lock gaze directly on the talking partner
+	if is_talking and is_instance_valid(_talking_partner):
+		var look_dir := (_talking_partner.global_position - global_position).normalized()
+		look_dir.y = 0.0
+		if look_dir.length_squared() > 0.01:
+			var target_look := global_position + look_dir
+			_visual_root.look_at(target_look, Vector3.UP)
+			_visual_root.rotation.x = 0
+			_visual_root.rotation.z = 0
+	elif is_instance_valid(_visual_root) and _wander_direction.length_squared() > 0.05:
 		var target_look := global_position + _wander_direction
 		_visual_root.look_at(target_look, Vector3.UP)
 		_visual_root.rotation.x = 0
 		_visual_root.rotation.z = 0
 		
 	if is_instance_valid(_body_bob_node):
-		if is_moving and is_on_floor():
+		if is_moving and is_on_floor() and not is_talking:
 			var speed_mult := 18.0 if current_task == TaskState.PANIC else (12.0 if _is_avian() else 10.0)
 			var bounce_height := 0.05 if _is_avian() else 0.035
 			_body_bob_node.position.y = abs(sin(_animation_time * speed_mult)) * bounce_height
 		else:
 			_body_bob_node.position.y = lerp(_body_bob_node.position.y, sin(_animation_time * 2.0) * 0.015, delta * 5.0)
 			
-	if current_task == TaskState.GREETING or current_task == TaskState.CHATTIING:
+	if current_task == TaskState.GREETING or current_task == TaskState.CHATTIING or is_talking:
 		if is_instance_valid(_head_node):
 			# Noding head up/down procedural loop to simulate talking!
 			_head_node.rotation.x = sin(_animation_time * 6.0) * 0.15 
