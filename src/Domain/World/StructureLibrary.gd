@@ -19,7 +19,7 @@ static var _blueprints: Dictionary = {}
 
 
 ## Startup Initializer: Instantiates and registers the default set of 
-## local structure and tree blueprints, keeping Bootstrap.gd clean.
+## local structure, shrub, and tree blueprints, keeping Bootstrap.gd clean.
 static func initialize_structures() -> void:
 	print("[StructureLibrary] Initializing and registering local structure blueprints...")
 	_blueprints.clear()
@@ -35,6 +35,11 @@ static func initialize_structures() -> void:
 	register_blueprint(HarborPierBlueprint.new())
 	register_blueprint(SakuraTreeBlueprint.new())
 	register_blueprint(UnderworldFungusBlueprint.new())
+	
+	# ---> LANDSCAPE OVERHAUL: Register new shrubs and trees <---
+	register_blueprint(RoseBushBlueprint.new())
+	register_blueprint(BirchTreeBlueprint.new())
+	register_blueprint(DeadShrubBlueprint.new())
 	
 	print("[StructureLibrary] Initialization complete. Registered blueprints count: ", _blueprints.size())
 

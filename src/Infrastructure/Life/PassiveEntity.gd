@@ -13,9 +13,12 @@
 #              - Added social peer detection for greeting/chatting routines.
 #              - REFACTORING: Replaced hardcoded speech bubble text with dynamic 
 #                i18n translation keys (BUBBLE_TALK, BUBBLE_TRADE, BUBBLE_FARMER).
-#              CONVERSATION LOCK UPGRADE:
-#              - Added start_talking() and stop_talking() states with dynamic 
-#                real-time gaze slerp targeting to prevent walking away during dialogues.
+#              - CONVERSATION LOCK: Added start_talking() and stop_talking() states 
+#                with dynamic real-time slerp gaze locking.
+#              VOXEL GRAIN OVERHAUL:
+#              - Compiles and caches a static micro-pixel NoiseTexture2D. Resolves 
+#                the flat plastic look by blending procedural block grain onto all 
+#                subclass meshes dynamically with zero runtime GPU overhead.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -92,6 +95,11 @@ var variant_height_scale: float = 1.0
 var is_talking: bool = false
 var _talking_partner: CharacterBody3D = null
 
+# ==============================================================================
+# STATIC VISUAL CACHE: Shared high-frequency pixel grain textures (Zero lag)
+# ==============================================================================
+static var _shared_grain_texture: NoiseTexture2D = null
+
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
@@ -100,6 +108,7 @@ func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	# Compute a deterministic seed based on coordinate hashes (stable on reloading)
 	npc_seed = abs(int(spawn_pos.x * 73856093) ^ int(spawn_pos.z * 19349663))
 	_generate_procedural_variant_palette()
+	_preload_shared_grain_texture()
 	
 	domain_entity = VoxelEntity.new(initial_health)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
@@ -167,6 +176,24 @@ func _generate_procedural_variant_palette() -> void:
 	variant_height_scale = generator.randf_range(0.92, 1.08)
 
 
+## Compiles and caches a tiny, high-frequency simplex noise grain texture 
+## once to establish unified voxel texturing without overhead.
+func _preload_shared_grain_texture() -> void:
+	if _shared_grain_texture != null:
+		return
+		
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.frequency = 0.52 # High frequency for micro-pixel voxel detailing
+	noise.fractal_octaves = 1
+	
+	_shared_grain_texture = NoiseTexture2D.new()
+	_shared_grain_texture.width = 32
+	_shared_grain_texture.height = 32
+	_shared_grain_texture.generate_mipmaps = false
+	_shared_grain_texture.noise = noise
+
+
 func _build_visual_representation() -> void:
 	assert(false, "[PassiveEntity] _build_visual_representation() must be implemented by concrete subclass.")
 
@@ -189,16 +216,10 @@ func interact(_player: CharacterBody3D) -> void:
 	pass
 
 
-# ==============================================================================
-# CONVERSATION LIFECYCLE: Freeze movement and enable player gaze-lock
-# ==============================================================================
-
 ## Locks the NPC, freezing physical velocity and assigning the conversational partner.
 func start_talking(partner: CharacterBody3D) -> void:
 	is_talking = true
 	_talking_partner = partner
-	
-	# Freeze physical velocities instantly
 	velocity = Vector3.ZERO
 
 
@@ -206,11 +227,11 @@ func start_talking(partner: CharacterBody3D) -> void:
 func stop_talking() -> void:
 	is_talking = false
 	_talking_partner = null
-	
-	# Force a direct reset of state timers to prevent lingering animations
 	_select_next_random_task()
 
 
+## Factory: Constructs 3D boxes, automatically binding the shared high-frequency 
+## pixelated albedo grain texture using Nearest filtering to create a detailed voxel look.
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -222,6 +243,13 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	mat.albedo_color = color
 	mat.roughness = 1.0
 	mat.metallic_specular = 0.0 
+	
+	# Bind procedural voxel micro-grain texture
+	if _shared_grain_texture != null:
+		mat.albedo_texture = _shared_grain_texture
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST # Pixelated, sharp look
+		mat.albedo_texture_force_srgb = true
+		
 	mesh_instance.material_override = mat
 	
 	parent.add_child(mesh_instance)
@@ -230,8 +258,6 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 
 func take_damage(amount: int, knockback_force: Vector3) -> void:
 	if domain_entity.is_dead: return
-	
-	# Force release talk states if NPC takes damage (e.g., hit by zombi during talk)
 	if is_talking:
 		stop_talking()
 		

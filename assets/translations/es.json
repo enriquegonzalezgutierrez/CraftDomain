@@ -23,6 +23,12 @@
   "ITEM_WOODEN_SWORD": "Espada de Madera",
   "INVENTORY_EMPTY": "Vacío",
   "INVENTORY_UNKNOWN": "Bloque Desconocido",
+  "INVENTORY_INFINITE": "Cantidad Infinita",
+
+  "INVENTORY_EMPTY_TITLE": "Inspector de Mochila",
+  "INVENTORY_EMPTY_DESC": "Haz clic en cualquier objeto de la mochila para inspeccionar sus instrucciones de uso y detalles operativos.",
+  "ITEM_USAGE_PREFIX": "USO",
+  "ITEM_STOCKED_PREFIX": "ALMACENADO",
 
   "ITEM_1_DESC": "Bloques de piedra gris lisos y pesados extraídos de cuevas profundas... útiles para muros defensivos estructurados.",
   "ITEM_1_USE": "Presiona Clic Derecho para construir estructuras sólidas.",
@@ -44,12 +50,6 @@
   "ITEM_18_USE": "Equípalas y haz Clic Derecho sobre bloques de césped/tierra. ¡Los cultivos crecen dinámicamente con el tiempo!",
   "ITEM_20_DESC": "Granos de trigo dorados madurados al sol cosechados de tus campos de cultivo maduros. Material crudo esencial para recetas de panadería de supervivencia avanzadas.",
   "ITEM_20_USE": "Usa este trigo en el Taller de Creación para fabricar valiosas raciones.",
-
-  "ITEM_STOCKED_PREFIX": "ALMACENADO",
-  "ITEM_USAGE_PREFIX": "MANUAL OPERATIVO",
-  "INVENTORY_INFINITE": "INFINITO",
-  "INVENTORY_EMPTY_TITLE": "Inspector de Mochila",
-  "INVENTORY_EMPTY_DESC": "Haz clic en cualquier objeto de la mochila para inspeccionar sus instrucciones de uso y detalles operativos.",
 
   "BIOME_BAY_OF_SAILS": "Bahía de las Velas (Océano Inicial)",
   "BIOME_WARP_PLATEAU": "Meseta de Tuberías (Pasos de Mario)",
@@ -197,5 +197,17 @@
 
   "NOTIFICATION_LOOT_FOUND_HEADER": "¡Botín Encontrado!",
   "NOTIFICATION_LOOT_FOUND_DESC_CHICKEN": "¡Has conseguido 1x Pollo Frito!",
-  "NOTIFICATION_LOOT_FOUND_DESC_LAVA": "¡Has conseguido 1x Balde de Lava!"
+  "NOTIFICATION_LOOT_FOUND_DESC_LAVA": "¡Has conseguido 1x Balde de Lava!",
+
+  "DIALOGUE_MINER_NIGHT": "Las sombras se están profundizando... Escucho extraños rasguños detrás de las paredes de la montaña. ¡Ten cuidado, viajero!",
+  "DIALOGUE_MINER_PLAINS_A": "¡Saludos! Mi pico de acero está listo para picar vetas profundas. Las grietas de la montaña son ricas en núcleos de hierro.",
+  "DIALOGUE_MINER_PLAINS_B": "¡Hola, explorador! Mantén tus faros encendidos. Las cuevas pueden ser oscuras y desorientadoras.",
+
+  "DIALOGUE_CYBER_NIGHT": "Alerta: El ciclo solar ha cesado. Iniciando ciber-red de seguridad nocturna. Las actividades orgánicas estándar deben terminar.",
+  "DIALOGUE_CYBER_PLAINS_A": "Consulta: Saludos, unidad orgánica. Estas ciber-ruinas están pulsando con caminos de alto voltaje. Evita el contacto con líneas conductoras.",
+  "DIALOGUE_CYBER_PLAINS_B": "Declaración: Bienvenido a la cuenca cibernética. Las estructuras de gris duraluminio son estables. Computando ruta de exploración...",
+
+  "DIALOGUE_DRUID_NIGHT": "El bosque está susurrando en la oscuridad... las secuoyas vigilan, pero las fuerzas oscuras se están moviendo.",
+  "DIALOGUE_DRUID_PLAINS_A": "¡Saludos, viajero! El bosque de secuoyas susurrantes es una cúpula pacífica. Que el musgo guíe tus caminos.",
+  "DIALOGUE_DRUID_PLAINS_B": "¡Hola! Mi arco largo está listo para defender esta antigua arboleda. Que el bosque proteja tus viajes."
 }

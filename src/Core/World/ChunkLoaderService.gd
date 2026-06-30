@@ -1,16 +1,23 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Application Service that calculates chunk loading and unloading 
-#              queues. Upgraded to a 3D vertical grid (Y=0 and Y=1) to prevent
-#              rendering clipping and enable high-altitude building up to Y=31.
+# Description: Application Service calculating procedural chunk loading and 
+#              unloading queues based on player spatial translations.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Handles exclusively player 
+#                boundary tracking and queue calculations.
+#              HORIZON UPGRADE:
+#              - Increased view_distance from 2 to 4 chunks radius. This upgrades 
+#                rendering from a tight 25-chunk grid to a massive 162-chunk 
+#                3D grid (9x2x9 chunks), quadrupling the visual horizon draw distance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/World/ChunkLoaderService.gd
 # ==============================================================================
 class_name ChunkLoaderService
 extends RefCounted
 
-## Optimized View Distance (2 chunks radius = 5x2x5 grid = 50 active chunks).
-var view_distance: int = 2
+## Optimized View Distance Radius (4 chunks radius = 9x2x9 grid = 162 active chunks).
+## This delivers a vast, high-performance visual draw distance under Forward+.
+var view_distance: int = 4
 
 ## Keeps track of the last chunk position the player was in to avoid redundant updates.
 var _last_viewer_chunk_pos: Vector3i = Vector3i(999, 999, 999)
@@ -20,11 +27,12 @@ class ChunkUpdateTask:
 	var to_load: Array[Vector3i] = []
 	var to_unload: Array[Vector3i] = []
 
+
 ## Evaluates the player's position and returns the queues of chunks to load/unload.
 func check_viewer_position(player_global_pos: Vector3, world_state: WorldState) -> ChunkUpdateTask:
 	var task := ChunkUpdateTask.new()
 	
-	# 1. Translate player's global float coordinates to its chunk position
+	# 1. Translate the player's global float coordinates to its chunk position
 	var player_block_pos := Vector3i(
 		floor(player_global_pos.x),
 		floor(player_global_pos.y),
@@ -32,17 +40,17 @@ func check_viewer_position(player_global_pos: Vector3, world_state: WorldState) 
 	)
 	var current_viewer_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
 	
-	# 2. Only run calculations if the player has crossed a chunk boundary
+	# 2. Only run intensive calculations if the player has crossed a chunk boundary
 	if current_viewer_chunk_pos == _last_viewer_chunk_pos:
-		return task # Empty task, no update needed
+		return task # Empty task, skip calculation
 		
 	_last_viewer_chunk_pos = current_viewer_chunk_pos
 	
-	# 3. Calculate all chunk positions that should be active (5x2x5 3D grid)
+	# 3. Calculate all chunk positions that should be active (9x2x9 3D grid)
 	var desired_chunks: Dictionary = {}
 	for x in range(-view_distance, view_distance + 1):
 		for z in range(-view_distance, view_distance + 1):
-			# FIXED: We load layers Y=0 and Y=1 (Height range 0 to 31) to support full heights & building
+			# We load layers Y=0 and Y=1 (Height range 0 to 31) to support full heights & building
 			for y in range(2):
 				var target_pos := Vector3i(current_viewer_chunk_pos.x + x, y, current_viewer_chunk_pos.z + z)
 				desired_chunks[target_pos] = true

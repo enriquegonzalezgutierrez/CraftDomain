@@ -32,7 +32,7 @@
   "ITEM_3_USE": "Swap to hotbar. Use Right-Click (or Q) on any surface to place the block.",
   "ITEM_4_DESC": "Solid oak wood logs chopped from tall forest canopies. A highly versatile structural material and the backbone of most recipe blueprints.",
   "ITEM_4_USE": "Swap to hotbar. Use Right-Click (or Q) on any surface to place the block.",
-  "ITEM_5_DESC": "Soft, packed leafy foliage. Ideal for building lightweight, organic structures like thatched roofs, rustic hedges, or compost piles.",
+  "ITEM_5_DESC": "Soft, packed leafy footage. Ideal for building lightweight, organic structures like thatched roofs, rústico hedges, or compost piles.",
   "ITEM_5_USE": "Swap to hotbar. Use Right-Click (or Q) on any surface to place the block.",
   "ITEM_15_DESC": "A bucket of highly volatile, glowing geothermal magma. Extremely dangerous if touched. Used primarily as reactor fuel for high-tier crafts.",
   "ITEM_15_USE": "Swap to hotbar. Use Right-Click (or Q) to place flowing lava, or Right-Click on the Village Merchant to trade for food.",
@@ -197,5 +197,17 @@
 
   "NOTIFICATION_LOOT_FOUND_HEADER": "Loot Found!",
   "NOTIFICATION_LOOT_FOUND_DESC_CHICKEN": "You gathered 1x Fried Chicken!",
-  "NOTIFICATION_LOOT_FOUND_DESC_LAVA": "You gathered 1x Lava Bucket!"
+  "NOTIFICATION_LOOT_FOUND_DESC_LAVA": "You gathered 1x Lava Bucket!",
+
+  "DIALOGUE_MINER_NIGHT": "The shadows are deepening... I hear strange scratchings behind the mountain walls. Watch your step, traveler!",
+  "DIALOGUE_MINER_PLAINS_A": "Greetings! My steel pickaxe is ready to mine deep veins. The mountain crevices are rich with iron cores.",
+  "DIALOGUE_MINER_PLAINS_B": "Hail, explorer! Keep your headlamps bright. The caves can be dark and disorienting.",
+
+  "DIALOGUE_CYBER_NIGHT": "Alert: Solar cycle has ceased. Initiating security night-grid. Standard organic activities should terminate.",
+  "DIALOGUE_CYBER_PLAINS_A": "Query: Greetings, organic unit. These ciber-ruins are pulsing with high-voltage pathways. Avoid contact with conductive lines.",
+  "DIALOGUE_CYBER_PLAINS_B": "Statement: Welcome to the cyber basin. The duralumin-grey structures are stable. Computing exploration routing...",
+
+  "DIALOGUE_DRUID_NIGHT": "The forest is whispering in the dark... the redwoods stand watch, but the dark forces are moving.",
+  "DIALOGUE_DRUID_PLAINS_A": "Greetings, traveler! The whispering redwood forest is a peaceful canopy. May the moss guide your paths.",
+  "DIALOGUE_DRUID_PLAINS_B": "Hail! My longbow is crafted and ready to defend this ancient canopy. May the forest shelter your journeys."
 }

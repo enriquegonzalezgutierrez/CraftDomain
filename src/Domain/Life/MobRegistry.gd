@@ -34,6 +34,11 @@ static func initialize_mobs() -> void:
 	register_mob(102, func(pos: Vector3) -> Node: return GuardEntity.new(pos))
 	register_mob(103, func(pos: Vector3) -> Node: return FarmerEntity.new(pos))
 	
+	# NPC VARIETY OVERHAUL: Register Druid, Miner, and Android citizens
+	register_mob(104, func(pos: Vector3) -> Node: return DruidEntity.new(pos))
+	register_mob(105, func(pos: Vector3) -> Node: return MinerEntity.new(pos))
+	register_mob(106, func(pos: Vector3) -> Node: return CyberCitizenEntity.new(pos))
+	
 	# Hostile Mobs (ZOMBIE registered as ID 10)
 	register_mob(10, func(pos: Vector3) -> Node: return HostileEntity.new(pos))
 	
@@ -43,6 +48,9 @@ static func initialize_mobs() -> void:
 		chest.position = pos
 		return chest
 	)
+	
+	# ---> MARINE OVERHAUL: Register the Sea Turtle <---
+	register_mob(201, func(pos: Vector3) -> Node: return TurtleEntity.new(pos))
 	
 	print("[MobRegistry] Initialization complete. Registered dynamic spawners count: ", _spawners.size())
 
