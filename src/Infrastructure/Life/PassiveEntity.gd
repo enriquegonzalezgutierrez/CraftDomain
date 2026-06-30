@@ -1,30 +1,40 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a passive entity.
-#              SOLID COMPLIANCE: 
-#              - Liskov Substitution Principle (LSP): Acts as an Abstract Base Class. 
-#              AI UPGRADE: Added a 12-meter safety tether and a dynamic visual 
-#              quest indicator bubble above the target NPC's head.
-#              STRICT MODE FIX: Safeguarded look_at() rotations against float collisions.
+# Description: Abstract base class representing a physics-bound passive entity (NPC/Fauna).
+#              Schedules procedural walk cycles, spatial state-machines, and variety.
+#              SOLID COMPLIANCE:
+#              - Liskov Substitution Principle (LSP): Serves as a robust base 
+#                contract with safe default virtual values for subclasses.
+#              - Single Responsibility Principle (SRP): Isolates base movement 
+#                physics, pathfinding, and visual variation routines.
+#              AI OVERHAUL:
+#              - Added coordinate-based deterministic variant rendering (No two identical NPCs).
+#              - Added dynamic threat-detection to trigger fleeing behaviors.
+#              - Added social peer detection for greeting/chatting routines.
+#              FIXED: Restored default virtual fallback returns for collision sizes 
+#              to prevent assertions on animal entities.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
 
-## Behavioral Task States
+## Structural Behavioral AI States
 enum TaskState {
-	IDLE,       # Resting in place
+	IDLE,       # Resting in place, slow breathing
 	WANDERING,  # Walking randomly
-	EXAMINING,  # Performing a slow inspecting loop on a block
-	GREETING,   # Stopping to look at and nod to the nearby player
-	PANIC,      # Running away quickly after taking damage!
-	WORKING     # Custom pathfinding managed by subclasses (e.g., Farmer)
+	EXAMINING,  # Performing a slow inspection loop facing a block
+	GREETING,   # Stop to face and greet the nearby player
+	CHATTIING,  # Stop to socialize with a nearby peer NPC
+	PANIC,      # Fleeing rapidly away from nearby hostile threats
+	WORKING     # Custom pathfinding managed by subclasses (e.g., Farmers harvesting)
 }
 
 # Base physics movement constants
 const BASE_SPEED: float = 1.3
 const JUMP_VELOCITY: float = 5.0
+const SIGHT_RANGE: float = 8.0 # Threat detection radius
+const SOCIAL_RANGE: float = 3.0 # Peer interaction radius
 
 # Dependencies
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -64,13 +74,28 @@ var _is_blinking: bool = false
 # Player tracking range
 const GREET_DISTANCE: float = 3.5
 
+# ==============================================================================
+# VARIANT SYSTEM: Deterministic procedural aesthetic configurations
+# ==============================================================================
+var npc_seed: int = 0
+var variant_skin_color: Color
+var variant_clothing_color: Color
+var variant_hair_color: Color
+var variant_height_scale: float = 1.0
+
+
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
-	_spawn_point = spawn_pos # Cache spawning coordinate
+	_spawn_point = spawn_pos
+	
+	# Compute a deterministic seed based on coordinate hashes (stable on reloading)
+	npc_seed = abs(int(spawn_pos.x * 73856093) ^ int(spawn_pos.z * 19349663))
+	_generate_procedural_variant_palette()
 	
 	domain_entity = VoxelEntity.new(initial_health)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
+
 
 func _ready() -> void:
 	_visual_root = Node3D.new()
@@ -84,30 +109,76 @@ func _ready() -> void:
 	_build_visual_representation()
 	_setup_floating_bubble()
 	
+	# Apply the procedural variant height scale to the visual mesh
+	_visual_root.scale = Vector3(1.0, variant_height_scale, 1.0)
+	
 	var col := CollisionShape3D.new()
 	col.name = "EntityCollider"
 	var box_shape := BoxShape3D.new()
-	box_shape.size = _get_collision_box_size()
+	box_shape.size = _get_collision_box_size() * Vector3(1.0, variant_height_scale, 1.0)
 	col.shape = box_shape
-	col.position = _get_collision_box_position()
+	col.position = _get_collision_box_position() * variant_height_scale
 	add_child(col)
 
+
+## Generates a unique, stable color palette using the deterministic coordinate seed.
+func _generate_procedural_variant_palette() -> void:
+	var generator := RandomNumberGenerator.new()
+	generator.seed = npc_seed
+	
+	# 1. Procedural Skin Tones (Beige, warm peachy, tanned, olive)
+	var skins = [
+		Color(0.95, 0.75, 0.65), # Peach
+		Color(0.85, 0.65, 0.55), # Tanned
+		Color(0.92, 0.70, 0.58), # Light olive
+		Color(0.65, 0.45, 0.35)  # Brown
+	]
+	variant_skin_color = skins[generator.randi() % skins.size()]
+	
+	# 2. Procedural Clothing Tones
+	var clothes = [
+		Color(0.35, 0.22, 0.15), # Classic Brown
+		Color(0.20, 0.32, 0.45), # Slate Blue
+		Color(0.25, 0.45, 0.28), # Forest Green
+		Color(0.50, 0.22, 0.20), # Crimson
+		Color(0.42, 0.32, 0.48)  # Purple
+	]
+	variant_clothing_color = clothes[generator.randi() % clothes.size()]
+	
+	# 3. Procedural Hair Tones (Brown, black, blonde, ginger)
+	var hairs = [
+		Color(0.18, 0.12, 0.08), # Dark Brown
+		Color(0.08, 0.08, 0.08), # Charcoal Black
+		Color(0.82, 0.68, 0.32), # Golden Blonde
+		Color(0.72, 0.35, 0.12)  # Ginger Red
+	]
+	variant_hair_color = hairs[generator.randi() % hairs.size()]
+	
+	# 4. Height scaling variance (Slightly taller or shorter)
+	variant_height_scale = generator.randf_range(0.92, 1.08)
+
+
 func _build_visual_representation() -> void:
-	assert(false, "[PassiveEntity] _build_visual_representation() must be implemented by subclass.")
+	assert(false, "[PassiveEntity] _build_visual_representation() must be implemented by concrete subclass.")
 
+
+## Virtual Fallback: Returns a default 3D collision box size if not overridden.
 func _get_collision_box_size() -> Vector3:
-	assert(false, "[PassiveEntity] _get_collision_box_size() must be implemented by subclass.")
-	return Vector3(1.0, 1.0, 1.0)
+	return Vector3(0.6, 0.8, 0.6)
 
+
+## Virtual Fallback: Returns a default 3D collision box height offset if not overridden.
 func _get_collision_box_position() -> Vector3:
-	assert(false, "[PassiveEntity] _get_collision_box_position() must be implemented by subclass.")
-	return Vector3(0.0, 0.5, 0.0)
+	return Vector3(0.0, 0.4, 0.0)
+
 
 func _setup_floating_bubble() -> void:
 	pass
 
+
 func interact(_player: CharacterBody3D) -> void:
 	pass
+
 
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
@@ -125,23 +196,27 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	parent.add_child(mesh_instance)
 	return mesh_instance
 
+
 func take_damage(amount: int, knockback_force: Vector3) -> void:
 	if domain_entity.is_dead: return
 	velocity += knockback_force
 	domain_entity.take_damage(amount)
 
+
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
 	
-	# ORGANIC AI REACTION: Freak out and run away!
+	# Panic!
 	current_task = TaskState.PANIC
 	_task_timer = randf_range(3.0, 5.0)
 	var angle := randf() * TAU
 	_wander_direction = Vector3(cos(angle), 0, sin(angle))
 
+
 func _on_domain_entity_died() -> void:
 	_try_drop_player_loot()
 	queue_free()
+
 
 func _try_drop_player_loot() -> void:
 	var parent := get_parent()
@@ -153,8 +228,10 @@ func _try_drop_player_loot() -> void:
 				_drop_loot(inv)
 				player_node.call("_sync_hud_counters") 
 
+
 func _drop_loot(_inv: IInventory) -> void:
 	pass
+
 
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: return
@@ -166,7 +243,7 @@ func _physics_process(delta: float) -> void:
 	_process_ai_state_machine(delta)
 	_process_procedural_animations(delta)
 	
-	# UX PROACTIVE CHECK: Dynamic Quest Target visual updating
+	# Quest tracking updates
 	_quest_check_timer -= delta
 	if _quest_check_timer <= 0.0:
 		_quest_check_timer = 0.5
@@ -174,14 +251,13 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-## UX UPGRADE: Automatically updates the floating bubble text to gold stars if this NPC is the active target!
+
 func _update_quest_bubble_state() -> void:
 	if not is_instance_valid(_bubble):
 		return
 		
 	var active_q := QuestService.get_active_quest()
 	if active_q != null:
-		# Check if this specific entity is the synced target of the active quest
 		var is_target := false
 		if active_q.quest_id == "lost_bazaar" and name.contains("VILLAGER"):
 			is_target = true
@@ -191,11 +267,9 @@ func _update_quest_bubble_state() -> void:
 			is_target = true
 			
 		if is_target:
-			# Dynamic title injection (E.g. ⭐ [ ACTIVE MISSION: FUEL THE FRYER ] ⭐)
 			_bubble.call("set_text", "⭐ [ ACTIVE MISSION: " + active_q.title.to_upper() + " ] ⭐")
 			return
 			
-	# Default Fallback texts based on entity type
 	if name.contains("VILLAGER"):
 		_bubble.call("set_text", "RIGHT-CLICK TO TALK!")
 	elif name.contains("MERCHANT"):
@@ -204,6 +278,7 @@ func _update_quest_bubble_state() -> void:
 		_bubble.call("set_text", "RIGHT-CLICK TO TALK!")
 	elif name.contains("FARMER"):
 		_bubble.call("set_text", "FARMER")
+
 
 func _process_blinking_cycle(delta: float) -> void:
 	if not _is_blinking:
@@ -219,34 +294,61 @@ func _process_blinking_cycle(delta: float) -> void:
 			_blink_timer = randf_range(2.5, 6.0)
 			_set_eyes_vertical_scale(1.0) 
 
+
 func _set_eyes_vertical_scale(y_scale: float) -> void:
 	if is_instance_valid(_left_eye):
 		_left_eye.scale.y = y_scale
 	if is_instance_valid(_right_eye):
 		_right_eye.scale.y = y_scale
 
+
 func _process_ai_state_machine(delta: float) -> void:
-	var player_node: CharacterBody3D = get_parent().get_node_or_null("Player") as CharacterBody3D
-	var distance_to_player: float = 999.0
+	# 1. CORE AI ROUTINE: SIGHT & THREAT SENSING
+	var closest_hostile: Node3D = _detect_closest_zombie_threat()
+	if closest_hostile != null:
+		current_task = TaskState.PANIC
+		_wander_direction = (global_position - closest_hostile.global_position).normalized()
+		_wander_direction.y = 0.0
+		_task_timer = 2.5 # Extend panic timeline
+		_stuck_timer = 0.0
 	
+	# 2. GREET PLAYER ROUTINE
+	var player_node := get_parent().get_node_or_null("Player") as CharacterBody3D
+	var distance_to_player: float = 999.0
 	if is_instance_valid(player_node):
 		distance_to_player = global_position.distance_to(player_node.global_position)
 		
 	var can_socialize := _can_socialize()
 	
-	if can_socialize and distance_to_player <= GREET_DISTANCE and current_task != TaskState.PANIC:
-		current_task = TaskState.GREETING
-		var look_dir := (player_node.global_position - global_position).normalized()
-		look_dir.y = 0
-		if look_dir != Vector3.ZERO:
-			_wander_direction = look_dir
-	else:
+	if can_socialize and current_task != TaskState.PANIC:
+		if distance_to_player <= GREET_DISTANCE:
+			current_task = TaskState.GREETING
+			var look_dir := (player_node.global_position - global_position).normalized()
+			look_dir.y = 0
+			if look_dir != Vector3.ZERO:
+				_wander_direction = look_dir
+		else:
+			# 3. PEER SOCIALIZATION SENSING
+			var closest_peer := _detect_closest_peer_npc()
+			if closest_peer != null:
+				current_task = TaskState.CHATTIING
+				var look_dir := (closest_peer.global_position - global_position).normalized()
+				look_dir.y = 0
+				if look_dir != Vector3.ZERO:
+					_wander_direction = look_dir
+			else:
+				# Tick state timer
+				_task_timer -= delta
+				if _task_timer <= 0.0:
+					_select_next_random_task()
+	elif not can_socialize and current_task != TaskState.PANIC:
 		_task_timer -= delta
 		if _task_timer <= 0.0:
 			_select_next_random_task()
 
+	# 4. PATHFINDING MOTION
 	match current_task:
-		TaskState.IDLE, TaskState.GREETING:
+		TaskState.IDLE, TaskState.GREETING, TaskState.CHATTIING:
 			velocity.x = move_toward(velocity.x, 0, BASE_SPEED)
 			velocity.z = move_toward(velocity.z, 0, BASE_SPEED)
 			_stuck_timer = 0.0
@@ -257,7 +359,7 @@ func _process_ai_state_machine(delta: float) -> void:
 			_stuck_timer = 0.0
 			
 		TaskState.WANDERING, TaskState.PANIC:
-			var speed_mult := 2.6 if current_task == TaskState.PANIC else 1.0
+			var speed_mult := 2.8 if current_task == TaskState.PANIC else 1.0
 			velocity.x = _wander_direction.x * BASE_SPEED * speed_mult
 			velocity.z = _wander_direction.z * BASE_SPEED * speed_mult
 			
@@ -266,7 +368,7 @@ func _process_ai_state_machine(delta: float) -> void:
 				_wander_direction = (_spawn_point - global_position).normalized()
 				_wander_direction.y = 0
 			
-			# INTELLIGENT WALL AVOIDANCE
+			# INTELLIGENT WALL JUMPING & AVOIDANCE
 			if is_on_wall():
 				if is_on_floor():
 					velocity.y = JUMP_VELOCITY 
@@ -288,8 +390,51 @@ func _process_ai_state_machine(delta: float) -> void:
 		TaskState.WORKING:
 			pass 
 
+
 func _can_socialize() -> bool:
 	return false
+
+
+## Scans the parent node lists for nearby zombies (hostiles) to trigger fleeing states.
+func _detect_closest_zombie_threat() -> Node3D:
+	var world_node := get_parent()
+	if not is_instance_valid(world_node):
+		return null
+		
+	var closest_zombie: Node3D = null
+	var min_dist := SIGHT_RANGE
+	
+	for child in world_node.get_children():
+		if child.name.contains("ZOMBIE") and is_instance_valid(child) and not child.get("domain_entity").is_dead:
+			var dist := global_position.distance_to(child.global_position)
+			if dist < min_dist:
+				min_dist = dist
+				closest_zombie = child
+				
+	return closest_zombie
+
+
+## Scans for other idle passive entities to start a socialization greet.
+func _detect_closest_peer_npc() -> Node3D:
+	var world_node := get_parent()
+	if not is_instance_valid(world_node):
+		return null
+		
+	var closest_peer: Node3D = null
+	var min_dist := SOCIAL_RANGE
+	
+	for child in world_node.get_children():
+		if child != self and child is PassiveEntity and is_instance_valid(child):
+			# Only socialize if the peer is also standing idle
+			var peer_state: TaskState = child.get("current_task")
+			if peer_state == TaskState.IDLE or peer_state == TaskState.CHATTIING:
+				var dist := global_position.distance_to(child.global_position)
+				if dist < min_dist:
+					min_dist = dist
+					closest_peer = child
+					
+	return closest_peer
+
 
 func _select_next_random_task() -> void:
 	var roll := randf()
@@ -307,11 +452,11 @@ func _select_next_random_task() -> void:
 		current_task = TaskState.IDLE
 		_task_timer = randf_range(1.5, 4.0)
 
+
 func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
 	var is_moving: bool = current_task == TaskState.WANDERING or current_task == TaskState.PANIC or current_task == TaskState.WORKING
 	
-	# STRICT MODE & MATH SAFE FIX: Rotate only if the target vector is physically significant (length_squared > 0.05)
 	if is_instance_valid(_visual_root) and _wander_direction.length_squared() > 0.05:
 		var target_look := global_position + _wander_direction
 		_visual_root.look_at(target_look, Vector3.UP)
@@ -326,9 +471,10 @@ func _process_procedural_animations(delta: float) -> void:
 		else:
 			_body_bob_node.position.y = lerp(_body_bob_node.position.y, sin(_animation_time * 2.0) * 0.015, delta * 5.0)
 			
-	if current_task == TaskState.GREETING:
+	if current_task == TaskState.GREETING or current_task == TaskState.CHATTIING:
 		if is_instance_valid(_head_node):
-			_head_node.rotation.x = sin(_animation_time * 5.0) * 0.15 
+			# Noding head up/down procedural loop to simulate talking!
+			_head_node.rotation.x = sin(_animation_time * 6.0) * 0.15 
 			_head_node.rotation.y = 0.0
 		if is_instance_valid(_arms_node):
 			_arms_node.rotation.x = 0.0
@@ -361,6 +507,7 @@ func _process_procedural_animations(delta: float) -> void:
 		if is_instance_valid(_arms_node):
 			_arms_node.rotation.x = lerp(_arms_node.rotation.x, 0.0, delta * 5.0)
 			_arms_node.position.y = lerp(_arms_node.position.y, -0.21, delta * 5.0)
+
 
 func _is_avian() -> bool:
 	return false
