@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bv5otl1y03uhr"
-path="res://.godot/imported/sand.png-07413c2214944985309b2fce9f9106b1.ctex"
+uid="uid://cpuy7grvg8fok"
+path="res://.godot/imported/glass.png-bc5a76edb61031570869d2267fdb76fd.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/sand.png"
-dest_files=["res://.godot/imported/sand.png-07413c2214944985309b2fce9f9106b1.ctex"]
+source_file="res://assets/textures/glass.png"
+dest_files=["res://.godot/imported/glass.png-bc5a76edb61031570869d2267fdb76fd.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

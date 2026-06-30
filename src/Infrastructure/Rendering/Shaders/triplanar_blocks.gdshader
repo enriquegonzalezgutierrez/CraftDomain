@@ -1,13 +1,12 @@
 // ==============================================================================
 // Project: CraftDomain
 // Description: Custom triplanar spatial shader for 3D solid blocks. 
-//              Binds a 2D texture to the face projecting along the surface normal 
-//              using a single optimized texture fetch to preserve performance.
-//              If a pixel contains transparency, it blends dynamically with 
-//              the fallback procedural block color.
+//              Binds a 2D texture to the face projecting along the surface normal.
+//              Calculates projections in LOCAL space to prevent texture sliding,
+//              stretching, or warping during camera rotations.
 // SOLID COMPLIANCE:
 // - Single Responsibility Principle (SRP): Handles exclusively fragment blending 
-//   and projection mathematics, completely decoupled from GDScript node logic.
+//   and local-space projection, completely decoupled from GDScript node logic.
 // Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 // File: res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader
 // ==============================================================================
@@ -23,29 +22,33 @@ uniform vec4 block_color : source_color;
 // Physical roughness of the block surface.
 uniform float roughness_val : hint_range(0.0, 1.0) = 0.75;
 
-// Local vertex position sent to the fragment processor for projection.
-varying vec3 triplanar_pos;
+// Local vertex position and normals sent to the fragment processor (SRP/Parity)
+varying vec3 local_pos;
+varying vec3 local_normal;
 
 
 void vertex() {
-	// Cache the local vertex coordinates for planar projection
-	triplanar_pos = VERTEX;
+	// Cache the raw local space coordinates to prevent view-space sliding
+	local_pos = VERTEX;
+	local_normal = NORMAL;
 }
 
 
 void fragment() {
-	vec3 abs_n = abs(NORMAL);
-	vec2 uv = triplanar_pos.xy;
+	// Calculate absolute blend weights from local normals
+	vec3 abs_n = abs(local_normal);
 	
-	// Fast axis evaluation to determine planar orientation
-	if (abs_n.x > 0.5) {
-		uv = triplanar_pos.zy;
-	} else if (abs_n.y > 0.5) {
-		uv = triplanar_pos.xz;
-	}
+	// Normalize the blend weights so they sum to 1.0
+	float total = abs_n.x + abs_n.y + abs_n.z;
+	vec3 weights = abs_n / max(total, 0.001);
 	
-	// Sample the texture using local coordinate projection
-	vec4 tex_color = texture(albedo_texture, uv);
+	// Sample the texture along the three local coordinate planes
+	vec4 tex_x = texture(albedo_texture, local_pos.zy);
+	vec4 tex_y = texture(albedo_texture, local_pos.xz);
+	vec4 tex_z = texture(albedo_texture, local_pos.xy);
+	
+	// Blend the three samples dynamically based on normal weights
+	vec4 tex_color = tex_x * weights.x + tex_y * weights.y + tex_z * weights.z;
 	
 	// Blend the procedural fallback color with the texture color using alpha as mask
 	ALBEDO = mix(block_color.rgb, tex_color.rgb, tex_color.a);

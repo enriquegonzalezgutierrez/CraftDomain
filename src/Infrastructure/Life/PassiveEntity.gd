@@ -7,18 +7,10 @@
 #                contract with safe default virtual values for subclasses.
 #              - Single Responsibility Principle (SRP): Isolates base movement 
 #                physics, pathfinding, and visual variation routines.
-#              AI OVERHAUL & LOCALIZATION:
-#              - Added coordinate-based deterministic variant rendering (No two identical NPCs).
-#              - Added dynamic threat-detection to trigger fleeing behaviors.
-#              - Added social peer detection for greeting/chatting routines.
-#              - REFACTORING: Replaced hardcoded speech bubble text with dynamic 
-#                i18n translation keys (BUBBLE_TALK, BUBBLE_TRADE, BUBBLE_FARMER).
-#              - CONVERSATION LOCK: Added start_talking() and stop_talking() states 
-#                with dynamic real-time slerp gaze locking.
-#              VOXEL GRAIN OVERHAUL:
-#              - Compiles and caches a static micro-pixel NoiseTexture2D. Resolves 
-#                the flat plastic look by blending procedural block grain onto all 
-#                subclass meshes dynamically with zero runtime GPU overhead.
+#              DEATH & LOOT OVERHAUL:
+#              - Implemented a unified death sequence (Tween shrinking & smoke particles)
+#                that all subclasses inherit automatically.
+#              - Safely delegates loot drops to the IInventory interface.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -198,12 +190,10 @@ func _build_visual_representation() -> void:
 	assert(false, "[PassiveEntity] _build_visual_representation() must be implemented by concrete subclass.")
 
 
-## Virtual Fallback: Returns a default 3D collision box size if not overridden.
 func _get_collision_box_size() -> Vector3:
 	return Vector3(0.6, 0.8, 0.6)
 
 
-## Virtual Fallback: Returns a default 3D collision box height offset if not overridden.
 func _get_collision_box_position() -> Vector3:
 	return Vector3(0.0, 0.4, 0.0)
 
@@ -216,22 +206,18 @@ func interact(_player: CharacterBody3D) -> void:
 	pass
 
 
-## Locks the NPC, freezing physical velocity and assigning the conversational partner.
 func start_talking(partner: CharacterBody3D) -> void:
 	is_talking = true
 	_talking_partner = partner
 	velocity = Vector3.ZERO
 
 
-## Unlocks the NPC and resumes standard autonomous wandering routines.
 func stop_talking() -> void:
 	is_talking = false
 	_talking_partner = null
 	_select_next_random_task()
 
 
-## Factory: Constructs 3D boxes, automatically binding the shared high-frequency 
-## pixelated albedo grain texture using Nearest filtering to create a detailed voxel look.
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -244,7 +230,6 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	mat.roughness = 1.0
 	mat.metallic_specular = 0.0 
 	
-	# Bind procedural voxel micro-grain texture
 	if _shared_grain_texture != null:
 		mat.albedo_texture = _shared_grain_texture
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST # Pixelated, sharp look
@@ -268,16 +253,74 @@ func take_damage(amount: int, knockback_force: Vector3) -> void:
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
 	
-	# Panic!
+	# Panic! Flash red color on taking hits
 	current_task = TaskState.PANIC
 	_task_timer = randf_range(3.0, 5.0)
 	var angle := randf() * TAU
 	_wander_direction = Vector3(cos(angle), 0, sin(angle))
 
 
+# ==============================================================================
+# DEATH SEQUENCE & LOOT ORCHESTRATION
+# ==============================================================================
 func _on_domain_entity_died() -> void:
 	_try_drop_player_loot()
-	queue_free()
+	
+	# 1. Disable physics and interactions instantly
+	set_physics_process(false)
+	var col := get_node_or_null("EntityCollider")
+	if is_instance_valid(col):
+		col.queue_free()
+	if is_instance_valid(_bubble):
+		_bubble.queue_free()
+		
+	# 2. Spawn death particles (Smoke puff)
+	_spawn_death_particles()
+	
+	# 3. Animate shrinking and spinning into oblivion
+	var death_tween := create_tween().set_parallel(true)
+	if is_instance_valid(_visual_root):
+		death_tween.tween_property(_visual_root, "scale", Vector3.ZERO, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		death_tween.tween_property(_visual_root, "rotation:y", deg_to_rad(180), 0.25).set_trans(Tween.TRANS_SINE)
+		
+	# 4. Erase entity safely from memory
+	death_tween.chain().tween_callback(queue_free)
+
+
+func _spawn_death_particles() -> void:
+	var particles := GPUParticles3D.new()
+	particles.emitting = false
+	particles.amount = 15
+	particles.one_shot = true
+	particles.explosiveness = 0.9
+	particles.lifetime = 0.6
+	
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.4
+	pm.direction = Vector3(0, 1, 0)
+	pm.spread = 180.0
+	pm.initial_velocity_min = 2.0
+	pm.initial_velocity_max = 4.0
+	pm.gravity = Vector3(0, 2.0, 0) # Float up slightly
+	pm.scale_min = 0.5
+	pm.scale_max = 1.2
+	particles.process_material = pm
+	
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.15, 0.15, 0.15)
+	var mat := ORMMaterial3D.new()
+	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8) # Smoke grey
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh.material = mat
+	particles.draw_pass_1 = mesh
+	
+	var world_node = get_parent()
+	if is_instance_valid(world_node):
+		world_node.add_child(particles)
+		particles.global_position = global_position + Vector3(0, 0.5, 0)
+		particles.emitting = true
+		get_tree().create_timer(1.0).timeout.connect(particles.queue_free)
 
 
 func _try_drop_player_loot() -> void:
@@ -291,10 +334,14 @@ func _try_drop_player_loot() -> void:
 				player_node.call("_sync_hud_counters") 
 
 
+## Virtual Method (LSP): Subclasses override this to implement concrete drops.
 func _drop_loot(_inv: IInventory) -> void:
 	pass
 
 
+# ==============================================================================
+# MAIN PROCESSING LOOPS
+# ==============================================================================
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: return
 		
@@ -305,7 +352,6 @@ func _physics_process(delta: float) -> void:
 	_process_ai_state_machine(delta)
 	_process_procedural_animations(delta)
 	
-	# Quest tracking updates
 	_quest_check_timer -= delta
 	if _quest_check_timer <= 0.0:
 		_quest_check_timer = 0.5
@@ -314,7 +360,6 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
-## Updates the floating speech bubble using dynamic translation keys.
 func _update_quest_bubble_state() -> void:
 	if not is_instance_valid(_bubble):
 		return
@@ -330,7 +375,6 @@ func _update_quest_bubble_state() -> void:
 			is_target = true
 			
 		if is_target:
-			# Fully localized dynamic quest title bubble!
 			_bubble.call("set_text", "⭐ [ " + tr("BUBBLE_ACTIVE_MISSION").to_upper() + ": " + tr(active_q.title).to_upper() + " ] ⭐")
 			return
 			
@@ -367,23 +411,20 @@ func _set_eyes_vertical_scale(y_scale: float) -> void:
 
 
 func _process_ai_state_machine(delta: float) -> void:
-	# If currently locked in conversation, freeze completely and skip normal state ticks
 	if is_talking:
 		velocity.x = 0.0
 		velocity.z = 0.0
 		_stuck_timer = 0.0
 		return
 
-	# 1. CORE AI ROUTINE: SIGHT & THREAT SENSING
 	var closest_hostile: Node3D = _detect_closest_zombie_threat()
 	if closest_hostile != null:
 		current_task = TaskState.PANIC
 		_wander_direction = (global_position - closest_hostile.global_position).normalized()
 		_wander_direction.y = 0.0
-		_task_timer = 2.5 # Extend panic timeline
+		_task_timer = 2.5 
 		_stuck_timer = 0.0
 	
-	# 2. GREET PLAYER ROUTINE
 	var player_node := get_parent().get_node_or_null("Player") as CharacterBody3D
 	var distance_to_player: float = 999.0
 	if is_instance_valid(player_node):
@@ -399,7 +440,6 @@ func _process_ai_state_machine(delta: float) -> void:
 			if look_dir != Vector3.ZERO:
 				_wander_direction = look_dir
 		else:
-			# 3. PEER SOCIALIZATION SENSING
 			var closest_peer := _detect_closest_peer_npc()
 			if closest_peer != null:
 				current_task = TaskState.CHATTIING
@@ -408,7 +448,6 @@ func _process_ai_state_machine(delta: float) -> void:
 				if look_dir != Vector3.ZERO:
 					_wander_direction = look_dir
 			else:
-				# Tick state timer
 				_task_timer -= delta
 				if _task_timer <= 0.0:
 					_select_next_random_task()
@@ -417,7 +456,6 @@ func _process_ai_state_machine(delta: float) -> void:
 		if _task_timer <= 0.0:
 			_select_next_random_task()
 
-	# 4. PATHFINDING MOTION
 	match current_task:
 		TaskState.IDLE, TaskState.GREETING, TaskState.CHATTIING:
 			velocity.x = move_toward(velocity.x, 0, BASE_SPEED)
@@ -439,7 +477,6 @@ func _process_ai_state_machine(delta: float) -> void:
 				_wander_direction = (_spawn_point - global_position).normalized()
 				_wander_direction.y = 0
 			
-			# INTELLIGENT WALL JUMPING & AVOIDANCE
 			if is_on_wall():
 				if is_on_floor():
 					velocity.y = JUMP_VELOCITY 
@@ -466,7 +503,6 @@ func _can_socialize() -> bool:
 	return false
 
 
-## Scans the parent node lists for nearby zombies (hostiles) to trigger fleeing states.
 func _detect_closest_zombie_threat() -> Node3D:
 	var world_node := get_parent()
 	if not is_instance_valid(world_node):
@@ -485,7 +521,6 @@ func _detect_closest_zombie_threat() -> Node3D:
 	return closest_zombie
 
 
-## Scans for other idle passive entities to start a socialization greet.
 func _detect_closest_peer_npc() -> Node3D:
 	var world_node := get_parent()
 	if not is_instance_valid(world_node):
@@ -496,7 +531,6 @@ func _detect_closest_peer_npc() -> Node3D:
 	
 	for child in world_node.get_children():
 		if child != self and child is PassiveEntity and is_instance_valid(child):
-			# Only socialize if the peer is also standing idle
 			var peer_state: TaskState = child.get("current_task")
 			if peer_state == TaskState.IDLE or peer_state == TaskState.CHATTIING:
 				var dist := global_position.distance_to(child.global_position)
@@ -528,7 +562,6 @@ func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
 	var is_moving: bool = current_task == TaskState.WANDERING or current_task == TaskState.PANIC or current_task == TaskState.WORKING
 	
-	# If talking, force the visual root to lock gaze directly on the talking partner
 	if is_talking and is_instance_valid(_talking_partner):
 		var look_dir := (_talking_partner.global_position - global_position).normalized()
 		look_dir.y = 0.0
@@ -553,7 +586,6 @@ func _process_procedural_animations(delta: float) -> void:
 			
 	if current_task == TaskState.GREETING or current_task == TaskState.CHATTIING or is_talking:
 		if is_instance_valid(_head_node):
-			# Noding head up/down procedural loop to simulate talking!
 			_head_node.rotation.x = sin(_animation_time * 6.0) * 0.15 
 			_head_node.rotation.y = 0.0
 		if is_instance_valid(_arms_node):

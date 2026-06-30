@@ -8,21 +8,20 @@
 #              PROGRAMMATIC DESIGN: Constructs a highly detailed voxel chicken
 #              entirely via code, featuring separate wings, a red comb (crest),
 #              a red wattle (barba), a golden beak, and orange legs with claws.
-#              FIXED: Adjusted the base white color to a warm ivory (0.98, 0.96, 0.92)
-#              to naturally counteract PBR blue-tinting from sky ambient lighting.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/ChickenEntity.gd
 # ==============================================================================
 class_name ChickenEntity
 extends PassiveEntity
 
+
 func _init(spawn_pos: Vector3) -> void:
-	super(spawn_pos, 1)
+	super(spawn_pos, 1) # 1 Heart of health
 	name = "Entity_CHICKEN"
 
-## Overrides: Assembles a premium detailed voxel chicken model programmatically using 3D boxes
+
+## Overrides: Assembles a premium detailed voxel chicken model programmatically using 3D boxes.
 func _build_visual_representation() -> void:
-	# FIX: Changed to a warm ivory white to neutralize the cool blue sky lighting
 	var white := Color(0.98, 0.96, 0.92) 
 	var wing_grey := Color(0.92, 0.92, 0.94)
 	var orange := Color(1.0, 0.6, 0.0)
@@ -69,16 +68,20 @@ func _build_visual_representation() -> void:
 	_create_box(_visual_root, Vector3(0.06, 0.16, 0.06), Vector3(0.08, 0.1, -0.02), orange)
 	_create_box(_visual_root, Vector3(0.14, 0.03, 0.18), Vector3(0.08, 0.015, -0.06), orange)
 
+
 func _get_collision_box_size() -> Vector3:
 	return Vector3(0.46, 0.69, 0.46)
+
 
 func _get_collision_box_position() -> Vector3:
 	return Vector3(0, 0.345, 0)
 
+
+## Flag used by the animation ticker to configure bouncy avian walks
 func _is_avian() -> bool:
 	return true
 
-## Override: Drops 1x delicious Fried Chicken directly into player inventory on death
+
+## Override: Drops 1x Fried Chicken on death.
 func _drop_loot(inv: IInventory) -> void:
-	print("[ChickenEntity] Loot dropped: 1x Fried Chicken added to slot 6.")
-	inv.modify_slot_quantity(6, 1) # Slot 6 matches Fried Chicken
+	inv.add_item(16, 1) # Item ID 16: Fried Chicken

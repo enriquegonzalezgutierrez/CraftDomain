@@ -37,6 +37,7 @@ static var _leaves_wind_shader: Shader
 const TEXTURE_DIR := "res://assets/textures/"
 
 ## File names mapping for custom block albedo textures.
+## UPGRADED: Added mappings for Coal Ore, Red Bricks, and Glass.
 const TEXTURE_MAP = {
 	BlockType.Type.STONE: "stone.png",
 	BlockType.Type.DIRT: "dirt.png",
@@ -45,7 +46,10 @@ const TEXTURE_MAP = {
 	BlockType.Type.LEAVES: "leaves.png",
 	BlockType.Type.SAND: "sand.png",
 	BlockType.Type.RED_SAND: "red_sand.png",
-	BlockType.Type.NEON_MAGENTA: "sakura_leaves.png"
+	BlockType.Type.NEON_MAGENTA: "sakura_leaves.png",
+	BlockType.Type.COAL_ORE: "coal_ore.png",
+	BlockType.Type.BRICKS: "bricks.png",
+	BlockType.Type.GLASS: "glass.png"
 }
 
 
@@ -208,12 +212,19 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 		_materials_cache[block_type] = mat
 		return mat
 		
-	# Clouds & Ice Setup
-	elif block_type == BlockType.Type.CLOUD or block_type == BlockType.Type.ICE:
+	# Clouds, Ice, and Glass Setup
+	elif block_type == BlockType.Type.CLOUD or block_type == BlockType.Type.ICE or block_type == BlockType.Type.GLASS:
 		var mat := ORMMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.albedo_color = def.color_top
-		mat.roughness = 0.4
+		
+		# Glass is exceptionally smooth and reflective (highly glossy)
+		if block_type == BlockType.Type.GLASS:
+			mat.roughness = 0.15
+			mat.metallic = 0.1
+		else:
+			mat.roughness = 0.4
+			
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		_materials_cache[block_type] = mat
 		return mat

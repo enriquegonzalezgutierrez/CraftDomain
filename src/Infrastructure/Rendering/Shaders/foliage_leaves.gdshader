@@ -3,6 +3,8 @@
 // Description: Custom leaves and foliage shader with procedural wind-sway 
 //              deformations, high-frequency organic expansion, culling-disabled 
 //              double-sided rendering, and alpha-discard clipping.
+//              Calculates projections in LOCAL space to prevent texture sliding,
+//              stretching, or warping during camera rotations.
 // SOLID COMPLIANCE:
 // - Single Responsibility Principle (SRP): Handles exclusively structural 
 //   vertex displacement and pixel clipping, completely decoupled from scripting.
@@ -21,12 +23,15 @@ uniform vec4 block_color : source_color;
 // Physical roughness of the leaf surface.
 uniform float roughness_val : hint_range(0.0, 1.0) = 0.85;
 
-// Local vertex position sent to the fragment processor for projection.
-varying vec3 triplanar_pos;
+// Local vertex position and normals sent to the fragment processor (SRP/Parity)
+varying vec3 local_pos;
+varying vec3 local_normal;
 
 
 void vertex() {
-	triplanar_pos = VERTEX;
+	// Cache the raw stable local space coordinates before applying wind sway
+	local_pos = VERTEX;
+	local_normal = NORMAL;
 	
 	// 1. ORGANIC VOXEL FLUFFINESS
 	// Smooth high-frequency sine expansions along surface normals
@@ -40,18 +45,20 @@ void vertex() {
 
 
 void fragment() {
-	vec3 abs_n = abs(NORMAL);
-	vec2 uv = triplanar_pos.xy;
+	// Calculate absolute blend weights from local normals
+	vec3 abs_n = abs(local_normal);
 	
-	// Fast axis evaluation to determine planar orientation
-	if (abs_n.x > 0.5) {
-		uv = triplanar_pos.zy;
-	} else if (abs_n.y > 0.5) {
-		uv = triplanar_pos.xz;
-	}
+	// Normalize the blend weights so they sum to 1.0
+	float total = abs_n.x + abs_n.y + abs_n.z;
+	vec3 weights = abs_n / max(total, 0.001);
 	
-	// Sample the texture using local coordinate projection
-	vec4 tex_color = texture(albedo_texture, uv);
+	// Sample the texture along the three local coordinate planes
+	vec4 tex_x = texture(albedo_texture, local_pos.zy);
+	vec4 tex_y = texture(albedo_texture, local_pos.xz);
+	vec4 tex_z = texture(albedo_texture, local_pos.xy);
+	
+	// Blend the three samples dynamically based on normal weights
+	vec4 tex_color = tex_x * weights.x + tex_y * weights.y + tex_z * weights.z;
 	
 	// Fast discard clipping: Discard rendering if pixel is mostly transparent (alpha < 0.4)
 	if (tex_color.a < 0.4) {

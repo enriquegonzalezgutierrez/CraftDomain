@@ -18,6 +18,9 @@
   "BLOCK_CROP_SEED": "Crop Seed",
   "BLOCK_CROP_GROWING": "Crop Growing",
   "BLOCK_CROP_RIPE": "Crop Ripe",
+  "BLOCK_COAL_ORE": "Coal Ore",
+  "BLOCK_BRICKS": "Bricks",
+  "BLOCK_GLASS": "Glass",
 
   "ITEM_FRIED_CHICKEN": "Fried Chicken",
   "ITEM_WOODEN_SWORD": "Wooden Sword",

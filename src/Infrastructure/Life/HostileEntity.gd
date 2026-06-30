@@ -1,10 +1,12 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Hostile zombie physics controller wrapper.
-#              SOLID COMPLIANCE: Adheres strictly to SRP by isolating AI behaviors.
-#              FIX: Added a strict 1.5-second attack cooldown timer to prevent
-#              the 120Hz physics loop from instant-killing the player and forcing
-#              respawn teleports back to (8.5, 14.0, 8.5).
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Isolates hostile AI behaviors,
+#                chase tracking, and combat cooldowns.
+#              DEATH OVERHAUL UPGRADE:
+#              - Replaced immediate queue_free() deletion with a unified shrinking 
+#                and spinning death animation, accompanied by GPU smoke particles.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -24,7 +26,7 @@ var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 # Domain Model Composition (DDD Compliance)
 var domain_entity: VoxelEntity
 
-# Sibling node references (loosely typed to prevent compile loops)
+# Sibling node references
 var player: CharacterBody3D
 var _visual_materials: Array[ORMMaterial3D] = []
 
@@ -39,20 +41,46 @@ var _attack_cooldown_timer: float = 0.0
 # Obstacle Avoidance Tracker
 var _stuck_timer: float = 0.0
 
+# STATIC VISUAL CACHE: Shared high-frequency pixel grain textures
+static var _shared_grain_texture: NoiseTexture2D = null
+
+
 func _init(spawn_pos: Vector3) -> void:
 	position = spawn_pos
 	name = "Entity_ZOMBIE"
 	
+	_preload_shared_grain_texture()
+	
 	# Instantiate pure domain model and subscribe to its Domain Events
-	domain_entity = VoxelEntity.new(3)
+	domain_entity = VoxelEntity.new(3) # 3 Hearts of health
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
+
 
 func _ready() -> void:
 	_build_visual_representation()
 	_setup_collision()
 	_locate_player()
 	_setup_quest_bubble()
+
+
+## Compiles and caches a tiny, high-frequency simplex noise grain texture 
+## once to establish unified voxel texturing without overhead.
+func _preload_shared_grain_texture() -> void:
+	if _shared_grain_texture != null:
+		return
+		
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.frequency = 0.52
+	noise.fractal_octaves = 1
+	
+	_shared_grain_texture = NoiseTexture2D.new()
+	_shared_grain_texture.width = 32
+	_shared_grain_texture.height = 32
+	_shared_grain_texture.generate_mipmaps = false
+	_shared_grain_texture.noise = noise
+
 
 func _setup_collision() -> void:
 	var col := CollisionShape3D.new()
@@ -63,13 +91,13 @@ func _setup_collision() -> void:
 	col.position = Vector3(0, 0.7, 0)
 	add_child(col)
 
-## UX / HIERARCHY FIX: Resolves player location by fetching the world controller's injected reference!
+
 func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
 
-## UX UPGRADE: Automatically instantiates a floating red target bubble above the zombie's head during plains_defender!
+
 func _setup_quest_bubble() -> void:
 	var active_q := QuestService.get_active_quest()
 	if active_q != null and active_q.quest_id == "plains_defender":
@@ -78,6 +106,7 @@ func _setup_quest_bubble() -> void:
 			var bubble = sb_script.new() as Node3D
 			add_child(bubble)
 			bubble.call("set_text", "☠️ [ TARGET MONSTER ] ☠️")
+
 
 func _build_visual_representation() -> void:
 	var visual_root := Node3D.new()
@@ -93,6 +122,7 @@ func _build_visual_representation() -> void:
 	_create_box(visual_root, Vector3(0.15, 0.45, 0.15), Vector3(-0.1, 0.225, 0), Color(0.1, 0.1, 0.25)) # Blue trousers
 	_create_box(visual_root, Vector3(0.15, 0.45, 0.15), Vector3(0.1, 0.225, 0), Color(0.1, 0.1, 0.25))
 
+
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> void:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -103,12 +133,19 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	var mat := ORMMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.95
+	
+	# Bind procedural voxel micro-grain texture
+	if _shared_grain_texture != null:
+		mat.albedo_texture = _shared_grain_texture
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		mat.albedo_texture_force_srgb = true
+		
 	mesh_instance.material_override = mat
 	_visual_materials.append(mat)
 	
 	parent.add_child(mesh_instance)
 
-## Infrastructure Method: Receives combat interaction, applies physics, and delegates logic to Domain.
+
 func take_damage(amount: int, knockback_force: Vector3) -> void:
 	if domain_entity.is_dead:
 		return
@@ -119,69 +156,117 @@ func take_damage(amount: int, knockback_force: Vector3) -> void:
 	# Delegate purely logical health reduction to Domain
 	domain_entity.take_damage(amount)
 
-## Infrastructure Event Handler: Reacts to the Domain Event
+
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	_flash_red()
+
 
 func _flash_red() -> void:
 	for mat in _visual_materials:
 		mat.emission_enabled = true
 		mat.emission = Color(0.8, 0.0, 0.0) # Red glow
 		
-	# Create a quick 0.15-second timer to restore original colors
 	get_tree().create_timer(0.15).timeout.connect(_reset_damage_flash)
+
 
 func _reset_damage_flash() -> void:
 	for mat in _visual_materials:
 		if is_instance_valid(mat):
 			mat.emission_enabled = false
 
-## Infrastructure Event Handler: Reacts to the Domain Event
+
+# ==============================================================================
+# DEATH SEQUENCE & LOOT ORCHESTRATION
+# ==============================================================================
 func _on_domain_entity_died() -> void:
 	print("[Zombie] Blegh... Zombie died.")
 	
-	# Drop standard and quest-specific rewards
+	# 1. Disable physics
+	set_physics_process(false)
+	var col := get_node_or_null("ZombieCollider")
+	if is_instance_valid(col): col.queue_free()
+	
+	# 2. Grant rewards
 	if is_instance_valid(player):
 		var inv := player.get("inventory") as IInventory
 		if is_instance_valid(inv):
-			print("[Zombie] Loot dropped: 1x Lava Bucket added.")
-			inv.add_item(15, 1) 
+			inv.add_item(15, 1) # Grants 1x Lava Bucket safely
 			
-			# --- CAMPAIGN MISSION 5 TRIGGER: Complete Plains Defender ---
 			var active_q := QuestService.get_active_quest()
 			if active_q != null and active_q.quest_id == "plains_defender":
 				inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
 				QuestService.complete_active_quest(player)
 				
-			player.call("_sync_hud_counters") # Sync HUD UI instantly
+			player.call("_sync_hud_counters") 
+			
+	# 3. Spawn death smoke particles
+	_spawn_death_particles()
 	
-	# Play a quick spinning/falling animation before deleting
+	# 4. Play a quick spinning/shrinking animation before deleting
 	var death_tween := create_tween().set_parallel(true)
 	var visuals_node: Node3D = get_node("Visuals")
 	if is_instance_valid(visuals_node):
-		death_tween.tween_property(visuals_node, "rotation:z", deg_to_rad(-90), 0.2)
-		death_tween.tween_property(visuals_node, "position:y", -0.4, 0.2)
+		death_tween.tween_property(visuals_node, "scale", Vector3.ZERO, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		death_tween.tween_property(visuals_node, "rotation:y", deg_to_rad(180), 0.25).set_trans(Tween.TRANS_SINE)
 		
 	death_tween.chain().tween_callback(queue_free)
 
+
+func _spawn_death_particles() -> void:
+	var particles := GPUParticles3D.new()
+	particles.emitting = false
+	particles.amount = 15
+	particles.one_shot = true
+	particles.explosiveness = 0.9
+	particles.lifetime = 0.6
+	
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.4
+	pm.direction = Vector3(0, 1, 0)
+	pm.spread = 180.0
+	pm.initial_velocity_min = 2.0
+	pm.initial_velocity_max = 4.0
+	pm.gravity = Vector3(0, 2.0, 0)
+	pm.scale_min = 0.5
+	pm.scale_max = 1.2
+	particles.process_material = pm
+	
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.15, 0.15, 0.15)
+	var mat := ORMMaterial3D.new()
+	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8) # Smoke grey
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh.material = mat
+	particles.draw_pass_1 = mesh
+	
+	var world_node = get_parent()
+	if is_instance_valid(world_node):
+		world_node.add_child(particles)
+		particles.global_position = global_position + Vector3(0, 0.5, 0)
+		particles.emitting = true
+		get_tree().create_timer(1.0).timeout.connect(particles.queue_free)
+
+
+# ==============================================================================
+# MAIN PROCESSING LOOPS
+# ==============================================================================
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 
-	# Apply gravity
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 
-	# Process bite cooldown tick (SRP)
 	if _attack_cooldown_timer > 0.0:
 		_attack_cooldown_timer -= delta
 
-	# Dynamic target search fallback if player spawned late
 	if not is_instance_valid(player):
 		_locate_player()
 
 	_process_ai_intelligence(delta)
 	move_and_slide()
+
 
 func _process_ai_intelligence(delta: float) -> void:
 	var _wander_direction_tmp: Vector3 = Vector3.ZERO
@@ -204,11 +289,10 @@ func _process_ai_intelligence(delta: float) -> void:
 			_wander_direction.y = 0
 			is_player_trackable = true
 			
-			# Check distance and execute attack only if the cooldown has elapsed!
 			if global_position.distance_to(player.global_position) <= ATTACK_RANGE:
 				if _attack_cooldown_timer <= 0.0:
 					_bite_player()
-					_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL # Start cooldown!
+					_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL
 				
 	if not is_player_trackable and _wander_direction_tmp != Vector3.ZERO:
 		_wander_direction = _wander_direction_tmp
@@ -250,10 +334,10 @@ func _process_ai_intelligence(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0, SPEED)
 		velocity.z = move_toward(velocity.z, 0, SPEED)
 
-## FIXED: Reduced y-knockback to prevent throwing player into tight ceilings (prevents physics clipping glitches)
+
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var bite_knockback: Vector3 = (player.global_position - global_position).normalized() * 4.5
-		bite_knockback.y = 0.25 # Extremely safe low-arc lift
+		bite_knockback.y = 0.25 
 		if player.has_method("take_damage"):
 			player.call("take_damage", 1, bite_knockback)

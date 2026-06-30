@@ -1,4 +1,4 @@
-s# CraftDomain
+# CraftDomain
 
 ![MainMenu Background](src/Infrastructure/UI/Assets/menu_background.png)
 
@@ -63,10 +63,10 @@ graph TD
    * **Rendering & Materials (`src/Infrastructure/Rendering/`):** `ChunkNode.gd` segments rendering transforms into individual, block-type MultiMesh nodes, applying PBR materials and custom GPU shaders. `ChunkVisualBuilder.gd` extracts physical meshes and groups MultiMesh matrices efficiently on background threads.
    * **Physics & Interactions (`src/Infrastructure/Player/`):** First-person motion physics, camera rotation, head bobbing, and decoupled raycast interaction solvers.
    * **Persistence (`src/Infrastructure/Persistence/`):** `DiskWorldRepository.gd` implements JSON delta serialization inside Godot's safe `user://` directory, now supporting full 24-slot inventory status profiles.
-   * **Life & AI (`src/Infrastructure/Life/`):** Physics-bound passive and hostile AI, rendering programmatic 3D box-composition models and scheduling walk/idle tasks.
+   * **Life & AI (`src/Infrastructure/Life/`):** Physics-bound passive and hostile AI, rendering programmatic 3D box-composition models and scheduling walk/idle tasks. Includes coordinate-seeded deterministic aesthetic variants, conversation gaze-locks, and a polymorphic loot-drop engine.
 
 3. **The Core/Bootstrap Layer (`src/Core/Bootstrap`):**
-   * Acts as the **Composition Root**. It instantiates the required database repositories, configures environment nodes, registers biomes/structures, and injects loose dependencies during scene transitions, ensuring no circular compiler loops exist.
+   * Acts as the **Composition Root**. It instantiates the required database repositories, configures environment nodes, registers biomes/structures, and injects loose dependencies during scene transitions, ensuring no circular compiler loops exist. To preserve SRP, registries (like Mobs and Biomes) initialize their concrete strategies within their own services dynamically.
 
 ---
 
@@ -109,12 +109,13 @@ sequenceDiagram
 
 * **The Data-Driven Crafting & Blueprint System:** Similar to quests, all crafting recipes are parsed from `assets/recipes/recipes.json` by `RecipeRegistry.gd`. Adding a new recipe does not require modifying a single line of GDScript.
 * **Dynamic Mob Spawning Registry:** Concrete entities are registered dynamically into the `MobRegistry` at startup, decoupling custom wildlife and NPC instantiation from the procedural spawner `MobSpawningService.gd`.
+* **Data-Driven 1:1 Translations (i18n):** The engine dynamically loads translation data from `assets/translations/en.json` and `es.json`. Dialogue trees, item names, UI headers, and even floating speech bubbles are parsed using localization keys without hardcoding raw text in the controllers.
 
 ### 3. Liskov Substitution Principle (LSP)
 Subclasses must be substitutable for their base classes without altering program correctness:
 * Any strategy implementing `IBiome` can be processed by `BiomeService` and evaluated by `WorldGenerator` without runtime exceptions.
 * `DiskWorldRepository` inherits from `WorldRepository`, satisfying all contract signatures safely.
-* Passive entities (`VillagerEntity`, `MerchantEntity`, `GuardEntity`, `FarmerEntity`) inherit from `PassiveEntity`, implementing their custom shapes polymorphically while using the parent's base physics and animation loops seamlessly.
+* Passive entities (`VillagerEntity`, `MinerEntity`, `GuardEntity`, `FarmerEntity`, `TurtleEntity`) inherit from `PassiveEntity`, implementing their custom shapes polymorphically while using the parent's base physics, blinking loops, variant seeding, and death sequences seamlessly.
 
 ### 4. Interface Segregation Principle (ISP)
 *Clients should not be forced to depend upon interfaces they do not use.*
@@ -125,7 +126,7 @@ Subclasses must be substitutable for their base classes without altering program
 *High-level modules must not depend on low-level modules; both must depend on abstractions.*
 * `WorldController.gd` (High-level coordinator) never directly instantiates or imports `DiskWorldRepository.gd` (Low-level JSON file details).
 * Instead, it holds a reference to the abstract class `WorldRepository`. The concrete `DiskWorldRepository` is instantiated and injected externally by `Bootstrap.gd` during boot.
-* `CraftingService` depends on the abstract `IInventory` interface, allowing it to process transaction operations on any inventory backend.
+* `VoxelInteractionComponent.gd` holds injectable references to `BlockLibrary` and `QuestService` providers rather than hardcoding static singletons, making the module completely mockable for testing.
 
 ---
 
@@ -133,18 +134,19 @@ Subclasses must be substitutable for their base classes without altering program
 
 Voxel sandbox games are traditionally notorious for CPU and GPU bottlenecks. CraftDomain implements custom lower-level optimizations to maintain solid framerates:
 
-### 1. Multi-Mesh Partitioned Rendering (Water & Lava Shading)
+### 1. Expanded Horizon Draw Distance (162-Chunk Radius)
+Through massive occlusion culling and background thread matrix compilation within `ChunkVisualBuilder.gd`, `ChunkLoaderService` pushes a **9x2x9 3D loading grid**. This active volume of **162 procedural chunks** quadruples the standard visual draw distance natively without overwhelming the physics servers, supporting massive landscapes, deep ravines, and high-altitude Cloud Kingdoms.
+
+### 2. Multi-Mesh Partitioned Rendering (Water & Lava Shading)
 To support translucent, highly reflective water and glowing lava, `ChunkNode.gd` does not render a chunk using a single monolithic MultiMesh. Instead, it partitions chunk voxel arrays by their `BlockType` and instantiates a separate `MultiMeshInstance3D` for each active block type. This allows applying specialized materials:
 * **Water Material:** Translucent blue color, roughness `0.05` (highly glossy) to enable beautiful Screen Space Reflections (SSR).
+* **Glass Material:** High-gloss transparency allowing skylight penetration.
 * **Lava Material:** Emission-enabled orange-red glow with a `1.8` multiplier.
-* **Solid Blocks:** Use OCP-compliant custom PBR textures.
 
-### 2. Custom GPU Blending & Triplanar Shader
-Using custom PNG textures on voxels often results in vertical texture stretching or solid black blocks. CraftDomain implements a custom **GPU Blending Triplanar Shader** in `ChunkNode.gd` that resolves both issues:
-* **Decal Triplanar Projection:** Projects textures from X, Y, and Z axes based on local vertex positions, ensuring perfectly square, non-stretched pixel mapping on all 6 faces of the cube.
-* **Alpha Blending Fallback:** Automatically blends the texture colors with the block's base procedural fallback color using the texture's alpha channel. If a pixel is transparent, it renders the rich biome-specific color instead of turning black.
+### 3. Procedural Static Pixel Grain & Externalized GDShaders
+The visual codebase applies clean, external `.gdshader` resource files (decoupled from GDScript files). Solid blocks utilize a fast **Triplanar Shader**, while foliage utilizes a **Wind-Sway Leaf Shader**. Additionally, all NPC and wildlife characters are procedurally painted with a static, pre-compiled micro-pixel `NoiseTexture2D` blended over their base colors using `TEXTURE_FILTER_NEAREST`, instantly producing highly detailed, retro-voxel pixel-art aesthetics globally with zero runtime GPU overhead.
 
-### 3. Static Texture Preloader (Lag Spike Prevention)
+### 4. Static Texture Preloader (Lag Spike Prevention)
 Decoding high-resolution (1024x1024) PNG files on the main thread during real-time chunk loading causes massive CPU stalls, resulting in physics tunneling. CraftDomain utilizes a **Static Preloader** in `ChunkNode.gd` that reads, caches, and compiles all custom textures into GPU memory *once* during game boot, keeping the gameplay completely stutter-free.
 
 ---
@@ -180,10 +182,10 @@ graph LR
 ```
 
 ### 1. Deterministic GPU Sky & Weather-Integrated Shader
-The world features a custom GPU Sky Shader (`EnvironmentBuilder.gd`) integrated with the celestial clock:
+The world features a custom GPU Sky Shader (`celestial_sky.gdshader`) integrated with the celestial clock:
 * **True Celestial Orbits:** The Sun disk and Moon crescent are rendered on the sky dome using coordinates passed dynamically from `CelestialService.gd`.
 * **Twinkling Starfield:** A procedural, rotating 3D starfield fades in at night and dims as dawn approaches.
-* **Dynamic Weather Overcast:** The shader reads the `storm_weight` uniform. When rain/snow begins in `WeatherService.gd`, the sky smoothly fades to a heavy, plomizo slate-grey over 5 seconds. Clouds generated via procedural GPU Fractional Brownian Motion (FBM) thicken, and the Sun and Moon disks are dimmed by 85% to simulate thick overcast weather.
+* **Dynamic Weather Overcast:** The shader reads the `storm_weight` uniform. When rain/snow begins, the sky smoothly fades to a heavy slate-grey over 5 seconds. Flat ceiling clouds, generated seamlessly via 3-Octave **GPU Fractional Brownian Motion (FBM)**, automatically thicken and dim the celestial bodies to mimic heavy storms.
 
 ### 2. Regional Climatology
 `WeatherService.gd` manages dynamic weather shifts (Sunny, Rainy, Snowy) that interact with regional biomes:
@@ -192,20 +194,38 @@ The world features a custom GPU Sky Shader (`EnvironmentBuilder.gd`) integrated 
 
 ---
 
+## Procedural World Generation & Regional Biomes
+
+The world dynamically loads infinite terrain across 10 fully distinct environments, each boasting unique geographic rules, flora blueprints, and specialized NPC populations:
+
+*   **Bay of Sails (Ocean):** Blue water expanses populated by aquatic Sea Turtles (`ID 201`). NPCs spawn in striped sailor outfits.
+*   **Warp Plateau (Steps):** Vibrant green step-topography generating Warp Pipes and Giant Mario Mushrooms.
+*   **Golden Bazaar (Plains):** Classical grasslands populated with Oak Trees (`ID 1`), Birch Trees (`ID 13`), Sakura Trees (`ID 10`), and beautiful flowering Rose Bushes (`ID 12`).
+*   **Craggy Peaks & Caves:** Deep grey mountains and underground caverns illuminated dynamically by Cave Miners (`ID 105`) wearing active, sweeping 3D headlamp spotlight helmets.
+*   **Frostbite Glaciers (Polo):** Freezing winter basin where NPCs spawn clothed in thick thermal fur hoods to withstand the snow.
+*   **Whispering Redwood Forest:** Mossy canopies dominated by colossal 12-block high Redwood Trees. Inhabited by Forest Druids (`ID 104`) wielding longbows.
+*   **Neon Ruins (Cyber Basin):** Obsidian and magenta stepped pyramids. Guarded by highly advanced Cyber Citizens (`ID 106`) with glowing circuitry.
+*   **Red Sandstone Canyons:** Terraced badlands deserts decorated with twisted, woody Dead Shrubs (`ID 14`).
+*   **Swamp of Sighs (Mist Bay):** Thick brown mud valleys populated by mysterious swamp alchemists in tattered cowls.
+*   **Cloud Kingdom:** High-altitude floating white cloud islands supporting angelic inhabitants.
+
+**Global Mega-Structures (Fixed POIs):**
+Massive, multi-chunk architectural marvels are spawned dynamically at fixed coordinates (e.g., Grand Castle at `[200, 200]`, Harbor City at `[-150, 0]`, Nether Portal Outpost at `[-300, -300]`). These locations spawn heavily armored Guards and coordinate-specific interactions.
+
+---
+
 ## Decoupled SOLID UI Architecture
 
 To satisfy the Single Responsibility Principle, the HUD is separated into modular, decoupled widgets managed under `PlayerHUD.gd`:
 
-* **`MinimapWidget.gd`:** Renders the 2D circular radar, the player's white arrow with a thick black outline, and the active quest's pulsing hot-pink navigation diamond (designed to clamp to the compass rim when far away).
-* **`GPSPanelWidget.gd`:** A clean overlay that displays coordinates, the celestial clock, and active region biomes with high-contrast text outlines, freeing up screen space.
-* **`QuestTrackerWidget.gd`:** Renders active quest descriptions, remaining distance in meters, and gathering progress. To prevent clutter, the widget automatically hides itself completely when all campaign quests are completed.
+* **`MinimapWidget.gd`:** Renders the 2D circular radar, tracking the player arrow, regional biome colors, and auto-guided quest marker dots.
+* **`GPSPanelWidget.gd`:** An elegant, localized overlay tracking coordinate grids, clock cycles, current biomes, and a procedural compass pointing directly toward the closest Global Mega-Structure.
+* **`MapOverlay.gd`:** A fullscreen glassmorphic tactical world map enabling instant OCP-compliant fast-travel to discovered POIs. Transitions are smoothed using the dynamic cinematic `LoadingScreen.gd`.
 
 ### Minecraft-Style Centered HUD Layout
 The HUD has been fully overhauled to emulate the standardized layout of modern block sandbox games:
-* **Unified Center-Bottom Dock:** The 8 hotbar slots are grouped inside a sleek, glassmorphic bottom bar. The `🎒` (Backpack Inventory) and `🛠️` (Crafting Workshop) buttons are docked symmetrically on the left and right ends of the bar, providing a clean tactile interface for mouse players.
-* **Pixelated Voxel Shadow Icons:** Hotbar block indicators feature an internal 3D shadow offset that simulates voxel volume. Slot counts are rendered at the bottom right.
-* **Aligned Status Bars:** Red Hearts (`❤ ❤ ❤`) float above the left half of the hotbar, starting exactly aligned with Slot 0. Crispy Chicken Drumsticks (`🍗 🍗 🍗`) representing the actual backpack stock of Fried Chicken float above the right half of the hotbar, aligning perfectly with Slot 7.
-* **Hotkey Tooltip Labels:** Small high-contrast sub-labels (`[I]` and `[C]`) sit underneath the docked shortcuts to seamlessly guide keyboard players.
+* **Unified Center-Bottom Dock:** The 8 hotbar slots are grouped inside a sleek, glassmorphic bottom bar. The `🎒` (Backpack Inventory) and `🛠️` (Crafting Workshop) buttons are docked symmetrically.
+* **Aligned Status Bars:** Red Hearts (`❤ ❤ ❤`) float above the left half of the hotbar. Crispy Chicken Drumsticks (`🍗 🍗 🍗`) float above the right half.
 
 ---
 
@@ -224,22 +244,17 @@ Pressing `C` opens a dual-pane Blueprint Workshop overlay:
 * **Visual Checklist (Right Pane):** Selecting a recipe displays its name, result count, and a color-coded checklist of required ingredients compared with the player's total inventory count (green if satisfied, red if missing).
 * **Manufacturing Transaction:** Clicking the "Fabricate" button consumes the inputs globally across the grid, grants the crafted outcome, triggers a viewmodel hand-swing, and pops a sliding success notification.
 
-### 3. Dynamic Cursor Release Engine (`free_cursor`)
-To seamlessly bridge the gap between first-person camera movement and interactive UI clicks:
-* **Left Alt Hold Mechanic:** Holding the **`Left Alt`** key temporarily freezes first-person camera rotation and releases the captured hardware cursor, allowing players to hover and click the HUD shortcut buttons (`🎒` and `🛠️`).
-* **Intelligent Auto-Recapture:** Releasing the key automatically hides and locks the mouse cursor back into captured gameplay mode if, and only if, no overlay windows or dialogue trees are currently open.
-
 ---
 
-## Procedural NPC Animation & Rigging
+## Advanced Procedural NPC AI & Rigging
 
-NPCs are designed with a layered hierarchical box structure attached to a dedicated walking joint (`_body_bob_node`):
-* **Procedural Walk Bouncing:** When walking, the entire model undergoes a vertical bouncing animation resembling footsteps. When idling, the model exhibits a slow, natural breathing animation.
-* **Overhauled Aesthetics:**
-  * **Villagers:** Rigged with detailed leather boots, belts with iron buckles, and folded arms.
-  * **Merchants:** Modeled with silk turbans featuring emerald gems on the forehead, royal violet robes, and layered gold aprons.
-  * **Guards:** Styled with steel-plated armor, bulky 3D shoulder pauldrons, helmet visors, sheathed iron swords, and knightly wooden heater shields on their backs.
-  * **Farmers:** Rigged with muddy field boots, blue dungarees with suspender straps, wide-brim straw hats, and sheathed harvesting wooden hoes.
+The engine features highly reactive, modular, and procedurally generated non-player characters (NPCs):
+
+*   **Deterministic Aesthetic Variants:** NPCs derive their physical traits (skin tone, clothing color, hair color, and height scaling) mathematically from their spawning coordinates. No two villagers look alike, yet they remain consistent upon reloading.
+*   **Conversational Gaze-Locks & Dynamic Dialogue:** When interacted with, NPCs freeze their patrol velocities and execute real-time geometric rotation slerps to lock eye contact with the player. Instead of static greetings, they draw from procedural dialogue pools that evaluate the time of day, their active biome, and variant identity strings.
+*   **Proactive Threat Detection (PANIC):** Passive entities actively track coordinate radiuses. If a hostile Zombie approaches, they enter a PANIC state, wildly sprinting in the opposite direction while bouncing at a high-frequency pace.
+*   **Defensive Aggro Chasing (GUARDS):** Guard entities refuse to panic. They physically draw their sheathed iron broadswords from their backs, sprint towards hostiles, and execute coordinated striking cooldowns to deal damage and knockback to protecting the village.
+*   **Polymorphic Loot System:** Implementing the unified Death Engine, all creatures and NPCs trigger a physical shrinking animation accompanied by GPU smoke particles before deleting themselves and safely delegating specific drop tables (meat, wool proxy leaves, etc.) straight to the `IInventory` interface.
 
 ---
 
@@ -248,42 +263,14 @@ NPCs are designed with a layered hierarchical box structure attached to a dedica
 * **`W`, `A`, `S`, `D` or Arrow Keys:** Move around.
 * **Mouse Movement:** Look around (Smooth camera rotation processed inside `_unhandled_input` to match high-refresh monitor rates).
 * **`Space`:** Jump.
+* **`M`:** Open Fullscreen Tactical Map & Fast Travel.
 * **`I` (or clicking the HUD 🎒 button):** Toggle the 24-slot Backpack Inventory & Inspector overlay.
 * **`C` (or clicking the HUD 🛠️ button):** Toggle the Context-aware Crafting & Blueprint Workshop.
 * **`Left Alt` (Hold):** Release the captured mouse cursor to click HUD shortcut buttons.
 * **Mouse Scroll Wheel or Keys `1` to `8`:** Scroll through Hotbar slots.
 * **Left-Click (or `E`):** Mine blocks (generating color-matched voxel debris particles) or swing the active weapon.
-* **Right-Click (or `Q`):** Place blocks, consume items (eating Fried Chicken to heal), or interact (trading with the Purple-Robed Merchant, talking to villagers).
+* **Right-Click (or `Q`):** Place blocks, plant seeds, consume items, or interact (Talking with villagers/guards/miners).
 * **`Escape`:** Unlocks mouse cursor, pauses game, and triggers a silent background auto-save.
-
----
-
-## Directory Layout & Specifications
-
-```
-.
-├── MANUAL.md                  # Gameplay and economic instruction manual
-├── README.md                  # Technical engine documentation
-├── project.godot              # Godot project settings (Physics @ 120Hz, Forward+)
-└── src
-	├── Core
-	│   └── Bootstrap          # Application entry-point and dependency injector
-	├── Domain
-	│   ├── Dialogue           # Pure dialogue data nodes
-	│   ├── Life               # Pure domain models (Combat state, health limits)
-	│   ├── Player             # Segregated IInventory interfaces and InventoryComponent
-	│   ├── Quest              # Pure quest entities and domain coordinators
-	│   └── World              # Strategy patterns (IBiome, Blueprints, Block Definitions)
-	└── Infrastructure
-		├── Audio              # Programmatic loops and parallel crossfaders
-		├── Celestial          # Day/night orbits and Weather particle generators
-		├── Dialogue           # Dialogue manager and UI adapters
-		├── Life               # Physics controllers, NPCs, blinking, and spawning
-		├── Persistence        # Safe JSON save delta serializers
-		├── Player             # FP controllers, viewmodels, and interaction components
-		├── Rendering          # MultiMesh chunk nodes, ChunkVisualBuilder, and custom GPU shaders
-		└── UI                 # Glassmorphic sub-widgets, compasses, and workshop overlays
-```
 
 ---
 

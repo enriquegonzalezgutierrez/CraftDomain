@@ -18,17 +18,14 @@
   "BLOCK_CROP_SEED": "Semilla de Cultivo",
   "BLOCK_CROP_GROWING": "Brote Joven",
   "BLOCK_CROP_RIPE": "Trigo Maduro",
+  "BLOCK_COAL_ORE": "Mineral de Carbón",
+  "BLOCK_BRICKS": "Ladrillos",
+  "BLOCK_GLASS": "Cristal",
 
   "ITEM_FRIED_CHICKEN": "Pollo Frito",
   "ITEM_WOODEN_SWORD": "Espada de Madera",
   "INVENTORY_EMPTY": "Vacío",
   "INVENTORY_UNKNOWN": "Bloque Desconocido",
-  "INVENTORY_INFINITE": "Cantidad Infinita",
-
-  "INVENTORY_EMPTY_TITLE": "Inspector de Mochila",
-  "INVENTORY_EMPTY_DESC": "Haz clic en cualquier objeto de la mochila para inspeccionar sus instrucciones de uso y detalles operativos.",
-  "ITEM_USAGE_PREFIX": "USO",
-  "ITEM_STOCKED_PREFIX": "ALMACENADO",
 
   "ITEM_1_DESC": "Bloques de piedra gris lisos y pesados extraídos de cuevas profundas... útiles para muros defensivos estructurados.",
   "ITEM_1_USE": "Presiona Clic Derecho para construir estructuras sólidas.",
@@ -50,6 +47,12 @@
   "ITEM_18_USE": "Equípalas y haz Clic Derecho sobre bloques de césped/tierra. ¡Los cultivos crecen dinámicamente con el tiempo!",
   "ITEM_20_DESC": "Granos de trigo dorados madurados al sol cosechados de tus campos de cultivo maduros. Material crudo esencial para recetas de panadería de supervivencia avanzadas.",
   "ITEM_20_USE": "Usa este trigo en el Taller de Creación para fabricar valiosas raciones.",
+
+  "ITEM_STOCKED_PREFIX": "ALMACENADO",
+  "ITEM_USAGE_PREFIX": "MANUAL OPERATIVO",
+  "INVENTORY_INFINITE": "INFINITO",
+  "INVENTORY_EMPTY_TITLE": "Inspector de Mochila",
+  "INVENTORY_EMPTY_DESC": "Haz clic en cualquier objeto de la mochila para inspeccionar sus instrucciones de uso y detalles operativos.",
 
   "BIOME_BAY_OF_SAILS": "Bahía de las Velas (Océano Inicial)",
   "BIOME_WARP_PLATEAU": "Meseta de Tuberías (Pasos de Mario)",

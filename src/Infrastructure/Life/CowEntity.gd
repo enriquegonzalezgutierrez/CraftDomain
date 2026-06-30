@@ -8,22 +8,20 @@
 #                abstract visualization methods of PassiveEntity.
 #              PROGRAMMATIC DESIGN: Constructs a highly detailed, spotted Holstein
 #              voxel cow entirely via code.
-#              FIXED: Recalibrated pure white (1.0, 1.0, 1.0) to a warm ivory white
-#              (0.98, 0.96, 0.92) to optically counteract the cool blue ambient 
-#              sky lighting inherent to PBR engines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/CowEntity.gd
 # ==============================================================================
 class_name CowEntity
 extends PassiveEntity
 
+
 func _init(spawn_pos: Vector3) -> void:
-	super(spawn_pos, 1)
+	super(spawn_pos, 1) # 1 Heart of health
 	name = "Entity_COW"
 
-## Overrides: Assembles a premium spotted voxel cow model programmatically using 3D boxes
+
+## Overrides: Assembles a premium spotted voxel cow model programmatically using 3D boxes.
 func _build_visual_representation() -> void:
-	# FIX: Changed to a warm ivory white to neutralize the cool blue sky lighting
 	var white := Color(0.98, 0.96, 0.92) 
 	var black := Color(0.12, 0.12, 0.12)
 	var pink := Color(0.92, 0.62, 0.62)
@@ -55,7 +53,7 @@ func _build_visual_representation() -> void:
 	_create_box(_head_node, Vector3(0.06, 0.18, 0.06), Vector3(-0.23, 0.32, 0.05), ivory)
 	_create_box(_head_node, Vector3(0.06, 0.18, 0.06), Vector3(0.23, 0.32, 0.05), ivory)
 	
-	# Blinking Eyes (Wired to base class blinking cycle)
+	# Blinking Eyes
 	_left_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.18, 0.12, -0.21), Color.WHITE)
 	_create_box(_left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.12, 0.12, 0.15)) # Dark pupil
 	
@@ -79,8 +77,16 @@ func _build_visual_representation() -> void:
 	_create_box(_visual_root, Vector3(0.18, 0.32, 0.18), Vector3(0.25, 0.22, 0.38), white)
 	_create_box(_visual_root, Vector3(0.18, 0.06, 0.18), Vector3(0.25, 0.03, 0.38), hoof_color)
 
+
 func _get_collision_box_size() -> Vector3:
 	return Vector3(0.69, 0.69, 0.92)
 
+
 func _get_collision_box_position() -> Vector3:
 	return Vector3(0, 0.345, 0)
+
+
+## Override: Drops 1x Dirt Block (Leather proxy) and 1x Meat on death.
+func _drop_loot(inv: IInventory) -> void:
+	inv.add_item(2, 1)  # Item ID 2: Dirt (Acting as leather)
+	inv.add_item(16, 1) # Item ID 16: Fried Chicken

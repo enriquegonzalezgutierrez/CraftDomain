@@ -2,8 +2,12 @@
 # Project: CraftDomain
 # Description: Domain registry holding immutable definitions, colors, and 
 #              shading parameters of all block types present in the game.
-#              SOLID/i18n UPGRADE: Stripped all hardcoded English text. Uses 
-#              standardized translation keys (e.g., "BLOCK_DIRT") for localization.
+#              SOLID/i18n COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Only manages static 
+#                registrations of block definitions.
+#              - Open-Closed Principle (OCP): Easily extensible with new blocks.
+#              BLOCK OVERHAUL UPGRADE:
+#              - Registered COAL_ORE (21), BRICKS (22), and GLASS (23).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockLibrary.gd
 # ==============================================================================
@@ -11,6 +15,7 @@ class_name BlockLibrary
 extends RefCounted
 
 static var _definitions: Dictionary = {}
+
 
 static func _static_init() -> void:
 	# 0. Air
@@ -70,8 +75,19 @@ static func _static_init() -> void:
 	# 20. Crop Ripe
 	_register(BlockType.Type.CROP_RIPE, "BLOCK_CROP_RIPE", Color(0.95, 0.78, 0.18), Color(0.88, 0.72, 0.15), Color(0.82, 0.65, 0.12))
 
+	# 21. Coal Ore (Dark grey stone base with shiny black coal speckles)
+	_register(BlockType.Type.COAL_ORE, "BLOCK_COAL_ORE", Color(0.35, 0.35, 0.38), Color(0.28, 0.28, 0.30), Color(0.25, 0.25, 0.27))
+
+	# 22. Red Bricks (Terracotta red clay bricks with grey mortar joints)
+	_register(BlockType.Type.BRICKS, "BLOCK_BRICKS", Color(0.65, 0.28, 0.22), Color(0.58, 0.22, 0.18), Color(0.52, 0.18, 0.15))
+
+	# 23. Glass (Semi-transparent, highly glossy light-cyan blue glass)
+	_register(BlockType.Type.GLASS, "BLOCK_GLASS", Color(0.85, 0.95, 1.0, 0.35), Color(0.80, 0.92, 0.98, 0.35), Color(0.75, 0.88, 0.95, 0.35))
+
+
 static func _register(type: BlockType.Type, key: String, top: Color, side: Color, bottom: Color) -> void:
 	_definitions[type] = BlockDefinition.new(type, key, top, side, bottom)
+
 
 static func get_definition(type: BlockType.Type) -> BlockDefinition:
 	if _definitions.has(type):
