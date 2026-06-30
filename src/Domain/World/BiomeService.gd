@@ -1,27 +1,51 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Domain Service acting as a Registry and Router for voxel biomes.
-#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by isolating biome calculations.
-#              TERRAIN UPGRADE: Removed artificial forced villages to allow 
-#              unrivaled, beautiful natural procedural generation.
+# Description: Domain Service acting as a Registry and Coordinator for voxel biomes.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Isolates coordinate 
+#                evaluations and biome registrations.
+#              - Open-Closed Principle (OCP): Encapsulates default biome startup 
+#                registrations in its own initialization loop, freeing Bootstrap 
+#                from concrete registration details.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BiomeService.gd
 # ==============================================================================
 class_name BiomeService
 extends RefCounted
 
-## Dynamic registry mapping unique Biome IDs to their concrete IBiome strategies
+## Dynamic registry mapping unique Biome IDs to their concrete IBiome strategies.
 static var _biomes: Dictionary = {}
 
-## Fallback biome used when an unregistered ID is requested
+## Fallback biome used when an unregistered ID is requested.
 static var _default_biome: IBiome
 
-## Structure used to transport the compiled evaluation metrics across layers
+
+## Struct used to transport the compiled evaluation metrics across system layers.
 class BiomeProfile:
 	var biome_id: int
 	var base_height: int
 	var landmark_id: int
+
+
+## Startup Initializer: Instantiates and registers the default set of 
+## geographical biomes, keeping Bootstrap.gd clean (SRP/OCP compliant).
+static func initialize_biomes() -> void:
+	print("[BiomeService] Initializing and registering geographical biomes...")
+	_biomes.clear()
+	
+	register_biome(BayOfSailsBiome.new())
+	register_biome(WarpPlateauBiome.new())
+	register_biome(GoldenBazaarBiome.new())
+	register_biome(CraggyMinesBiome.new())
+	register_biome(FrostbiteGlaciersBiome.new())
+	register_biome(RedwoodForestBiome.new())
+	register_biome(RedBadlandsBiome.new())
+	register_biome(NeonRuinsBiome.new())
+	register_biome(SwampOfSighsBiome.new())
+	register_biome(CloudKingdomBiome.new())
+	
+	print("[BiomeService] Initialization complete. Registered biomes count: ", _biomes.size())
+
 
 ## Static registry API: Registers a concrete biome strategy at runtime.
 static func register_biome(biome: IBiome) -> void:
@@ -29,16 +53,17 @@ static func register_biome(biome: IBiome) -> void:
 		return
 		
 	_biomes[biome.get_biome_id()] = biome
-	print("[BiomeService] Dynamic Biome registered: [ID %d] %s" % [biome.get_biome_id(), biome.get_biome_name()])
 	
 	if _default_biome == null:
 		_default_biome = biome
 
-## Public API: Retrieves a registered biome strategy by its ID.
+
+## Public API: Retrieves a registered biome strategy by its unique ID.
 static func get_biome(biome_id: int) -> IBiome:
 	if _biomes.has(biome_id):
 		return _biomes[biome_id] as IBiome
 	return _default_biome
+
 
 ## Evaluates any global coordinate and returns its mapped biome profile.
 static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: FastNoiseLite) -> BiomeProfile:
@@ -60,6 +85,8 @@ static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: Fas
 	
 	return profile
 
+
+## Calculates the deterministic biome sector ID based on polar coordinates.
 static func _calculate_sector_biome_id(global_x: int, global_z: int) -> int:
 	var gx := float(global_x)
 	var gz := float(global_z)

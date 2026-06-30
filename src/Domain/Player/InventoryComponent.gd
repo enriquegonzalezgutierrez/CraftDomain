@@ -2,18 +2,19 @@
 # Project: CraftDomain
 # Description: Concrete domain component managing a 24-slot stackable inventory grid.
 #              Slots 0-7 represent the active Hotbar. Slots 8-23 represent the Backpack.
-#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) and implements `IInventory` (DIP).
-#              i18n UPGRADE: Stripped hardcoded English block names.
-#              ROBUSTNESS FIX: Added strict array boundaries protection to prevent
-#              out-of-bounds crashes when querying newly added crop IDs (like ID 20).
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Exclusively manages grid 
+#                swaps, item stacking transactions, and inventory data structures.
+#              - Dependency Inversion Principle (DIP): Rather than hardcoding 
+#                static calls to BlockLibrary, it holds an injectable reference 
+#                to a block library provider.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/InventoryComponent.gd
 # ==============================================================================
 class_name InventoryComponent
 extends IInventory
 
-## Slot Data Value Object representing an individual cell in the grid
+## Slot Data Value Object representing an individual cell in the grid network.
 class SlotData:
 	var item_id: int = -1 # -1 represents EMPTY (AIR)
 	var quantity: int = 0
@@ -24,14 +25,23 @@ class SlotData:
 		quantity = p_quantity
 		max_stack = p_max_stack
 
+
 # Array of 24 strictly managed inventory slots (0-7 Hotbar, 8-23 Backpack)
 var _slots: Array[SlotData] = []
+
+# ==============================================================================
+# DEPENDENCY INVERSION (DIP): Injectable service providers
+# ==============================================================================
+## Injectable reference to the block library provider (Defaults to BlockLibrary class).
+var block_library_provider: Object = BlockLibrary
+
 
 func _init() -> void:
 	_slots.resize(24)
 	_setup_starting_survival_inventory()
 
-## Populates the inventory with starting survival supplies
+
+## Populates the inventory with starting survival supplies.
 func _setup_starting_survival_inventory() -> void:
 	# Slots 0 to 7: Active Quickbar
 	_slots[0] = SlotData.new(1, 64)   # 64x Stone Block (ID 1)
@@ -50,6 +60,7 @@ func _setup_starting_survival_inventory() -> void:
 	for i in range(9, 24):
 		_slots[i] = SlotData.new(-1, 0)
 
+
 # ==============================================================================
 # IInventory INTERFACE CONCRETE IMPLEMENTATION (Strict DIP Compliance)
 # ==============================================================================
@@ -62,6 +73,7 @@ func get_item_total_quantity(item_id: int) -> int:
 				return 9999
 			total += slot.quantity
 	return total
+
 
 func add_item(item_id: int, quantity: int) -> bool:
 	if quantity <= 0:
@@ -96,6 +108,7 @@ func add_item(item_id: int, quantity: int) -> bool:
 		
 	return true
 
+
 func consume_item(item_id: int, quantity: int) -> void:
 	var remaining := quantity
 	for i in range(_slots.size() - 1, -1, -1):
@@ -114,6 +127,7 @@ func consume_item(item_id: int, quantity: int) -> void:
 				
 			if remaining <= 0:
 				break
+
 
 func can_receive_item(item_id: int, quantity: int) -> bool:
 	var remaining := quantity
@@ -135,6 +149,7 @@ func can_receive_item(item_id: int, quantity: int) -> bool:
 				
 	return false
 
+
 # ==============================================================================
 # BACKPACK AUXILIARY SERVICES 
 # ==============================================================================
@@ -147,25 +162,27 @@ func swap_slots(index_a: int, index_b: int) -> void:
 	_slots[index_a] = _slots[index_b]
 	_slots[index_b] = temp
 
-## FIXED: Added strict boundary protection to prevent out-of-bounds crashes
+
 func get_slot_data(index: int) -> SlotData:
 	if index >= 0 and index < _slots.size():
 		return _slots[index]
 	return null
 
-## FIXED: Added boundary protection mapping to prevent out-of-bounds crashes on checklist queries
+
 func get_slot_quantity(index: int) -> int:
 	if index >= 0 and index < _slots.size():
 		return _slots[index].quantity
 	return 0
 
-## SRP / OCP COMPLIANT ROUTING: Dynamically reads translated strings from Domain Library
+
+## Returns the localized item name, utilizing DIP for definition lookup.
 func get_slot_item_name(index: int) -> String:
 	var slot := get_slot_data(index)
 	if slot == null or slot.item_id == -1:
 		return tr("INVENTORY_EMPTY")
 		
-	var def := BlockLibrary.get_definition(slot.item_id as BlockType.Type)
+	# DIP INVERSION: Ask the injected block library provider for metadata
+	var def = block_library_provider.get_definition(slot.item_id as BlockType.Type)
 	if def != null and def.type != BlockType.Type.AIR:
 		return def.get_localized_name()
 		
@@ -174,11 +191,13 @@ func get_slot_item_name(index: int) -> String:
 		17: return tr("ITEM_WOODEN_SWORD")
 		_: return tr("INVENTORY_UNKNOWN")
 
+
 func _find_first_empty_slot_index() -> int:
 	for i in range(_slots.size()):
 		if _slots[i].item_id == -1:
 			return i
 	return -1
+
 
 func add_block_by_type(block_type: BlockType.Type) -> void:
 	var target_id := int(block_type)
@@ -192,9 +211,10 @@ func add_block_by_type(block_type: BlockType.Type) -> void:
 			target_id = 5 
 			
 	if block_type == BlockType.Type.LEAVES and randf() < 0.25:
-		var _seed_success := add_item(18, 1) 
+		add_item(18, 1) 
 			
-	var _success := add_item(target_id, 1)
+	add_item(target_id, 1)
+
 
 # ==============================================================================
 # SERIALIZATION SERVICES 
@@ -209,6 +229,7 @@ func get_serialize_data() -> Array:
 			"max_stack": slot.max_stack
 		})
 	return data
+
 
 func deserialize_data(data: Array) -> void:
 	if data.size() == 0:

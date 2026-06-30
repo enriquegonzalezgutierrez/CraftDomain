@@ -2,8 +2,12 @@
 # Project: CraftDomain
 # Description: Infrastructure UI controller representing an interactive, 
 #              glassmorphic bottom-docked dialogue overlay with branching options.
-#              FIXED: Swapped VBox to a 2-column GridContainer and floated the card
-#              to -120px to prevent overlaps with the HUD hotbar.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Responsible only for
+#                laying out, styling, and rendering dialogue choices.
+#              - Open-Closed Principle (OCP) & i18n: Uses Godot's tr() lookup 
+#                on all name labels, speech text, and option texts to support 
+#                seamless multi-language localization.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/DialogueOverlay.gd
 # ==============================================================================
@@ -19,19 +23,21 @@ signal dialogue_closed
 var _panel_container: Panel
 var _name_label: Label
 var _text_label: Label
-var _choices_container: GridContainer # FIXED: Changed to GridContainer for 2-column layout
+var _choices_container: GridContainer # Responsive 2-column layout
+
 
 func _ready() -> void:
-	# Fullscreen overlay dark transparent wash
+	# Fullscreen overlay dark transparent backdrop wash
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg_style := StyleBoxFlat.new()
-	bg_style.bg_color = Color(0.0, 0.0, 0.0, 0.35) # Dark screen tint
+	bg_style.bg_color = Color(0.0, 0.0, 0.0, 0.35)
 	add_theme_stylebox_override("panel", bg_style)
 	
 	_setup_dialogue_ui()
 
+
+## Programmatically sets up the dialogue panel card layout.
 func _setup_dialogue_ui() -> void:
-	# 1. Glassmorphic Bottom dialogue card container
 	_panel_container = Panel.new()
 	_panel_container.name = "DialogueCard"
 	_panel_container.custom_minimum_size = Vector2(650, 250)
@@ -41,7 +47,7 @@ func _setup_dialogue_ui() -> void:
 	
 	_panel_container.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	
-	# FIXED: Floated the card up to -120px to leave a clean 30px gap above the HUD hotbar
+	# Floated card to leave a clean gap above the HUD hotbar dock
 	_panel_container.offset_left = -325
 	_panel_container.offset_right = 325
 	_panel_container.offset_bottom = -120
@@ -49,7 +55,7 @@ func _setup_dialogue_ui() -> void:
 	
 	var style := StyleBoxFlat.new()
 	style.set_corner_radius_all(14)
-	style.bg_color = Color(0.06, 0.06, 0.08, 0.85) # Semi-transparent dark slate
+	style.bg_color = Color(0.06, 0.06, 0.08, 0.85) # Glassmorphic dark slate
 	style.border_width_left = 2
 	style.border_width_top = 2
 	style.border_width_right = 2
@@ -60,7 +66,6 @@ func _setup_dialogue_ui() -> void:
 	_panel_container.add_theme_stylebox_override("panel", style)
 	add_child(_panel_container)
 	
-	# Margin Layout
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 24)
@@ -73,13 +78,12 @@ func _setup_dialogue_ui() -> void:
 	vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
 	margin.add_child(vbox)
 	
-	# 2. Speaker Name Label (Gold color)
+	# Speaker Name Label
 	_name_label = Label.new()
 	_name_label.name = "SpeakerName"
-	_name_label.text = "MERCHANT"
 	var name_settings := LabelSettings.new()
 	name_settings.font_size = 18
-	name_settings.font_color = Color(1.0, 0.85, 0.2)
+	name_settings.font_color = Color(1.0, 0.85, 0.2) # Gold
 	name_settings.outline_size = 3
 	name_settings.outline_color = Color.BLACK
 	_name_label.label_settings = name_settings
@@ -87,10 +91,9 @@ func _setup_dialogue_ui() -> void:
 	
 	vbox.add_child(_create_spacer(6))
 	
-	# 3. Speaker Speech Text Label
+	# Speaker Speech Text Label
 	_text_label = Label.new()
 	_text_label.name = "SpeechText"
-	_text_label.text = "Hmmm? What can I do for you today, traveler?"
 	_text_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_text_label.custom_minimum_size = Vector2(0, 50)
 	var text_settings := LabelSettings.new()
@@ -101,28 +104,30 @@ func _setup_dialogue_ui() -> void:
 	
 	vbox.add_child(_create_spacer(14))
 	
-	# 4. FIXED: 2-Column Grid Choices Button Container to prevent vertical overflow
+	# 2-Column Grid Choices Button Container to prevent vertical overflow
 	_choices_container = GridContainer.new()
 	_choices_container.name = "ChoicesContainer"
-	_choices_container.columns = 2 # Side-by-side pairs
+	_choices_container.columns = 2
 	_choices_container.add_theme_constant_override("h_separation", 12)
 	_choices_container.add_theme_constant_override("v_separation", 8)
 	vbox.add_child(_choices_container)
 
+
 ## Public API: Displays a specific dialogue node and rebuilds option buttons dynamically.
+## All texts and choices are localized dynamically on the fly.
 func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 	if not is_instance_valid(node):
 		return
 		
-	# 1. Update text fields
-	_name_label.text = speaker_name.to_upper()
-	_text_label.text = str(node.get("text"))
+	# Update text fields (running speaker and text through tr() lookup)
+	_name_label.text = tr(speaker_name).to_upper()
+	_text_label.text = tr(str(node.get("text")))
 	
-	# 2. Clear old button instances
+	# Clear old button instances
 	for child in _choices_container.get_children():
 		child.queue_free()
 		
-	# 3. Dynamically populate option buttons extracting values safely
+	# Dynamically populate option buttons extracting values safely
 	var choices_list: Array = node.get("choices")
 	if choices_list.size() > 0:
 		for choice in choices_list:
@@ -131,14 +136,40 @@ func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 	else:
 		# Default fallback close button if no options are present (Leaf node)
 		var close_btn := Button.new()
-		close_btn.text = "CONTINUE (CLOSE)"
+		close_btn.text = tr("DIALOGUE_CONTINUE_CLOSE").to_upper()
 		close_btn.custom_minimum_size = Vector2(0, 34)
 		close_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_setup_button_style(close_btn)
 		close_btn.pressed.connect(func() -> void: dialogue_closed.emit())
 		_choices_container.add_child(close_btn)
 
-## Helper to build button with unified style
+
+## Builds and configures a responsive choice button.
+func _create_choice_button(choice: Resource) -> Button:
+	var btn := Button.new()
+	
+	# Dynamic translation lookup for choice text
+	btn.text = tr(str(choice.get("option_text")))
+	
+	btn.custom_minimum_size = Vector2(0, 34)
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.pivot_offset = Vector2(150, 17) # Pivot center
+	
+	_setup_button_style(btn)
+	
+	# Choice selection event trigger
+	btn.pressed.connect(func() -> void:
+		var target: String = str(choice.get("target_node_id"))
+		if target != "":
+			choice_selected.emit(target)
+		else:
+			dialogue_closed.emit()
+	)
+	
+	return btn
+
+
+## Configures tactile button animations and custom styling.
 func _setup_button_style(btn: Button) -> void:
 	var style_normal := StyleBoxFlat.new()
 	style_normal.bg_color = Color(0.12, 0.12, 0.15, 0.7)
@@ -173,28 +204,6 @@ func _setup_button_style(btn: Button) -> void:
 		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.08).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	)
 
-## FIXED: Builds and configures responsive choice button
-func _create_choice_button(choice: Resource) -> Button:
-	var btn := Button.new()
-	btn.text = str(choice.get("option_text"))
-	
-	# FIXED: Adjusted size flags and heights for the new Grid columns
-	btn.custom_minimum_size = Vector2(0, 34)
-	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	btn.pivot_offset = Vector2(150, 17) # Pivot center
-	
-	_setup_button_style(btn)
-	
-	# Choice selection event trigger
-	btn.pressed.connect(func() -> void:
-		var target: String = str(choice.get("target_node_id"))
-		if target != "":
-			choice_selected.emit(target)
-		else:
-			dialogue_closed.emit()
-	)
-	
-	return btn
 
 func _create_spacer(height: int) -> Control:
 	var s := Control.new()

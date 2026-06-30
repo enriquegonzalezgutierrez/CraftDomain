@@ -133,15 +133,9 @@
   "DIR_NW": "NW",
 
   "MAP_TITLE": "Tactical World Map",
-  "GPS_CLOSEST_POI_HEADER": "Closest Landmark",
-  "The Grand Stone Castle": "The Grand Stone Castle",
-  "The Port of Sails & Galleon": "The Port of Sails & Galleon",
-  "DIR_N": "N",
-  "DIR_NE": "NE",
-  "DIR_E": "E",
-  "DIR_SE": "SE",
-  "DIR_S": "S",
-  "DIR_SW": "SW",
-  "DIR_W": "W",
-  "DIR_NW": "NW"
+
+  "DIALOGUE_MERCHANT_TRADE_QUEST_COMPLETE": "Oh! Dynamic lava! Delicious! Here is your Fried Chicken! And as a special reward for completing my quest, here are 3x EXTRA Fried Chickens!\n\nOh no, wait! Look at the radar! The Guard is calling for help near the tower, a zombie is approaching the llanuras!",
+  "DIALOGUE_MERCHANT_TRADE_SUCCESS": "Hmmm! Hot, geothermal, delicious lava! Thank you! Here is your crispy Fried Chicken! It is fresh, delicious, and highly therapeutic.",
+  "DIALOGUE_MERCHANT_TRADE_FAILED": "Hmmm? It seems you are completely out of Lava Buckets! Bring me a Bucket of Lava (Slot 6) and I will fry up a fresh Chicken!",
+  "DIALOGUE_CONTINUE_CLOSE": "Continue"
 }

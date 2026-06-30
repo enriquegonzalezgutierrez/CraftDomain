@@ -1,11 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Composition root that bootstraps the DDD application lifecycle, 
+# Description: Composition root bootstrapping the DDD application lifecycle,
 #              handling dynamic, decoupled dependency injection.
-#              SOLID COMPLIANCE: Adheres to SRP and OCP.
-#              i18n UPGRADE: Seeds programmatically created English and Spanish 
-#              translation tables into the TranslationServer at application startup.
-#              POI UPGRADE: Registered Minecraft-themed dynamic Mega-Structures.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Acts exclusively as the 
+#                application orchestrator, delegating resource registrations 
+#                and visual shader setups to specialized managers.
+#              - Open-Closed Principle (OCP): Closed for modifications when adding 
+#                new biomes, structures, or entities, as their respective services 
+#                contain encapsulated registry initialization routines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -24,8 +27,10 @@ var world_repository: WorldRepository
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
 
+
 func _ready() -> void:
 	_initialize_application()
+
 
 func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
@@ -34,9 +39,12 @@ func _initialize_application() -> void:
 	# Registers programmatically created English & Spanish locales into Godot's TranslationServer
 	TranslationRegistry.initialize_translations()
 	
-	_setup_biomes()      
-	_setup_structures() 
-	_setup_mobs()       # Registers dynamic spawners (OCP)
+	# ---> SOLID COMPLIANCE (PHASE 4): Delegate registry startup routines <---
+	BiomeService.initialize_biomes()
+	StructureLibrary.initialize_structures()
+	MegaStructureService.initialize_megastructures()
+	MobRegistry.initialize_mobs()
+	
 	_setup_persistence()
 	_setup_environment()
 	
@@ -53,75 +61,17 @@ func _initialize_application() -> void:
 	_setup_audio()
 	_load_main_menu()
 
-func _setup_biomes() -> void:
-	BiomeService.register_biome(BayOfSailsBiome.new())
-	BiomeService.register_biome(WarpPlateauBiome.new())
-	BiomeService.register_biome(GoldenBazaarBiome.new())
-	BiomeService.register_biome(CraggyMinesBiome.new())
-	BiomeService.register_biome(FrostbiteGlaciersBiome.new())
-	BiomeService.register_biome(RedwoodForestBiome.new())
-	BiomeService.register_biome(RedBadlandsBiome.new())
-	BiomeService.register_biome(NeonRuinsBiome.new())
-	BiomeService.register_biome(SwampOfSighsBiome.new())
-	BiomeService.register_biome(CloudKingdomBiome.new())
-
-func _setup_structures() -> void:
-	StructureLibrary.register_blueprint(OakTreeBlueprint.new())
-	StructureLibrary.register_blueprint(RedwoodTreeBlueprint.new())
-	StructureLibrary.register_blueprint(GiantMushroomBlueprint.new())
-	StructureLibrary.register_blueprint(WarpPipeBlueprint.new())
-	StructureLibrary.register_blueprint(MinePillarBlueprint.new())
-	StructureLibrary.register_blueprint(IceTempleBlueprint.new())
-	StructureLibrary.register_blueprint(NeonPyramidBlueprint.new())
-	StructureLibrary.register_blueprint(MarketCabinBlueprint.new())
-	StructureLibrary.register_blueprint(HarborPierBlueprint.new())
-	StructureLibrary.register_blueprint(SakuraTreeBlueprint.new())
-	StructureLibrary.register_blueprint(UnderworldFungusBlueprint.new())
-	
-	# GLOBAL MEGA-STRUCTURES (Fixed Points of Interest)
-	print("[Bootstrap] Registering fixed POI Mega-Structures...")
-	MegaStructureService.register_structure(GrandCastleMegaStructure.new())
-	MegaStructureService.register_structure(HarborCityMegaStructure.new())
-	
-	# --- POI UPGRADE: MINECRAFT-THEMED FIXED SITES ---
-	# Coordinates: X=-300, Z=-300
-	MegaStructureService.register_structure(NetherPortalMegaStructure.new())
-	# Coordinates: X=300, Z=-300
-	MegaStructureService.register_structure(StevesCabinMegaStructure.new())
-
-## Registers the dynamic entity factories (OCP Compliant)
-func _setup_mobs() -> void:
-	print("[Bootstrap] Registering dynamic entity spawning factories...")
-	# Wildlife Spawn Mappings
-	MobRegistry.register_mob(0, func(pos: Vector3) -> Node: return PigEntity.new(pos))
-	MobRegistry.register_mob(1, func(pos: Vector3) -> Node: return ChickenEntity.new(pos))
-	MobRegistry.register_mob(2, func(pos: Vector3) -> Node: return SheepEntity.new(pos))
-	MobRegistry.register_mob(3, func(pos: Vector3) -> Node: return CowEntity.new(pos))
-	
-	# Villagers & Interactive NPCs
-	MobRegistry.register_mob(100, func(pos: Vector3) -> Node: return VillagerEntity.new(pos))
-	MobRegistry.register_mob(101, func(pos: Vector3) -> Node: return MerchantEntity.new(pos))
-	MobRegistry.register_mob(102, func(pos: Vector3) -> Node: return GuardEntity.new(pos))
-	MobRegistry.register_mob(103, func(pos: Vector3) -> Node: return FarmerEntity.new(pos))
-	
-	# Hostile Mobs (ZOMBIE registered as ID 10!)
-	MobRegistry.register_mob(10, func(pos: Vector3) -> Node: return HostileEntity.new(pos))
-	
-	# Interactive Props (Loot Chests)
-	MobRegistry.register_mob(200, func(pos: Vector3) -> Node: 
-		var chest := ChestEntity.new()
-		chest.position = pos
-		return chest
-	)
 
 func _setup_persistence() -> void:
 	world_repository = DiskWorldRepository.new()
+
 
 func _setup_environment() -> void:
 	sun_light = EnvironmentBuilder.build_sun()
 	add_child(sun_light)
 	world_environment = EnvironmentBuilder.build_environment()
 	add_child(world_environment)
+
 
 func _setup_celestial() -> void:
 	celestial_service = CelestialService.new()
@@ -134,10 +84,12 @@ func _setup_celestial() -> void:
 	weather_service.name = "WeatherService"
 	add_child(weather_service)
 
+
 func _setup_audio() -> void:
 	audio_service = AudioService.new()
 	add_child(audio_service)
 	audio_service.play_menu_music()
+
 
 func _load_main_menu() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -145,6 +97,7 @@ func _load_main_menu() -> void:
 	main_menu.name = "MainMenu"
 	main_menu.play_pressed.connect(_on_start_game_requested)
 	add_child(main_menu)
+
 
 func _on_start_game_requested() -> void:
 	if is_instance_valid(main_menu):
@@ -160,6 +113,7 @@ func _on_start_game_requested() -> void:
 	
 	add_child(world_controller)
 	add_child(player_controller)
+
 
 func return_to_main_menu() -> void:
 	var unload_screen := _create_unload_loading_screen()
@@ -189,6 +143,7 @@ func return_to_main_menu() -> void:
 	var fade_tween := create_tween()
 	fade_tween.tween_property(unload_screen, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	fade_tween.tween_callback(unload_screen.queue_free)
+
 
 func _create_unload_loading_screen() -> Panel:
 	var panel := Panel.new()
@@ -220,13 +175,16 @@ func _create_unload_loading_screen() -> Panel:
 	
 	return panel
 
+
 func _bootstrap_world() -> void:
 	world_controller = WorldController.new()
 	world_controller.name = "World"
 
+
 func _bootstrap_player() -> void:
 	player_controller = PlayerController.new()
 	player_controller.name = "Player"
+
 
 func _inject_dependencies() -> void:
 	if is_instance_valid(world_controller) and is_instance_valid(player_controller):

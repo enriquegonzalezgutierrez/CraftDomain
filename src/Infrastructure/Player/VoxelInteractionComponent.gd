@@ -1,37 +1,51 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure component responsible for handling player gaze
-#              raycasting, target highlighting, block mining, placements,
-#              consumable eating, and dynamic agricultural planting/harvesting.
-#              SOLID COMPLIANCE: Strictly satisfies the Single Responsibility 
-#              Principle (SRP) by isolating block interactions from physics controllers.
-#              AI QUEST UPGRADE: Safely increments the active quest's incremental 
-#              progress_counter when mining required voxel items.
+# Description: Infrastructure component responsible for managing player gaze 
+#              raycasting, targeted block highlighting, voxel mining, placing, 
+#              food consumption, and seed planting.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Handles exclusively gaze 
+#                interaction mechanics and block modification triggers.
+#              - Dependency Inversion Principle (DIP): Rather than hardcoding 
+#                static references to global singletons, it holds injectable 
+#                references to the block library and quest service, allowing 
+#                mock injections for testing.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
 class_name VoxelInteractionComponent
 extends Node3D
 
-# Sibling dependencies injected by the Player on startup (DIP compliant)
+# Sibling dependencies injected by the Player Controller on startup
 var player: PlayerController
 var camera: Camera3D
 var world_controller: Node3D
 var hud: PlayerHUD
 
-# Nodes constructed and managed locally (SRP compliant)
+# Nodes constructed and managed locally
 var raycast: RayCast3D
 var highlight_mesh: MeshInstance3D
 
-# Interaction configurations
+# ==============================================================================
+# DEPENDENCY INVERSION (DIP): Injectable service providers
+# ==============================================================================
+## Injectable reference to the block library provider (Defaults to BlockLibrary class).
+var block_library_provider: Object = BlockLibrary
+
+## Injectable reference to the active quest service provider (Defaults to QuestService class).
+var quest_service_provider: Object = QuestService
+
+# Gaze raycast interaction reach distance limit
 const REACH_DISTANCE: float = 5.0
+
 
 func _ready() -> void:
 	name = "VoxelInteractionComponent"
 	_setup_raycast()
 	_setup_highlight_mesh()
 
-## Programmatically instantiates and registers the target selector RayCast3D
+
+## Programmatically instantiates and configures the target selector RayCast3D.
 func _setup_raycast() -> void:
 	raycast = RayCast3D.new()
 	raycast.name = "MiningRayCast"
@@ -44,7 +58,8 @@ func _setup_raycast() -> void:
 		
 	add_child(raycast)
 
-## Programmatically instantiates and registers the 3D target highlighter BoxMesh
+
+## Programmatically instantiates and configures the 3D target highlighter box.
 func _setup_highlight_mesh() -> void:
 	highlight_mesh = MeshInstance3D.new()
 	highlight_mesh.name = "TargetHighlight"
@@ -65,7 +80,8 @@ func _setup_highlight_mesh() -> void:
 	highlight_mesh.visible = false
 	add_child(highlight_mesh)
 
-## Main API: Orchestrates gaze calculations and inputs every frame
+
+## Main Loop API: Evaluates targeted colliders and processes mouse click inputs.
 func process_interaction() -> void:
 	_update_target_highlight()
 	
@@ -74,7 +90,8 @@ func process_interaction() -> void:
 	elif Input.is_action_just_pressed("click_right"):
 		_build_or_interact()
 
-## Repositions the voxel highlight mesh in 3D grid space
+
+## Positions the 3D highlight box over the currently targeted voxel coordinates.
 func _update_target_highlight() -> void:
 	if is_instance_valid(highlight_mesh) and is_instance_valid(raycast) and raycast.is_colliding():
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
@@ -85,7 +102,8 @@ func _update_target_highlight() -> void:
 	elif is_instance_valid(highlight_mesh):
 		highlight_mesh.visible = false
 
-## Executes mining block removal or direct weapon hit scans
+
+## Executes left-click actions: breaking targeted blocks or swinging the sword.
 func _mine_or_attack() -> void:
 	var viewmodel := player.get("viewmodel") as PlayerViewModel
 	if is_instance_valid(viewmodel):
@@ -98,7 +116,7 @@ func _mine_or_attack() -> void:
 	var active_slot := player.active_slot_index
 	var inventory := player.get("inventory") as InventoryComponent
 	
-	# COMBAT CASE: Equip sword and hit entities
+	# COMBAT CODE: Hit hostile or passive character bodies if holding the sword (ID 17)
 	if is_instance_valid(inventory) and is_instance_valid(collider) and collider is CharacterBody3D:
 		var slot_data := inventory.get_slot_data(active_slot)
 		if slot_data != null and slot_data.item_id == 17:
@@ -109,7 +127,7 @@ func _mine_or_attack() -> void:
 					collider.call("take_damage", 1, knockback_dir)
 				return
 
-	# MINING CASE: Chop and collect voxels polymorphically
+	# MINING CODE: Remove block from the grid and add it to the inventory
 	if is_instance_valid(world_controller) and is_instance_valid(inventory):
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
 		var block_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
@@ -118,52 +136,54 @@ func _mine_or_attack() -> void:
 		if is_instance_valid(world_state):
 			var mined_type := world_state.get_block(block_coord)
 			
-			# Spawn dynamic, color-matching physics particles before removal
+			# Spawn dynamic color-matched break particles
 			_spawn_mining_particles(Vector3(block_coord), mined_type)
 			
 			var target_id := int(mined_type)
 			
-			# FASE A: Special Harvesting Rules
+			# Special Agricultural Harvesting Rules
 			if mined_type == BlockType.Type.CROP_RIPE:
-				var _w_success := inventory.add_item(20, 1)
-				var _s_success := inventory.add_item(18, randi_range(1, 2))
+				inventory.add_item(20, 1) # Ripe Wheat ID
+				inventory.add_item(18, randi_range(1, 2)) # Plump Seeds ID
 				player._sync_hud_counters()
-				target_id = 20 # Harvested Wheat ID
+				target_id = 20 
 				if is_instance_valid(hud):
 					hud.show_quest_notification("Harvest Success", "Gathered 1x Ripe Wheat and Seeds!")
 			elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
-				var _s_success := inventory.add_item(18, 1)
+				inventory.add_item(18, 1)
 				player._sync_hud_counters()
-				target_id = 18 # Seed ID
+				target_id = 18 
 				if is_instance_valid(hud):
 					hud.show_quest_notification("Crop Uprooted", "Refunded 1x Crop Seed.")
 			else:
-				# Standard Voxel Block collection
+				# Standard block collection
 				inventory.add_block_by_type(mined_type)
 				player._sync_hud_counters()
 				
-				# Smart ID translation matching inventory mappings
+				# Normalise block mappings back to basic inventory items
 				match mined_type:
 					BlockType.Type.SAND, BlockType.Type.RED_SAND, BlockType.Type.MUD:
-						target_id = 2 # Map to Dirt (ID 2)
+						target_id = 2 
 					BlockType.Type.SNOW, BlockType.Type.ICE, BlockType.Type.NEON_CYAN, BlockType.Type.NEON_MAGENTA:
-						target_id = 1 # Map to Stone (ID 1)
+						target_id = 1 
 					BlockType.Type.CLOUD:
-						target_id = 5 # Map to Leaves (ID 5)
+						target_id = 5 
 						
-			# INCREMENT ACTIVE QUEST PROGRESSION
-			var active_q := QuestService.get_active_quest()
+			# DIP INVERSION: Update quest progress using the injected provider reference
+			var active_q = quest_service_provider.get_active_quest()
 			if active_q != null and active_q.required_item_index == target_id:
 				active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
 				
 		world_controller.call("set_block_globally", block_coord, BlockType.Type.AIR)
 
-## Programmatic, GPU-optimized voxel debris emitter
+
+## Instantiates a temporary color-matched GPU debris emitter on block destruction.
 func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) -> void:
 	if block_type == BlockType.Type.AIR:
 		return
 		
-	var def := BlockLibrary.get_definition(block_type)
+	# DIP INVERSION: Look up definition using the injected provider reference
+	var def = block_library_provider.get_definition(block_type)
 	if def == null:
 		return
 		
@@ -202,11 +222,13 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	particles.emitting = true
 	get_tree().create_timer(0.6).timeout.connect(_cleanup_particles.bind(particles))
 
+
 func _cleanup_particles(particles_node: GPUParticles3D) -> void:
 	if is_instance_valid(particles_node):
 		particles_node.queue_free()
 
-## Executes block construction, item consumption, or NPC interactions
+
+## Executes right-click actions: placing blocks, planting crops, or speaking with NPCs.
 func _build_or_interact() -> void:
 	var viewmodel := player.get("viewmodel") as PlayerViewModel
 	if is_instance_valid(viewmodel):
@@ -217,7 +239,7 @@ func _build_or_interact() -> void:
 		
 	var collider := raycast.get_collider()
 	
-	# NPC INTERACTION CASE: Speak with Villagers, Merchants, or Guards
+	# Interact with villagers, merchants, or guards
 	if is_instance_valid(collider) and collider is CharacterBody3D and collider.has_method("interact"):
 		collider.call("interact", player)
 		player._sync_hud_counters()
@@ -236,7 +258,7 @@ func _build_or_interact() -> void:
 	var item_id := slot_data.item_id
 	var world_state := world_controller.get("world_state") as WorldState
 	
-	# HEALING CASE: Consume 1x Fried Chicken (Item ID 16) to restore health
+	# Consume food to restore health (ID 16: Fried Chicken)
 	if item_id == 16:
 		if player.domain_entity.health < 3:
 			slot_data.quantity -= 1
@@ -249,40 +271,36 @@ func _build_or_interact() -> void:
 			player._sync_hud_counters()
 		return
 
-	# FASE A: SEED PLANTING CASE (Item ID 18 - Crop Seed)
+	# Plant crop seeds on top of solid soil blocks (ID 18: Crop Seed)
 	if item_id == 18:
-		# Check if we clicked the TOP face of a Grass (3) or Dirt (2) block
 		var hit_normal := raycast.get_collision_normal()
-		if hit_normal.y == 1.0: # Top face click only!
+		if hit_normal.y == 1.0: # Top face interactions only
 			var hit_pos := raycast.get_collision_point() - (hit_normal * 0.5)
 			var soil_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
 			var soil_type := world_state.get_block(soil_coord)
 			
 			if soil_type == BlockType.Type.GRASS or soil_type == BlockType.Type.DIRT:
 				var crop_coord := soil_coord + Vector3i(0, 1, 0)
-				# Ensure space above soil is completely empty (AIR)
 				if world_state.get_block(crop_coord) == BlockType.Type.AIR:
-					# Consume seed and update HUD
 					slot_data.quantity -= 1
 					if slot_data.quantity <= 0:
 						slot_data.item_id = -1
 					player._sync_hud_counters()
 					
-					# Plant the seed block globally!
 					world_controller.call("set_block_globally", crop_coord, BlockType.Type.CROP_SEED)
 					if is_instance_valid(hud):
 						hud.show_quest_notification("Planted Seed", "Sowed 1x Crop Seed on tilled soil!")
 					return
 		return
 
-	# STANDARD CONSTRUCTION CASE: Place selected block in the 3D voxel grid
+	# Standard block placement
 	var is_block_selected = player.is_item_selected
 	if is_block_selected:
 		var build_type := slot_data.item_id as BlockType.Type
 		var build_pos: Vector3 = raycast.get_collision_point() + (raycast.get_collision_normal() * 0.5)
 		var block_coord := Vector3i(floor(build_pos.x), floor(build_pos.y), floor(build_pos.z))
 		
-		# Prevent placing blocks inside player's capsule collider boundary (safeguard)
+		# Prevent placing blocks inside the player's bounding collision capsule
 		var player_feet := Vector3i(floor(player.global_position.x), floor(player.global_position.y), floor(player.global_position.z))
 		var player_head := Vector3i(floor(player.global_position.x), floor(player.global_position.y + 0.9), floor(player.global_position.z))
 		if block_coord == player_feet or block_coord == player_head: 
