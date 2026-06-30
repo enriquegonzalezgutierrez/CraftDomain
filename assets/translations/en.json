@@ -142,5 +142,19 @@
   "DIALOGUE_VILLAGER_QUEST_COMPLETE": "Thank goodness you found our bazaar, traveler! We were worried you were lost in the ocean bay. Here are some Wood Blocks to help you build a shelter.\n\nPlease check your mission tracker, you need to collect leaves to build a thatched roof!",
   "DIALOGUE_VILLAGER_INTRO": "Hello, traveler! The Golden Bazaar plains are peaceful today. But be very careful if you explore the deep mountain caves at night!",
   "DIALOGUE_FARMER_INTRO": "Hello! I am tending these crops to keep the market well stocked. The soil of the Golden Bazaar is rich and bountiful!",
-  "DIALOGUE_GUARD_INTRO": "Hail, traveler! I stand watch over this village bazaar. Rest easy; my steel blade will keep the cave zombies at bay!"
+  "DIALOGUE_GUARD_INTRO": "Hail, traveler! I stand watch over this village bazaar. Rest easy; my steel blade will keep the cave zombies at bay!",
+
+  "BUBBLE_TALK": "RIGHT-CLICK TO TALK!",
+  "BUBBLE_TRADE": "RIGHT-CLICK TO TRADE!",
+  "BUBBLE_FARMER": "FARMER",
+  "BUBBLE_ACTIVE_MISSION": "ACTIVE MISSION",
+
+  "DIALOGUE_MERCHANT_INTRO": "Hmmm! Welcome to my Golden Bazaar stall, traveler. Are you here to trade some hot lava, or just looking around?",
+  "DIALOGUE_MERCHANT_CHOICE_TRADE": "I want to trade a Lava Bucket for Fried Chicken!",
+  "DIALOGUE_MERCHANT_CHOICE_WHO": "Tell me, who are you?",
+  "DIALOGUE_MERCHANT_CHOICE_CLOSE": "Just looking around, thank you. (Close)",
+  "DIALOGUE_MERCHANT_ABOUT": "I am the Master Merchant of these plains. I gather geothermal lava to fry our legendary chickens! It keeps them hot, crispy, and highly therapeutic.",
+  "DIALOGUE_MERCHANT_CHOICE_BACK": "Back to introduction",
+  "DIALOGUE_MERCHANT_TRADE_INFO": "Ah, excellent! My lava-chicken fryers are hungry for fuel. One Bucket of Lava (Slot 6) gets you one famous Fried Chicken!",
+  "DIALOGUE_MERCHANT_CHOICE_EXECUTE": "[EXECUTE TRADE] Hand over 1x Lava Bucket"
 }

@@ -148,5 +148,19 @@
   "DIALOGUE_VILLAGER_QUEST_COMPLETE": "¡Menos mal que encontraste nuestro bazar, viajero! Nos preocupaba que te hubieras perdido en la bahía del océano. Aquí tienes algunos bloques de madera para ayudarte a construir un refugio.\n\nPor favor, revisa tu rastreador de misiones, ¡necesitas recolectar hojas para construir un techo de paja!",
   "DIALOGUE_VILLAGER_INTRO": "¡Hola, viajero! Las llanuras del Bazar Dorado están tranquilas hoy. ¡Pero ten mucho cuidado si exploras las profundas cuevas de la montaña por la noche!",
   "DIALOGUE_FARMER_INTRO": "¡Hola! Estoy cuidando estos cultivos para mantener el mercado bien abastecido. ¡El suelo del Bazar Dorado es rico y abundante!",
-  "DIALOGUE_GUARD_INTRO": "¡Saludos, viajero! Vigilo este bazar de la aldea. ¡Descansa tranquilo; mi espada de acero mantendrá a raya a los zombis de las cuevas!"
+  "DIALOGUE_GUARD_INTRO": "¡Saludos, viajero! Vigilo este bazar de la aldea. ¡Descansa tranquilo; mi espada de acero mantendrá a raya a los zombis de las cuevas!",
+
+  "BUBBLE_TALK": "¡CLIC DERECHO PARA HABLAR!",
+  "BUBBLE_TRADE": "¡CLIC DERECHO PARA COMERCIAR!",
+  "BUBBLE_FARMER": "GRANJERO",
+  "BUBBLE_ACTIVE_MISSION": "MISIÓN ACTIVA",
+
+  "DIALOGUE_MERCHANT_INTRO": "¡Hmmm! Bienvenido a mi puesto del Bazar Dorado, viajero. ¿Vienes a cambiar algo de lava caliente o solo estás echando un vistazo?",
+  "DIALOGUE_MERCHANT_CHOICE_TRADE": "¡Quiero cambiar un Balde de Lava por un Pollo Frito!",
+  "DIALOGUE_MERCHANT_CHOICE_WHO": "Dime, ¿quién eres?",
+  "DIALOGUE_MERCHANT_CHOICE_CLOSE": "Solo estoy mirando, gracias. (Cerrar)",
+  "DIALOGUE_MERCHANT_ABOUT": "Soy el Maestro Mercader de estas llanuras. ¡Recojo lava geotérmica para freír nuestros legendarios pollos! Los mantiene calientes, crujientes y altamente terapéuticos.",
+  "DIALOGUE_MERCHANT_CHOICE_BACK": "Volver a la introducción",
+  "DIALOGUE_MERCHANT_TRADE_INFO": "¡Ah, excelente! Mis freidoras de pollo-lava tienen hambre de combustible. ¡Un Balde de Lava (Ranura 6) te consigue un famoso Pollo Frito!",
+  "DIALOGUE_MERCHANT_CHOICE_EXECUTE": "[EJECUTAR CAMBIO] Entregar 1x Balde de Lava"
 }

@@ -7,12 +7,14 @@
 #                contract with safe default virtual values for subclasses.
 #              - Single Responsibility Principle (SRP): Isolates base movement 
 #                physics, pathfinding, and visual variation routines.
-#              AI OVERHAUL:
+#              AI OVERHAUL & LOCALIZATION:
 #              - Added coordinate-based deterministic variant rendering (No two identical NPCs).
 #              - Added dynamic threat-detection to trigger fleeing behaviors.
 #              - Added social peer detection for greeting/chatting routines.
-#              FIXED: Restored default virtual fallback returns for collision sizes 
-#              to prevent assertions on animal entities.
+#              - REFACTORING: Replaced hardcoded speech bubble text with dynamic 
+#                i18n translation keys (BUBBLE_TALK, BUBBLE_TRADE, BUBBLE_FARMER).
+#              FIXED: Corrected invalid C-style comment syntax to prevent GDScript
+#              compilation parser errors.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -252,6 +254,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
+## Updates the floating speech bubble using dynamic translation keys.
 func _update_quest_bubble_state() -> void:
 	if not is_instance_valid(_bubble):
 		return
@@ -267,17 +270,18 @@ func _update_quest_bubble_state() -> void:
 			is_target = true
 			
 		if is_target:
-			_bubble.call("set_text", "⭐ [ ACTIVE MISSION: " + active_q.title.to_upper() + " ] ⭐")
+			# Fully localized dynamic quest title bubble!
+			_bubble.call("set_text", "⭐ [ " + tr("BUBBLE_ACTIVE_MISSION").to_upper() + ": " + tr(active_q.title).to_upper() + " ] ⭐")
 			return
 			
 	if name.contains("VILLAGER"):
-		_bubble.call("set_text", "RIGHT-CLICK TO TALK!")
+		_bubble.call("set_text", tr("BUBBLE_TALK"))
 	elif name.contains("MERCHANT"):
-		_bubble.call("set_text", "RIGHT-CLICK TO TRADE!")
+		_bubble.call("set_text", tr("BUBBLE_TRADE"))
 	elif name.contains("GUARD"):
-		_bubble.call("set_text", "RIGHT-CLICK TO TALK!")
+		_bubble.call("set_text", tr("BUBBLE_TALK"))
 	elif name.contains("FARMER"):
-		_bubble.call("set_text", "FARMER")
+		_bubble.call("set_text", tr("BUBBLE_FARMER"))
 
 
 func _process_blinking_cycle(delta: float) -> void:
