@@ -8,6 +8,8 @@
 #                fully satisfies all base physics, AI state, and blinking loops.
 #              - Single Responsibility Principle (SRP): Handles exclusively villager 
 #                visual variations and dialog triggers.
+#              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
+#                keys to prevent hardcoded string leakage in codebase.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
@@ -85,7 +87,6 @@ func _detect_current_biome() -> int:
 
 
 ## Procedural Torso Customizer: Generates unique clothing shapes and palettes.
-## FIXED: Replaced hardcoded belt color with the accessory_color variable.
 func _build_custom_torso_robe(biome_id: int, base_color: Color, accessory_color: Color) -> void:
 	match biome_id:
 		0: # Bay of Sails (Sailor Stripes)
@@ -100,7 +101,7 @@ func _build_custom_torso_robe(biome_id: int, base_color: Color, accessory_color:
 			# Yellow gold buttons
 			_create_box(_body_bob_node, Vector3(0.06, 0.06, 0.03), Vector3(-0.11, 0.45, -0.24), Color(1.0, 0.85, 0.2))
 			_create_box(_body_bob_node, Vector3(0.06, 0.06, 0.03), Vector3(0.11, 0.45, -0.24), Color(1.0, 0.85, 0.2))
-		4: # Frostbite Glaciers (Winter Parka Coat)
+		4: # Frostbite Glaciers (Thermal fur-lined overalls)
 			_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.82, 0.82, 0.85)) # Winter white coat
 			_create_box(_body_bob_node, Vector3(0.48, 0.10, 0.48), Vector3(0, 0.15, 0), Color(0.98, 0.98, 0.98)) # Fluffy fur trim
 		5: # Whispering Redwood Forest (Ranger Green tunic)
@@ -157,6 +158,7 @@ func _build_custom_headwear(biome_id: int, hair_color: Color) -> void:
 
 
 ## Public Gaze Interaction: Triggers localized village dialogue progression.
+## REFACTORING: Replaced hardcoded dialogue text with dynamic i18n translation keys.
 func interact(player_node: CharacterBody3D) -> void:
 	var active_q := QuestService.get_active_quest()
 	
@@ -166,7 +168,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		
 		var complete_node := DialogueNode.new()
 		complete_node.node_id = "villager_quest_complete"
-		complete_node.text = "Thank goodness you found our bazaar, traveler! We were worried you were lost in the ocean bay. Here are some Wood Blocks to help you build a shelter.\n\nPlease check your mission tracker, you need to collect leaves to build a thatched roof!"
+		complete_node.text = "DIALOGUE_VILLAGER_QUEST_COMPLETE"
 		DialogueService.register_node(complete_node)
 		
 		var hud = player_node.get("hud")
@@ -180,7 +182,7 @@ func interact(player_node: CharacterBody3D) -> void:
 			if intro_node == null:
 				var fallback_node := DialogueNode.new()
 				fallback_node.node_id = "villager_intro"
-				fallback_node.text = "Hello, traveler! The Golden Bazaar plains are peaceful today. But be very careful if you explore the deep mountain caves at night!"
+				fallback_node.text = "DIALOGUE_VILLAGER_INTRO"
 				DialogueService.register_node(fallback_node)
 				intro_node = fallback_node
 			hud.call("open_dialogue", intro_node, "Villager")

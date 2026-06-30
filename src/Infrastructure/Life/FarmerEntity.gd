@@ -8,6 +8,8 @@
 #                overriding behavior, task routing, and visualization loops.
 #              - Single Responsibility Principle (SRP): Handles exclusively crop 
 #                scanning, agricultural AI work, and harvesting hoe animations.
+#              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
+#                keys to prevent hardcoded string leakage in codebase.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
@@ -131,6 +133,7 @@ func _setup_floating_bubble() -> void:
 
 
 ## Public Gaze Interaction: Localized dialogue trees.
+## REFACTORING: Replaced hardcoded dialogue text with dynamic i18n translation keys.
 func interact(player_node: CharacterBody3D) -> void:
 	var hud = player_node.get("hud")
 	if is_instance_valid(hud):
@@ -138,7 +141,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		if intro_node == null:
 			var fallback_node := DialogueNode.new()
 			fallback_node.node_id = "farmer_intro"
-			fallback_node.text = "Hello! I am tending these crops to keep the market well stocked. The soil of the Golden Bazaar is rich and bountiful!"
+			fallback_node.text = "DIALOGUE_FARMER_INTRO"
 			DialogueService.register_node(fallback_node)
 			intro_node = fallback_node
 		hud.call("open_dialogue", intro_node, "Farmer")

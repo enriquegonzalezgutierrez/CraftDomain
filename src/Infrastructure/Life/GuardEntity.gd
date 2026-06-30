@@ -7,12 +7,8 @@
 #                safely overriding the movement, task routing, and visualization loops.
 #              - Single Responsibility Principle (SRP): Handles exclusively military 
 #                detection, chasing, combat cooldowns, and soldier-specific meshes.
-#              AI OVERHAUL:
-#              - Dynamic Aggro Chasing: Chases any zombie within 10 meters at running speed.
-#              - Physical Weapon Drawing: Repositions and rotates the 3D Sword joint 
-#                forward to simulate drawing the weapon when chasing.
-#              - Coordinated Combat: Deals damage and applies horizontal knockback 
-#                on a 1.2-second attack cooldown.
+#              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
+#                keys to prevent hardcoded string leakage in codebase.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GuardEntity.gd
 # ==============================================================================
@@ -143,6 +139,7 @@ func _setup_floating_bubble() -> void:
 
 
 ## Public Gaze Interaction: Deploys tactical dialogue trees.
+## REFACTORING: Replaced hardcoded dialogue text with dynamic i18n translation keys.
 func interact(player_node: CharacterBody3D) -> void:
 	var hud = player_node.get("hud")
 	if is_instance_valid(hud):
@@ -150,7 +147,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		if intro_node == null:
 			var fallback_node := DialogueNode.new()
 			fallback_node.node_id = "guard_intro"
-			fallback_node.text = "Hail, traveler! I stand watch over this village bazaar. Rest easy; my steel blade will keep the cave zombies at bay!"
+			fallback_node.text = "DIALOGUE_GUARD_INTRO"
 			DialogueService.register_node(fallback_node)
 			intro_node = fallback_node
 			
