@@ -6,6 +6,9 @@
 #              face culling to create seamless, crystal-clear water and lava bodies.
 #              LOCAL CHECK FIX: Optimized neighbors lookup to check local chunk bounds
 #              first, preventing asynchronous air-read leaks and clearing inner grids.
+#              Z-FIGHTING FIX: Applied a microscopic margin inset (0.001) to the generated
+#              liquid vertices. This mathematically prevents co-planar rendering collisions
+#              between translucent liquids and solid terrain blocks, resolving the flickering bug.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkMesher.gd
 # ==============================================================================
@@ -22,15 +25,50 @@ const DIRECTIONS: Array[Vector3i] = [
 	Vector3i(0, 0, -1)   # BACK
 ]
 
-## Local vertex tables defining the 4 vertices per face (from origin 0,0,0 to 1,1,1).
-const FACE_VERTICES: Dictionary = {
-	Vector3i(0, 1, 0): [Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(0, 1, 0)], # TOP
-	Vector3i(0, -1, 0): [Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1)], # BOTTOM
-	Vector3i(1, 0, 0): [Vector3(1, 0, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(1, 0, 0)], # RIGHT
-	Vector3i(-1, 0, 0): [Vector3(0, 0, 0), Vector3(0, 1, 0), Vector3(0, 1, 1), Vector3(0, 0, 1)], # LEFT
-	Vector3i(0, 0, 1): [Vector3(0, 0, 1), Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 0, 1)], # FRONT
-	Vector3i(0, 0, -1): [Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(0, 1, 0), Vector3(0, 0, 0)]  # BACK
+## Anti-Z-Fighting margin: Liquid blocks are shrunk by 1 millimeter to prevent co-planar flickering.
+const LIQUID_MARGIN: float = 0.001
+const LIQUID_INSET: float = 1.0 - LIQUID_MARGIN
+
+## Local vertex tables defining the 4 vertices per face (shrunk mathematically).
+const LIQUID_FACE_VERTICES: Dictionary = {
+	Vector3i(0, 1, 0): [
+		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_INSET), 
+		Vector3(LIQUID_INSET, LIQUID_INSET, LIQUID_INSET), 
+		Vector3(LIQUID_INSET, LIQUID_INSET, LIQUID_MARGIN), 
+		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_MARGIN)
+	], # TOP
+	Vector3i(0, -1, 0): [
+		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_MARGIN), 
+		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_MARGIN), 
+		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_INSET), 
+		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_INSET)
+	], # BOTTOM
+	Vector3i(1, 0, 0): [
+		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_INSET), 
+		Vector3(LIQUID_INSET, LIQUID_INSET, LIQUID_INSET), 
+		Vector3(LIQUID_INSET, LIQUID_INSET, LIQUID_MARGIN), 
+		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_MARGIN)
+	], # RIGHT
+	Vector3i(-1, 0, 0): [
+		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_MARGIN), 
+		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_MARGIN), 
+		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_INSET), 
+		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_INSET)
+	], # LEFT
+	Vector3i(0, 0, 1): [
+		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_INSET), 
+		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_INSET), 
+		Vector3(LIQUID_INSET, LIQUID_INSET, LIQUID_INSET), 
+		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_INSET)
+	], # FRONT
+	Vector3i(0, 0, -1): [
+		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_MARGIN), 
+		Vector3(LIQUID_INSET, LIQUID_INSET, LIQUID_MARGIN), 
+		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_MARGIN), 
+		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_MARGIN)
+	]  # BACK
 }
+
 
 ## Generates a seamless, single-surface Mesh for transparent liquids (Water / Lava)
 static func generate_liquid_mesh(chunk: Chunk, world_state: WorldState, target_type: BlockType.Type) -> ArrayMesh:
@@ -83,6 +121,7 @@ static func generate_liquid_mesh(chunk: Chunk, world_state: WorldState, target_t
 	st.generate_normals()
 	return st.commit()
 
+
 static func _add_face(st: SurfaceTool, local_pos: Vector3i, direction: Vector3i, block_def: BlockDefinition) -> void:
 	var face_color: Color = block_def.color_top
 	if direction.y == -1:
@@ -90,7 +129,8 @@ static func _add_face(st: SurfaceTool, local_pos: Vector3i, direction: Vector3i,
 	elif direction.y != 1:
 		face_color = block_def.color_side
 		
-	var vertices: Array = FACE_VERTICES[direction]
+	# Use the Z-Fighting safe vertex array
+	var vertices: Array = LIQUID_FACE_VERTICES[direction]
 	
 	var v0: Vector3 = Vector3(local_pos) + (vertices[0] as Vector3)
 	var v1: Vector3 = Vector3(local_pos) + (vertices[1] as Vector3)

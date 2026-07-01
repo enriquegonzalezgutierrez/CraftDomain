@@ -6,9 +6,7 @@
 #                mining, building, eating, and NPC interactions to VoxelInteractionComponent, 
 #                and UI window orchestration to PlayerHUD.
 #              - Open-Closed Principle (OCP): Dynamic inputs and key-mappings.
-#              - OBSERVER PATTERN: Cleaned of obsolete UI-synchronization loops and 
-#                unrelated keyboard UI input routings (SRP).
-#              - Domain-Driven Design (DDD): Defers spatial height calculations to 
+#              - DOMAIN-DRIVEN DESIGN (DDD): Defers spatial height calculations to 
 #                the WorldState Domain Aggregate, avoiding infrastructure domain leakage.
 #              OPTIMIZATIONS:
 #              - Restored the superior CapsuleShape3D for smooth voxel hill climbing.
@@ -20,6 +18,7 @@
 #                every voxel vertical wall, resolving corner sticking entirely.
 #              - FIXED: Implemented a Safe Gravity Reset loop utilizing slide collision normals
 #                to prevent infinite gravity accumulation (tunneling/void falling) on voxel edges.
+#              - PRODUCTION: Cleaned of all diagnostic console logs to maximize frame rates.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -63,9 +62,6 @@ var _target_camera_tilt: float = 0.0
 # Camera Trauma Shake variable
 var _shake_intensity: float = 0.0
 
-# Telemetry logging timer
-var _telemetry_timer: float = 0.0
-
 
 func _init() -> void:
 	_setup_inputs_mouse_actions()
@@ -78,14 +74,10 @@ func _init() -> void:
 
 func _ready() -> void:
 	# Configure advanced CharacterBody3D snapping properties (Godot 4 compliant)
-	floor_stop_on_slope = true   # Completely prevents sliding off block edges/slopes
-	floor_constant_speed = true  # Maintains speed consistency over steps
-	floor_snap_length = 0.5      # Securely snaps capsule bottom to voxel surfaces
-	
-	# Upgraded safe margin to prevent penetration and sticking bugs on vertical walls
+	floor_stop_on_slope = true   
+	floor_constant_speed = true  
+	floor_snap_length = 0.15      
 	safe_margin = 0.015
-	
-	# Enable butter-smooth sliding along vertical voxel walls even at extremely tight angles
 	wall_min_slide_angle = 0.0
 
 	_setup_inputs()
@@ -220,12 +212,6 @@ func _physics_process(delta: float) -> void:
 	# Controls hardware cursor visibility when holding Left Alt
 	_process_cursor_grab_state()
 
-	# Telemetry Diagnostics
-	_telemetry_timer += delta
-	if _telemetry_timer >= 1.0:
-		_telemetry_timer = 0.0
-		_print_physics_telemetry()
-
 	# ---> VOID RESCUE FAILSAFE SHIELD <---
 	if global_position.y < 2.0:
 		_rescue_player_from_void()
@@ -233,6 +219,14 @@ func _physics_process(delta: float) -> void:
 	# Freeze player movement inputs if spawn protection is active (SRP compliant)
 	if not is_active:
 		return
+
+	# ---> GENERATION LAG FREEZE GUARD <---
+	var world_ctrl := world_controller as WorldController
+	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.chunk_manager):
+		var p_chunk_pos := world_ctrl.world_state.global_to_chunk_pos(Vector3i(floori(global_position.x), 0, floori(global_position.z)))
+		if not world_ctrl.chunk_manager.is_chunk_rendered(p_chunk_pos):
+			velocity = Vector3.ZERO
+			return
 
 	_process_hotbar_keys()
 
@@ -243,7 +237,6 @@ func _physics_process(delta: float) -> void:
 	# Gravity & Jump (Snaps back to 0 on floor automatically due to SNAP configuration)
 	if not is_on_floor():
 		velocity.y -= gravity * delta
-		# Limit terminal falling velocity to prevent geometry clipping/tunneling bugs
 		if velocity.y < -20.0:
 			velocity.y = -20.0
 			
@@ -268,7 +261,6 @@ func _physics_process(delta: float) -> void:
 		for i in range(get_slide_collision_count()):
 			var collision := get_slide_collision(i)
 			if collision.get_normal().y > 0.5:
-				# The player capsule is resting on a floor-like surface
 				if velocity.y < 0.0:
 					velocity.y = 0.0
 				break
@@ -276,17 +268,8 @@ func _physics_process(delta: float) -> void:
 	_process_camera_effects(delta)
 
 
-## High-precision telemetry logger tracing physics engine states and raw inputs.
-func _print_physics_telemetry() -> void:
-	var raw_input := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
-	print("[Physics Telemetry] Pos: %s | Vel: %s | On Floor: %s | Active: %s | Hardware Input: %s" % [
-		global_position, velocity, is_on_floor(), is_active, raw_input
-	])
-
-
 ## Scan downwards using Domain Rules to rescue player back to the surface of the topmost solid block
 func _rescue_player_from_void() -> void:
-	print("[Physics Telemetry WARNING] Player fell into the void! Position: %s. Relocalizing to surface..." % global_position)
 	velocity = Vector3.ZERO
 	
 	var block_x := floori(global_position.x)
@@ -295,7 +278,6 @@ func _rescue_player_from_void() -> void:
 	
 	var world_ctrl := world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
-		# Centralized Domain Rule calculation (DDD compliant, SRP compliant)
 		found_safe_y = world_ctrl.world_state.get_highest_solid_y(block_x, block_z)
 		
 	global_position.y = found_safe_y

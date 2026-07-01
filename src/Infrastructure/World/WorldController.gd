@@ -11,11 +11,12 @@
 #              - OBSERVER PATTERN: Cleaned of manual HUD-sync calls on inventory loads.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate, avoiding infrastructure domain leakage.
-#              BENCHMARKING:
-#              - Injected high-precision in-game profiler logs to trace the exact CPU 
-#                millisecond cost of world systems.
+#              OPTIMIZATIONS:
+#              - Integrated the dynamic proximity spawner call inside the throttled 
+#                visiblity update check (every 0.2s) and immediately upon player spawn.
 #              - FIXED: Added _is_restored_save state flag to protect saved player height,
 #                preventing the spawn-activation collision penetration bug.
+#              - PRODUCTION: Cleaned of all diagnostics and profiling logs to maximize frame rates.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -47,9 +48,6 @@ const UPDATE_INTERVAL: float = 0.2
 # Target chunk coordinate where the player is scheduled to spawn safely
 var _target_spawn_chunk_pos: Vector3i = Vector3i(0, 0, 0)
 var _loaded_inventory_data: Array = []
-
-# Profiler telemetry timer
-var _telemetry_timer: float = 0.0
 
 # Save game protection flag
 var _is_restored_save: bool = false
@@ -124,41 +122,20 @@ func _process(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 		
-	# High-Precision Profiler: Measure execution times of world systems
-	var start_time := Time.get_ticks_usec()
-	
 	# 1. Agriculture Tick
 	if is_instance_valid(_agriculture_service):
 		_agriculture_service.process_agriculture_ticks(delta)
-	var agriculture_time := Time.get_ticks_usec() - start_time
 	
 	# 2. World and Visibility Updates (Throttled)
-	var world_update_time := 0
-	var wu_start := Time.get_ticks_usec()
-	
 	_update_timer += delta
 	if _update_timer >= UPDATE_INTERVAL:
 		_update_timer = 0.0
 		_process_dynamic_world()
 		_process_day_night_lighting()
-		world_update_time = Time.get_ticks_usec() - wu_start
 		
 	# 3. Main-Thread Rendering Queue dispatching
-	var frame_queues_start := Time.get_ticks_usec()
 	if is_instance_valid(chunk_manager):
 		chunk_manager.process_frame_queues()
-	var frame_queues_time := Time.get_ticks_usec() - frame_queues_start
-	
-	# Report Telemetry Metrics once per second
-	_telemetry_timer += delta
-	if _telemetry_timer >= 1.0:
-		_telemetry_timer = 0.0
-		print("[Controller Profiler] Agri: %.3f ms | WorldUpdate: %.3f ms | RenderQueues: %.3f ms | Frame FPS: %d" % [
-			agriculture_time / 1000.0,
-			world_update_time / 1000.0,
-			frame_queues_time / 1000.0,
-			Engine.get_frames_per_second()
-		])
 
 
 ## Calculates coordinates to request chunk loads/unloads and triggers proximity spawning

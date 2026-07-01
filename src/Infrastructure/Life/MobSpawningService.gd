@@ -11,6 +11,8 @@
 #              FIXED:
 #              - Restricted _get_ground_surface_y to ignore foliage tree canopies
 #                and spawn animals exclusively on true floor-like blocks (Grass, Dirt, etc.).
+#              - Replaced the blind 11.0 fallback with a -1.0 sentinel abort check,
+#                completely preventing NPCs from spawning buried underground.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -88,8 +90,10 @@ func _spawn_and_register_entity(mob_id: int, offset: Vector3, lx: float, lz: flo
 		return
 		
 	var gy := _get_ground_surface_y(world_state, int(offset.x + lx), int(offset.z + lz))
+	if gy < 0.0:
+		return # Abort spawning if no valid ground surface is compiled yet (prevents underground spawning)
+		
 	var pos := offset + Vector3(lx, gy, lz)
-	
 	var entity: Node = MobRegistry.create_mob(mob_id, pos)
 	if entity != null:
 		world_node.add_child(entity)
@@ -101,7 +105,7 @@ func _spawn_and_register_entity(mob_id: int, offset: Vector3, lx: float, lz: flo
 
 
 ## Helper: Scans vertical columns downward to find the topmost solid floor-like block.
-## Skips tree foliage canopies and artificial ceilings.
+## Skips tree foliage canopies and artificial ceilings. Returns -1.0 centinel if not ready.
 func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
 	for y in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
@@ -117,4 +121,5 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
 			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
 				return float(y) + 1.0 
-	return 11.0
+				
+	return -1.0 # Sentinel value indicating terrain data is not populated yet

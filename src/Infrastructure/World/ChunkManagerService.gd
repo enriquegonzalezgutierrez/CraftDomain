@@ -26,9 +26,8 @@
 #              - DYNAMIC PHYSICS LOD: Leverages a lightweight permanent registry
 #                (_collision_vertices_registry) to dynamically inject chunk static collision
 #                bodies on-the-fly when player enters a 2-chunk radius, preventing void fall-throughs.
-#              - AMORTIZED PHYSICS LOD: Limits dynamic collision upgrades to a maximum of 2
-#                per tick to prevent main-thread frame freezes, fully eliminating physical
-#                wedging and sticking bugs.
+#              - MOB PROXIMITY SYNC: Restricts mob spawning exclusively to chunks that have
+#                active, fully loaded collision bodies, preventing NPCs from falling into the void or floating.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -286,7 +285,7 @@ func _render_completed_chunks_from_queue() -> void:
 		_queue_mutex.unlock()
 		
 		if task == null:
-			break # Queue is completely empty, resume next frame
+			break # Queue is completely empty
 			
 		_render_single_completed_task(task)
 		rendered_this_frame += 1
@@ -369,14 +368,6 @@ func _spawn_chunk_pos_0_exists_and_valid(pos_0: Vector3i, pos_1: Vector3i) -> bo
 ## only in chunks close to the player's current position.
 ## Caches evaluated empty columns to prevent CPU evaluation loops.
 func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
-	var start_time := Time.get_ticks_usec()
-	var chunk_eval_count := 0
-	var spawned_total := 0
-	var physics_lod_upgrades := 0
-	
-	# Time-slicing limit for main thread colliders (upgraded 2 per frame max)
-	const MAX_LOD_UPGRADES_PER_TICK := 2 
-	
 	var player_block_pos := Vector3i(
 		floor(player_global_pos.x),
 		floor(player_global_pos.y),
@@ -393,22 +384,8 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 			if _chunk_nodes.has(target_chunk_pos_0) and _chunk_nodes.has(target_chunk_pos_1):
 				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
 				
-				# A. MOB SPAWNER TRIGGER
-				if not _chunk_entities.has(col_pos):
-					chunk_eval_count += 1
-					var chunk_0 = _chunk_nodes[target_chunk_pos_0].chunk
-					var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
-					
-					# FIXED: Always register the array (even if empty) to prevent infinite evaluation loops!
-					_chunk_entities[col_pos] = spawned
-					spawned_total += spawned.size()
-					
-				# B. DYNAMIC PHYSICS LOD TRIGGER: Check and generate collision body on the fly!
+				# A. DYNAMIC PHYSICS LOD TRIGGER: Check and generate collision body on the fly FIRST!
 				for cy in range(2):
-					# Guard to prevent thread blocking (Time-slicing active)
-					if physics_lod_upgrades >= MAX_LOD_UPGRADES_PER_TICK:
-						break
-						
 					var target_pos := Vector3i(target_chunk_pos_0.x, cy, target_chunk_pos_0.z)
 					var chunk_node: ChunkNode = _chunk_nodes[target_pos]
 					if is_instance_valid(chunk_node) and not chunk_node.has_collision_body():
@@ -432,13 +409,15 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 							
 							# Inject collision body directly without re-drawing MultiMeshes
 							chunk_node.set_collision_body(collision_body)
-							physics_lod_upgrades += 1
+							
+				# B. MOB SPAWNER TRIGGER: Only spawn entities if the chunk is fully loaded with its physics collision body!
+				# This guarantees that mobs land perfectly on the solid floor and never float or fall into the void.
+				if not _chunk_entities.has(col_pos) and _chunk_nodes[target_chunk_pos_0].has_collision_body():
+					var chunk_0 = _chunk_nodes[target_chunk_pos_0].chunk
+					var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
 					
-	if chunk_eval_count > 0 or physics_lod_upgrades > 0:
-		var elapsed_ms := (Time.get_ticks_usec() - start_time) / 1000.0
-		print("[Performance Diagnostics] Proximity Spawner: evaluated %d chunk columns | spawned %d entities | upgraded %d physics LOD colliders in %.3f ms." % [
-			chunk_eval_count, spawned_total, physics_lod_upgrades, elapsed_ms
-		])
+					# FIXED: Always register the array (even if empty) to prevent infinite evaluation loops!
+					_chunk_entities[col_pos] = spawned
 
 
 func _unload_chunk_node(chunk_pos: Vector3i) -> void:
