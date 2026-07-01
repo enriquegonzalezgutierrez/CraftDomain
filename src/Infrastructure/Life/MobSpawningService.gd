@@ -5,12 +5,9 @@
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Exclusively coordinates 
 #                procedural wildlife and outpost population placements.
-#              BIOME POPULATION & MARINE LIFE OVERHAUL:
-#              - Scans the loaded outpost's active Biome ID to dynamically spawn 
-#                themed outposts, deploying Druids in Redwood forests, Miners in 
-#                Mountains, and Androids in Cyber basins.
-#              - Marine Spawner: In Bay of Sails (Spawn Ocean), it bypasses land 
-#                animals (Pigs, Cows) and spawns exclusively Sea Turtles (ID 201).
+#              - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
+#                population registry, removing hardcoded match maps.
+#              - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -37,7 +34,7 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			is_real_village = (profile.landmark_id == 3)
 			active_biome_id = profile.biome_id
 
-	# 1. Procedural Biome-Themed Village Outpost Spawning
+	# 1. Procedural Biome-Themed Village Outpost Spawning (OCP / LSP compliant)
 	if is_real_village:
 		# Villager (100) and Merchant (101) spawn in all outposts
 		_spawn_and_register_entity(100, chunk_offset, 7.5, 5.5, world_state, world_node, entities_list, "lost_bazaar")
@@ -46,25 +43,20 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 		# Loot chest spawns in all outposts
 		_spawn_and_register_entity(200, chunk_offset, 4.5, 8.5, world_state, world_node, entities_list, "")
 		
-		# DIVERSIFY POPULATION BASED ON OUTPOST BIOME
-		match active_biome_id:
-			3: # Craggy Peaks (Spawn Miners with headlamps)
-				_spawn_and_register_entity(105, chunk_offset, 2.5, 12.5, world_state, world_node, entities_list, "") # Miner
-				_spawn_and_register_entity(102, chunk_offset, 10.5, 10.5, world_state, world_node, entities_list, "plains_defender") # Guard
-			5: # Redwood Forest (Spawn Forest Druids)
-				_spawn_and_register_entity(104, chunk_offset, 2.5, 12.5, world_state, world_node, entities_list, "") # Druid
-				_spawn_and_register_entity(102, chunk_offset, 10.5, 10.5, world_state, world_node, entities_list, "plains_defender") # Guard
-			7: # Neon Ruins (Spawn Cyber Citizens/Androids)
-				_spawn_and_register_entity(106, chunk_offset, 2.5, 12.5, world_state, world_node, entities_list, "") # Cyber Citizen
-				_spawn_and_register_entity(102, chunk_offset, 10.5, 10.5, world_state, world_node, entities_list, "plains_defender") # Guard
-			_: # Default plains (Spawn standard farmers and guards)
-				_spawn_and_register_entity(103, chunk_offset, 2.5, 12.5, world_state, world_node, entities_list, "") # Farmer
-				_spawn_and_register_entity(102, chunk_offset, 10.5, 10.5, world_state, world_node, entities_list, "plains_defender") # Guard
+		# DYNAMIC BIOME OUTPOST SPAWNING: Query population list from active Biome strategy
+		var biome := BiomeService.get_biome(active_biome_id)
+		if is_instance_valid(biome):
+			var population := biome.get_outpost_population_ids()
+			if population.size() >= 2:
+				# Slot 1: Primary specialized inhabitant (Farmer, Miner, Druid, Android)
+				_spawn_and_register_entity(population[0], chunk_offset, 2.5, 12.5, world_state, world_node, entities_list, "")
+				# Slot 2: Defensive protector (Guard, synced to Plains Defender quest)
+				_spawn_and_register_entity(population[1], chunk_offset, 10.5, 10.5, world_state, world_node, entities_list, "plains_defender")
 			
-	# 2. Fauna Spawning (Restructured to spawn Sea Turtles exclusively in Oceans)
+	# 2. Fauna Spawning (Sea Turtles paddle exclusively inside ocean bays)
 	var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2
 	if should_spawn_animal:
-		if active_biome_id == 0: # Bay of Sails (Spawn Ocean) -> Spawn exclusively Sea Turtles!
+		if active_biome_id == 0: # Bay of Sails (Spawn Ocean) -> Spawn exclusively Sea Turtles
 			_spawn_and_register_entity(201, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
 		else:
 			# Standard land fauna

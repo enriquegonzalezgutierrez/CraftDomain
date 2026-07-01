@@ -1,7 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Concrete Biome Strategy implementing rules for Whispering Redwood Forest.
-#              UPDATED: Added scatter blueprint routing to spawn Giants Redwoods and Oaks.
+#              SOLID COMPLIANCE: 
+#              - Liskov Substitution Principle (LSP): Fully implements IBiome.
+#              - Open-Closed Principle (OCP): Returns specialized Forest Druids (104)
+#                and Guards (102) for its outposts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/RedwoodForestBiome.gd
 # ==============================================================================
@@ -37,3 +40,9 @@ func get_scatter_blueprint_id(scatter_hash: int) -> int:
 	elif scatter_hash % 120 == 12:
 		return 2 # Redwood Tree (ID 2)
 	return 0
+
+
+## Concrete Override: Spawns specialized Forest Druids (104) and Guards (102).
+func get_outpost_population_ids() -> Array[int]:
+	var specialized_population: Array[int] = [104, 102]
+	return specialized_population

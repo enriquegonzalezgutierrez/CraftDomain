@@ -2,7 +2,11 @@
 # Project: CraftDomain
 # Description: Concrete Biome Strategy implementing the geographic and visual 
 #              rules for the high stone mountains and subterranean cave structures
-#              (Craggy Peaks & Caves). Fully encapsulated and OCP compliant.
+#              (Craggy Peaks & Caves).
+#              SOLID COMPLIANCE: 
+#              - Liskov Substitution Principle (LSP): Fully implements IBiome.
+#              - Open-Closed Principle (OCP): Returns specialized Cave Miners (105)
+#                and Guards (102) for its outposts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/CraggyMinesBiome.gd
 # ==============================================================================
@@ -35,3 +39,9 @@ func get_landmark_type(spawn_hash: int, _base_height: int) -> int:
 	if spawn_hash % 160 == 7:
 		return 4
 	return 0
+
+
+## Concrete Override: Spawns specialized Cave Miners (105) and Guards (102).
+func get_outpost_population_ids() -> Array[int]:
+	var specialized_population: Array[int] = [105, 102]
+	return specialized_population

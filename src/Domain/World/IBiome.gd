@@ -3,8 +3,12 @@
 # Description: Pure Domain Interface defining the strategic contract for any
 #              procedural biome. Decouples physical, visual, and landmark
 #              rules into independent, extensible classes.
-#              SOLID/i18n UPGRADE: Prepared contract methods for standardized 
-#              i18n localization, ensuring strict OCP compliance.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Isolates biome specifications.
+#              - Liskov Substitution Principle (LSP): Sub-classes fully satisfy 
+#                the contract, implementing custom outpost populations.
+#              - Open-Closed Principle (OCP): Outpost spawns are now data-driven,
+#                removing hardcoded mappings from spawner services.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/IBiome.gd
 # ==============================================================================
@@ -46,3 +50,10 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 ## Overridden by subclasses to distribute trees/mushrooms organically without editing the core generator.
 func get_scatter_blueprint_id(_scatter_hash: int) -> int:
 	return 0
+
+
+## Virtual Contract: Returns the list of specialized Mob/NPC IDs that populate outposts in this biome.
+## Defaults to standard Farmer (103) and Guard (102). Specialized biomes will override this.
+func get_outpost_population_ids() -> Array[int]:
+	var default_population: Array[int] = [103, 102]
+	return default_population

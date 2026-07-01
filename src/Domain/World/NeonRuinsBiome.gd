@@ -1,7 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Concrete Biome Strategy implementing rules for Neon Ruins.
-#              UPDATED: Added scatter blueprint routing to spawn glowing Giant Fungi.
+#              SOLID COMPLIANCE: 
+#              - Liskov Substitution Principle (LSP): Fully implements IBiome.
+#              - Open-Closed Principle (OCP): Returns specialized Cyber Citizens (106)
+#                and Guards (102) for its outposts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/NeonRuinsBiome.gd
 # ==============================================================================
@@ -37,3 +40,9 @@ func get_scatter_blueprint_id(scatter_hash: int) -> int:
 	if scatter_hash % 70 == 9:
 		return 11 # Giant Underworld Fungus (ID 11)
 	return 0
+
+
+## Concrete Override: Spawns specialized Cyber Citizens (106) and Guards (102).
+func get_outpost_population_ids() -> Array[int]:
+	var specialized_population: Array[int] = [106, 102]
+	return specialized_population
