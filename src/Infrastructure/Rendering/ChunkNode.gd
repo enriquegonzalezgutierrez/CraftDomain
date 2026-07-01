@@ -13,6 +13,9 @@
 #              - Implemented a complete Mesh recycling pool (Object Pooling) in setup_chunk_visuals.
 #                Reuses existing MultiMeshInstance3D and MeshInstance3D nodes instead of
 #                destroying (queue_free) and instantiating (add_child) them continuously.
+#              - Applied the Flyweight Design Pattern by creating a single shared static
+#                BoxMesh instance across all MultiMeshes in the world, eliminating duplicate
+#                C++ geometry allocations on Vulkan.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -32,6 +35,9 @@ var _multimeshes: Dictionary = {}
 static var _materials_cache: Dictionary = {}
 static var _loaded_textures: Dictionary = {}
 static var _textures_preloaded: bool = false
+
+## Shared geometry cache (Flyweight Pattern)
+static var _shared_box_mesh: BoxMesh = null
 
 ## Static references to compiled Shader resources.
 static var _triplanar_shader: Shader
@@ -112,6 +118,13 @@ static func _get_friendly_format_name(format: Image.Format) -> String:
 		_: return "Other (" + str(format) + ")"
 
 
+## Lazy loading getter for the shared static BoxMesh instance.
+static func _get_shared_box_mesh() -> BoxMesh:
+	if _shared_box_mesh == null:
+		_shared_box_mesh = BoxMesh.new()
+	return _shared_box_mesh
+
+
 ## Loads and returns the compiled triplanar shader resource.
 static func _get_triplanar_shader() -> Shader:
 	if _triplanar_shader == null:
@@ -162,7 +175,7 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
 			mm.use_colors = false 
-			mm.mesh = BoxMesh.new() 
+			mm.mesh = _get_shared_box_mesh() # Share the single static BoxMesh instance!
 			mm.instance_count = instance_count
 			mm.buffer = bulk_array
 			

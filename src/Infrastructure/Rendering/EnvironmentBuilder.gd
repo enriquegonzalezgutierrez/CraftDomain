@@ -7,10 +7,11 @@
 #                rendering setup, delegating shader calculations to external files.
 #              - Open-Closed Principle (OCP): Closed for code modifications when 
 #                adjusting sky visual formulas, as they reside in .gdshader resources.
-#              OPTIMIZATION:
-#              - Disabled expensive SDFGI to maintain high-performance and prevent
-#                Vulkan memory fallback on Pascal GPUs (GTX 1060).
-#              - Kept high-fidelity SSAO, Glow, and Volumetric Fog for deep shadows and god rays.
+#              OPTIMIZATIONS:
+#              - Reduced directional shadow max distance to 80m to save GPU vertex throughput.
+#              - Replaced heavy Volumetric Fog with fast standard Depth Fog to hide loading borders.
+#              - Disabled Screen-Space Reflections (SSR) to optimize fragment shader fillrate
+#                and support stable 60 FPS on GTX 1060 mid-range hardware.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
 # ==============================================================================
@@ -31,7 +32,7 @@ static func build_sun() -> DirectionalLight3D:
 	sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun_light.directional_shadow_blend_splits = true
 	sun_light.directional_shadow_fade_start = 0.85
-	sun_light.directional_shadow_max_distance = 180.0
+	sun_light.directional_shadow_max_distance = 80.0 # Optimized shadow range
 	
 	# Warm, natural solar illumination
 	sun_light.light_energy = 2.8
@@ -89,19 +90,17 @@ static func build_environment() -> WorldEnvironment:
 	environment.glow_bloom = 0.15
 	environment.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	
-	# Atmospheric Volumetric Fog (Generates realistic sunbeams / god rays)
-	environment.volumetric_fog_enabled = true
-	environment.volumetric_fog_density = 0.008
-	environment.volumetric_fog_albedo = Color(0.72, 0.85, 0.98) # Soft blue air scattering
-	environment.volumetric_fog_emission = Color(0.02, 0.02, 0.05)
-	environment.volumetric_fog_gi_inject = 1.2
-	environment.volumetric_fog_anisotropy = 0.35 # Forward-scattering for nice light cones
+	# Atmospheric Fast Depth Fog (Extremely performant and hides borders beautifully)
+	environment.fog_enabled = true
+	environment.fog_light_color = Color(0.68, 0.78, 0.90) # Balanced sky blue atmosphere
+	environment.fog_density = 0.012
+	environment.fog_sky_affect = 0.8
 	
-	# SSR: Screen-space reflections for glossy surfaces (like Glass and reflective Water)
-	environment.ssr_enabled = true
-	environment.ssr_max_steps = 64
-	environment.ssr_fade_in = 0.05
-	environment.ssr_fade_out = 0.15
+	# Volumetric Fog: Disabled to preserve GTX 1060 rendering fillrate on long distances
+	environment.volumetric_fog_enabled = false
+	
+	# SSR: Disabled to optimize fragment shader iterations and support high views
+	environment.ssr_enabled = false
 	
 	# Adjustment profile for vivid colors
 	environment.adjustment_enabled = true

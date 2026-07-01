@@ -4,6 +4,8 @@
 #              save metadata to the injected WorldRepository.
 #              SOLID COMPLIANCE: SRP compliant by isolating I/O serialization
 #              from SceneTree physics or game loop frames.
+#              FIXED: Added is_instance_valid check on the repository reference
+#              to prevent "previously freed" null assertion crashes upon game exit.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldPersistenceService.gd
 # ==============================================================================
@@ -15,8 +17,13 @@ var repository: WorldRepository
 func _init(p_repository: WorldRepository) -> void:
 	repository = p_repository
 
-## Performs atomic database saving safely by gathering modifications and serializing
+## Performs atomic database saving safely by gathering modifications and serializing.
 func save_game(player: CharacterBody3D, world_state: WorldState) -> void:
+	# Lifecycle Shield: Prevent execution if the repository has been freed during shutdown
+	if not is_instance_valid(repository):
+		print("[WorldPersistenceService WARNING] Save aborted: Repository is already freed or shutting down.")
+		return
+		
 	print("[WorldPersistenceService] Initiating asynchronous disk save sequence...")
 	
 	# 1. Save all tracked chunk modification deltas

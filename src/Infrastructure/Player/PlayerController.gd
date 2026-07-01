@@ -10,6 +10,10 @@
 #                unrelated keyboard UI input routings (SRP).
 #              - Domain-Driven Design (DDD): Defers spatial height calculations to 
 #                the WorldState Domain Aggregate, avoiding infrastructure domain leakage.
+#              OPTIMIZATIONS:
+#              - Restored the superior CapsuleShape3D for smooth voxel hill climbing.
+#              - Configured floor_stop_on_slope and floor_snap_length within the correct
+#                Godot 4 _ready() lifecycle to prevent edge sliding and sinking in GodotPhysics3D.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -53,6 +57,9 @@ var _target_camera_tilt: float = 0.0
 # Camera Trauma Shake variable
 var _shake_intensity: float = 0.0
 
+# Telemetry logging timer
+var _telemetry_timer: float = 0.0
+
 
 func _init() -> void:
 	_setup_inputs_mouse_actions()
@@ -64,6 +71,11 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	# Configure advanced CharacterBody3D snapping properties (Godot 4 compliant)
+	floor_stop_on_slope = true   # Completely prevents sliding off block edges/slopes
+	floor_constant_speed = true  # Maintains speed consistency over steps
+	floor_snap_length = 0.5      # Securely snaps capsule bottom to voxel surfaces
+
 	_setup_inputs()
 	_setup_player_geometry()
 	_locate_world()
@@ -107,7 +119,7 @@ func _setup_inputs() -> void:
 
 
 func _setup_player_geometry() -> void:
-	# 1. Collision Capsule
+	# 1. Collision Capsule (Restored for flawless stairs and voxel hill climbing)
 	var collision := CollisionShape3D.new()
 	collision.name = "PlayerCollision"
 	var capsule_shape := CapsuleShape3D.new()
@@ -196,6 +208,12 @@ func _physics_process(delta: float) -> void:
 	# Controls hardware cursor visibility when holding Left Alt
 	_process_cursor_grab_state()
 
+	# Telemetry Diagnostics
+	_telemetry_timer += delta
+	if _telemetry_timer >= 1.0:
+		_telemetry_timer = 0.0
+		_print_physics_telemetry()
+
 	# ---> VOID RESCUE FAILSAFE SHIELD <---
 	if global_position.y < 2.0:
 		_rescue_player_from_void()
@@ -210,7 +228,7 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(interaction_component):
 		interaction_component.process_interaction()
 
-	# Gravity & Jump
+	# Gravity & Jump (Snaps back to 0 on floor automatically due to SNAP configuration)
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 	if Input.is_action_just_pressed("jump") and is_on_floor():
@@ -231,9 +249,17 @@ func _physics_process(delta: float) -> void:
 	_process_camera_effects(delta)
 
 
+## High-precision telemetry logger tracing physics engine states and raw inputs.
+func _print_physics_telemetry() -> void:
+	var raw_input := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+	print("[Physics Telemetry] Pos: %s | Vel: %s | On Floor: %s | Active: %s | Hardware Input: %s" % [
+		global_position, velocity, is_on_floor(), is_active, raw_input
+	])
+
+
 ## Scan downwards using Domain Rules to rescue player back to the surface of the topmost solid block
 func _rescue_player_from_void() -> void:
-	print("[PlayerController] Failsafe Shield triggered: Player fell into the void! Relocalizing to surface...")
+	print("[Physics Telemetry WARNING] Player fell into the void! Position: %s. Relocalizing to surface..." % global_position)
 	velocity = Vector3.ZERO
 	
 	var block_x := floori(global_position.x)
