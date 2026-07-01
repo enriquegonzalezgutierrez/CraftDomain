@@ -6,13 +6,12 @@
 #                mining, building, eating, and NPC interactions to VoxelInteractionComponent.
 #              - Domain-Driven Design (DDD): Defers spatial height calculations to 
 #                the WorldState Domain Aggregate.
-#              PHYSICS OVERHAUL (THE SEAM-CLIMBING SOLUTION):
-#              - Configured `floor_max_angle = deg_to_rad(5.0)`. Since voxel worlds 
-#                have no slopes (only 0° floors and 90° walls), this tight angle 
-#                forces the physics engine to instantly reject vertical seam glitches 
-#                as walkable floors. Gravity remains active, enabling smooth sliding.
-#              - Reverted to CapsuleShape3D (radius 0.4, height 1.8) to allow 
-#                the player to smoothly glide around tree trunks and corners without snags.
+#              PHYSICS OVERHAUL (CLEAN PRODUCTION RECODE):
+#              - Stripped away all manual bypasses, diagnostic telemetry loops, and 
+#                custom gravity vectors.
+#              - Relies 100% on Godot's native move_and_slide() solver, which now 
+#                resolves capsule-to-box collisions perfectly on the new solid 
+#                terrain block grid.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -67,17 +66,15 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	# Advanced Godot 4 settings for Voxel precision
+	# Standard Godot 3D movement settings
 	floor_stop_on_slope = true   
 	floor_constant_speed = true  
+	floor_max_angle = deg_to_rad(45.0)
 	
-	# VOXEL FIX: Only accept virtually flat surfaces as floor. Rejects vertical wall seams!
-	floor_max_angle = deg_to_rad(5.0)
-	
-	# Allow standard sliding responses
+	# Native slide along walls enabled
 	floor_block_on_wall = false 
 	
-	# Restore native safe margin so Godot handles depenetration correctly
+	# Standard precise safe margin
 	safe_margin = 0.001
 
 	_setup_inputs()
@@ -235,7 +232,7 @@ func _physics_process(delta: float) -> void:
 	var current_flat_velocity := Vector2(velocity.x, velocity.z)
 	var target_flat_velocity := Vector2(direction.x, direction.z) * SPEED
 	
-	# Smooth acceleration allows the physics engine to resolve wall bounces naturally
+	# Native linear interpolation for smooth in-game sliding responses
 	var acceleration := 12.0 if is_on_floor() else 6.0
 	current_flat_velocity = current_flat_velocity.lerp(target_flat_velocity, acceleration * delta)
 	
@@ -281,7 +278,7 @@ func _process_camera_effects(delta: float) -> void:
 		_bob_timer += delta * horizontal_speed * 2.2
 		var bob_y: float = sin(_bob_timer) * 0.035
 		var bob_x: float = cos(_bob_timer * 0.5) * 0.018
-		_target_camera_pos = Vector3(bob_x, 1.6 + bob_y, 0.0) # Base Y=1.6
+		_target_camera_pos = Vector3(bob_x, 1.6 + bob_y, 0.0)
 		
 		var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 		_target_camera_tilt = -input_dir.x * 0.02

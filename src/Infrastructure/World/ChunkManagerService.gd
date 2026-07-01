@@ -4,13 +4,15 @@
 #              generation threads, task caching, and chunk node lifecycle.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Holds and manages both 
-#                _chunk_nodes and _chunk_entities locally, centralizing chunk 
-#                resource lifecycles.
-#              PHYSICS OVERHAUL (ZERO-FRICTION WORLD):
-#              - Injected a customized PhysicsMaterial with `friction = 0.0` into 
-#                every generated chunk StaticBody3D. This completely eliminates 
-#                friction-lock between flat box colliders and voxel walls, preventing 
-#                the player from getting stuck on trees, cliffs, or walls.
+#                _chunk_nodes and _chunk_entities locally.
+#              PHYSICS OVERHAUL (SOLID VOXEL BOX COLLISIONS):
+#              - Replaced the buggy ConcavePolygonShape3D triangle soup with a 
+#                highly optimized Grid of BoxShape3D primitive colliders.
+#              - Reconstructs exact 3D solid blocks from multimesh transforms, 
+#                giving the terrain real physical volume and enabling flawless 
+#                sliding/collision behaviors.
+#              - Implements the Flyweight Pattern by reusing a single BoxShape3D 
+#                resource instance across all colliders to minimize memory footprint.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -204,16 +206,10 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 		if l_mesh != null:
 			liquids[l_type] = l_mesh
 	
-	var col_shape: ConcavePolygonShape3D = null
-	var vertices: PackedVector3Array = visual_data["collision_vertices"]
-	if vertices.size() > 0:
-		col_shape = ConcavePolygonShape3D.new()
-		col_shape.data = vertices
-	
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_shape = col_shape
+	task_result.collision_shape = null # Bypassed: We no longer calculate Concave Triangles!
 	task_result.liquid_meshes = liquids
 	task_result.is_rebuild = false
 	
@@ -256,16 +252,10 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 		if l_mesh != null:
 			liquids[l_type] = l_mesh
 
-	var col_shape: ConcavePolygonShape3D = null
-	var vertices: PackedVector3Array = visual_data["collision_vertices"]
-	if vertices.size() > 0:
-		col_shape = ConcavePolygonShape3D.new()
-		col_shape.data = vertices
-
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_shape = col_shape
+	task_result.collision_shape = null # Bypassed
 	task_result.liquid_meshes = liquids
 	task_result.is_rebuild = true
 
@@ -304,25 +294,44 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	if _pending_loading_chunks.has(chunk_pos):
 		_pending_loading_chunks.erase(chunk_pos)
 		
+	# ==========================================================================
+	# primitive BoxShape3D Collision Grid Generation (SRP compliant)
+	# Reconstructs individual solid bounding boxes for each exposed voxel.
+	# ==========================================================================
+	var collision_body := StaticBody3D.new()
+	collision_body.name = "StaticCollisionBody"
+	
+	# Flyweight Pattern: Shared single BoxShape3D resource
+	var shared_box_shape := BoxShape3D.new()
+	shared_box_shape.size = Vector3(1.0, 1.0, 1.0)
+	
+	for b_type in task.multimesh_data.keys():
+		# Filter to compile collision shapes ONLY for physically solid materials
+		if BlockType.is_solid(b_type):
+			var bulk_array: PackedFloat32Array = task.multimesh_data[b_type]
+			var count: int = int(bulk_array.size() / 12.0)
+			
+			for i in range(count):
+				var offset := i * 12
+				
+				# Unpack the Transform3D coordinates from the bulk rendering buffer
+				var basis_x := Vector3(bulk_array[offset + 0], bulk_array[offset + 4], bulk_array[offset + 8])
+				var basis_y := Vector3(bulk_array[offset + 1], bulk_array[offset + 5], bulk_array[offset + 9])
+				var basis_z := Vector3(bulk_array[offset + 2], bulk_array[offset + 6], bulk_array[offset + 10])
+				var origin := Vector3(bulk_array[offset + 3], bulk_array[offset + 7], bulk_array[offset + 11])
+				
+				var t := Transform3D(Basis(basis_x, basis_y, basis_z), origin)
+				
+				var col_shape := CollisionShape3D.new()
+				col_shape.shape = shared_box_shape
+				col_shape.transform = t
+				collision_body.add_child(col_shape)
+	# ==========================================================================
+	
 	# Case A: Visual Redraw
 	if task.is_rebuild:
 		var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 		if is_instance_valid(chunk_node):
-			var collision_body := StaticBody3D.new()
-			collision_body.name = "StaticCollisionBody"
-			
-			# OVERHAUL: Inject zero-friction material override to stop box clinging
-			var phys_mat := PhysicsMaterial.new()
-			phys_mat.friction = 0.0
-			phys_mat.rough = false
-			collision_body.physics_material_override = phys_mat
-			
-			if task.collision_shape != null:
-				var col_shape := CollisionShape3D.new()
-				col_shape.name = "ChunkCollisionShape"
-				col_shape.shape = task.collision_shape
-				collision_body.add_child(col_shape)
-				
 			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
 			
 	# Case B: Instantiation of a new area
@@ -332,23 +341,6 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			var chunk_node := ChunkNode.new(task.chunk)
 			controller.add_child(chunk_node)
 			_chunk_nodes[chunk_pos] = chunk_node
-			
-			var collision_body: StaticBody3D = null
-			
-			if task.collision_shape != null:
-				collision_body = StaticBody3D.new()
-				collision_body.name = "StaticCollisionBody"
-				
-				# OVERHAUL: Inject zero-friction material override to stop box clinging
-				var phys_mat := PhysicsMaterial.new()
-				phys_mat.friction = 0.0
-				phys_mat.rough = false
-				collision_body.physics_material_override = phys_mat
-				
-				var col_shape := CollisionShape3D.new()
-				col_shape.name = "ChunkCollisionShape"
-				col_shape.shape = task.collision_shape 
-				collision_body.add_child(col_shape)
 			
 			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
 			

@@ -5,6 +5,9 @@
 #              Resolutions.
 #              SOLID COMPLIANCE: Adheres to SRP by managing configuration UI.
 #              REACTIVITY: Implements safe checks to prevent early SceneTree Null crashes.
+#              PERSISTENCE UPGRADE:
+#              - Connected sliders and options to `SettingsRepository` to persist 
+#                user preferences to disk upon exiting or applying changes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/SettingsMenu.gd
 # ==============================================================================
@@ -21,6 +24,11 @@ var _sfx_label: Label
 var _render_dist_label: Label
 var _res_label: Label
 var _lang_label: Label
+
+# Cached Sliders to query values upon saving (SRP)
+var _music_slider: HSlider
+var _sfx_slider: HSlider
+var _dist_slider: HSlider
 
 var _res_opt: OptionButton
 var _lang_opt: OptionButton
@@ -59,37 +67,38 @@ func _ready() -> void:
 	# 2. Music Volume Slider
 	_music_label = _create_label()
 	box.add_child(_music_label)
-	var music_slider := HSlider.new()
-	music_slider.min_value = -40.0 
-	music_slider.max_value = 0.0   
-	music_slider.value = AudioServer.get_bus_volume_db(_get_or_create_bus("Music"))
-	music_slider.value_changed.connect(_on_music_changed)
-	box.add_child(music_slider)
+	_music_slider = HSlider.new()
+	_music_slider.min_value = -40.0 
+	_music_slider.max_value = 0.0   
+	_music_slider.value = AudioServer.get_bus_volume_db(_get_or_create_bus("Music"))
+	_music_slider.value_changed.connect(_on_music_changed)
+	box.add_child(_music_slider)
 	
 	box.add_child(_create_spacer(15))
 	
 	# 3. SFX Volume Slider
 	_sfx_label = _create_label()
 	box.add_child(_sfx_label)
-	var sfx_slider := HSlider.new()
-	sfx_slider.min_value = -40.0
-	sfx_slider.max_value = 0.0
-	sfx_slider.value = AudioServer.get_bus_volume_db(_get_or_create_bus("SFX"))
-	sfx_slider.value_changed.connect(_on_sfx_changed)
-	box.add_child(sfx_slider)
+	_sfx_slider = HSlider.new()
+	_sfx_slider.min_value = -40.0
+	_sfx_slider.max_value = 0.0
+	_sfx_slider.value = AudioServer.get_bus_volume_db(_get_or_create_bus("SFX"))
+	_sfx_slider.value_changed.connect(_on_sfx_changed)
+	box.add_child(_sfx_slider)
 	
 	box.add_child(_create_spacer(15))
 	
 	# 4. Render Distance Slider
 	_render_dist_label = _create_label()
 	box.add_child(_render_dist_label)
-	var dist_slider := HSlider.new()
-	dist_slider.min_value = 4.0
-	dist_slider.max_value = 14.0
-	dist_slider.step = 1.0
-	dist_slider.value = float(ChunkLoaderService.global_view_distance)
-	dist_slider.value_changed.connect(_on_render_distance_changed)
-	box.add_child(dist_slider)
+	_dist_slider = HSlider.new()
+	_dist_slider.min_value = 4.0
+	_dist_slider.max_value = 14.0
+	_dist_slider.step = 1.0
+	_dist_slider.value = float(ChunkLoaderService.global_view_distance)
+	_text_slider_val_update()
+	_dist_slider.value_changed.connect(_on_render_distance_changed)
+	box.add_child(_dist_slider)
 	
 	box.add_child(_create_spacer(15))
 	
@@ -121,7 +130,6 @@ func _ready() -> void:
 	_lang_opt.add_item("English", 0)
 	_lang_opt.add_item("Español", 1)
 	
-	# Check and select current active language
 	var current_locale := TranslationServer.get_locale()
 	if current_locale.begins_with("es"):
 		_lang_opt.select(1)
@@ -133,13 +141,15 @@ func _ready() -> void:
 	
 	box.add_child(_create_spacer(30))
 	
-	# 7. Back / Close Button
+	# 7. Back / Close Button (Triggers atomic configuration save)
 	_back_btn = Button.new()
 	_back_btn.custom_minimum_size = Vector2(0, 48)
-	_back_btn.pressed.connect(func() -> void: closed.emit())
+	_back_btn.pressed.connect(func() -> void: 
+		_save_all_current_settings()
+		closed.emit()
+	)
 	box.add_child(_back_btn)
 	
-	# 8. Render dynamic localized texts
 	_refresh_localized_text()
 	_setup_resolution_dropdown_state()
 
@@ -156,16 +166,13 @@ func _refresh_localized_text() -> void:
 	if is_instance_valid(_music_label): _music_label.text = tr("SETTINGS_MUSIC")
 	if is_instance_valid(_sfx_label): _sfx_label.text = tr("SETTINGS_SFX")
 	
-	# Render Distance updates with real-time parameter tracking
-	if is_instance_valid(_render_dist_label): 
-		_render_dist_label.text = tr("SETTINGS_RENDER_DISTANCE") + ": " + str(ChunkLoaderService.global_view_distance)
+	_text_slider_val_update()
 		
 	if is_instance_valid(_res_label): _res_label.text = tr("SETTINGS_RESOLUTION")
 	if is_instance_valid(_lang_label): _lang_label.text = tr("SETTINGS_LANGUAGE")
 	if is_instance_valid(_back_btn): _back_btn.text = tr("SETTINGS_BACK")
 	if is_instance_valid(_apply_btn): _apply_btn.text = tr("SETTINGS_APPLY")
 	
-	# Redraw resolution drop-down items cleanly with active language (SRP)
 	if is_instance_valid(_res_opt):
 		var active_index := _res_opt.selected
 		_res_opt.clear()
@@ -228,7 +235,12 @@ func _on_sfx_changed(val: float) -> void:
 
 func _on_render_distance_changed(val: float) -> void:
 	ChunkLoaderService.global_view_distance = int(val)
-	_refresh_localized_text() # Re-render label to show the new number instantly
+	_text_slider_val_update()
+
+
+func _text_slider_val_update() -> void:
+	if is_instance_valid(_render_dist_label):
+		_render_dist_label.text = tr("SETTINGS_RENDER_DISTANCE") + ": " + str(ChunkLoaderService.global_view_distance)
 
 
 func _on_apply_resolution_pressed() -> void:
@@ -250,13 +262,37 @@ func _on_apply_resolution_pressed() -> void:
 			main_window.move_to_center()
 		2:
 			main_window.mode = Window.MODE_FULLSCREEN
+			
+	# Save changes on resolution apply
+	_save_all_current_settings()
 
 
-## Triggered when the user picks English or Spanish in the language dropdown
 func _on_language_changed(index: int) -> void:
 	if index == 0:
 		TranslationServer.set_locale("en")
-		print("[SettingsMenu] Language changed to English (en).")
 	elif index == 1:
 		TranslationServer.set_locale("es")
-		print("[SettingsMenu] Idioma cambiado a Español (es).")
+		
+	# Save changes on language swap
+	_save_all_current_settings()
+
+
+## Persistent Writer: Extracts state values and commits them globally to disk.
+func _save_all_current_settings() -> void:
+	var music_val := _music_slider.value if is_instance_valid(_music_slider) else -6.0
+	var sfx_val := _sfx_slider.value if is_instance_valid(_sfx_slider) else -6.0
+	var render_dist := ChunkLoaderService.global_view_distance
+	var active_locale := TranslationServer.get_locale()
+	
+	var main_window: Window = get_tree().root
+	var win_mode := int(main_window.mode)
+	var win_size := main_window.size
+	
+	SettingsRepository.save_settings(
+		music_val,
+		sfx_val,
+		render_dist,
+		active_locale,
+		win_mode,
+		win_size
+	)
