@@ -6,12 +6,12 @@
 #                mining, building, eating, and NPC interactions to VoxelInteractionComponent.
 #              - Domain-Driven Design (DDD): Defers spatial height calculations to 
 #                the WorldState Domain Aggregate.
-#              PHYSICS OVERHAUL (CLEAN PRODUCTION RECODE):
-#              - Stripped away all manual bypasses, diagnostic telemetry loops, and 
-#                custom gravity vectors.
-#              - Relies 100% on Godot's native move_and_slide() solver, which now 
-#                resolves capsule-to-box collisions perfectly on the new solid 
-#                terrain block grid.
+#              PHYSICS OVERHAUL (ZERO-STICKING CORRECTION):
+#              - Set `floor_block_on_wall = false` to restore Godot's default 
+#                vector sliding. This completely resolves the "wall cling" bug, 
+#                allowing the player's box shape to slide smoothly along blocks 
+#                and fall naturally under gravity.
+#              - Restored standard air acceleration (6.0) for responsive controls.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -66,15 +66,15 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	# Standard Godot 3D movement settings
+	# Advanced Godot 4 settings for Voxel precision
 	floor_stop_on_slope = true   
 	floor_constant_speed = true  
 	floor_max_angle = deg_to_rad(45.0)
 	
-	# Native slide along walls enabled
+	# Allow standard sliding responses
 	floor_block_on_wall = false 
 	
-	# Standard precise safe margin
+	# Restore native safe margin so Godot handles depenetration correctly
 	safe_margin = 0.001
 
 	_setup_inputs()

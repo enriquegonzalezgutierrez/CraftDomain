@@ -81,6 +81,7 @@ Each class has a single, strictly defined reason to change:
 * **`VoxelInteractionComponent.gd`:** Attached as an isolated component under the camera, this class handles targeted block raycasting, highlighted meshes, block placement/removal, eating items, and speaking with NPCs.
 * **`PlayerHUD.gd`:** Acts strictly as a lightweight orchestrator for the UI composition. It delegates specific layout configurations and real-time mathematical calculations to dedicated widgets: `MinimapWidget`, `GPSPanelWidget`, and `QuestTrackerWidget`.
 * **`CraftingOverlay.gd` / `InventoryOverlay.gd`:** Handle only visual rendering of grid slots, checking checklists, and capturing clicks. They delegate all transaction modifications to `CraftingService` and `IInventory`.
+* **`SettingsRepository.gd`:** Handles exclusively the serialization and disk I/O of system parameters (volume, render distance, window modes, and locales), completely decoupling settings persistence from the user interface and the core bootstrap lifecycle.
 
 ### 2. Open-Closed Principle (OCP)
 *Classes are open for extension, but closed for modification.*
@@ -110,6 +111,7 @@ sequenceDiagram
 * **The Data-Driven Crafting & Blueprint System:** Similar to quests, all crafting recipes are parsed from `assets/recipes/recipes.json` by `RecipeRegistry.gd`. Adding a new recipe does not require modifying a single line of GDScript.
 * **Dynamic Mob Spawning Registry:** Concrete entities are registered dynamically into the `MobRegistry` at startup, decoupling custom wildlife and NPC instantiation from the procedural spawner `MobSpawningService.gd`.
 * **Data-Driven 1:1 Translations (i18n):** The engine dynamically loads translation data from `assets/translations/en.json` and `es.json`. Dialogue trees, item names, UI headers, and even floating speech bubbles are parsed using localization keys without hardcoding raw text in the controllers.
+* **Birch Log Block Extension:** Birch logs are registered via the new `BlockType.Type.BIRCH_LOG = 24` mapping in `BlockType.gd` and `BlockLibrary.gd`. This replaces temporary placeholders, letting Birch Trees render textured white bark organically without altering the core procedural biome scatter logic.
 
 ### 3. Liskov Substitution Principle (LSP)
 Subclasses must be substitutable for their base classes without altering program correctness:
@@ -149,6 +151,59 @@ The visual codebase applies clean, external `.gdshader` resource files (decouple
 ### 4. Static Texture Preloader (Lag Spike Prevention)
 Decoding high-resolution (1024x1024) PNG files on the main thread during real-time chunk loading causes massive CPU stalls, resulting in physics tunneling. CraftDomain utilizes a **Static Preloader** in `ChunkNode.gd` that reads, caches, and compiles all custom textures into GPU memory *once* during game boot, keeping the gameplay completely stutter-free.
 
+### 5. Primitive Box Flyweight Collision Grid
+Traditional `ConcavePolygonShape3D` meshes (triangle soups with zero volume) are prone to corner traps and seam-clinging bugs when characters move against them. To resolve this, `ChunkManagerService.gd` parses active solid rendering transforms and constructs a grid of primitive solid `BoxShape3D` colliders. To prevent memory and allocation bottlenecks, the service implements the **Flyweight Design Pattern**, sharing a single static `BoxShape3D` resource instance across every collision shape inside the static body. This provides native physical volume to the world, resolving collision tunneling and enabling standard Capsule-to-Box sliding physics.
+
+```mermaid
+sequenceDiagram
+	participant CMS as ChunkManagerService
+	participant Task as GeneratedChunkTask
+	participant SB as StaticBody3D
+	participant Col as CollisionShape3D
+	participant Box as shared_box_shape (BoxShape3D)
+
+	Note over CMS,Box: Triggered on Chunk Render or Rebuild
+	CMS->>Task: Read multimesh_data (Transforms of solid blocks)
+	loop For Each Transform in Solid Block Group
+		CMS->>Col: Instantiate CollisionShape3D
+		CMS->>Col: Assign transform
+		CMS->>Col: Assign Flyweight shared_box_shape
+		CMS->>SB: Add as child
+	end
+	CMS->>CMS: Attach StaticBody3D to ChunkNode
+```
+
+### 6. Time-Sliced Priority Rebuild Queue (Zero-Latency Editing)
+To prevent direct player actions (mining, building) from being delayed behind background thread terrain generation queues (which load hundreds of distant chunks as the player walks), the task scheduler implements a priority bypass. Standard loading requests are appended to the back of the queue, while real-time rebuilding requests use `.push_front()`. This ensures user interactions are processed on the very next frame, reducing block modification latency from seconds to milliseconds.
+
+---
+
+## Persistent Configuration Settings Pipeline
+
+To persist system preferences (audio volumes, window properties, language, and render distance), the engine implements a dedicated saving/loading pipeline decoupled from world files. 
+
+```mermaid
+sequenceDiagram
+	participant UI as SettingsMenu
+	participant Repo as SettingsRepository
+	participant Disk as settings.json
+	participant Boot as Bootstrap
+	participant Serv as ChunkLoaderService
+
+	Note over UI,Disk: Saving Pipeline (Triggered on Close/Apply)
+	UI->>Repo: save_settings(vol, dist, locale, mode, size)
+	Repo->>Disk: Write JSON state
+	
+	Note over Boot,Serv: Loading Pipeline (Triggered on Startup)
+	Boot->>Repo: load_settings()
+	Repo->>Disk: Read JSON state
+	Repo-->>Boot: Return settings dictionary
+	Boot->>Serv: Set global_view_distance
+	Boot->>Boot: Set active Locale & Audio volumes
+```
+
+By encapsulating I/O operations inside `SettingsRepository.gd`, UI components write to disk only during key events (such as pressing the back button or applying resolutions), protecting SSD/storage health from continuous drag-write loops.
+
 ---
 
 ## Dynamic Weather & Atmospheric Cycles
@@ -181,7 +236,7 @@ graph LR
 	WeatherService -->|If Other Biomes| RainParticles
 ```
 
-### 1. Deterministic GPU Sky & Weather-Integrated Shader
+### 1. Deterministic Sky & Weather-Integrated Shader
 The world features a custom GPU Sky Shader (`celestial_sky.gdshader`) integrated with the celestial clock:
 * **True Celestial Orbits:** The Sun disk and Moon crescent are rendered on the sky dome using coordinates passed dynamically from `CelestialService.gd`.
 * **Twinkling Starfield:** A procedural, rotating 3D starfield fades in at night and dims as dawn approaches.
