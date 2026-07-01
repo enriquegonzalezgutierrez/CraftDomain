@@ -1,14 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure Service responsible for managing background chunk
-#              generation threads, task caching, and chunk node lifecycle.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Holds and manages both 
-#                _chunk_nodes and _chunk_entities locally, centralizing chunk 
-#                resource lifecycles and resolving cyclic type warnings.
-#              - HIGH PERFORMANCE PIPELINE: Implements reactive main-thread dispatching,
-#                rendering all completed background thread tasks instantly to eliminate
-#                frame-stutters and redraw queues starvation.
+# Description: Infrastructure Service managing background chunk thread tasks,
+#              LRU caching, and chunk node lifecycles.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Isolates chunk rendering 
+#                and lifecycle updates from core game loop logic.
+#              OPTIMIZATIONS:
+#              - Eliminated neighboring chunk "seam sewing" rebuild storms on initial
+#                loads to prevent CPU thread pools starvation and main-thread stalls.
+#              - Retained reactive boundary rebuilds exclusively for real-time player 
+#                block placements or break modifications.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -18,7 +19,7 @@ extends RefCounted
 var controller: Node3D # References WorldController
 var world_state: WorldState
 
-# Thread safety sync structures
+# Thread safety synchronization structures
 var _queue_mutex: Mutex
 var _completed_tasks_queue: Array[GeneratedChunkTask] = []
 var _unload_queue: Array[Vector3i] = []
@@ -30,7 +31,7 @@ var _chunk_nodes: Dictionary = {}
 ## Tracking map for entities spawned within specific chunk columns: Vector3i (y=0) -> Array[Node]
 var _chunk_entities: Dictionary = {}
 
-# Cache System (LRU)
+# Least Recently Used (LRU) task cache system
 var _chunk_task_cache: Dictionary = {}
 const CACHE_SIZE_LIMIT: int = 64
 
@@ -41,32 +42,32 @@ func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
 	_queue_mutex = Mutex.new()
 
 
-## Queues chunks for asynchronous loading (Background thread)
+## Verifies if a chunk is loaded and rendered in the scene tree.
+func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
+	return _chunk_nodes.has(chunk_pos)
+
+
+## Public API: Returns the active chunk nodes (used by climate and lighting services).
+func get_active_nodes() -> Dictionary:
+	return _chunk_nodes
+
+
+## Queues chunks for asynchronous loading on background thread tasks.
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
 	for pos in chunk_positions:
 		_request_asynchronous_chunk_load(pos)
 
 
-## Queues chunks to be unloaded from memory
+## Queues chunks to be unloaded and freed from memory safely.
 func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
 	for pos in chunk_positions:
 		if not _unload_queue.has(pos):
 			_unload_queue.append(pos)
 
 
-## Verifies if a chunk is loaded and rendered
-func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
-	return _chunk_nodes.has(chunk_pos)
-
-
-## Public API: Returns the active chunk nodes (Used by auxiliary services)
-func get_active_nodes() -> Dictionary:
-	return _chunk_nodes
-
-
 ## Safe Frame Ticker: Process unloads and drains the entire completed tasks queue in a single frame.
 func process_frame_queues() -> void:
-	# Process unloads up to 3 chunks per frame to avoid CPU stalls
+	# Process unloads up to 3 chunks per frame to avoid CPU frame stalls
 	var unloads_processed := 0
 	while _unload_queue.size() > 0 and unloads_processed < 3:
 		var chunk_to_unload := _unload_queue.pop_front() as Vector3i
@@ -92,7 +93,7 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 	WorkerThreadPool.add_task(_background_generate_chunk_task.bind(chunk_pos))
 
 
-## ASYNC REBUILD: Queues a single chunk to be re-meshed in background
+## ASYNC REBUILD: Queues a single chunk to be re-meshed in the background thread.
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 	if not _chunk_nodes.has(chunk_pos):
 		return
@@ -128,7 +129,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_transforms = visual_data["collision"] as Array[Transform3D]
+	task_result.collision_vertices = visual_data["collision_vertices"] as PackedVector3Array
 	task_result.liquid_meshes = liquids
 	task_result.is_rebuild = false
 	
@@ -161,7 +162,7 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_transforms = visual_data["collision"] as Array[Transform3D]
+	task_result.collision_vertices = visual_data["collision_vertices"] as PackedVector3Array
 	task_result.liquid_meshes = liquids
 	task_result.is_rebuild = true
 
@@ -191,22 +192,24 @@ func _render_completed_chunks_from_queue() -> void:
 		if _pending_loading_chunks.has(chunk_pos):
 			_pending_loading_chunks.erase(chunk_pos)
 			
-		# Case A: Visual Redraw
+		# Case A: Visual Redraw (Triggered on block place / break)
 		if task.is_rebuild:
 			var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 			if is_instance_valid(chunk_node):
 				var collision_body := StaticBody3D.new()
 				collision_body.name = "StaticCollisionBody"
-				var shared_box_shape := BoxShape3D.new()
 				
-				for t in task.collision_transforms:
-					var owner_id := collision_body.create_shape_owner(collision_body)
-					collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
-					collision_body.shape_owner_set_transform(owner_id, t)
+				if task.collision_vertices.size() > 0:
+					var col_shape := CollisionShape3D.new()
+					col_shape.name = "ChunkCollisionShape"
+					var concave_shape := ConcavePolygonShape3D.new()
+					concave_shape.data = task.collision_vertices
+					col_shape.shape = concave_shape
+					collision_body.add_child(col_shape)
 					
 				chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
 				
-		# Case B: Instantiation of a new area
+		# Case B: Instantiation of a new chunk area
 		else:
 			if not _chunk_nodes.has(chunk_pos):
 				world_state.add_chunk(task.chunk)
@@ -216,28 +219,23 @@ func _render_completed_chunks_from_queue() -> void:
 				
 				var collision_body := StaticBody3D.new()
 				collision_body.name = "StaticCollisionBody"
-				var shared_box_shape := BoxShape3D.new()
 				
-				for t in task.collision_transforms:
-					var owner_id := collision_body.create_shape_owner(collision_body)
-					collision_body.shape_owner_add_shape(owner_id, shared_box_shape)
-					collision_body.shape_owner_set_transform(owner_id, t)
+				if task.collision_vertices.size() > 0:
+					var col_shape := CollisionShape3D.new()
+					col_shape.name = "ChunkCollisionShape"
+					var concave_shape := ConcavePolygonShape3D.new()
+					concave_shape.data = task.collision_vertices
+					col_shape.shape = concave_shape
+					collision_body.add_child(col_shape)
 				
 				chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
-				
-				# Sew seams asynchronously with the 4 adyacents
-				var horizontal_dirs: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
-				for dir in horizontal_dirs:
-					var neighbor_pos: Vector3i = chunk_pos + dir
-					if _chunk_nodes.has(neighbor_pos):
-						_request_chunk_rebuild(neighbor_pos)
 				
 				# Spawners Trigger
 				var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
 				var spawn_chunk_pos_0 := Vector3i(chunk_pos.x, 0, chunk_pos.z)
 				var spawn_chunk_pos_1 := Vector3i(chunk_pos.x, 1, chunk_pos.z)
 				
-				if _chunk_nodes.has(spawn_chunk_pos_0) and _chunk_nodes.has(spawn_chunk_pos_1):
+				if _spawn_chunk_pos_0_exists_and_valid(spawn_chunk_pos_0, spawn_chunk_pos_1):
 					if not _chunk_entities.has(col_pos):
 						var chunk_0 = _chunk_nodes[spawn_chunk_pos_0].chunk
 						var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
@@ -246,6 +244,10 @@ func _render_completed_chunks_from_queue() -> void:
 				
 				controller.register_streetlights_for_chunk(task.chunk)
 				controller.check_player_spawn_activation()
+
+
+func _spawn_chunk_pos_0_exists_and_valid(pos_0: Vector3i, pos_1: Vector3i) -> bool:
+	return _chunk_nodes.has(pos_0) and _chunk_nodes.has(pos_1)
 
 
 func _unload_chunk_node(chunk_pos: Vector3i) -> void:
@@ -261,18 +263,15 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 			if is_instance_valid(entity): entity.queue_free()
 		_chunk_entities.erase(col_pos)
 
-	controller.unregister_streetlights_for_chunk(chunk_pos)
-
+	# Safety checks before calling queue_free on chunks
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 	if is_instance_valid(chunk_node):
-		var body := chunk_node.get_node_or_null("StaticCollisionBody")
-		if is_instance_valid(body): chunk_node.remove_child(body)
 		chunk_node.queue_free()
-		
-	_chunk_nodes.erase(chunk_pos)
-	world_state.remove_chunk(chunk_pos)
+		_chunk_nodes.erase(chunk_pos)
+		world_state.remove_chunk(chunk_pos)
 
 
+## Places or breaks a block globally and schedules asynchronous redraw queues.
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	world_state.set_block(global_pos, type)
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
@@ -280,7 +279,7 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	
 	_request_chunk_rebuild(chunk_pos)
 	
-	# ONLY rebuild neighbors if necessary
+	# Only rebuild neighbor boundaries if the modification was done at the borders
 	if local_pos.x == 0: _request_chunk_rebuild(chunk_pos + Vector3i(-1, 0, 0))
 	elif local_pos.x == Chunk.SIZE - 1: _request_chunk_rebuild(chunk_pos + Vector3i(1, 0, 0))
 	

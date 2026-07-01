@@ -8,6 +8,9 @@
 #              - Pre-caching neighbor chunks for ultra-fast boundary lookups.
 #              - Memory packing (PackedFloat32Array) offloaded to the background 
 #                thread to prevent main-thread stuttering (GC Spikes).
+#              - Optimized collision generation by exporting exposed faces as a single
+#                merged vertex array (PackedVector3Array) for ConcavePolygonShape3D.
+#              FIXED: Removed shadowed 'local_pos' declaration to clear compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkVisualBuilder.gd
 # ==============================================================================
@@ -21,11 +24,21 @@ const DIRECTIONS: Array[Vector3i] = [
 	Vector3i(0, 0, 1), Vector3i(0, 0, -1)
 ]
 
+## Local vertex tables defining the 4 vertices per face (from origin 0,0,0 to 1,1,1).
+const FACE_VERTICES: Dictionary = {
+	Vector3i(0, 1, 0): [Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(0, 1, 0)], # TOP
+	Vector3i(0, -1, 0): [Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1)], # BOTTOM
+	Vector3i(1, 0, 0): [Vector3(1, 0, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(1, 0, 0)], # RIGHT
+	Vector3i(-1, 0, 0): [Vector3(0, 0, 0), Vector3(0, 1, 0), Vector3(0, 1, 1), Vector3(0, 0, 1)], # LEFT
+	Vector3i(0, 0, 1): [Vector3(0, 0, 1), Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 0, 1)], # FRONT
+	Vector3i(0, 0, -1): [Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(0, 1, 0), Vector3(0, 0, 0)]  # BACK
+}
+
 ## Extracts block data from a chunk, applies occlusion culling, and packages 
 ## it into optimized PackedFloat32Arrays ready for MultiMesh rendering.
 static func extract_render_data(chunk: Chunk, world_state: WorldState) -> Dictionary:
 	var render_data: Dictionary = {}
-	var collision_transforms: Array[Transform3D] = []
+	var collision_vertices := PackedVector3Array()
 	
 	# Pre-cache neighbor chunks to avoid costly hash-map lookups per boundary voxel
 	var neighbors: Dictionary = {
@@ -46,9 +59,7 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState) -> Dictio
 				if block_type == BlockType.Type.AIR or block_type == BlockType.Type.WATER or block_type == BlockType.Type.LAVA:
 					continue
 					
-				# ==========================================================
-				# MASSIVE OCCLUSION CULLING
-				# ==========================================================
+				var local_pos := Vector3(x, y, z)
 				var is_exposed: bool = false
 				
 				for dir in DIRECTIONS:
@@ -77,22 +88,35 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState) -> Dictio
 					# If the neighbor is transparent, this block is visible
 					if BlockType.is_transparent(neighbor_type):
 						is_exposed = true
-						break
-				
+						
+						# SOW COLLISION FACES: Collect vertices of this exposed face if block is solid
+						if BlockType.is_solid(block_type):
+							var face_verts: Array = FACE_VERTICES[dir]
+							var v0 := local_pos + (face_verts[0] as Vector3)
+							var v1 := local_pos + (face_verts[1] as Vector3)
+							var v2 := local_pos + (face_verts[2] as Vector3)
+							var v3 := local_pos + (face_verts[3] as Vector3)
+							
+							# Triangle 1
+							collision_vertices.append(v2)
+							collision_vertices.append(v1)
+							collision_vertices.append(v0)
+							
+							# Triangle 2
+							collision_vertices.append(v3)
+							collision_vertices.append(v2)
+							collision_vertices.append(v0)
+
 				# Skip completely buried blocks! Saves GPU, CPU, and RAM instantly.
 				if not is_exposed:
 					continue 
 				
-				var local_pos := Vector3(x, y, z)
 				var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
 				var t := Transform3D(Basis(), transform_pos)
 				
 				if not render_data.has(block_type):
 					render_data[block_type] = []
 				render_data[block_type].append(t)
-				
-				if BlockType.is_solid(block_type):
-					collision_transforms.append(t)
 					
 	# ======================================================================
 	# BACKGROUND THREAD MEMORY PACKING
@@ -125,5 +149,5 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState) -> Dictio
 					
 	return {
 		"multimesh": final_multimesh_data,
-		"collision": collision_transforms
+		"collision_vertices": collision_vertices
 	}

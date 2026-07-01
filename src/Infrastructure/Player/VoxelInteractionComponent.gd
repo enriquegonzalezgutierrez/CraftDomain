@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure component responsible for managing player gaze 
-#              raycasting, targeted block highlighting, voxel mining, placing, 
+# Description: Infrastructure component managing player gaze raycasting, 
+#              targeted block highlighting, voxel mining, placing, 
 #              food consumption, and seed planting.
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Handles exclusively gaze 
@@ -10,6 +10,10 @@
 #                parameterized strategies, removing hardcoded logic.
 #              - Dependency Inversion Principle (DIP): Connects strictly with 
 #                abstractions (IInventory, ItemUsageStrategy, WorldController).
+#              OPTIMIZATION:
+#              - Implemented a rigorous 3D Axis-Aligned Bounding Box (AABB) intersection 
+#                check to prevent placing solid blocks inside the player's physical space,
+#                fully resolving the issue of getting stuck.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -283,10 +287,13 @@ func _build_or_interact() -> void:
 			# SPECIAL BOUNDING SHIELD: Prevent placing solid blocks inside player's body
 			if strategy is PlaceableBlockStrategy:
 				var build_coord := target_coord + Vector3i(hit_normal)
-				var player_feet := Vector3i(floori(player.global_position.x), floori(player.global_position.y), floori(player.global_position.z))
-				var player_head := Vector3i(floori(player.global_position.x), floori(player.global_position.y + 0.9), floori(player.global_position.z))
-				if build_coord == player_feet or build_coord == player_head: 
-					return
+				var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
+				var player_aabb := AABB(
+					player.global_position - Vector3(0.4, 0.9, 0.4),
+					Vector3(0.8, 1.8, 0.8)
+				)
+				if player_aabb.intersects(block_aabb):
+					return # Prevent trapping the player inside a solid block!
 					
 			# Execute strategy business rules
 			strategy.use(player.domain_entity, inventory, target_coord, hit_normal, world_ctrl)
