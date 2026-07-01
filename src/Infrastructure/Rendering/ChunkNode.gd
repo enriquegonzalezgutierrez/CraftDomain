@@ -2,24 +2,16 @@
 # Project: CraftDomain
 # Description: Infrastructure rendering node representing a single chunk in 3D.
 #              Manages discrete MultiMeshInstance3D and MeshInstance3D nodes 
-#              per active BlockType to apply custom materials (solid, foliage, 
-#              liquids, glowing cores) efficiently.
+#              per active BlockType to apply custom materials efficiently.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Handles chunk mesh assembly 
-#                and material binding, delegating shader compilation to shader files.
+#                and material binding, delegating shader calculations to external files.
 #              - Open-Closed Principle (OCP): Loads compiled shaders from external
-#                resources, allowing visual updates without modifying scripts.
-#              OPTIMIZATIONS:
-#              - Implemented a complete Mesh recycling pool (Object Pooling) in setup_chunk_visuals.
-#                Reuses existing MultiMeshInstance3D and MeshInstance3D nodes instead of
-#                destroying (queue_free) and instantiating (add_child) them continuously.
-#              - Applied the Flyweight Design Pattern by creating a single shared static
-#                BoxMesh instance across all MultiMeshes in the world, eliminating duplicate
-#                C++ geometry allocations on Vulkan.
-#              - Added the has_collision_body() and set_collision_body() APIs to support
-#                advanced, dynamic Physics LOD.
-#              FIXED: Corrected function nesting and indentation scopes to resolve
-#              compilation and static analysis warnings.
+#                resources.
+#              TEXTURE OVERHAUL UPGRADE:
+#              - Expanded `TEXTURE_MAP` to include snow, ice, mud, lava, and birch bark.
+#              - Configured custom emission maps for textured Lava and translucency 
+#                parameters for textured Ice/Glass blocks.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -51,7 +43,7 @@ static var _leaves_wind_shader: Shader
 const TEXTURE_DIR := "res://assets/textures/"
 
 ## File names mapping for custom block albedo textures.
-## UPGRADED: Added mappings for Coal Ore, Red Bricks, and Glass.
+## UPGRADED: Expanded to support the 5 new custom tileable pixel-art textures.
 const TEXTURE_MAP = {
 	BlockType.Type.STONE: "stone.png",
 	BlockType.Type.DIRT: "dirt.png",
@@ -63,7 +55,14 @@ const TEXTURE_MAP = {
 	BlockType.Type.NEON_MAGENTA: "sakura_leaves.png",
 	BlockType.Type.COAL_ORE: "coal_ore.png",
 	BlockType.Type.BRICKS: "bricks.png",
-	BlockType.Type.GLASS: "glass.png"
+	BlockType.Type.GLASS: "glass.png",
+	
+	# New textured overhaul blocks
+	BlockType.Type.SNOW: "snow.png",
+	BlockType.Type.ICE: "ice.png",
+	BlockType.Type.MUD: "mud.png",
+	BlockType.Type.LAVA: "lava.png",
+	BlockType.Type.BIRCH_LOG: "birch_log.png"
 }
 
 
@@ -149,7 +148,6 @@ func has_collision_body() -> bool:
 
 
 ## Dynamic Physics LOD API: Injects and registers a static collision body directly
-## without modifying or redrawing MultiMesh rendering.
 func set_collision_body(p_collision_body: StaticBody3D) -> void:
 	if is_instance_valid(_collision_body):
 		if _collision_body.get_parent() == self:
@@ -162,7 +160,6 @@ func set_collision_body(p_collision_body: StaticBody3D) -> void:
 
 
 ## Configures the segmented MultiMeshes and registers the physics collision body.
-## Uses an advanced mesh recycling pool to prevent runtime instantiation lag.
 func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D, p_liquid_meshes: Dictionary = {}) -> void:
 	var active_types: Dictionary = {}
 	
@@ -177,7 +174,6 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 		active_types[block_type] = true
 		
 		if _multimeshes.has(block_type) and _multimeshes[block_type] is MultiMeshInstance3D:
-			# POOL RECYCLE: Direct hardware buffer rewrite
 			var mm_instance: MultiMeshInstance3D = _multimeshes[block_type]
 			var mm: MultiMesh = mm_instance.multimesh
 			if mm != null:
@@ -185,7 +181,6 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 				mm.buffer = bulk_array
 			mm_instance.visible = true
 		else:
-			# Clean old mismatching node if any
 			if _multimeshes.has(block_type):
 				var old_node = _multimeshes[block_type]
 				if is_instance_valid(old_node):
@@ -197,7 +192,7 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
 			mm.use_colors = false 
-			mm.mesh = _get_shared_box_mesh() # Share the single static BoxMesh instance!
+			mm.mesh = _get_shared_box_mesh()
 			mm.instance_count = instance_count
 			mm.buffer = bulk_array
 			
@@ -216,7 +211,6 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 		active_types[block_type] = true
 		
 		if _multimeshes.has(block_type) and _multimeshes[block_type] is MeshInstance3D:
-			# POOL RECYCLE: Direct mesh re-assignment
 			var mi: MeshInstance3D = _multimeshes[block_type]
 			mi.mesh = mesh
 			mi.visible = true
@@ -242,7 +236,7 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 				if node is MultiMeshInstance3D:
 					var mm: MultiMesh = node.multimesh
 					if mm != null:
-						mm.instance_count = 0 # Sleep CPU drawing
+						mm.instance_count = 0
 					node.visible = false
 				elif node is MeshInstance3D:
 					node.mesh = null
@@ -278,26 +272,41 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 		_materials_cache[block_type] = mat
 		return mat
 	
-	# Lava Setup
+	# Lava Setup (Upgraded with emissive albedo texture blending)
 	elif block_type == BlockType.Type.LAVA:
 		var mat := ORMMaterial3D.new()
 		mat.albedo_color = def.color_top
-		mat.roughness = 0.9
+		mat.roughness = 0.95
 		mat.emission_enabled = true
 		mat.emission = Color(1.0, 0.35, 0.0) 
 		mat.emission_energy_multiplier = 1.8
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
+		if _loaded_textures.has(block_type):
+			mat.albedo_texture = _loaded_textures[block_type]
+			mat.emission_texture = _loaded_textures[block_type]
 		_materials_cache[block_type] = mat
 		return mat
 		
-	# Clouds, Ice, and Glass Setup
-	elif block_type == BlockType.Type.CLOUD or block_type == BlockType.Type.ICE or block_type == BlockType.Type.GLASS:
+	# Clouds Setup (Translucent flat voxel clouds)
+	elif block_type == BlockType.Type.CLOUD:
 		var mat := ORMMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.albedo_color = Color(0.05, 0.35, 0.82, 0.84) 
-		mat.roughness = 0.08 
-		mat.metallic = 0.15
+		mat.albedo_color = def.color_top
+		mat.roughness = 0.9
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
+		_materials_cache[block_type] = mat
+		return mat
+
+	# Ice and Glass Setup (Upgraded with transparency and texture blending)
+	elif block_type == BlockType.Type.ICE or block_type == BlockType.Type.GLASS:
+		var mat := ORMMaterial3D.new()
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = def.color_top
+		mat.roughness = 0.1
+		mat.metallic = 0.2
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
+		if _loaded_textures.has(block_type):
+			mat.albedo_texture = _loaded_textures[block_type]
 		_materials_cache[block_type] = mat
 		return mat
 		

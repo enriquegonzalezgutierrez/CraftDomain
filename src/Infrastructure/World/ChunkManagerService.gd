@@ -5,27 +5,12 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Holds and manages both 
 #                _chunk_nodes and _chunk_entities locally, centralizing chunk 
-#                resource lifecycles and resolving cyclic type warnings.
-#              - HIGH PERFORMANCE PIPELINE: Implements reactive main-thread dispatching,
-#                rendering all completed background thread tasks instantly to eliminate
-#                frame-stutters and redraw queues starvation.
-#              OPTIMIZATIONS:
-#              - Replaced individual block shape owners with a single merged 
-#                ConcavePolygonShape3D per chunk node to resolve Godot's PhysicsServer3D bottleneck.
-#              - Decoupled entity spawning from the initial chunk rendering queue to enable
-#                distant chunks to remain completely static.
-#              - Added the proximity-based mob spawner API to populate active regions on-demand.
-#              - Implemented a Time-Sliced (Amortized) main thread rendering pipeline, limiting
-#                chunk generation attachments to a maximum of 2 chunks per frame to eliminate
-#                frame spikes when loading large distances.
-#              - FIXED: Cached empty spawning arrays in _chunk_entities to resolve the 
-#                infinite evaluation loop bug, dropping standby CPU overhead to 0.
-#              - THREAD THROTTLING: Added an asynchronous request queue to limit parallel
-#                WorkerThreadPool background tasks to a maximum of 2 concurrent hilos,
-#                resolving CPU core starvation and maintaining 60 FPS while walking.
-#              - FIXED: Unified Case A and Case B rendering dispatchers to use the pre-compiled
-#                background task.collision_shape. This resolves block-editing (mining/building) 
-#                and collision tunneling bugs.
+#                resource lifecycles.
+#              PHYSICS OVERHAUL (ZERO-FRICTION WORLD):
+#              - Injected a customized PhysicsMaterial with `friction = 0.0` into 
+#                every generated chunk StaticBody3D. This completely eliminates 
+#                friction-lock between flat box colliders and voxel walls, preventing 
+#                the player from getting stuck on trees, cliffs, or walls.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -42,7 +27,6 @@ var _unload_queue: Array[Vector3i] = []
 var _pending_loading_chunks: Dictionary = {}
 
 ## Array of chunk requests waiting to be loaded/rebuilt: Array[Dictionary]
-## Structure: {"pos": Vector3i, "is_rebuild": bool}
 var _load_requests_queue: Array = []
 
 ## Number of currently active background WorkerThreadPool tasks
@@ -78,6 +62,31 @@ func get_active_nodes() -> Dictionary:
 	return _chunk_nodes
 
 
+## Places or breaks a block globally, updates Domain, and requests asynchronous redraws.
+func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
+	world_state.set_block(global_pos, type)
+	
+	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
+	_request_chunk_rebuild(chunk_pos)
+	
+	var local_pos := world_state.global_to_local_pos(global_pos)
+	
+	if local_pos.x == 0: 
+		_request_chunk_rebuild(chunk_pos + Vector3i(-1, 0, 0))
+	elif local_pos.x == Chunk.SIZE - 1: 
+		_request_chunk_rebuild(chunk_pos + Vector3i(1, 0, 0))
+		
+	if local_pos.y == 0: 
+		_request_chunk_rebuild(chunk_pos + Vector3i(0, -1, 0))
+	elif local_pos.y == Chunk.SIZE - 1: 
+		_request_chunk_rebuild(chunk_pos + Vector3i(0, 1, 0))
+		
+	if local_pos.z == 0: 
+		_request_chunk_rebuild(chunk_pos + Vector3i(0, 0, -1))
+	elif local_pos.z == Chunk.SIZE - 1: 
+		_request_chunk_rebuild(chunk_pos + Vector3i(0, 0, 1))
+
+
 ## Queues chunks for asynchronous loading (Background thread)
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
 	for pos in chunk_positions:
@@ -93,14 +102,12 @@ func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
 
 ## Safe Frame Ticker: Process unloads and drains the completed tasks queue smoothly.
 func process_frame_queues() -> void:
-	# Process unloads up to 3 chunks per frame to avoid CPU stalls
 	var unloads_processed := 0
 	while _unload_queue.size() > 0 and unloads_processed < 3:
 		var chunk_to_unload := _unload_queue.pop_front() as Vector3i
 		_unload_chunk_node(chunk_to_unload)
 		unloads_processed += 1
 		
-	# Amortize completed generation tasks to keep the frame rate stable
 	_render_completed_chunks_from_queue()
 
 
@@ -134,7 +141,7 @@ func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 		return
 		
 	_pending_loading_chunks[chunk_pos] = true
-	_load_requests_queue.append({"pos": chunk_pos, "is_rebuild": true})
+	_load_requests_queue.push_front({"pos": chunk_pos, "is_rebuild": true})
 	_queue_mutex.unlock()
 	
 	_trigger_next_background_tasks()
@@ -172,13 +179,11 @@ func _background_generate_chunk_task_wrapper(chunk_pos: Vector3i) -> void:
 func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	var chunk := Chunk.new(chunk_pos)
 	
-	# Thread-safe Guard: Abort if the controller has been freed during shutdown
 	if not is_instance_valid(controller):
 		return
 		
 	controller.generator.generate_chunk(chunk)
 	
-	# Thread-safe Guard: Abort if the controller or repository has been freed during shutdown
 	if not is_instance_valid(controller) or not is_instance_valid(controller.repository):
 		return
 		
@@ -190,7 +195,6 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 			
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state)
 	
-	# Thread-safe Guard: Abort before liquid meshing
 	if not is_instance_valid(controller):
 		return
 		
@@ -200,7 +204,6 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 		if l_mesh != null:
 			liquids[l_type] = l_mesh
 	
-	# Compile ConcavePolygonShape3D and build BVH tree entirely on the background thread
 	var col_shape: ConcavePolygonShape3D = null
 	var vertices: PackedVector3Array = visual_data["collision_vertices"]
 	if vertices.size() > 0:
@@ -244,7 +247,6 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 		
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state)
 	
-	# Thread-safe Guard: Abort if the controller has been freed during shutdown
 	if not is_instance_valid(controller):
 		return
 		
@@ -254,7 +256,6 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 		if l_mesh != null:
 			liquids[l_type] = l_mesh
 
-	# Compile ConcavePolygonShape3D and build BVH tree entirely on the background thread
 	var col_shape: ConcavePolygonShape3D = null
 	var vertices: PackedVector3Array = visual_data["collision_vertices"]
 	if vertices.size() > 0:
@@ -269,7 +270,7 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 	task_result.is_rebuild = true
 
 	_queue_mutex.lock()
-	_completed_tasks_queue.append(task_result)
+	_completed_tasks_queue.push_front(task_result)
 	_queue_mutex.unlock()
 
 # ==============================================================================
@@ -277,10 +278,9 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 # ==============================================================================
 
 ## Flushes and processes completed background threads on the main thread loop.
-## Limit rendering to at most 2 chunks per frame to keep the framerate perfectly stable.
 func _render_completed_chunks_from_queue() -> void:
 	var rendered_this_frame := 0
-	const MAX_CHUNKS_PER_FRAME := 2 # Time-slicing limit
+	const MAX_CHUNKS_PER_FRAME := 2 
 	
 	while rendered_this_frame < MAX_CHUNKS_PER_FRAME:
 		var task: GeneratedChunkTask = null
@@ -291,7 +291,7 @@ func _render_completed_chunks_from_queue() -> void:
 		_queue_mutex.unlock()
 		
 		if task == null:
-			break # Queue is completely empty
+			break 
 			
 		_render_single_completed_task(task)
 		rendered_this_frame += 1
@@ -311,6 +311,12 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			var collision_body := StaticBody3D.new()
 			collision_body.name = "StaticCollisionBody"
 			
+			# OVERHAUL: Inject zero-friction material override to stop box clinging
+			var phys_mat := PhysicsMaterial.new()
+			phys_mat.friction = 0.0
+			phys_mat.rough = false
+			collision_body.physics_material_override = phys_mat
+			
 			if task.collision_shape != null:
 				var col_shape := CollisionShape3D.new()
 				col_shape.name = "ChunkCollisionShape"
@@ -329,27 +335,29 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			
 			var collision_body: StaticBody3D = null
 			
-			# SOLID COLLISION ENFORCEMENT: Instantly assign the precompiled background collision shape.
-			# This completely guarantees the player will never clip, fall through floors, or tunnel.
 			if task.collision_shape != null:
 				collision_body = StaticBody3D.new()
 				collision_body.name = "StaticCollisionBody"
+				
+				# OVERHAUL: Inject zero-friction material override to stop box clinging
+				var phys_mat := PhysicsMaterial.new()
+				phys_mat.friction = 0.0
+				phys_mat.rough = false
+				collision_body.physics_material_override = phys_mat
+				
 				var col_shape := CollisionShape3D.new()
 				col_shape.name = "ChunkCollisionShape"
-				col_shape.shape = task.collision_shape # Instant 0.00 ms pointer assignment
+				col_shape.shape = task.collision_shape 
 				collision_body.add_child(col_shape)
 			
 			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
 			
-			# Sew seams asynchronously with the 4 adyacents to cull chunk-boundary water/block faces.
-			# Evaluated smoothly under the thread-throttled task queue to preserve high frame rates.
 			var horizontal_dirs: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
 			for dir in horizontal_dirs:
 				var neighbor_pos: Vector3i = chunk_pos + dir
 				if _chunk_nodes.has(neighbor_pos):
 					_request_chunk_rebuild(neighbor_pos)
 			
-			# Clean and compliant SceneTree setup (removed redundant Case B spawning trigger)
 			controller.register_streetlights_for_chunk(task.chunk)
 			controller.check_player_spawn_activation()
 
@@ -359,7 +367,6 @@ func _spawn_chunk_pos_0_exists_and_valid(pos_0: Vector3i, pos_1: Vector3i) -> bo
 
 
 ## Dynamic Proximity Spawner: Spawns entities close to the player's current position.
-## Caches evaluated empty columns to prevent CPU evaluation loops.
 func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
 	var player_block_pos := Vector3i(
 		floor(player_global_pos.x),
@@ -373,17 +380,12 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 			var target_chunk_pos_0 := Vector3i(player_chunk_pos.x + x, 0, player_chunk_pos.z + z)
 			var target_chunk_pos_1 := Vector3i(player_chunk_pos.x + x, 1, player_chunk_pos.z + z)
 			
-			# Check if both layers of the chunk column are rendered
 			if _chunk_nodes.has(target_chunk_pos_0) and _chunk_nodes.has(target_chunk_pos_1):
 				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
 				
-				# A. MOB SPAWNER TRIGGER: Only spawn entities if the chunk is fully loaded with its physics collision body!
-				# This guarantees that mobs land perfectly on the solid floor and never float or fall into the void.
 				if not _chunk_entities.has(col_pos) and _chunk_nodes[target_chunk_pos_0].has_collision_body():
 					var chunk_0 = _chunk_nodes[target_chunk_pos_0].chunk
 					var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
-					
-					# FIXED: Always register the array (even if empty) to prevent infinite evaluation loops!
 					_chunk_entities[col_pos] = spawned
 
 
@@ -392,7 +394,6 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		_pending_loading_chunks.erase(chunk_pos)
 		return
 
-	# Handle safe dynamic animal and village NPC removal
 	var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
 	if _chunk_entities.has(col_pos):
 		var entities: Array = _chunk_entities[col_pos]

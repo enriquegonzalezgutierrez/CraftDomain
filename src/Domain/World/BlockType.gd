@@ -3,13 +3,9 @@
 # Description: Pure Domain Value Object defining all supported voxel block types.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by encapsulating only the block classification maps.
-#              BLOCK OVERHAUL UPGRADE: 
-#              - Added COAL_ORE (21), BRICKS (22), and GLASS (23) block types.
-#              - Configured physical solid and light-transparent properties 
-#                (Glass is solid but transparent).
-#              - OPTIMIZATION: Configured LEAVES and CLOUD as non-solid blocks to prevent
-#                players and mobs from getting physically trapped inside tree canopies,
-#                resolving the 6 FPS collision lock-up.
+#              TEXTURE OVERHAUL UPGRADE: 
+#              - Added BIRCH_LOG (24) block type to replace the snow placeholder 
+#                on Birch Trees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockType.gd
 # ==============================================================================
@@ -40,10 +36,11 @@ enum Type {
 	CROP_GROWING = 19,
 	CROP_RIPE = 20,
 	
-	# New structural blocks
+	# Extended structural blocks
 	COAL_ORE = 21,
 	BRICKS = 22,
-	GLASS = 23
+	GLASS = 23,
+	BIRCH_LOG = 24
 }
 
 

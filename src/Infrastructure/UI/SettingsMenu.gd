@@ -1,11 +1,10 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure UI component providing a dynamic Settings menu
-#              to control Music Volume, SFX Volume, and Display Resolutions.
+#              to control Music Volume, SFX Volume, Render Distance, and Display 
+#              Resolutions.
 #              SOLID COMPLIANCE: Adheres to SRP by managing configuration UI.
 #              REACTIVITY: Implements safe checks to prevent early SceneTree Null crashes.
-#              FIX: Swapped initialization order in _ready() to populate dropdown
-#              items before attempting selection, resolving index out of bounds error.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/SettingsMenu.gd
 # ==============================================================================
@@ -19,6 +18,7 @@ signal closed
 var _title_label: Label
 var _music_label: Label
 var _sfx_label: Label
+var _render_dist_label: Label
 var _res_label: Label
 var _lang_label: Label
 
@@ -80,7 +80,20 @@ func _ready() -> void:
 	
 	box.add_child(_create_spacer(15))
 	
-	# 4. Display Resolution Dropdown
+	# 4. Render Distance Slider
+	_render_dist_label = _create_label()
+	box.add_child(_render_dist_label)
+	var dist_slider := HSlider.new()
+	dist_slider.min_value = 4.0
+	dist_slider.max_value = 14.0
+	dist_slider.step = 1.0
+	dist_slider.value = float(ChunkLoaderService.global_view_distance)
+	dist_slider.value_changed.connect(_on_render_distance_changed)
+	box.add_child(dist_slider)
+	
+	box.add_child(_create_spacer(15))
+	
+	# 5. Display Resolution Dropdown
 	_res_label = _create_label()
 	box.add_child(_res_label)
 	
@@ -99,7 +112,7 @@ func _ready() -> void:
 	
 	box.add_child(_create_spacer(15))
 	
-	# 5. Interface Language Selector
+	# 6. Interface Language Selector
 	_lang_label = _create_label()
 	box.add_child(_lang_label)
 	
@@ -120,29 +133,33 @@ func _ready() -> void:
 	
 	box.add_child(_create_spacer(30))
 	
-	# 6. Back / Close Button
+	# 7. Back / Close Button
 	_back_btn = Button.new()
 	_back_btn.custom_minimum_size = Vector2(0, 48)
 	_back_btn.pressed.connect(func() -> void: closed.emit())
 	box.add_child(_back_btn)
 	
-	# 7. FIXED: Render dynamic localized texts FIRST (Populates dropdown options)
+	# 8. Render dynamic localized texts
 	_refresh_localized_text()
-	
-	# Initialize Resolution list state on boot safely (Now safe to select since items exist!)
 	_setup_resolution_dropdown_state()
+
 
 ## REACTIVITY: Captures dynamic i18n locale changes from Godot's Translation Server on-the-fly
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED:
 		_refresh_localized_text()
 
+
 ## Dynamically refreshes all visible text elements with the active translation database
-## FIXED: Added strict is_instance_valid() checks to prevent early SceneTree call crashes.
 func _refresh_localized_text() -> void:
 	if is_instance_valid(_title_label): _title_label.text = tr("SETTINGS_TITLE")
 	if is_instance_valid(_music_label): _music_label.text = tr("SETTINGS_MUSIC")
 	if is_instance_valid(_sfx_label): _sfx_label.text = tr("SETTINGS_SFX")
+	
+	# Render Distance updates with real-time parameter tracking
+	if is_instance_valid(_render_dist_label): 
+		_render_dist_label.text = tr("SETTINGS_RENDER_DISTANCE") + ": " + str(ChunkLoaderService.global_view_distance)
+		
 	if is_instance_valid(_res_label): _res_label.text = tr("SETTINGS_RESOLUTION")
 	if is_instance_valid(_lang_label): _lang_label.text = tr("SETTINGS_LANGUAGE")
 	if is_instance_valid(_back_btn): _back_btn.text = tr("SETTINGS_BACK")
@@ -157,6 +174,7 @@ func _refresh_localized_text() -> void:
 		_res_opt.add_item(tr("SETTINGS_RESOLUTION_FULLSCREEN"), 2)
 		_res_opt.select(active_index)
 
+
 func _setup_resolution_dropdown_state() -> void:
 	if not OS.has_feature("editor"):
 		var main_window: Window = get_tree().root
@@ -170,6 +188,7 @@ func _setup_resolution_dropdown_state() -> void:
 		if is_instance_valid(_res_opt):
 			_res_opt.select(0)
 
+
 func _create_label() -> Label:
 	var l := Label.new()
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -178,10 +197,12 @@ func _create_label() -> Label:
 	l.label_settings = ls
 	return l
 
+
 func _create_spacer(h: int) -> Control:
 	var s := Control.new()
 	s.custom_minimum_size = Vector2(0, h)
 	return s
+
 
 ## Safely locates an Audio Bus by name, or creates it programmatically if it doesn't exist
 func _get_or_create_bus(bus_name: String) -> int:
@@ -192,15 +213,23 @@ func _get_or_create_bus(bus_name: String) -> int:
 		AudioServer.set_bus_name(idx, bus_name)
 	return idx
 
+
 func _on_music_changed(val: float) -> void:
 	var bus_idx := _get_or_create_bus("Music")
 	AudioServer.set_bus_volume_db(bus_idx, val)
 	AudioServer.set_bus_mute(bus_idx, val <= -39.0)
 
+
 func _on_sfx_changed(val: float) -> void:
 	var bus_idx := _get_or_create_bus("SFX")
 	AudioServer.set_bus_volume_db(bus_idx, val)
 	AudioServer.set_bus_mute(bus_idx, val <= -39.0)
+
+
+func _on_render_distance_changed(val: float) -> void:
+	ChunkLoaderService.global_view_distance = int(val)
+	_refresh_localized_text() # Re-render label to show the new number instantly
+
 
 func _on_apply_resolution_pressed() -> void:
 	if OS.has_feature("editor"):
@@ -221,6 +250,7 @@ func _on_apply_resolution_pressed() -> void:
 			main_window.move_to_center()
 		2:
 			main_window.mode = Window.MODE_FULLSCREEN
+
 
 ## Triggered when the user picks English or Spanish in the language dropdown
 func _on_language_changed(index: int) -> void:

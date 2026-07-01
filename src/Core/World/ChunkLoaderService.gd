@@ -5,24 +5,27 @@
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Handles exclusively player 
 #                boundary tracking and queue calculations.
-#              OPTIMIZATION:
-#              - Increased view_distance to 6 chunks radius (13x2x13 grid = 338 active chunks)
-#                to test extreme rendering capacity.
-#              - Fully supported by the time-sliced amortized chunk rendering pipeline
-#                to ensure stable and high frame rates.
+#              - Open-Closed Principle (OCP): Dynamically reacts to static 
+#                configuration changes without modifying core logic.
+#              SETTINGS UPGRADE:
+#              - Replaced hardcoded view distance with `global_view_distance`.
+#              - Added `_last_view_distance` tracking to instantly trigger 
+#                recalculations if the user changes settings while standing still.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/World/ChunkLoaderService.gd
 # ==============================================================================
 class_name ChunkLoaderService
 extends RefCounted
 
-## Extreme View Distance Radius (6 chunks radius = 13x2x13 grid = 338 active chunks).
-## Now fully supported with stable frame rates thanks to the amortized rendering pipeline.
-## Feel free to adjust this value (e.g., 4 for standard, 8 for super horizon).
-var view_distance: int = 8
+## Global configuration for chunk render distance radius.
+## Managed by the SettingsMenu. Default is 8.
+static var global_view_distance: int = 8
 
 ## Keeps track of the last chunk position the player was in to avoid redundant updates.
 var _last_viewer_chunk_pos: Vector3i = Vector3i(999, 999, 999)
+
+## Keeps track of the last evaluated distance to force updates if settings change dynamically.
+var _last_view_distance: int = -1
 
 ## Struct containing the calculated state change queues.
 class ChunkUpdateTask:
@@ -41,17 +44,19 @@ func check_viewer_position(player_global_pos: Vector3, world_state: WorldState) 
 		floor(player_global_pos.z)
 	)
 	var current_viewer_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
+	var current_distance := global_view_distance
 	
-	# 2. Only run intensive calculations if the player has crossed a chunk boundary
-	if current_viewer_chunk_pos == _last_viewer_chunk_pos:
+	# 2. Only run intensive calculations if the player crossed a boundary OR changed settings
+	if current_viewer_chunk_pos == _last_viewer_chunk_pos and current_distance == _last_view_distance:
 		return task # Empty task, skip calculation
 		
 	_last_viewer_chunk_pos = current_viewer_chunk_pos
+	_last_view_distance = current_distance
 	
-	# 3. Calculate all chunk positions that should be active (13x2x13 3D grid)
+	# 3. Calculate all chunk positions that should be active
 	var desired_chunks: Dictionary = {}
-	for x in range(-view_distance, view_distance + 1):
-		for z in range(-view_distance, view_distance + 1):
+	for x in range(-current_distance, current_distance + 1):
+		for z in range(-current_distance, current_distance + 1):
 			# We load layers Y=0 and Y=1 (Height range 0 to 31) to support full heights & building
 			for y in range(2):
 				var target_pos := Vector3i(current_viewer_chunk_pos.x + x, y, current_viewer_chunk_pos.z + z)

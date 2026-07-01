@@ -6,6 +6,9 @@
 #              - Single Responsibility Principle (SRP): Handles exclusively the 
 #                geometric block-placement math for this specific asset.
 #              - Open-Closed Principle (OCP): Extends IStructureBlueprint dynamically.
+#              TEXTURE OVERHAUL UPGRADE:
+#              - Updated the trunk generation blocks from SNOW (placeholder) 
+#                to the dedicated BIRCH_LOG block type.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BirchTreeBlueprint.gd
 # ==============================================================================
@@ -21,9 +24,9 @@ func get_structure_id() -> int:
 func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
 	var trunk_height: int = 6
 	
-	# 1. Grow Slender White Trunk (Using Snow blocks for white bark)
+	# 1. Grow Slender White Trunk (Using the new BIRCH_LOG block type)
 	for y in range(1, trunk_height + 1):
-		chunk.set_block(start_x, ground_y + y, start_z, BlockType.Type.SNOW)
+		chunk.set_block(start_x, ground_y + y, start_z, BlockType.Type.BIRCH_LOG)
 		
 	# 2. Build layered leaf canopy (3x3 plates tapering upward)
 	var top_y := ground_y + trunk_height
