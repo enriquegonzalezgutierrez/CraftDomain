@@ -6,9 +6,10 @@
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Handles exclusively gaze 
 #                interaction mechanics and block modification triggers.
+#              - Open-Closed Principle (OCP): Item behaviors are decoupled into 
+#                parameterized strategies, removing hardcoded logic.
 #              - Dependency Inversion Principle (DIP): Connects strictly with 
-#                the `IInventory` abstract interface and typed `WorldController`,
-#                eliminating untyped dynamic calls.
+#                abstractions (IInventory, ItemUsageStrategy, WorldController).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -266,46 +267,34 @@ func _build_or_interact() -> void:
 		
 	var item_id := slot_data.item_id
 	var world_state := world_ctrl.world_state
-	
-	# HEALING CASE: Consume 1x Fried Chicken (Item ID 16) to restore health
-	if item_id == 16:
-		if player.domain_entity.health < 3:
-			inventory.consume_item(16, 1)
-			player.domain_entity.health = min(3, player.domain_entity.health + 1)
-			if is_instance_valid(hud):
-				hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "NOTIFICATION_CONSUME_FOOD_DESC")
+	if not is_instance_valid(world_state):
 		return
-
-	# SEED PLANTING: Plant crop seeds on top of solid soil blocks (Item ID 18: Crop Seed)
-	if item_id == 18:
-		var hit_normal := raycast.get_collision_normal()
-		if hit_normal.y == 1.0: # Top face interactions only
-			var hit_pos := raycast.get_collision_point() - (hit_normal * 0.5)
-			var soil_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
-			var soil_type := world_state.get_block(soil_coord)
-			
-			if soil_type == BlockType.Type.GRASS or soil_type == BlockType.Type.DIRT:
-				var crop_coord := soil_coord + Vector3i(0, 1, 0)
-				if world_state.get_block(crop_coord) == BlockType.Type.AIR:
-					inventory.consume_item(18, 1)
-					world_ctrl.set_block_globally(crop_coord, BlockType.Type.CROP_SEED)
-					if is_instance_valid(hud):
-						hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")
-					return
-		return
-
-	# Standard block placement
-	var is_block_selected = player.is_item_selected
-	if is_block_selected:
-		var build_type := slot_data.item_id as BlockType.Type
-		var build_pos: Vector3 = raycast.get_collision_point() + (raycast.get_collision_normal() * 0.5)
-		var block_coord := Vector3i(floori(build_pos.x), floori(build_pos.y), floori(build_pos.z))
 		
-		# Prevent placing blocks inside the player's bounding collision capsule
-		var player_feet := Vector3i(floori(player.global_position.x), floori(player.global_position.y), floori(player.global_position.z))
-		var player_head := Vector3i(floori(player.global_position.x), floori(player.global_position.y + 0.9), floori(player.global_position.z))
-		if block_coord == player_feet or block_coord == player_head: 
-			return
+	# DIP / OCP Strategy Router query
+	var strategy := ItemStrategyRegistry.get_strategy(item_id)
+	if strategy != null:
+		var hit_normal := raycast.get_collision_normal()
+		var hit_pos := raycast.get_collision_point() - (hit_normal * 0.5)
+		var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
+		
+		# Validate strategy requirements
+		if strategy.can_use(player.domain_entity, inventory, target_coord, hit_normal, world_state):
 			
-		inventory.consume_item(build_type, 1)
-		world_ctrl.set_block_globally(block_coord, build_type)
+			# SPECIAL BOUNDING SHIELD: Prevent placing solid blocks inside player's body
+			if strategy is PlaceableBlockStrategy:
+				var build_coord := target_coord + Vector3i(hit_normal)
+				var player_feet := Vector3i(floori(player.global_position.x), floori(player.global_position.y), floori(player.global_position.z))
+				var player_head := Vector3i(floori(player.global_position.x), floori(player.global_position.y + 0.9), floori(player.global_position.z))
+				if build_coord == player_feet or build_coord == player_head: 
+					return
+					
+			# Execute strategy business rules
+			strategy.use(player.domain_entity, inventory, target_coord, hit_normal, world_ctrl)
+			
+			# Contextual visual toast notifications (Decoupled from core strategy rules)
+			if is_instance_valid(hud):
+				if strategy is ConsumableItemStrategy:
+					hud.update_health_display(player.domain_entity.health)
+					hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "NOTIFICATION_CONSUME_FOOD_DESC")
+				elif strategy is PlantableItemStrategy:
+					hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")
