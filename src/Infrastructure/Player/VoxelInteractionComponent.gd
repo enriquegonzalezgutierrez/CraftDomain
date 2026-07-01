@@ -6,11 +6,9 @@
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Handles exclusively gaze 
 #                interaction mechanics and block modification triggers.
-#              - Dependency Inversion Principle (DIP): Rather than hardcoding 
-#                direct slot-data modifications, it utilizes the abstract 
-#                IInventory interface methods.
-#              - OBSERVER PATTERN: Cleaned of manual HUD-sync cascades; actions 
-#                now reactively fire signals from the domain.
+#              - Dependency Inversion Principle (DIP): Connects strictly with 
+#                the `IInventory` abstract interface and typed `WorldController`,
+#                eliminating untyped dynamic calls.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -96,7 +94,7 @@ func process_interaction() -> void:
 func _update_target_highlight() -> void:
 	if is_instance_valid(highlight_mesh) and is_instance_valid(raycast) and raycast.is_colliding():
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
-		var target_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
+		var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 		
 		highlight_mesh.global_position = Vector3(target_coord) + Vector3(0.5, 0.5, 0.5)
 		highlight_mesh.visible = true
@@ -115,34 +113,39 @@ func _mine_or_attack() -> void:
 		
 	var collider := raycast.get_collider()
 	var active_slot := player.active_slot_index
-	var inventory := player.get("inventory") as InventoryComponent
+	var inventory := player.get("inventory") as IInventory
 	
 	# COMBAT CODE: Hit hostile or passive character bodies if holding the sword (ID 17)
 	if is_instance_valid(inventory) and is_instance_valid(collider) and collider is CharacterBody3D:
-		var slot_data := inventory.get_slot_data(active_slot)
-		if slot_data != null and slot_data.item_id == 17:
-			if collider.get("domain_entity") is VoxelEntity:
-				var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
-				knockback_dir.y = 2.5
-				if collider.has_method("take_damage"):
-					collider.call("take_damage", 1, knockback_dir)
-				return
+		var inv_comp := inventory as InventoryComponent
+		if is_instance_valid(inv_comp):
+			var slot_data := inv_comp.get_slot_data(active_slot)
+			if slot_data != null and slot_data.item_id == 17:
+				if collider.get("domain_entity") is VoxelEntity:
+					var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
+					knockback_dir.y = 2.5
+					if collider.has_method("take_damage"):
+						collider.call("take_damage", 1, knockback_dir)
+					return
 
 	# MINING CODE: Remove block from the grid and add it to the inventory
-	if is_instance_valid(world_controller) and is_instance_valid(inventory):
+	var world_ctrl := world_controller as WorldController
+	if is_instance_valid(world_ctrl) and is_instance_valid(inventory):
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
-		var block_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
+		var block_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 		
-		var world_state = world_controller.get("world_state") as WorldState
+		var world_state := world_ctrl.world_state
 		if is_instance_valid(world_state):
 			var mined_type := world_state.get_block(block_coord)
-			
+			if mined_type == BlockType.Type.AIR:
+				return
+				
 			# Spawn dynamic color-matched break particles
 			_spawn_mining_particles(Vector3(block_coord), mined_type)
 			
 			var target_id := int(mined_type)
 			
-			# Special Agricultural Harvesting Rules (Using localized keys)
+			# Special Agricultural Harvesting Rules
 			if mined_type == BlockType.Type.CROP_RIPE:
 				inventory.add_item(20, 1) # Ripe Wheat ID
 				inventory.add_item(18, randi_range(1, 2)) # Plump Seeds ID
@@ -155,24 +158,28 @@ func _mine_or_attack() -> void:
 				if is_instance_valid(hud):
 					hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
 			else:
-				# Standard block collection
-				inventory.add_block_by_type(mined_type)
-				
-				# Normalise block mappings back to basic inventory items
+				# Standard block collection (DIP: Translate BlockType to Item ID on the fly)
 				match mined_type:
 					BlockType.Type.SAND, BlockType.Type.RED_SAND, BlockType.Type.MUD:
-						target_id = 2 
+						target_id = 2 # Dirt ID
 					BlockType.Type.SNOW, BlockType.Type.ICE, BlockType.Type.NEON_CYAN, BlockType.Type.NEON_MAGENTA:
-						target_id = 1 
+						target_id = 1 # Stone ID
 					BlockType.Type.CLOUD:
-						target_id = 5 
-						
+						target_id = 5 # Leaves ID
+					BlockType.Type.LEAVES:
+						target_id = 5 # Leaves ID
+						if randf() < 0.25:
+							inventory.add_item(18, 1) # Bonus seed drop
+				
+				inventory.add_item(target_id, 1)
+				
 			# DIP INVERSION: Update quest progress using the injected provider reference
 			var active_q = quest_service_provider.get_active_quest()
 			if active_q != null and active_q.required_item_index == target_id:
 				active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
 				
-		world_controller.call("set_block_globally", block_coord, BlockType.Type.AIR)
+		# Static compile-safe call to rebuild the chunk geometry
+		world_ctrl.set_block_globally(block_coord, BlockType.Type.AIR)
 
 
 ## Instantiates a temporary color-matched GPU debris emitter on block destruction.
@@ -243,17 +250,22 @@ func _build_or_interact() -> void:
 		return
 		
 	var active_slot := player.active_slot_index
-	var inventory := player.get("inventory") as InventoryComponent
+	var inventory := player.get("inventory") as IInventory
+	var world_ctrl := world_controller as WorldController
 	
-	if not is_instance_valid(inventory) or not is_instance_valid(world_controller):
+	if not is_instance_valid(inventory) or not is_instance_valid(world_ctrl):
 		return
 		
-	var slot_data := inventory.get_slot_data(active_slot)
+	var inv_comp := inventory as InventoryComponent
+	if not is_instance_valid(inv_comp):
+		return
+		
+	var slot_data := inv_comp.get_slot_data(active_slot)
 	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:
 		return
 		
 	var item_id := slot_data.item_id
-	var world_state := world_controller.get("world_state") as WorldState
+	var world_state := world_ctrl.world_state
 	
 	# HEALING CASE: Consume 1x Fried Chicken (Item ID 16) to restore health
 	if item_id == 16:
@@ -269,14 +281,14 @@ func _build_or_interact() -> void:
 		var hit_normal := raycast.get_collision_normal()
 		if hit_normal.y == 1.0: # Top face interactions only
 			var hit_pos := raycast.get_collision_point() - (hit_normal * 0.5)
-			var soil_coord := Vector3i(floor(hit_pos.x), floor(hit_pos.y), floor(hit_pos.z))
+			var soil_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 			var soil_type := world_state.get_block(soil_coord)
 			
 			if soil_type == BlockType.Type.GRASS or soil_type == BlockType.Type.DIRT:
 				var crop_coord := soil_coord + Vector3i(0, 1, 0)
 				if world_state.get_block(crop_coord) == BlockType.Type.AIR:
 					inventory.consume_item(18, 1)
-					world_controller.call("set_block_globally", crop_coord, BlockType.Type.CROP_SEED)
+					world_ctrl.set_block_globally(crop_coord, BlockType.Type.CROP_SEED)
 					if is_instance_valid(hud):
 						hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")
 					return
@@ -287,13 +299,13 @@ func _build_or_interact() -> void:
 	if is_block_selected:
 		var build_type := slot_data.item_id as BlockType.Type
 		var build_pos: Vector3 = raycast.get_collision_point() + (raycast.get_collision_normal() * 0.5)
-		var block_coord := Vector3i(floor(build_pos.x), floor(build_pos.y), floor(build_pos.z))
+		var block_coord := Vector3i(floori(build_pos.x), floori(build_pos.y), floori(build_pos.z))
 		
 		# Prevent placing blocks inside the player's bounding collision capsule
-		var player_feet := Vector3i(floor(player.global_position.x), floor(player.global_position.y), floor(player.global_position.z))
-		var player_head := Vector3i(floor(player.global_position.x), floor(player.global_position.y + 0.9), floor(player.global_position.z))
+		var player_feet := Vector3i(floori(player.global_position.x), floori(player.global_position.y), floori(player.global_position.z))
+		var player_head := Vector3i(floori(player.global_position.x), floori(player.global_position.y + 0.9), floori(player.global_position.z))
 		if block_coord == player_feet or block_coord == player_head: 
 			return
 			
 		inventory.consume_item(build_type, 1)
-		world_controller.call("set_block_globally", block_coord, build_type)
+		world_ctrl.set_block_globally(block_coord, build_type)

@@ -180,7 +180,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
-		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(-85))
+		# FIXED: Expanded pitch clamp range up to positive 85 degrees to allow looking up
+		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(85))
 		
 	# 2. Mouse Wheel Hotbar Scrolling
 	elif event is InputEventMouseButton and event.pressed:
@@ -417,11 +418,6 @@ func _on_domain_entity_died() -> void:
 		
 	position = Vector3(8.5, 14.0, 8.5)
 	velocity = Vector3.ZERO
-	
-	# Re-track and reload starting chunks coordinates safely
-	if is_instance_valid(world_controller):
-		var chunk_pos: Vector3i = world_controller.get("world_state").global_to_chunk_pos(Vector3i(8, 0, 8))
-		world_controller.set("_target_spawn_chunk_pos", chunk_pos)
 
 
 func _setup_inputs_mouse_actions() -> void:

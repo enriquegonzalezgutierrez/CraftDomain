@@ -6,6 +6,9 @@
 #              - Single Responsibility Principle (SRP): Holds and manages both 
 #                _chunk_nodes and _chunk_entities locally, centralizing chunk 
 #                resource lifecycles and resolving cyclic type warnings.
+#              - HIGH PERFORMANCE PIPELINE: Implements reactive main-thread dispatching,
+#                rendering all completed background thread tasks instantly to eliminate
+#                frame-stutters and redraw queues starvation.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -22,26 +25,27 @@ var _unload_queue: Array[Vector3i] = []
 var _pending_loading_chunks: Dictionary = {}
 
 ## Tracking map for active ChunkNode representations: Vector3i -> ChunkNode
-## SRP UPGRADE: Moved locally to the manager responsible for chunk lifecycle.
 var _chunk_nodes: Dictionary = {}
 
 ## Tracking map for entities spawned within specific chunk columns: Vector3i (y=0) -> Array[Node]
-## SRP UPGRADE: Moved locally to manage entity lifetimes alongside chunk nodes.
 var _chunk_entities: Dictionary = {}
 
 # Cache System (LRU)
 var _chunk_task_cache: Dictionary = {}
 const CACHE_SIZE_LIMIT: int = 64
 
+
 func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
 	controller = p_controller
 	world_state = p_world_state
 	_queue_mutex = Mutex.new()
 
+
 ## Queues chunks for asynchronous loading (Background thread)
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
 	for pos in chunk_positions:
 		_request_asynchronous_chunk_load(pos)
+
 
 ## Queues chunks to be unloaded from memory
 func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
@@ -49,21 +53,29 @@ func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
 		if not _unload_queue.has(pos):
 			_unload_queue.append(pos)
 
+
 ## Verifies if a chunk is loaded and rendered
 func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
 	return _chunk_nodes.has(chunk_pos)
+
 
 ## Public API: Returns the active chunk nodes (Used by auxiliary services)
 func get_active_nodes() -> Dictionary:
 	return _chunk_nodes
 
-## Safe Frame Ticker: Evaluates completed thread results or processes unloads
+
+## Safe Frame Ticker: Process unloads and drains the entire completed tasks queue in a single frame.
 func process_frame_queues() -> void:
-	if _unload_queue.size() > 0:
+	# Process unloads up to 3 chunks per frame to avoid CPU stalls
+	var unloads_processed := 0
+	while _unload_queue.size() > 0 and unloads_processed < 3:
 		var chunk_to_unload := _unload_queue.pop_front() as Vector3i
 		_unload_chunk_node(chunk_to_unload)
-	else:
-		_render_completed_chunks_from_queue()
+		unloads_processed += 1
+		
+	# Instantly render all completed background generation tasks
+	_render_completed_chunks_from_queue()
+
 
 func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 	if _pending_loading_chunks.has(chunk_pos):
@@ -79,10 +91,12 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 	_pending_loading_chunks[chunk_pos] = true
 	WorkerThreadPool.add_task(_background_generate_chunk_task.bind(chunk_pos))
 
+
 ## ASYNC REBUILD: Queues a single chunk to be re-meshed in background
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 	if not _chunk_nodes.has(chunk_pos):
 		return
+		
 	if _pending_loading_chunks.has(chunk_pos):
 		return
 		
@@ -97,7 +111,6 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	var chunk := Chunk.new(chunk_pos)
 	controller.generator.generate_chunk(chunk)
 	
-	# STRICT TYPING: Force explicit Dictionary typing to prevent compiler warnings
 	var saved_edits: Dictionary = controller.repository.load_chunk_modifications(chunk_pos)
 	if saved_edits.size() > 0:
 		for local_pos in saved_edits.keys():
@@ -127,6 +140,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 		var oldest_key = _chunk_task_cache.keys()[0]
 		_chunk_task_cache.erase(oldest_key)
 	_queue_mutex.unlock()
+
 
 func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 	var chunk := world_state.get_chunk(chunk_pos)
@@ -159,15 +173,19 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 # MAIN THREAD RENDER DISPATCH
 # ==============================================================================
 
+## Flushes and processes all completed background threads on the main thread loop.
 func _render_completed_chunks_from_queue() -> void:
-	var task: GeneratedChunkTask = null
-	
-	_queue_mutex.lock()
-	if _completed_tasks_queue.size() > 0:
-		task = _completed_tasks_queue.pop_front()
-	_queue_mutex.unlock()
-	
-	if task != null:
+	while true:
+		var task: GeneratedChunkTask = null
+		
+		_queue_mutex.lock()
+		if _completed_tasks_queue.size() > 0:
+			task = _completed_tasks_queue.pop_front()
+		_queue_mutex.unlock()
+		
+		if task == null:
+			break # Queue is completely empty, resume next frame
+			
 		var chunk_pos: Vector3i = task.chunk.position
 		
 		if _pending_loading_chunks.has(chunk_pos):
@@ -222,13 +240,13 @@ func _render_completed_chunks_from_queue() -> void:
 				if _chunk_nodes.has(spawn_chunk_pos_0) and _chunk_nodes.has(spawn_chunk_pos_1):
 					if not _chunk_entities.has(col_pos):
 						var chunk_0 = _chunk_nodes[spawn_chunk_pos_0].chunk
-						# STRICT TYPING: Force explicit Array[Node] typing to avoid compiler inference warning
 						var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
 						if spawned.size() > 0:
 							_chunk_entities[col_pos] = spawned
 				
 				controller.register_streetlights_for_chunk(task.chunk)
 				controller.check_player_spawn_activation()
+
 
 func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	if _pending_loading_chunks.has(chunk_pos):
@@ -253,6 +271,7 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		
 	_chunk_nodes.erase(chunk_pos)
 	world_state.remove_chunk(chunk_pos)
+
 
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	world_state.set_block(global_pos, type)
