@@ -5,13 +5,8 @@
 #              SOLID COMPLIANCE:
 #              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity, 
 #                safely overriding the movement, task routing, and visualization loops.
-#              - Single Responsibility Principle (SRP): Handles exclusively military 
-#                detection, chasing, combat cooldowns, and soldier-specific meshes.
-#              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
-#                keys to prevent hardcoded string leakage in codebase.
-#              CONVERSATION LOCK FIXED:
-#              - Passes 'self' as the third argument during HUD dialogue opening
-#                to correctly register and lock pathfinding during watch alerts.
+#              - Single Responsibility Principle (SRP): Delegates rendering setups 
+#                and AI state execution to specialized sibling components.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GuardEntity.gd
 # ==============================================================================
@@ -38,81 +33,85 @@ func _init(spawn_pos: Vector3) -> void:
 	name = "Entity_GUARD"
 
 
-## Concrete Implementation: Assembles a detailed steel-plated soldier, 
-## integrating the deterministic variant palette for unique visual identities.
+## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
+## to the visual component joints.
 func _build_visual_representation() -> void:
 	var armor_base_color := Color(0.40, 0.40, 0.45) # Heavy steel
-	var sash_color := variant_clothing_color         # Procedural tunic trim
-	var plume_color := variant_hair_color            # Procedural helmet plume
-	var skin_color := variant_skin_color             # Procedural skin tone
+	
+	# Extract procedural color parameters calculated on boot by the visual component
+	var sash_color: Color = visual_component.variant_clothing_color         # Procedural tunic trim
+	var plume_color: Color = visual_component.variant_hair_color            # Procedural helmet plume
+	var skin_color: Color = visual_component.variant_skin_color             # Procedural skin tone
+	
+	# Fallback accessory colors
 	var gold_trim := Color(0.85, 0.6, 0.15)          # Gold accents
 	var wood_color := Color(0.45, 0.3, 0.15)         # Shield backing
 	var iron_color := Color(0.55, 0.55, 0.6)         # Raw iron
 	
-	# 1. Base Legs & Iron Greaves (Attached to the bouncing joint)
-	_create_box(_body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), armor_base_color)
+	# 1. Base Legs & Iron Greaves (Attached to the bouncing joint of visual component)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), armor_base_color)
 	
 	# 2. Torso Steel Breastplate
-	_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), armor_base_color)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), armor_base_color)
 	
 	# 3D Shoulder Pauldrons (Gives broad, bulky silhouette)
-	_create_box(_body_bob_node, Vector3(0.12, 0.22, 0.35), Vector3(-0.25, 0.75, 0), iron_color)
-	_create_box(_body_bob_node, Vector3(0.12, 0.22, 0.35), Vector3(0.25, 0.75, 0), iron_color)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.12, 0.22, 0.35), Vector3(-0.25, 0.75, 0), iron_color)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.12, 0.22, 0.35), Vector3(0.25, 0.75, 0), iron_color)
 	
 	# Localized Crimson Belt
-	_create_box(_body_bob_node, Vector3(0.48, 0.08, 0.48), Vector3(0, 0.45, 0), sash_color)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.08, 0.48), Vector3(0, 0.45, 0), sash_color)
 	
-	# 3. Head Joint & Advanced Nose-Guard Helmet
-	_head_node = Node3D.new()
-	_head_node.name = "HumanHead"
-	_head_node.position = Vector3(0, 1.05, 0)
-	_body_bob_node.add_child(_head_node)
+	# 3. Head Joint Setup
+	visual_component.head_node = Node3D.new()
+	visual_component.head_node.name = "HumanHead"
+	visual_component.head_node.position = Vector3(0, 1.05, 0)
+	visual_component.body_bob_node.add_child(visual_component.head_node)
 	
 	# Peachy skin core
-	_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color)
-	_create_box(_head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
+	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color)
+	visual_component.create_box(visual_component.head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
 	
 	# Steel Helmet Dome
-	_create_box(_head_node, Vector3(0.38, 0.22, 0.38), Vector3(0, 0.28, 0), iron_color)
-	_create_box(_head_node, Vector3(0.05, 0.18, 0.04), Vector3(0, 0.19, -0.20), iron_color) # Visor Guard
+	visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.22, 0.38), Vector3(0, 0.28, 0), iron_color)
+	visual_component.create_box(visual_component.head_node, Vector3(0.05, 0.18, 0.04), Vector3(0, 0.19, -0.20), iron_color) # Visor Guard
 	
-	# Colored Plume (Procedural hair variant color)
-	_create_box(_head_node, Vector3(0.04, 0.24, 0.14), Vector3(0, 0.45, 0.05), plume_color)
+	# Colored Plume
+	visual_component.create_box(visual_component.head_node, Vector3(0.04, 0.24, 0.14), Vector3(0, 0.45, 0.05), plume_color)
 	
-	# Deep-set Blinking Eyes
-	_left_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
-	_create_box(_left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.15, 0.15, 0.15))
+	# Deep-set Blinking Eyes (Assigned to visual component tracking)
+	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.create_box(visual_component.left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.15, 0.15, 0.15))
 	
-	_right_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
-	_create_box(_right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.15, 0.15, 0.15))
+	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.create_box(visual_component.right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.15, 0.15, 0.15))
 	
-	# 4. Arms (Clothed in sash color sleeves)
-	_arms_node = Node3D.new()
-	_arms_node.name = "ArmsJoint"
-	_arms_node.position = Vector3(0, 0.65, -0.23)
-	_body_bob_node.add_child(_arms_node)
-	_create_box(_arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), sash_color)
+	# 4. Arms Folded (Sash-colored sleeves)
+	visual_component.arms_node = Node3D.new()
+	visual_component.arms_node.name = "ArmsJoint"
+	visual_component.arms_node.position = Vector3(0, 0.65, -0.23)
+	visual_component.body_bob_node.add_child(visual_component.arms_node)
+	visual_component.create_box(visual_component.arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), sash_color)
 	
-	# 5. Weaponry Equipment Joints (Stored on back by default)
+	# 5. Weaponry Equipment Joints (Parented directly to the bouncing body bob node)
 	_sword_joint = Node3D.new()
 	_sword_joint.name = "IronSwordJoint"
-	_body_bob_node.add_child(_sword_joint)
+	visual_component.body_bob_node.add_child(_sword_joint)
 	_setup_sheathed_sword_transforms(iron_color, gold_trim, wood_color)
 	
 	_shield_joint = Node3D.new()
 	_shield_joint.name = "ShieldJoint"
 	_shield_joint.position = Vector3(0.1, 0.5, 0.25)
 	_shield_joint.rotation = Vector3(0, deg_to_rad(15), deg_to_rad(10))
-	_body_bob_node.add_child(_shield_joint)
+	visual_component.body_bob_node.add_child(_shield_joint)
 	
 	# Shield Board
-	_create_box(_shield_joint, Vector3(0.35, 0.5, 0.05), Vector3(0, 0, 0), wood_color)
+	visual_component.create_box(_shield_joint, Vector3(0.35, 0.5, 0.05), Vector3(0, 0, 0), wood_color)
 	# Steel Border trims
-	_create_box(_shield_joint, Vector3(0.39, 0.04, 0.07), Vector3(0, 0.24, 0.01), iron_color)
-	_create_box(_shield_joint, Vector3(0.04, 0.52, 0.07), Vector3(-0.18, -0.01, 0.01), iron_color)
-	_create_box(_shield_joint, Vector3(0.04, 0.52, 0.07), Vector3(0.18, -0.01, 0.01), iron_color)
+	visual_component.create_box(_shield_joint, Vector3(0.39, 0.04, 0.07), Vector3(0, 0.24, 0.01), iron_color)
+	visual_component.create_box(_shield_joint, Vector3(0.04, 0.52, 0.07), Vector3(-0.18, -0.01, 0.01), iron_color)
+	visual_component.create_box(_shield_joint, Vector3(0.04, 0.52, 0.07), Vector3(0.18, -0.01, 0.01), iron_color)
 	# Tunic color matching crest pattern
-	_create_box(_shield_joint, Vector3(0.12, 0.32, 0.08), Vector3(0, 0, 0.01), sash_color)
+	visual_component.create_box(_shield_joint, Vector3(0.12, 0.32, 0.08), Vector3(0, 0, 0.01), sash_color)
 
 
 ## Constructs the sword boxes and positions the joint in sheathed (passive) transforms.
@@ -120,9 +119,9 @@ func _setup_sheathed_sword_transforms(iron: Color, gold: Color, wood: Color) -> 
 	_sword_joint.position = Vector3(-0.2, 0.5, 0.24)
 	_sword_joint.rotation = Vector3(0, 0, deg_to_rad(-135))
 	
-	_create_box(_sword_joint, Vector3(0.05, 0.45, 0.02), Vector3(0, 0.18, 0), iron)  # Blade
-	_create_box(_sword_joint, Vector3(0.15, 0.04, 0.04), Vector3(0, -0.04, 0), gold)   # Guard
-	_create_box(_sword_joint, Vector3(0.04, 0.12, 0.04), Vector3(0, -0.1, 0), wood)   # Grip
+	visual_component.create_box(_sword_joint, Vector3(0.05, 0.45, 0.02), Vector3(0, 0.18, 0), iron)  # Blade
+	visual_component.create_box(_sword_joint, Vector3(0.15, 0.04, 0.04), Vector3(0, -0.04, 0), gold)   # Guard
+	visual_component.create_box(_sword_joint, Vector3(0.04, 0.12, 0.04), Vector3(0, -0.1, 0), wood)   # Grip
 
 
 func _get_collision_box_size() -> Vector3:
@@ -134,24 +133,22 @@ func _get_collision_box_position() -> Vector3:
 
 
 func _setup_floating_bubble() -> void:
-	var sb_script: Script = load("res://src/Infrastructure/UI/SpeechBubble.gd")
+	var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
 	if sb_script != null:
 		_bubble = sb_script.new() as Node3D
 		add_child(_bubble)
-		_bubble.call("set_text", "RIGHT-CLICK TO TALK!")
+		_bubble.call("set_text", tr("BUBBLE_TALK"))
 
 
 ## Public Gaze Interaction: Deploys tactical dialogue trees.
-## REFACTORING: Passes 'self' as the third parameter to trigger conversational locks.
 func interact(player_node: CharacterBody3D) -> void:
-	var hud = player_node.get("hud")
+	var hud := player_node.get("hud") as PlayerHUD
 	if is_instance_valid(hud):
 		var intro_node := DialogueNode.new()
 		intro_node.node_id = "guard_intro_temp"
 		intro_node.text = _select_procedural_greeting_key()
 			
-		# Pass "self" as the third argument to freeze and lock gaze during dialog
-		hud.call("open_dialogue", intro_node, "Guard", self)
+		hud.open_dialogue(intro_node, "Guard", self)
 
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
@@ -161,21 +158,18 @@ func _select_procedural_greeting_key() -> String:
 	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
 		is_night = celestial.call("is_night_time") as bool
 		
-	# 1. Night-time reactive prompts (Alert of zombie attacks)
 	if is_night:
 		return "DIALOGUE_GUARD_NIGHT"
 		
-	# 2. Biome-specific environmental prompts
 	var biome_id := _detect_current_biome()
 	match biome_id:
-		4: return "DIALOGUE_GUARD_GLACIERS"   # Frozen steel shields
-		7: return "DIALOGUE_GUARD_NEON"       # Tech defense grids
-		
-	# 3. Standard Plains randomized pool (Uses coordinate-based variety index)
-	var variety_index := npc_seed % 2
-	match variety_index:
-		0: return "DIALOGUE_GUARD_PLAINS_A"
-		_: return "DIALOGUE_GUARD_PLAINS_B"
+		4: return "DIALOGUE_GUARD_GLACIERS"   
+		7: return "DIALOGUE_GUARD_NEON"       
+		_:
+			var variety_index := npc_seed % 2
+			match variety_index:
+				0: return "DIALOGUE_GUARD_PLAINS_A"
+				_: return "DIALOGUE_GUARD_PLAINS_B"
 
 
 ## Overrides standard physics ticker to weave defensive aggro scanning loops.
@@ -198,8 +192,10 @@ func _process_defensive_aggro_intelligence(delta: float) -> void:
 		
 	# 2. Process active combat pursuits
 	if is_instance_valid(_combat_target) and not _combat_target.get("domain_entity").is_dead:
-		current_task = TaskState.WORKING # Lock standard wandering routines
-		
+		# Lock standard wandering AI decisions
+		if is_instance_valid(ai_component):
+			ai_component.current_task = NPCAIComponent.TaskState.WORKING
+			
 		# Animate: Draw weapon forward (Move sword joint to hands position)
 		_draw_combat_sword(delta)
 		
@@ -210,10 +206,13 @@ func _process_defensive_aggro_intelligence(delta: float) -> void:
 		var dist := diff.length()
 		
 		if dist > ATTACK_RANGE:
-			# Chase at high-pursuit run speed
-			_wander_direction = diff.normalized()
-			velocity.x = _wander_direction.x * BASE_SPEED * 1.8
-			velocity.z = _wander_direction.z * BASE_SPEED * 1.8
+			# Chase at high-pursuit run speed (Read vector, override ai_component velocity)
+			var wander_dir := diff.normalized()
+			velocity.x = wander_dir.x * BASE_SPEED * 1.8
+			velocity.z = wander_dir.z * BASE_SPEED * 1.8
+			
+			if is_instance_valid(ai_component):
+				ai_component.wander_direction = wander_dir
 			
 			# Jump over small obstacles
 			if is_on_wall() and is_on_floor():
@@ -222,16 +221,18 @@ func _process_defensive_aggro_intelligence(delta: float) -> void:
 			# In-range: Halt and swing!
 			velocity.x = 0.0
 			velocity.z = 0.0
-			_wander_direction = diff.normalized()
+			
+			if is_instance_valid(ai_component):
+				ai_component.wander_direction = diff.normalized()
 			
 			if _attack_cooldown_timer <= 0.0:
 				_execute_combat_strike()
 	else:
 		# No threat: Animate sword sheathing and return to normal states
 		_sheathe_combat_sword(delta)
-		if current_task == TaskState.WORKING:
-			current_task = TaskState.IDLE
-			_task_timer = 1.0
+		if is_instance_valid(ai_component) and ai_component.current_task == NPCAIComponent.TaskState.WORKING:
+			ai_component.current_task = NPCAIComponent.TaskState.IDLE
+			ai_component.task_timer = 1.0
 
 
 ## Trigonometric Scan: Locates the closest active zombie within combat range.
@@ -282,13 +283,16 @@ func _execute_combat_strike() -> void:
 	_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL
 	
 	# Apply diagonal physical knockback force
-	var knockback_dir := _wander_direction * 4.5
+	var wander_dir := _combat_target.global_position - global_position
+	wander_dir.y = 0.0
+	wander_dir = wander_dir.normalized()
+	
+	var knockback_dir := wander_dir * 4.5
 	knockback_dir.y = 2.0
 	
 	# Deal 1 Heart damage (Zombies have 3 Hearts and die in 3 hits)
 	if _combat_target.has_method("take_damage"):
 		_combat_target.call("take_damage", 1, knockback_dir)
-		print("[GuardAI] Slashed zombie! Target health: ", _combat_target.get("domain_entity").health)
 		
 	# Perform a quick physical visual swing tilt (Animate strike recoil)
 	var swing_tween := create_tween()
@@ -296,34 +300,17 @@ func _execute_combat_strike() -> void:
 	swing_tween.tween_property(_sword_joint, "rotation:x", deg_to_rad(65), 0.12).set_trans(Tween.TRANS_SINE)
 
 
-func _select_next_random_task() -> void:
-	var roll := randf()
-	if roll < 0.65:
-		current_task = TaskState.WANDERING 
-		var angle := randf() * TAU
-		_wander_direction = Vector3(cos(angle), 0, sin(angle))
-		_task_timer = randf_range(4.0, 9.0)
-	else:
-		current_task = TaskState.IDLE 
-		_task_timer = randf_range(2.0, 5.0)
-
-
-func _can_socialize() -> bool:
-	# Only socialize if not actively chasing zombies!
-	return _combat_target == null
-
-
 ## Queries coordinate biomes.
 func _detect_current_biome() -> int:
-	var world_controller = get_parent()
+	var world_controller_ref = get_parent()
 	var default_biome_id: int = 2
 	
-	if is_instance_valid(world_controller) and "generator" in world_controller:
-		var generator = world_controller.get("generator")
+	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
+		var generator = world_controller_ref.get("generator")
 		if generator != null:
 			var terrain_noise = generator.get("_terrain_noise")
 			if terrain_noise != null:
-				var profile = BiomeService.evaluate_coordinate(
+				var profile := BiomeService.evaluate_coordinate(
 					int(round(global_position.x)), 
 					int(round(global_position.z)), 
 					terrain_noise
@@ -331,3 +318,7 @@ func _detect_current_biome() -> int:
 				return profile.biome_id
 				
 	return default_biome_id
+
+
+func _can_socialize() -> bool:
+	return _combat_target == null

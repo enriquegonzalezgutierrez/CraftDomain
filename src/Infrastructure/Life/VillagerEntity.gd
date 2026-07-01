@@ -1,163 +1,137 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Villager NPC physics controller. Generates unique 3D visual 
-#              outfits dynamically based on its home biome coordinate, 
-#              ensuring extreme environmental variety.
+#              outfits dynamically based on its home biome coordinate.
 #              SOLID COMPLIANCE:
 #              - Liskov Substitution Principle (LSP): Inherits PassiveEntity and 
-#                fully satisfies all base physics, AI state, and blinking loops.
-#              - Single Responsibility Principle (SRP): Handles exclusively villager 
-#                visual variations and dialog triggers.
-#              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
-#                keys to prevent hardcoded string leakage in codebase.
-#              PROCEDURAL DIALOG OVERHAUL:
-#              - Replaced all fallback dialogues with a biome and coordinate-seeded 
-#                conversational router (No repetitive dialogues).
+#                fully satisfies all base physics and signals.
+#              - Single Responsibility Principle (SRP): Delegates rendering setups 
+#                and AI state execution to specialized sibling components.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
 class_name VillagerEntity
 extends PassiveEntity
 
+
 func _init(spawn_pos: Vector3) -> void:
 	super(spawn_pos, 3) # 3 Hearts of health
 	name = "Entity_VILLAGER"
 
 
-## Concrete Implementation: Assembles a procedural 3D model, applying unique 
-## clothes, accessories, and headwear based on the local biome sector.
+## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
+## to the visual component joints.
 func _build_visual_representation() -> void:
 	var biome_id := _detect_current_biome()
 	
-	# Fallback Colors
-	var skin_color := variant_skin_color
-	var hair_color := variant_hair_color
-	var robe_color := variant_clothing_color
-	var boots_color := Color(0.15, 0.1, 0.08) # Dark leather
-	var accessory_color := Color(0.18, 0.12, 0.08) # Dark belt
+	# Extract procedural color parameters calculated on boot by the visual component
+	var skin_color: Color = visual_component.variant_skin_color
+	var hair_color: Color = visual_component.variant_hair_color
+	var robe_color: Color = visual_component.variant_clothing_color
 	
-	# 1. Base Legs / Feet
-	_create_box(_body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), boots_color)
+	# Fallback accessory colors
+	var boots_color := Color(0.15, 0.1, 0.08) 
+	var accessory_color := Color(0.18, 0.12, 0.08) 
 	
-	# 2. Torso Robe (Customized by biome)
+	# 1. Base Legs / Feet (Attached to the bobbing joint)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), boots_color)
+	
+	# 2. Torso Robe (Customized dynamically by biome)
 	_build_custom_torso_robe(biome_id, robe_color, accessory_color)
 	
-	# 3. Head Joint & Face Details
-	_head_node = Node3D.new()
-	_head_node.name = "HumanHead"
-	_head_node.position = Vector3(0, 1.05, 0)
-	_body_bob_node.add_child(_head_node)
+	# 3. Head Joint Setup
+	visual_component.head_node = Node3D.new()
+	visual_component.head_node.name = "HumanHead"
+	visual_component.head_node.position = Vector3(0, 1.05, 0)
+	visual_component.body_bob_node.add_child(visual_component.head_node)
 	
-	_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color) # Face
-	_create_box(_head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
+	# Face blocks
+	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color) # Face core
+	visual_component.create_box(visual_component.head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
 	
-	# Deep-set Blinking Eyes
-	_left_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
-	_create_box(_left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
+	# Deep-set Blinking Eyes (Assigned to visual component tracking)
+	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.create_box(visual_component.left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
 	
-	_right_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
-	_create_box(_right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
+	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.create_box(visual_component.right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
 	
-	# 4. Folded Arms (Classic Villager folded pose)
-	_arms_node = Node3D.new()
-	_arms_node.name = "ArmsJoint"
-	_arms_node.position = Vector3(0, 0.65, -0.23)
-	_body_bob_node.add_child(_arms_node)
-	_create_box(_arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), robe_color * 0.8)
+	# 4. Folded Arms (Classic Villager folded pose joint)
+	visual_component.arms_node = Node3D.new()
+	visual_component.arms_node.name = "ArmsJoint"
+	visual_component.arms_node.position = Vector3(0, 0.65, -0.23)
+	visual_component.body_bob_node.add_child(visual_component.arms_node)
+	visual_component.create_box(visual_component.arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), robe_color * 0.8)
 	
 	# 5. Biome-Specific Headwear & Accessories
 	_build_custom_headwear(biome_id, hair_color)
-
-
-## Queries the parent world controllers to detect which biome this entity spawned in.
-func _detect_current_biome() -> int:
-	var world_controller = get_parent()
-	var default_biome_id: int = 2 # Default to Golden Bazaar
-	
-	if is_instance_valid(world_controller) and "generator" in world_controller:
-		var generator = world_controller.get("generator")
-		if generator != null:
-			var terrain_noise = generator.get("_terrain_noise")
-			if terrain_noise != null:
-				var profile = BiomeService.evaluate_coordinate(
-					int(round(global_position.x)), 
-					int(round(global_position.z)), 
-					terrain_noise
-				)
-				return profile.biome_id
-				
-	return default_biome_id
 
 
 ## Procedural Torso Customizer: Generates unique clothing shapes and palettes.
 func _build_custom_torso_robe(biome_id: int, base_color: Color, accessory_color: Color) -> void:
 	match biome_id:
 		0: # Bay of Sails (Sailor Stripes)
-			_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color.WHITE)
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color.WHITE)
 			# Blue stripes overlay
-			_create_box(_body_bob_node, Vector3(0.47, 0.12, 0.47), Vector3(0, 0.75, 0), Color(0.12, 0.45, 0.82))
-			_create_box(_body_bob_node, Vector3(0.47, 0.12, 0.47), Vector3(0, 0.50, 0), Color(0.12, 0.45, 0.82))
-			_create_box(_body_bob_node, Vector3(0.47, 0.12, 0.47), Vector3(0, 0.25, 0), Color(0.12, 0.45, 0.82))
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.12, 0.47), Vector3(0, 0.75, 0), Color(0.12, 0.45, 0.82))
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.12, 0.47), Vector3(0, 0.50, 0), Color(0.12, 0.45, 0.82))
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.12, 0.47), Vector3(0, 0.25, 0), Color(0.12, 0.45, 0.82))
 		1: # Warp Plateau (Mario Plumber Dungarees)
-			_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.85, 0.12, 0.12)) # Red shirt
-			_create_box(_body_bob_node, Vector3(0.47, 0.42, 0.47), Vector3(0, 0.36, 0), Color(0.15, 0.35, 0.72)) # Denim pants
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.85, 0.12, 0.12)) # Red shirt
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.42, 0.47), Vector3(0, 0.36, 0), Color(0.15, 0.35, 0.72)) # Denim pants
 			# Yellow gold buttons
-			_create_box(_body_bob_node, Vector3(0.06, 0.06, 0.03), Vector3(-0.11, 0.45, -0.24), Color(1.0, 0.85, 0.2))
-			_create_box(_body_bob_node, Vector3(0.06, 0.06, 0.03), Vector3(0.11, 0.45, -0.24), Color(1.0, 0.85, 0.2))
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.06, 0.06, 0.03), Vector3(-0.11, 0.45, -0.24), Color(1.0, 0.85, 0.2))
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.06, 0.06, 0.03), Vector3(0.11, 0.45, -0.24), Color(1.0, 0.85, 0.2))
 		4: # Frostbite Glaciers (Thermal fur-lined overalls)
-			_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.82, 0.82, 0.85)) # Winter white coat
-			_create_box(_body_bob_node, Vector3(0.48, 0.10, 0.48), Vector3(0, 0.15, 0), Color(0.98, 0.98, 0.98)) # Fluffy fur trim
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.82, 0.82, 0.85)) # Winter white coat
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.10, 0.48), Vector3(0, 0.15, 0), Color(0.98, 0.98, 0.98)) # Fluffy fur trim
 		5: # Whispering Redwood Forest (Ranger Green tunic)
-			_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.18, 0.45, 0.15))
-			_create_box(_body_bob_node, Vector3(0.48, 0.06, 0.48), Vector3(0, 0.45, 0), accessory_color) # Leather belt
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.18, 0.45, 0.15))
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.06, 0.48), Vector3(0, 0.45, 0), accessory_color) # Leather belt
 		7: # Neon Ruins (Cyberpunk Techwear)
-			_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.12, 0.12, 0.15)) # Dark carbon jacket
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.12, 0.12, 0.15)) # Dark carbon jacket
 			# Cybernetic neon pipelines
-			_create_box(_body_bob_node, Vector3(0.47, 0.06, 0.47), Vector3(0, 0.65, 0), Color(0.0, 0.95, 0.95)) # Cyan stripe
-			_create_box(_body_bob_node, Vector3(0.47, 0.06, 0.47), Vector3(0, 0.45, 0), Color(0.95, 0.0, 0.95)) # Magenta stripe
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.06, 0.47), Vector3(0, 0.65, 0), Color(0.0, 0.95, 0.95)) # Cyan stripe
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.06, 0.47), Vector3(0, 0.45, 0), Color(0.95, 0.0, 0.95)) # Magenta stripe
 		8: # Swamp of Sighs (Murky Mud robes)
-			_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.28, 0.22, 0.15)) # Mud brown
-			_create_box(_body_bob_node, Vector3(0.47, 0.18, 0.47), Vector3(0, 0.32, 0), Color(0.18, 0.15, 0.12)) # Dark patches
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.28, 0.22, 0.15)) # Mud brown
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.18, 0.47), Vector3(0, 0.32, 0), Color(0.18, 0.15, 0.12)) # Dark patches
 		9: # Cloud Kingdom (Sky Clouds Tunic)
-			_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.95, 0.98, 1.0)) # Cloud white
-			_create_box(_body_bob_node, Vector3(0.48, 0.15, 0.48), Vector3(0, 0.80, 0), Color(1.0, 0.98, 0.85)) # Light gold trim
-		_: # Default Plains (Golden Bazaar / Others)
-			_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), base_color)
-			# Leather belt with iron buckle using the accessory_color variable
-			_create_box(_body_bob_node, Vector3(0.48, 0.08, 0.48), Vector3(0, 0.45, 0), accessory_color)
-			_create_box(_body_bob_node, Vector3(0.12, 0.1, 0.05), Vector3(0, 0.45, -0.25), Color(0.65, 0.65, 0.7))
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.95, 0.98, 1.0)) # Cloud white
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.15, 0.48), Vector3(0, 0.80, 0), Color(1.0, 0.98, 0.85)) # Light gold trim
+		_: # Default Plains
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), base_color)
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.08, 0.48), Vector3(0, 0.45, 0), accessory_color)
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.12, 0.1, 0.05), Vector3(0, 0.45, -0.25), Color(0.65, 0.65, 0.7))
 
 
 ## Procedural Headwear Customizer: Generates unique caps, visors, halos, and hoods.
 func _build_custom_headwear(biome_id: int, hair_color: Color) -> void:
 	match biome_id:
 		0: # Bay of Sails (Sailor Bandana)
-			_create_box(_head_node, Vector3(0.38, 0.10, 0.38), Vector3(0, 0.35, 0), Color(0.12, 0.45, 0.82)) # Blue band
-			_create_box(_head_node, Vector3(0.10, 0.10, 0.15), Vector3(0, 0.28, 0.22), Color(0.12, 0.45, 0.82)) # Bandana knot
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.10, 0.38), Vector3(0, 0.35, 0), Color(0.12, 0.45, 0.82)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.10, 0.10, 0.15), Vector3(0, 0.28, 0.22), Color(0.12, 0.45, 0.82)) 
 		1: # Warp Plateau (Mario Plumber Cap)
-			_create_box(_head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), Color(0.85, 0.12, 0.12)) # Red dome
-			_create_box(_head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.32, -0.22), Color(0.85, 0.12, 0.12)) # Visor brim
-			_create_box(_head_node, Vector3(0.12, 0.10, 0.03), Vector3(0, 0.36, -0.20), Color.WHITE) # White decal plate
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), Color(0.85, 0.12, 0.12)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.32, -0.22), Color(0.85, 0.12, 0.12)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.12, 0.10, 0.03), Vector3(0, 0.36, -0.20), Color.WHITE) 
 		4: # Frostbite Glaciers (Winter Fur-Hood)
-			_create_box(_head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), Color(0.82, 0.82, 0.85)) # Winter hood base
-			_create_box(_head_node, Vector3(0.42, 0.42, 0.10), Vector3(0, 0.185, -0.15), Color(0.98, 0.98, 0.98)) # Fluffy fur rim
+			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), Color(0.82, 0.82, 0.85)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.42, 0.42, 0.10), Vector3(0, 0.185, -0.15), Color(0.98, 0.98, 0.98)) 
 		5: # Whispering Redwood Forest (Elven Leaf Crown)
-			_create_box(_head_node, Vector3(0.38, 0.05, 0.38), Vector3(0, 0.30, 0), Color(0.85, 0.6, 0.15)) # Golden crown band
-			_create_box(_head_node, Vector3(0.08, 0.14, 0.04), Vector3(0, 0.38, -0.19), Color(0.18, 0.45, 0.15)) # Leaf details
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.05, 0.38), Vector3(0, 0.30, 0), Color(0.85, 0.6, 0.15)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.14, 0.04), Vector3(0, 0.38, -0.19), Color(0.18, 0.45, 0.15)) 
 		7: # Neon Ruins (Cyber Visor)
-			# Sleek cyan glowing tech-visor over eyes
-			_create_box(_head_node, Vector3(0.38, 0.10, 0.08), Vector3(0, 0.19, -0.16), Color(0.0, 0.95, 0.95))
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.10, 0.08), Vector3(0, 0.19, -0.16), Color(0.0, 0.95, 0.95))
 		8: # Swamp of Sighs (Murky Mud Tattered Hood)
-			_create_box(_head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), Color(0.28, 0.22, 0.15))
-			_create_box(_head_node, Vector3(0.32, 0.08, 0.32), Vector3(0, 0.39, -0.05), Color(0.18, 0.15, 0.12))
+			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), Color(0.28, 0.22, 0.15))
+			visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.08, 0.32), Vector3(0, 0.39, -0.05), Color(0.18, 0.15, 0.12))
 		9: # Cloud Kingdom (Angelic Golden Halo)
-			_create_box(_head_node, Vector3(0.32, 0.03, 0.32), Vector3(0, 0.52, 0), Color(1.0, 0.85, 0.2)) # Glowing golden halo ring
-		_: # Default Plains (Procedural Hair Styles)
-			# Hair base plate
-			_create_box(_head_node, Vector3(0.38, 0.18, 0.38), Vector3(0, 0.30, 0.03), hair_color)
-			# Hair sideburns
-			_create_box(_head_node, Vector3(0.06, 0.20, 0.38), Vector3(-0.18, 0.18, 0.03), hair_color)
-			_create_box(_head_node, Vector3(0.06, 0.20, 0.38), Vector3(0.18, 0.18, 0.03), hair_color)
+			visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.03, 0.32), Vector3(0, 0.52, 0), Color(1.0, 0.85, 0.2)) 
+		_: # Default Plains
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.18, 0.38), Vector3(0, 0.30, 0.03), hair_color)
+			visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.20, 0.38), Vector3(-0.18, 0.18, 0.03), hair_color)
+			visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.20, 0.38), Vector3(0.18, 0.18, 0.03), hair_color)
 
 
 ## Public Gaze Interaction: Triggers localized village dialogue progression.
@@ -173,18 +147,18 @@ func interact(player_node: CharacterBody3D) -> void:
 		complete_node.text = "DIALOGUE_VILLAGER_QUEST_COMPLETE"
 		DialogueService.register_node(complete_node)
 		
-		var hud = player_node.get("hud")
+		var hud := player_node.get("hud") as PlayerHUD
 		if is_instance_valid(hud):
-			hud.call("open_dialogue", complete_node, "Villager", self)
+			hud.open_dialogue(complete_node, "Villager", self)
 	else:
 		# Standard procedural dialogue routing
-		var hud = player_node.get("hud")
+		var hud := player_node.get("hud") as PlayerHUD
 		if is_instance_valid(hud):
 			var intro_node := DialogueNode.new()
 			intro_node.node_id = "villager_intro_temp"
 			intro_node.text = _select_procedural_greeting_key()
 			
-			hud.call("open_dialogue", intro_node, "Villager", self)
+			hud.open_dialogue(intro_node, "Villager", self)
 
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
@@ -194,22 +168,51 @@ func _select_procedural_greeting_key() -> String:
 	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
 		is_night = celestial.call("is_night_time") as bool
 		
-	# 1. Night-time reactive prompts (Worried/fearful prompts)
 	if is_night:
 		return "DIALOGUE_VILLAGER_NIGHT"
 		
-	# 2. Biome-specific environmental prompts
 	var biome_id := _detect_current_biome()
 	match biome_id:
-		0: return "DIALOGUE_VILLAGER_OCEAN"     # Sailor harbor talk
-		4: return "DIALOGUE_VILLAGER_GLACIERS"   # Shivering in the polar cold
-		7: return "DIALOGUE_VILLAGER_NEON"        # Cyber ruins techways
-		8: return "DIALOGUE_VILLAGER_SWAMP"       # Stagnant mist and mud
-		9: return "DIALOGUE_VILLAGER_CLOUD"       # Heavenly cloud floating
-		
-	# 3. Standard Plains randomized pool (Uses coordinate-based variety index)
-	var variety_index := npc_seed % 3
-	match variety_index:
-		0: return "DIALOGUE_VILLAGER_PLAINS_A"
-		1: return "DIALOGUE_VILLAGER_PLAINS_B"
-		_: return "DIALOGUE_VILLAGER_PLAINS_C"
+		0: return "DIALOGUE_VILLAGER_OCEAN"     
+		4: return "DIALOGUE_VILLAGER_GLACIERS"   
+		7: return "DIALOGUE_VILLAGER_NEON"        
+		8: return "DIALOGUE_VILLAGER_SWAMP"       
+		9: return "DIALOGUE_VILLAGER_CLOUD"       
+		_:
+			var variety_index := npc_seed % 3
+			match variety_index:
+				0: return "DIALOGUE_VILLAGER_PLAINS_A"
+				1: return "DIALOGUE_VILLAGER_PLAINS_B"
+				_: return "DIALOGUE_VILLAGER_PLAINS_C"
+
+
+func _setup_floating_bubble() -> void:
+	var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
+	if sb_script != null:
+		_bubble = sb_script.new() as Node3D
+		add_child(_bubble)
+		_bubble.call("set_text", tr("BUBBLE_TALK"))
+
+
+## Queries coordinate biomes.
+func _detect_current_biome() -> int:
+	var world_controller_ref = get_parent()
+	var default_biome_id: int = 2
+	
+	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
+		var generator = world_controller_ref.get("generator")
+		if generator != null:
+			var terrain_noise = generator.get("_terrain_noise")
+			if terrain_noise != null:
+				var profile := BiomeService.evaluate_coordinate(
+					int(round(global_position.x)), 
+					int(round(global_position.z)), 
+					terrain_noise
+				)
+				return profile.biome_id
+				
+	return default_biome_id
+
+
+func _can_socialize() -> bool:
+	return true

@@ -6,6 +6,8 @@
 #                rendering, drawing, and menu components to specialized widgets.
 #              - Open-Closed Principle (OCP): All text titles, labels, and toasts
 #                are fully i18n localized using tr() for future translation packs.
+#              - OBSERVER PATTERN: Connects reactively to Domain Events of both 
+#                IInventory and VoxelEntity, eliminating manual sync cascades.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -52,8 +54,13 @@ func _ready() -> void:
 	_setup_dialogue_system()
 	_setup_loading_screen()
 	
-	if is_instance_valid(player) and player.has_method("_sync_hud_counters"):
-		player.call("_sync_hud_counters")
+	# Reactively bind UI representation to pure Domain events
+	_connect_domain_signals()
+	
+	# Initial redraw of the HUD state
+	_on_inventory_changed()
+	if is_instance_valid(player) and player.get("domain_entity") != null:
+		update_health_display(player.domain_entity.health)
 		
 	# Trigger the first selection visually on the hotbar dock
 	update_active_slot(0)
@@ -132,6 +139,41 @@ func _setup_dialogue_system() -> void:
 func _setup_loading_screen() -> void:
 	var loading_screen := LoadingScreen.new(player)
 	add_child(loading_screen)
+
+
+## Binds presentation update triggers to domain events, achieving decoupling.
+func _connect_domain_signals() -> void:
+	if is_instance_valid(player):
+		var inv := player.get("inventory") as IInventory
+		if is_instance_valid(inv):
+			inv.inventory_changed.connect(_on_inventory_changed)
+			
+		var entity := player.get("domain_entity") as VoxelEntity
+		if is_instance_valid(entity):
+			entity.took_damage.connect(func(_amount: int) -> void:
+				update_health_display(entity.health)
+				flash_damage_screen()
+			)
+			entity.died.connect(func() -> void:
+				update_health_display(3) # Resets to maximum survival health on respawn
+			)
+
+
+## Reactive callback updating the hotbar slots whenever the inventory changes.
+func _on_inventory_changed() -> void:
+	if not is_instance_valid(player):
+		return
+	var inv := player.get("inventory") as InventoryComponent
+	if not is_instance_valid(inv):
+		return
+		
+	for i in range(8):
+		var slot := inv.get_slot_data(i)
+		if slot != null:
+			update_slot_quantity(i, slot.item_id, slot.quantity)
+			
+	# Refresh food drumsticks dynamically as they depend on total chicken stock count
+	update_health_display(player.domain_entity.health)
 
 
 func _process(_delta: float) -> void:

@@ -4,15 +4,9 @@
 #              and harvests mature golden crops to replant them, while generating
 #              specialized outfits dynamically based on its home biome.
 #              SOLID COMPLIANCE:
-#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity,
-#                overriding behavior, task routing, and visualization loops.
-#              - Single Responsibility Principle (SRP): Handles exclusively crop 
-#                scanning, agricultural AI work, and harvesting hoe animations.
-#              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
-#                keys to prevent hardcoded string leakage in codebase.
-#              CONVERSATION LOCK FIXED:
-#              - Bypasses agricultural pathfinding loops and freezes velocity to 
-#                zero when is_talking is active, allowing clean gaze locks.
+#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity.
+#              - Single Responsibility Principle (SRP): Delegates rendering setups 
+#                and AI state execution to specialized sibling components.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
@@ -33,16 +27,18 @@ func _init(spawn_pos: Vector3) -> void:
 	name = "Entity_FARMER"
 
 
-## Concrete Implementation: Assembles a detailed farmer, combining 
-## customized dungarees and straw hats based on the home biome.
+## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
+## to the visual component joints.
 func _build_visual_representation() -> void:
 	var biome_id := _detect_current_biome()
 	
-	# Fallback Colors
-	var shirt_color := variant_clothing_color
+	# Extract procedural color parameters calculated on boot by the visual component
+	var shirt_color: Color = visual_component.variant_clothing_color
+	var skin_color: Color = visual_component.variant_skin_color             # Procedural skin tone
+	
+	# Fallback accessory colors
 	var denim_color := Color(0.20, 0.35, 0.55)       # Denim Blue overalls
 	var strap_color := Color(0.35, 0.22, 0.15)       # Leather straps
-	var skin_color := variant_skin_color             # Procedural skin tone
 	var hat_color := Color(0.88, 0.78, 0.42)        # Straw yellow hat
 	var boots_color := Color(0.18, 0.14, 0.11)       # Muddy boots
 	var iron_color := Color(0.50, 0.50, 0.52)        # Raw steel
@@ -54,8 +50,8 @@ func _build_visual_representation() -> void:
 			hat_color = Color(0.98, 0.98, 0.98)
 		7: # Neon Ruins (Cybertech cyber-overalls)
 			denim_color = Color(0.12, 0.12, 0.15)
-			strap_color = Color(0.0, 0.95, 0.95) # Glowing cyan straps
-			hat_color = Color(0.95, 0.0, 0.95)   # Glowing magenta cyber-hat
+			strap_color = Color(0.0, 0.95, 0.95) 
+			hat_color = Color(0.95, 0.0, 0.95)   
 		8: # Swamp of Sighs (Muddy green overalls)
 			denim_color = Color(0.18, 0.28, 0.15)
 			boots_color = Color(0.10, 0.08, 0.05)
@@ -63,60 +59,60 @@ func _build_visual_representation() -> void:
 			denim_color = Color(0.95, 0.98, 1.0)
 			hat_color = Color(1.0, 0.95, 0.7)
 			
-	# 1. Base Legs & Feet
-	_create_box(_body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), boots_color)
+	# 1. Base Legs & Feet (Attached to the bouncing joint of visual component)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), boots_color)
 	
 	# 2. Clothed Torso Shirt & Overalls
-	_create_box(_body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), shirt_color)
-	_create_box(_body_bob_node, Vector3(0.47, 0.45, 0.47), Vector3(0, 0.375, 0), denim_color) # Overalls
-	_create_box(_body_bob_node, Vector3(0.32, 0.18, 0.05), Vector3(0, 0.60, -0.21), denim_color) # Front bib flap
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), shirt_color)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.45, 0.47), Vector3(0, 0.375, 0), denim_color) # Overalls
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.32, 0.18, 0.05), Vector3(0, 0.60, -0.21), denim_color) # Front bib flap
 	
 	# Suspender straps
-	_create_box(_body_bob_node, Vector3(0.06, 0.22, 0.49), Vector3(-0.13, 0.74, 0), strap_color) 
-	_create_box(_body_bob_node, Vector3(0.06, 0.22, 0.49), Vector3(0.13, 0.74, 0), strap_color)  
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.06, 0.22, 0.49), Vector3(-0.13, 0.74, 0), strap_color) 
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.06, 0.22, 0.49), Vector3(0.13, 0.74, 0), strap_color)  
 	
-	# 3. Head Joint & Customized Hat Styles
-	_head_node = Node3D.new()
-	_head_node.name = "HumanHead"
-	_head_node.position = Vector3(0, 1.05, 0)
-	_body_bob_node.add_child(_head_node)
+	# 3. Head Joint Setup
+	visual_component.head_node = Node3D.new()
+	visual_component.head_node.name = "HumanHead"
+	visual_component.head_node.position = Vector3(0, 1.05, 0)
+	visual_component.body_bob_node.add_child(visual_component.head_node)
 	
-	_create_box(_head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color) # Face
-	_create_box(_head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
+	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color) # Face
+	visual_component.create_box(visual_component.head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
 	
-	# Blinking Eyes
-	_left_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
-	_create_box(_left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
+	# Blinking Eyes (Assigned to visual component tracking)
+	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.create_box(visual_component.left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
 	
-	_right_eye = _create_box(_head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
-	_create_box(_right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
+	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.create_box(visual_component.right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
 	
 	# Specialized Hat styles (Farmer cap vs wide-brim straw hat)
 	if biome_id == 1: # Plumber Cap for Steps biome
-		_create_box(_head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), denim_color)
-		_create_box(_head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.32, -0.22), denim_color)
+		visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), denim_color)
+		visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.32, -0.22), denim_color)
 	else:
 		# Classic Wide-Brim Straw/Field Hat
-		_create_box(_head_node, Vector3(0.65, 0.03, 0.65), Vector3(0, 0.36, 0), hat_color) 
-		_create_box(_head_node, Vector3(0.24, 0.10, 0.24), Vector3(0, 0.42, 0), hat_color) 
+		visual_component.create_box(visual_component.head_node, Vector3(0.65, 0.03, 0.65), Vector3(0, 0.36, 0), hat_color) 
+		visual_component.create_box(visual_component.head_node, Vector3(0.24, 0.10, 0.24), Vector3(0, 0.42, 0), hat_color) 
 	
 	# 4. Arms Folded / Clothed sleeves
-	_arms_node = Node3D.new()
-	_arms_node.name = "ArmsJoint"
-	_arms_node.position = Vector3(0, 0.65, -0.23)
-	_body_bob_node.add_child(_arms_node)
-	_create_box(_arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), shirt_color)
+	visual_component.arms_node = Node3D.new()
+	visual_component.arms_node.name = "ArmsJoint"
+	visual_component.arms_node.position = Vector3(0, 0.65, -0.23)
+	visual_component.body_bob_node.add_child(visual_component.arms_node)
+	visual_component.create_box(visual_component.arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), shirt_color)
 	
-	# 5. Handheld Tool: Harvesting Hoe (Mounted on right shoulder)
+	# 5. Handheld Tool: Harvesting Hoe (Mounted on right shoulder of bouncing body bob node)
 	_hoe_joint = Node3D.new()
 	_hoe_joint.name = "HarvestHoeJoint"
 	_hoe_joint.position = Vector3(0.18, 0.52, 0.24)
 	_hoe_joint.rotation = Vector3(0, 0, deg_to_rad(45)) 
-	_body_bob_node.add_child(_hoe_joint)
+	visual_component.body_bob_node.add_child(_hoe_joint)
 	
-	_create_box(_hoe_joint, Vector3(0.04, 0.52, 0.04), Vector3(0, 0, 0), strap_color) # Handle shaft
-	_create_box(_hoe_joint, Vector3(0.06, 0.06, 0.14), Vector3(0, 0.24, -0.06), iron_color) # Socket metal
-	_create_box(_hoe_joint, Vector3(0.10, 0.18, 0.04), Vector3(0, 0.21, -0.12), iron_color) # Blade
+	visual_component.create_box(_hoe_joint, Vector3(0.04, 0.52, 0.04), Vector3(0, 0, 0), strap_color) # Handle shaft
+	visual_component.create_box(_hoe_joint, Vector3(0.06, 0.06, 0.14), Vector3(0, 0.24, -0.06), iron_color) # Socket metal
+	visual_component.create_box(_hoe_joint, Vector3(0.10, 0.18, 0.04), Vector3(0, 0.21, -0.12), iron_color) # Blade
 
 
 func _get_collision_box_size() -> Vector3:
@@ -128,24 +124,22 @@ func _get_collision_box_position() -> Vector3:
 
 
 func _setup_floating_bubble() -> void:
-	var sb_script: Script = load("res://src/Infrastructure/UI/SpeechBubble.gd")
+	var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
 	if sb_script != null:
 		_bubble = sb_script.new() as Node3D
 		add_child(_bubble)
-		_bubble.call("set_text", "FARMER")
+		_bubble.call("set_text", tr("BUBBLE_FARMER"))
 
 
 ## Public Gaze Interaction: Localized dialogue trees.
-## REFACTORING: Passes 'self' as the third parameter to trigger conversational locks.
 func interact(player_node: CharacterBody3D) -> void:
-	var hud = player_node.get("hud")
+	var hud := player_node.get("hud") as PlayerHUD
 	if is_instance_valid(hud):
 		var intro_node := DialogueNode.new()
 		intro_node.node_id = "farmer_intro_temp"
 		intro_node.text = _select_procedural_greeting_key()
 		
-		# Pass "self" as the third argument to freeze and lock gaze during dialog
-		hud.call("open_dialogue", intro_node, "Farmer", self)
+		hud.open_dialogue(intro_node, "Farmer", self)
 
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
@@ -155,25 +149,21 @@ func _select_procedural_greeting_key() -> String:
 	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
 		is_night = celestial.call("is_night_time") as bool
 		
-	# 1. Night-time reactive prompts (Worried about cold frost on crops)
 	if is_night:
 		return "DIALOGUE_FARMER_NIGHT"
 		
-	# 2. Biome-specific environmental prompts
 	var biome_id := _detect_current_biome()
 	match biome_id:
-		4: return "DIALOGUE_FARMER_GLACIERS"   # Freezing soil tilling
-		7: return "DIALOGUE_FARMER_NEON"       # Automatic hydroponics
-		
-	# 3. Standard Plains randomized pool (Uses coordinate-based variety index)
-	var variety_index := npc_seed % 2
-	match variety_index:
-		0: return "DIALOGUE_FARMER_PLAINS_A"
-		_: return "DIALOGUE_FARMER_PLAINS_B"
+		4: return "DIALOGUE_FARMER_GLACIERS"   
+		7: return "DIALOGUE_FARMER_NEON"       
+		_:
+			var variety_index := npc_seed % 2
+			match variety_index:
+				0: return "DIALOGUE_FARMER_PLAINS_A"
+				_: return "DIALOGUE_FARMER_PLAINS_B"
 
 
 ## Main Loop ticker.
-## FIXED: Freezes physical velocity and bypasses tilling loops during conversations.
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
@@ -194,7 +184,8 @@ func _process_farming_ai_intelligence(delta: float) -> void:
 		return
 		
 	# Check if currently engaged in a harvesting task
-	if current_task != TaskState.WORKING:
+	var current_task := ai_component.current_task if is_instance_valid(ai_component) else int(NPCAIComponent.TaskState.IDLE)
+	if current_task != NPCAIComponent.TaskState.WORKING:
 		_scan_timer -= delta
 		if _scan_timer <= 0.0:
 			_scan_timer = 3.0
@@ -213,7 +204,8 @@ func _scan_for_ripe_crops(world_state: WorldState) -> void:
 				if world_state.get_block(check_coord) == BlockType.Type.CROP_RIPE:
 					_target_crop_coord = check_coord
 					_harvest_timer = 1.8 
-					current_task = TaskState.WORKING # Lock standard wandering tasks
+					if is_instance_valid(ai_component):
+						ai_component.current_task = NPCAIComponent.TaskState.WORKING # Lock standard wandering decisions
 					print("[FarmerAI] Locked onto ripe wheat at: ", _target_crop_coord)
 					return
 
@@ -221,7 +213,8 @@ func _scan_for_ripe_crops(world_state: WorldState) -> void:
 ## Moves to and harvests the locked-on ripe wheat block.
 func _execute_crop_harvesting(world_node: WorldController, delta: float) -> void:
 	if _target_crop_coord.y == -999:
-		current_task = TaskState.IDLE
+		if is_instance_valid(ai_component):
+			ai_component.current_task = NPCAIComponent.TaskState.IDLE
 		return
 		
 	var target_pos := Vector3(_target_crop_coord) + Vector3(0.5, 0.0, 0.5)
@@ -229,10 +222,13 @@ func _execute_crop_harvesting(world_node: WorldController, delta: float) -> void
 	diff.y = 0.0
 	
 	if diff.length() > 1.1:
-		# Walk toward the crop
-		_wander_direction = diff.normalized()
-		velocity.x = _wander_direction.x * BASE_SPEED
-		velocity.z = _wander_direction.z * BASE_SPEED
+		# Walk toward the crop (Read and calculate movement, guiding visual look slerps)
+		var wander_dir := diff.normalized()
+		velocity.x = wander_dir.x * BASE_SPEED
+		velocity.z = wander_dir.z * BASE_SPEED
+		
+		if is_instance_valid(ai_component):
+			ai_component.wander_direction = wander_dir
 		
 		if is_on_wall() and is_on_floor():
 			velocity.y = JUMP_VELOCITY
@@ -240,7 +236,9 @@ func _execute_crop_harvesting(world_node: WorldController, delta: float) -> void
 		# In-range: Stop moving, face the crop, and harvest!
 		velocity.x = 0.0
 		velocity.z = 0.0
-		_wander_direction = diff.normalized()
+		
+		if is_instance_valid(ai_component):
+			ai_component.wander_direction = diff.normalized()
 		
 		# Animate: Swing the hoe up and down to till the soil
 		_animate_harvesting_hoe(delta)
@@ -261,8 +259,10 @@ func _execute_crop_harvesting(world_node: WorldController, delta: float) -> void
 			# Sheathe hoe and reset state
 			_reset_hoe_transforms()
 			_target_crop_coord = Vector3i(0, -999, 0)
-			current_task = TaskState.IDLE
-			_task_timer = 2.0
+			
+			if is_instance_valid(ai_component):
+				ai_component.current_task = NPCAIComponent.TaskState.IDLE
+				ai_component.task_timer = 2.0
 
 
 ## Animate: Rotates the hoe joint dynamically forward and down to mimic digging.
@@ -272,7 +272,8 @@ func _animate_harvesting_hoe(delta: float) -> void:
 		_hoe_joint.position = _hoe_joint.position.lerp(Vector3(0.18, 0.52, -0.32), delta * 8.0)
 		
 		# Swing back and forth based on high-frequency sin waves
-		var swing_offset := sin(_animation_time * 12.0) * 0.45
+		var anim_time = visual_component._animation_time if is_instance_valid(visual_component) else 0.0
+		var swing_offset := sin(anim_time * 12.0) * 0.45
 		_hoe_joint.rotation.x = lerp(_hoe_joint.rotation.x, deg_to_rad(45) + swing_offset, delta * 12.0)
 		_hoe_joint.rotation.y = lerp(_hoe_joint.rotation.y, deg_to_rad(-45), delta * 8.0)
 		_hoe_joint.rotation.z = lerp(_hoe_joint.rotation.z, deg_to_rad(0), delta * 8.0)
@@ -326,15 +327,15 @@ func _spawn_replant_particle(pos: Vector3) -> void:
 
 ## Queries coordinate biomes.
 func _detect_current_biome() -> int:
-	var world_controller = get_parent()
+	var world_controller_ref = get_parent()
 	var default_biome_id: int = 2
 	
-	if is_instance_valid(world_controller) and "generator" in world_controller:
-		var generator = world_controller.get("generator")
+	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
+		var generator = world_controller_ref.get("generator")
 		if generator != null:
 			var terrain_noise = generator.get("_terrain_noise")
 			if terrain_noise != null:
-				var profile = BiomeService.evaluate_coordinate(
+				var profile := BiomeService.evaluate_coordinate(
 					int(round(global_position.x)), 
 					int(round(global_position.z)), 
 					terrain_noise
@@ -344,22 +345,6 @@ func _detect_current_biome() -> int:
 	return default_biome_id
 
 
-func _select_next_random_task() -> void:
-	var roll := randf()
-	if roll < 0.75:
-		current_task = TaskState.EXAMINING 
-		var angle := randf() * TAU
-		_wander_direction = Vector3(cos(angle), 0, sin(angle))
-		_task_timer = randf_range(3.0, 7.0)
-	elif roll < 0.90:
-		current_task = TaskState.WANDERING 
-		var angle := randf() * TAU
-		_wander_direction = Vector3(cos(angle), 0, sin(angle))
-		_task_timer = randf_range(2.0, 4.0)
-	else:
-		current_task = TaskState.IDLE 
-		_task_timer = randf_range(1.0, 2.5)
-
-
 func _can_socialize() -> bool:
-	return current_task != TaskState.WORKING
+	var current_task := ai_component.current_task if is_instance_valid(ai_component) else int(NPCAIComponent.TaskState.IDLE)
+	return current_task != NPCAIComponent.TaskState.WORKING

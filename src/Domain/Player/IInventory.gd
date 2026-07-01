@@ -2,13 +2,21 @@
 # Project: CraftDomain
 # Description: Segregated Interface defining the contract for advanced stackable
 #              inventory operations, supporting dynamic ID-based item queries.
-#              SOLID COMPLIANCE: Adheres strictly to the Interface Segregation 
-#              Principle (ISP) and Dependency Inversion Principle (DIP).
+#              SOLID COMPLIANCE: 
+#              - Interface Segregation Principle (ISP)
+#              - Dependency Inversion Principle (DIP)
+#              - OBSERVER PATTERN: Added `inventory_changed` Domain Event to 
+#                completely decouple transaction logic from the Presentation layer.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/IInventory.gd
 # ==============================================================================
 class_name IInventory
 extends RefCounted
+
+## Domain Event emitted whenever the inventory state changes (Added, Consumed, Swapped, Loaded).
+## UI components (like PlayerHUD) will listen to this signal instead of being forced to update.
+@warning_ignore("unused_signal")
+signal inventory_changed
 
 ## Returns the total accumulated quantity of a specific Item ID across all stacks.
 func get_item_total_quantity(_item_id: int) -> int:

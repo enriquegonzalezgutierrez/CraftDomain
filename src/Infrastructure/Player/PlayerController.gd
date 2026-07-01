@@ -1,16 +1,13 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure controller node representing the first-person player.
-#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by delegating all voxel raycasting, mining, building,
-#              eating, and NPC interactions to VoxelInteractionComponent, and 
-#              UI window orchestration to PlayerHUD.
-#              i18n / INPUT UPGRADE: Added dynamic, automatic key mapping for the 
-#              M key to trigger the Fullscreen Tactical Map Overlay.
-#              FAILSAFE UPGRADE: Added a dynamic Void Rescue Shield to automatically
-#              teleport the player back to the surface if they clip through the ground.
-#              TRANSITION UPGRADE: Triggers the loading screen transition during death
-#              to prevent visual pops and float stutters on player respawns.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Delegates all voxel raycasting, 
+#                mining, building, eating, and NPC interactions to VoxelInteractionComponent, 
+#                and UI window orchestration to PlayerHUD.
+#              - Open-Closed Principle (OCP): Dynamic inputs and key-mappings.
+#              - OBSERVER PATTERN: Cleaned of obsolete UI-synchronization loops; 
+#                the HUD now binds directly to Domain events.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -51,8 +48,9 @@ var _bob_timer: float = 0.0
 var _target_camera_pos: Vector3 = Vector3(0.0, 0.6, 0.0)
 var _target_camera_tilt: float = 0.0
 
-# Camera Trauma Shake variable (Micro-Phase 4)
+# Camera Trauma Shake variable
 var _shake_intensity: float = 0.0
+
 
 func _init() -> void:
 	_setup_inputs_mouse_actions()
@@ -61,6 +59,7 @@ func _init() -> void:
 	domain_entity = VoxelEntity.new(3)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
+
 
 func _ready() -> void:
 	_setup_inputs()
@@ -71,6 +70,7 @@ func _ready() -> void:
 	
 	# Capture mouse cursor
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
 
 func _setup_inputs() -> void:
 	var primary_inputs := {
@@ -103,6 +103,7 @@ func _setup_inputs() -> void:
 		primary_event.keycode = primary_inputs[action_name] as Key
 		InputMap.action_add_event(action_name, primary_event)
 
+
 func _setup_player_geometry() -> void:
 	# 1. Collision Capsule
 	var collision := CollisionShape3D.new()
@@ -124,6 +125,7 @@ func _setup_player_geometry() -> void:
 	viewmodel = PlayerViewModel.new()
 	camera.add_child(viewmodel)
 
+
 func _setup_hud() -> void:
 	inventory = InventoryComponent.new()
 	hud = PlayerHUD.new()
@@ -131,8 +133,7 @@ func _setup_hud() -> void:
 	hud.player = self
 	hud.world_controller = world_controller
 	add_child(hud)
-	
-	_sync_hud_counters()
+
 
 func _setup_interaction_component() -> void:
 	print("[PlayerController] Initializing decoupled VoxelInteractionComponent (SRP)...")
@@ -147,10 +148,12 @@ func _setup_interaction_component() -> void:
 	camera.add_child(interaction_component)
 	print("[PlayerController] VoxelInteractionComponent successfully connected.")
 
+
 func _locate_world() -> void:
 	var parent_node := get_parent()
 	if is_instance_valid(parent_node):
 		world_controller = parent_node.get_node_or_null("World") as Node3D
+
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
@@ -168,6 +171,7 @@ func _input(event: InputEvent) -> void:
 			if is_instance_valid(hud):
 				hud.toggle_pause_menu(false)
 
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_active or Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		return
@@ -176,7 +180,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
-		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(85))
+		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(-85))
 		
 	# 2. Mouse Wheel Hotbar Scrolling
 	elif event is InputEventMouseButton and event.pressed:
@@ -185,13 +189,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_scroll_hotbar(1)
 
+
 func _physics_process(delta: float) -> void:
 	# Controls hardware cursor visibility when holding Left Alt
 	_process_cursor_grab_state()
 
 	# ---> VOID RESCUE FAILSAFE SHIELD <---
-	# If the player slips below the ground level (Y < 2.0) due to physics glitches or knockbacks,
-	# automatically teleport them back safely to the surface of the nearest solid block!
 	if global_position.y < 2.0:
 		_rescue_player_from_void()
 
@@ -245,6 +248,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	_process_camera_effects(delta)
 
+
 ## Scan downwards to rescue player back to the surface of the topmost solid block
 func _rescue_player_from_void() -> void:
 	print("[PlayerController] Failsafe Shield triggered: Player fell into the void! Relocalizing to surface...")
@@ -270,7 +274,8 @@ func _rescue_player_from_void() -> void:
 	else:
 		global_position.y = 15.0 # Fallback safety height above ocean level
 
-## FASE 1: Controls hardware cursor visibility when holding Left Alt
+
+## Controls hardware cursor visibility when holding Left Alt
 func _process_cursor_grab_state() -> void:
 	if not is_instance_valid(hud):
 		return
@@ -283,6 +288,7 @@ func _process_cursor_grab_state() -> void:
 		if not hud.is_any_menu_open():
 			if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and not Input.is_action_pressed("ui_cancel"):
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
 
 ## Executes procedural camera movements (bobbing/sway) and damage camera trauma
 func _process_camera_effects(delta: float) -> void:
@@ -325,11 +331,13 @@ func _process_camera_effects(delta: float) -> void:
 	camera.position = current_pos
 	camera.rotation.z = current_tilt
 
+
 func _scroll_hotbar(direction: int) -> void:
 	var new_slot := active_slot_index + direction
 	if new_slot > 7: new_slot = 0
 	elif new_slot < 0: new_slot = 7
 	_apply_hotbar_selection(new_slot)
+
 
 func _process_hotbar_keys() -> void:
 	if Input.is_action_just_pressed("select_stone"): _apply_hotbar_selection(0)
@@ -340,6 +348,7 @@ func _process_hotbar_keys() -> void:
 	elif Input.is_action_just_pressed("select_lava"): _apply_hotbar_selection(5)
 	elif Input.is_action_just_pressed("select_chicken"): _apply_hotbar_selection(6)
 	elif Input.is_action_just_pressed("select_sword"): _apply_hotbar_selection(7)
+
 
 ## Decoupled contextual Hotbar selection mapping
 func _apply_hotbar_selection(slot: int) -> void:
@@ -380,24 +389,23 @@ func _apply_hotbar_selection(slot: int) -> void:
 		else:
 			_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
 
+
 func _set_viewmodel_tool(tool_id: PlayerViewModel.ToolType) -> void:
 	if is_instance_valid(viewmodel):
 		viewmodel.switch_to_tool(tool_id)
+
 
 func take_damage(amount: int, knockback_force: Vector3) -> void:
 	if not is_active or domain_entity.is_dead: return
 	velocity += knockback_force
 	domain_entity.take_damage(amount)
 
+
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	_shake_intensity = 0.32
-	if is_instance_valid(hud):
-		hud.update_health_display(domain_entity.health)
-		if hud.has_method("flash_damage_screen"):
-			hud.call("flash_damage_screen")
 
-## FIXED: Freezes physics loop and deploys cinematic Loading Screen during respawn teleports 
-## to prevent ground pops, falls, or stuttering frames on death events.
+
+## Reactive health reset on player death.
 func _on_domain_entity_died() -> void:
 	domain_entity.health = 3
 	domain_entity.is_dead = false
@@ -410,22 +418,11 @@ func _on_domain_entity_died() -> void:
 	position = Vector3(8.5, 14.0, 8.5)
 	velocity = Vector3.ZERO
 	
-	if is_instance_valid(hud):
-		hud.update_health_display(domain_entity.health)
-		
 	# Re-track and reload starting chunks coordinates safely
 	if is_instance_valid(world_controller):
 		var chunk_pos: Vector3i = world_controller.get("world_state").global_to_chunk_pos(Vector3i(8, 0, 8))
 		world_controller.set("_target_spawn_chunk_pos", chunk_pos)
 
-func _sync_hud_counters() -> void:
-	if not is_instance_valid(hud) or not is_instance_valid(inventory): 
-		return
-		
-	var inv_comp := inventory as InventoryComponent
-	for i in range(8):
-		var slot := inv_comp.get_slot_data(i)
-		hud.update_slot_quantity(i, slot.item_id, slot.quantity)
 
 func _setup_inputs_mouse_actions() -> void:
 	if not InputMap.has_action("click_left"):

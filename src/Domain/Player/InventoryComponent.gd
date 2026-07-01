@@ -8,6 +8,8 @@
 #              - Dependency Inversion Principle (DIP): Rather than hardcoding 
 #                static calls to BlockLibrary, it holds an injectable reference 
 #                to a block library provider.
+#              - OBSERVER PATTERN: Emits the interface `inventory_changed` signal 
+#                on state mutations to cleanly notify presentation layers.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/InventoryComponent.gd
 # ==============================================================================
@@ -82,6 +84,7 @@ func add_item(item_id: int, quantity: int) -> bool:
 	var is_weapon := (item_id == 17)
 	var max_stack := 1 if is_weapon else 64
 	var remaining := quantity
+	var modified := false
 	
 	if not is_weapon:
 		for slot in _slots:
@@ -90,12 +93,16 @@ func add_item(item_id: int, quantity: int) -> bool:
 				var add_amount := min(remaining, available_space)
 				slot.quantity += add_amount
 				remaining -= add_amount
+				modified = true
 				if remaining <= 0:
+					inventory_changed.emit()
 					return true
 					
 	while remaining > 0:
 		var empty_index := _find_first_empty_slot_index()
 		if empty_index == -1:
+			if modified:
+				inventory_changed.emit()
 			return false 
 			
 		var slot := _slots[empty_index]
@@ -105,12 +112,17 @@ func add_item(item_id: int, quantity: int) -> bool:
 		slot.quantity = add_amount
 		slot.max_stack = max_stack
 		remaining -= add_amount
+		modified = true
 		
+	if modified:
+		inventory_changed.emit()
 	return true
 
 
 func consume_item(item_id: int, quantity: int) -> void:
 	var remaining := quantity
+	var modified := false
+	
 	for i in range(_slots.size() - 1, -1, -1):
 		var slot := _slots[i]
 		if slot.item_id == item_id:
@@ -120,6 +132,7 @@ func consume_item(item_id: int, quantity: int) -> void:
 			var take_amount := min(slot.quantity, remaining)
 			slot.quantity -= take_amount
 			remaining -= take_amount
+			modified = true
 			
 			if slot.quantity <= 0:
 				slot.item_id = -1
@@ -127,6 +140,9 @@ func consume_item(item_id: int, quantity: int) -> void:
 				
 			if remaining <= 0:
 				break
+				
+	if modified:
+		inventory_changed.emit()
 
 
 func can_receive_item(item_id: int, quantity: int) -> bool:
@@ -161,6 +177,7 @@ func swap_slots(index_a: int, index_b: int) -> void:
 	var temp := _slots[index_a]
 	_slots[index_a] = _slots[index_b]
 	_slots[index_b] = temp
+	inventory_changed.emit()
 
 
 func get_slot_data(index: int) -> SlotData:
@@ -250,3 +267,5 @@ func deserialize_data(data: Array) -> void:
 		
 	while _slots.size() < 24:
 		_slots.append(SlotData.new(-1, 0))
+		
+	inventory_changed.emit()

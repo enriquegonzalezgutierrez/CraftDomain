@@ -4,10 +4,10 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Handles exclusively the 
 #                physical loading of the chest asset, colliders, and animation.
-#              - i18n Overhaul: Replaced hardcoded string concatenations with 
-#                clean localized translation keys (NOTIFICATION_LOOT_FOUND_...).
-#              AI QUEST UPGRADE: Safely increments the active quest's incremental 
-#              progress_counter when looting chest reward items.
+#              - Dependency Inversion Principle (DIP): Communicates strictly 
+#                through the `IInventory` abstract interface using Item IDs.
+#              - OBSERVER PATTERN: Removed manual HUD synchronizations. UI updates 
+#                are now driven reactively by the domain.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChestEntity.gd
 # ==============================================================================
@@ -70,23 +70,22 @@ func _setup_collision() -> void:
 
 ## Public Interaction API: Triggered when player aims and clicks right mouse button.
 func interact(player_node: CharacterBody3D) -> void:
-	var inventory = player_node.get("inventory")
-	var hud = player_node.get("hud")
+	var inventory := player_node.get("inventory") as IInventory
+	var hud := player_node.get("hud") as PlayerHUD
 	
 	if is_instance_valid(inventory):
-		# Roll a random reward: 50% chance for food, 50% for lava fuel
-		var reward_slot := 6 if randf() > 0.5 else 5
+		# Roll a random reward: 50% chance for food (ID 16), 50% for lava fuel (ID 15)
+		var reward_item_id := 16 if randf() > 0.5 else 15
 		
 		# Symmetrically fetch the correct translation description key (i18n compliance)
-		var desc_key := "NOTIFICATION_LOOT_FOUND_DESC_CHICKEN" if reward_slot == 6 else "NOTIFICATION_LOOT_FOUND_DESC_LAVA"
+		var desc_key := "NOTIFICATION_LOOT_FOUND_DESC_CHICKEN" if reward_item_id == 16 else "NOTIFICATION_LOOT_FOUND_DESC_LAVA"
 		
-		# Grant the physical reward inside the inventory component
-		inventory.modify_slot_quantity(reward_slot, 1)
-		player_node.call("_sync_hud_counters")
+		# Grant the physical reward using the clean DIP interface method
+		inventory.add_item(reward_item_id, 1)
 		
 		# Increment active quest progression on chest open if applicable
 		var active_q := QuestService.get_active_quest()
-		if active_q != null and active_q.required_item_index == reward_slot:
+		if active_q != null and active_q.required_item_index == reward_item_id:
 			active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
 		
 		# Trigger sliding toast notification with localized keys
@@ -94,7 +93,7 @@ func interact(player_node: CharacterBody3D) -> void:
 			hud.call("show_quest_notification", "NOTIFICATION_LOOT_FOUND_HEADER", desc_key)
 			
 		# Disable collider immediately to prevent double-interactions during animation
-		var collider = get_node_or_null("ChestCollider")
+		var collider := get_node_or_null("ChestCollider")
 		if is_instance_valid(collider):
 			collider.queue_free()
 			

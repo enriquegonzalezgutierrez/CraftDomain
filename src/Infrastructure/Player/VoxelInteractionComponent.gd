@@ -7,10 +7,10 @@
 #              - Single Responsibility Principle (SRP): Handles exclusively gaze 
 #                interaction mechanics and block modification triggers.
 #              - Dependency Inversion Principle (DIP): Rather than hardcoding 
-#                static references to global singletons, it holds injectable 
-#                references to the block library and quest service.
-#              - i18n Overhaul: Replaced all hardcoded notification toast strings 
-#                with clean localization keys.
+#                direct slot-data modifications, it utilizes the abstract 
+#                IInventory interface methods.
+#              - OBSERVER PATTERN: Cleaned of manual HUD-sync cascades; actions 
+#                now reactively fire signals from the domain.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -146,20 +146,17 @@ func _mine_or_attack() -> void:
 			if mined_type == BlockType.Type.CROP_RIPE:
 				inventory.add_item(20, 1) # Ripe Wheat ID
 				inventory.add_item(18, randi_range(1, 2)) # Plump Seeds ID
-				player._sync_hud_counters()
 				target_id = 20 
 				if is_instance_valid(hud):
 					hud.show_quest_notification("NOTIFICATION_HARVEST_SUCCESS_HEADER", "NOTIFICATION_HARVEST_SUCCESS_DESC")
 			elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
 				inventory.add_item(18, 1)
-				player._sync_hud_counters()
 				target_id = 18 
 				if is_instance_valid(hud):
 					hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
 			else:
 				# Standard block collection
 				inventory.add_block_by_type(mined_type)
-				player._sync_hud_counters()
 				
 				# Normalise block mappings back to basic inventory items
 				match mined_type:
@@ -243,7 +240,6 @@ func _build_or_interact() -> void:
 	# Interact with villagers, merchants, or guards
 	if is_instance_valid(collider) and collider is CharacterBody3D and collider.has_method("interact"):
 		collider.call("interact", player)
-		player._sync_hud_counters()
 		return
 		
 	var active_slot := player.active_slot_index
@@ -259,20 +255,16 @@ func _build_or_interact() -> void:
 	var item_id := slot_data.item_id
 	var world_state := world_controller.get("world_state") as WorldState
 	
-	# HEALING CASE: Consume 1x Fried Chicken (Item ID 16) to restore health (Using localized keys)
+	# HEALING CASE: Consume 1x Fried Chicken (Item ID 16) to restore health
 	if item_id == 16:
 		if player.domain_entity.health < 3:
-			slot_data.quantity -= 1
-			if slot_data.quantity <= 0:
-				slot_data.item_id = -1
+			inventory.consume_item(16, 1)
 			player.domain_entity.health = min(3, player.domain_entity.health + 1)
 			if is_instance_valid(hud):
-				hud.update_health_display(player.domain_entity.health)
 				hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "NOTIFICATION_CONSUME_FOOD_DESC")
-			player._sync_hud_counters()
 		return
 
-	# SEED PLANTING: Plant crop seeds on top of solid soil blocks (Item ID 18: Crop Seed) (Using localized keys)
+	# SEED PLANTING: Plant crop seeds on top of solid soil blocks (Item ID 18: Crop Seed)
 	if item_id == 18:
 		var hit_normal := raycast.get_collision_normal()
 		if hit_normal.y == 1.0: # Top face interactions only
@@ -283,11 +275,7 @@ func _build_or_interact() -> void:
 			if soil_type == BlockType.Type.GRASS or soil_type == BlockType.Type.DIRT:
 				var crop_coord := soil_coord + Vector3i(0, 1, 0)
 				if world_state.get_block(crop_coord) == BlockType.Type.AIR:
-					slot_data.quantity -= 1
-					if slot_data.quantity <= 0:
-						slot_data.item_id = -1
-					player._sync_hud_counters()
-					
+					inventory.consume_item(18, 1)
 					world_controller.call("set_block_globally", crop_coord, BlockType.Type.CROP_SEED)
 					if is_instance_valid(hud):
 						hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")
@@ -307,9 +295,5 @@ func _build_or_interact() -> void:
 		if block_coord == player_feet or block_coord == player_head: 
 			return
 			
-		slot_data.quantity -= 1
-		if slot_data.quantity <= 0:
-			slot_data.item_id = -1
-			
-		player._sync_hud_counters()
+		inventory.consume_item(build_type, 1)
 		world_controller.call("set_block_globally", block_coord, build_type)

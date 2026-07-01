@@ -8,6 +8,7 @@
 #                is delegated to specialized services.
 #              - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
 #                services without modifying core coordination loops.
+#              - OBSERVER PATTERN: Cleaned of manual HUD-sync calls on inventory loads.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -40,9 +41,11 @@ const UPDATE_INTERVAL: float = 0.2
 var _target_spawn_chunk_pos: Vector3i = Vector3i(0, 0, 0)
 var _loaded_inventory_data: Array = []
 
+
 func _ready() -> void:
 	assert(repository != null, "[WorldController] Fatal: WorldRepository must be injected before _ready()!")
 	_initialize_systems()
+
 
 ## Sets up all procedural world generation elements and delegates sub-services
 func _initialize_systems() -> void:
@@ -96,9 +99,11 @@ func _initialize_systems() -> void:
 		player.position = spawn_pos
 		player.rotation = spawn_rot
 
+
 func _target_spawn_chunk_calculation(block_pos: Vector3i) -> void:
 	_target_spawn_chunk_pos = world_state.global_to_chunk_pos(block_pos)
 	_target_spawn_chunk_pos.y = 0
+
 
 func _process(delta: float) -> void:
 	if not is_instance_valid(player):
@@ -119,6 +124,7 @@ func _process(delta: float) -> void:
 	if is_instance_valid(chunk_manager):
 		chunk_manager.process_frame_queues()
 
+
 ## Calculates coordinates to request chunk loads/unloads
 func _process_dynamic_world() -> void:
 	var task: ChunkLoaderService.ChunkUpdateTask = loader_service.check_viewer_position(
@@ -131,6 +137,7 @@ func _process_dynamic_world() -> void:
 		chunk_manager.queue_unloads(task.to_unload)
 		chunk_manager.queue_loads(task.to_load)
 
+
 ## Coordinates dynamic streetlight updates on day/night transitions
 func _process_day_night_lighting() -> void:
 	var celestial = get_parent().get_node_or_null("CelestialService")
@@ -140,6 +147,7 @@ func _process_day_night_lighting() -> void:
 	var is_night: bool = celestial.call("is_night_time") as bool
 	if is_instance_valid(_streetlight_service):
 		_streetlight_service.update_streetlights_state(is_night)
+
 
 # ==============================================================================
 # COORDINATION DELEGATION APIS (DIP/SRP Compliant)
@@ -152,15 +160,18 @@ func get_active_chunk_nodes() -> Dictionary:
 		return chunk_manager.get_active_nodes()
 	return {}
 
+
 ## Places or breaks a block globally and delegates fast asynchronous redraw queues.
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	if is_instance_valid(chunk_manager):
 		chunk_manager.set_block_globally(global_pos, type)
 
+
 ## Triggers the global asynchronous save sequence via WorldPersistenceService.
 func save_all() -> void:
 	if is_instance_valid(persistence_service):
 		persistence_service.save_game(player, world_state)
+
 
 ## Proxy helper allowing ChunkManager to trigger procedural mob spawning
 func spawn_mobs_for_chunk(chunk: Chunk) -> Array[Node]:
@@ -168,15 +179,18 @@ func spawn_mobs_for_chunk(chunk: Chunk) -> Array[Node]:
 		return _mob_spawning_service.spawn_mobs_for_chunk(chunk, self, world_state)
 	return []
 
+
 ## Proxy helper allowing ChunkManager to register streetlights procedurally
 func register_streetlights_for_chunk(chunk: Chunk) -> void:
 	if is_instance_valid(_streetlight_service):
 		_streetlight_service.register_streetlights_for_chunk(chunk)
 
+
 ## Proxy helper allowing ChunkManager to unregister streetlights on unloads
 func unregister_streetlights_for_chunk(chunk_pos: Vector3i) -> void:
 	if is_instance_valid(_streetlight_service):
 		_streetlight_service.unregister_streetlights_for_chunk(chunk_pos)
+
 
 ## Verifies if spawn area chunks are loaded and coordinates player spawn drops
 func check_player_spawn_activation() -> void:
@@ -186,6 +200,7 @@ func check_player_spawn_activation() -> void:
 		
 		if is_instance_valid(chunk_manager) and chunk_manager.is_chunk_rendered(spawn_chunk_pos_0_p) and chunk_manager.is_chunk_rendered(spawn_chunk_pos_1_p):
 			_activate_player_spawn()
+
 
 ## Safely positions the player on the topmost solid block at spawn coordinates
 func _activate_player_spawn() -> void:
@@ -209,6 +224,7 @@ func _activate_player_spawn() -> void:
 	player.set("is_active", true)
 	player.velocity = Vector3.ZERO
 
+
 ## Deserializes cached backpack quantities back into the player's inventory
 func _restore_player_inventory() -> void:
 	if _loaded_inventory_data.size() > 0 and is_instance_valid(player):
@@ -216,4 +232,5 @@ func _restore_player_inventory() -> void:
 		if is_instance_valid(inventory):
 			print("[WorldController] Restoring saved player inventory...")
 			inventory.deserialize_data(_loaded_inventory_data)
-			player.call("_sync_hud_counters")
+			# Sincronización manual borrada: inventory.deserialize_data() emite
+			# la señal inventory_changed y actualiza el HUD reactivamente.

@@ -6,18 +6,18 @@
 #              - Single Responsibility Principle (SRP): Only coordinates the UI 
 #                lifecycle and speaker state locks, delegating inventory 
 #                transaction rules to the pure domain service (TradingService).
-#              - Open-Closed Principle (OCP) & i18n: Exclusively uses translation 
-#                keys to prevent hardcoded string leakage in codebase.
 #              - Dependency Inversion Principle (DIP): Connects directly with 
-#                IInventory abstractions.
-#              CONVERSATION LOCK UPGRADE:
-#              - Tracks the active speaker's 3D node to freeze pathfinding and 
-#                lock gaze during interactions, resolving the 'walking away' bug.
+#                IInventory abstractions without direct coupling.
+#              - OBSERVER PATTERN: Removed manual HUD synchronizations. UI updates 
+#                are now driven reactively by the domain.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Dialogue/DialogueManager.gd
 # ==============================================================================
 class_name DialogueManager
 extends Node
+
+## Emitted when the active dialogue sequence has fully ended.
+signal dialogue_closed
 
 ## Injected reference to the active player controller.
 var player: CharacterBody3D
@@ -28,7 +28,7 @@ var active_dialogue: DialogueOverlay
 # The name of the speaker currently interacting with the player.
 var _active_speaker_name: String = ""
 
-# Symmetrically tracked 3D node of the active speaker NPC (SRP/Gaze Lock)
+# Symmetrically tracked 3D node of the active speaker NPC
 var _active_speaker_node: CharacterBody3D = null
 
 # Define concrete transaction IDs (ID 15: Lava Bucket, ID 16: Fried Chicken)
@@ -58,48 +58,45 @@ func open_dialogue(node: Resource, speaker_name: String, speaker_node: Character
 	active_dialogue.choice_selected.connect(_on_dialogue_choice_selected)
 	active_dialogue.dialogue_closed.connect(close_dialogue)
 	
+	# Populate dialogue nodes with localized translation strings
 	active_dialogue.load_dialogue_node(node, speaker_name)
 	
-	# Lock standard player physics inputs and release captured hardware mouse
-	if is_instance_valid(player):
-		player.set("is_active", false)
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	# Open dialog reveals the mouse pointer
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
-## Closes the active dialogue overlay, restores normal player controls, 
-## and releases the NPC speaker to resume normal AI loops.
+## Closes the active dialogue overlay and restores player capture controls safely.
 func close_dialogue() -> void:
 	if is_instance_valid(active_dialogue):
 		active_dialogue.queue_free()
 		active_dialogue = null
 		
-	# If a speaker was locked in conversation, release them safely
 	if is_instance_valid(_active_speaker_node):
 		if _active_speaker_node.has_method("stop_talking"):
 			_active_speaker_node.call("stop_talking")
 		_active_speaker_node = null
 		
-	# Restore standard movement parameters and re-capture mouse pointer
-	if is_instance_valid(player):
-		player.set("is_active", true)
+	# Let the HUD orchestrator check if other panels are open before recapturing cursor
+	var hud := player.get("hud") as PlayerHUD
+	if is_instance_valid(hud) and not hud.is_any_menu_open():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		
+	dialogue_closed.emit()
 
 
-## Evaluates branching choices, handles contextual transaction triggers, 
-## and routes navigation to the next target node.
 func _on_dialogue_choice_selected(target_node_id: String) -> void:
-	if target_node_id == "merchant_trade_execute" and is_instance_valid(player):
-		_process_merchant_trade_transaction()
-
-	# Route to the next Dialogue Node, or close the overlay if a leaf is reached
-	var next_node: Resource = DialogueService.get_dialogue_node(target_node_id)
-	if is_instance_valid(next_node) and is_instance_valid(active_dialogue):
-		active_dialogue.load_dialogue_node(next_node, _active_speaker_name)
+	var next_node := DialogueService.get_dialogue_node(target_node_id)
+	
+	if next_node != null:
+		# Custom Business Rule: Evaluate trading actions on navigation trigger
+		if target_node_id == "merchant_trade_execute":
+			_process_merchant_trade_transaction()
+		else:
+			active_dialogue.load_dialogue_node(next_node, _active_speaker_name)
 	else:
 		close_dialogue()
 
 
-## Handles the trade transaction by delegating transaction rules to the domain.
 func _process_merchant_trade_transaction() -> void:
 	var inventory := player.get("inventory") as IInventory
 	if not is_instance_valid(inventory):
@@ -133,21 +130,18 @@ func _on_trade_success(_inventory: IInventory) -> void:
 		QuestService.complete_active_quest(player)
 		
 		# Set localized translation key for quest completion
-		var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
+		var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute")
 		if exec_node != null:
 			exec_node.set("text", "DIALOGUE_MERCHANT_TRADE_QUEST_COMPLETE")
 	else:
 		# Set localized translation key for successful trade
-		var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
+		var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute")
 		if exec_node != null:
 			exec_node.set("text", "DIALOGUE_MERCHANT_TRADE_SUCCESS")
-			
-	# Sync player quickbar and HUD counters
-	player.call("_sync_hud_counters")
 
 
 ## Handles failure responses using localized translation keys.
 func _on_trade_failed() -> void:
-	var exec_node: Resource = DialogueService.get_dialogue_node("merchant_trade_execute")
+	var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute")
 	if exec_node != null:
 		exec_node.set("text", "DIALOGUE_MERCHANT_TRADE_FAILED")
