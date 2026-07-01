@@ -14,6 +14,12 @@
 #              - Restored the superior CapsuleShape3D for smooth voxel hill climbing.
 #              - Configured floor_stop_on_slope and floor_snap_length within the correct
 #                Godot 4 _ready() lifecycle to prevent edge sliding and sinking in GodotPhysics3D.
+#              - Upgraded safe_margin to 0.015 to completely prevent voxel wall penetration
+#                and wall-sticking/clipping bugs upon high-impact jumps.
+#              - Configured wall_min_slide_angle to 0.0 to enable butter-smooth sliding along 
+#                every voxel vertical wall, resolving corner sticking entirely.
+#              - FIXED: Implemented a Safe Gravity Reset loop utilizing slide collision normals
+#                to prevent infinite gravity accumulation (tunneling/void falling) on voxel edges.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -75,6 +81,12 @@ func _ready() -> void:
 	floor_stop_on_slope = true   # Completely prevents sliding off block edges/slopes
 	floor_constant_speed = true  # Maintains speed consistency over steps
 	floor_snap_length = 0.5      # Securely snaps capsule bottom to voxel surfaces
+	
+	# Upgraded safe margin to prevent penetration and sticking bugs on vertical walls
+	safe_margin = 0.015
+	
+	# Enable butter-smooth sliding along vertical voxel walls even at extremely tight angles
+	wall_min_slide_angle = 0.0
 
 	_setup_inputs()
 	_setup_player_geometry()
@@ -231,6 +243,10 @@ func _physics_process(delta: float) -> void:
 	# Gravity & Jump (Snaps back to 0 on floor automatically due to SNAP configuration)
 	if not is_on_floor():
 		velocity.y -= gravity * delta
+		# Limit terminal falling velocity to prevent geometry clipping/tunneling bugs
+		if velocity.y < -20.0:
+			velocity.y = -20.0
+			
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = JUMP_VELOCITY
 
@@ -246,6 +262,17 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0, SPEED)
 
 	move_and_slide()
+	
+	# FIXED: Prevent infinite gravity accumulation (and tunneling) when stuck on voxel edges/corners (Godot 4 bug)
+	if get_slide_collision_count() > 0:
+		for i in range(get_slide_collision_count()):
+			var collision := get_slide_collision(i)
+			if collision.get_normal().y > 0.5:
+				# The player capsule is resting on a floor-like surface
+				if velocity.y < 0.0:
+					velocity.y = 0.0
+				break
+				
 	_process_camera_effects(delta)
 
 

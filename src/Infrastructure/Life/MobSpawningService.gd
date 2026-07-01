@@ -8,6 +8,9 @@
 #              - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
 #                population registry, removing hardcoded match maps.
 #              - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome.
+#              FIXED:
+#              - Restricted _get_ground_surface_y to ignore foliage tree canopies
+#                and spawn animals exclusively on true floor-like blocks (Grass, Dirt, etc.).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -97,11 +100,19 @@ func _spawn_and_register_entity(mob_id: int, offset: Vector3, lx: float, lz: flo
 				quest.target_position = pos
 
 
-## Helper: Scans vertical columns downward to find the topmost solid block surface.
+## Helper: Scans vertical columns downward to find the topmost solid floor-like block.
+## Skips tree foliage canopies and artificial ceilings.
 func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
 	for y in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
-		if BlockType.is_solid(world_state.get_block(check_pos)):
+		var block_type := world_state.get_block(check_pos)
+		
+		# Only allow spawning on true floor-like blocks, ignoring leaves and trunks
+		if block_type == BlockType.Type.GRASS or block_type == BlockType.Type.DIRT or \
+		   block_type == BlockType.Type.STONE or block_type == BlockType.Type.SAND or \
+		   block_type == BlockType.Type.RED_SAND or block_type == BlockType.Type.MUD or \
+		   block_type == BlockType.Type.SNOW or block_type == BlockType.Type.ICE:
+			
 			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
 			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
 			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):

@@ -4,7 +4,7 @@
 #              Manages discrete MultiMeshInstance3D and MeshInstance3D nodes 
 #              per active BlockType to apply custom materials (solid, foliage, 
 #              liquids, glowing cores) efficiently.
-#              SOLID COMPLIANCE:
+#              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Handles chunk mesh assembly 
 #                and material binding, delegating shader compilation to shader files.
 #              - Open-Closed Principle (OCP): Loads compiled shaders from external
@@ -16,6 +16,10 @@
 #              - Applied the Flyweight Design Pattern by creating a single shared static
 #                BoxMesh instance across all MultiMeshes in the world, eliminating duplicate
 #                C++ geometry allocations on Vulkan.
+#              - Added the has_collision_body() and set_collision_body() APIs to support
+#                advanced, dynamic Physics LOD.
+#              FIXED: Corrected function nesting and indentation scopes to resolve
+#              compilation and static analysis warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -137,6 +141,24 @@ static func _get_leaves_wind_shader() -> Shader:
 	if _leaves_wind_shader == null:
 		_leaves_wind_shader = load("res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader")
 	return _leaves_wind_shader
+
+
+## Public Gaze API: Checks if the chunk node possesses an active collision body.
+func has_collision_body() -> bool:
+	return is_instance_valid(_collision_body)
+
+
+## Dynamic Physics LOD API: Injects and registers a static collision body directly
+## without modifying or redrawing MultiMesh rendering.
+func set_collision_body(p_collision_body: StaticBody3D) -> void:
+	if is_instance_valid(_collision_body):
+		if _collision_body.get_parent() == self:
+			remove_child(_collision_body)
+		_collision_body.queue_free()
+		
+	_collision_body = p_collision_body
+	if is_instance_valid(_collision_body):
+		add_child(_collision_body)
 
 
 ## Configures the segmented MultiMeshes and registers the physics collision body.
@@ -272,15 +294,9 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 	elif block_type == BlockType.Type.CLOUD or block_type == BlockType.Type.ICE or block_type == BlockType.Type.GLASS:
 		var mat := ORMMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.albedo_color = def.color_top
-		
-		# Glass is exceptionally smooth and reflective (highly glossy)
-		if block_type == BlockType.Type.GLASS:
-			mat.roughness = 0.15
-			mat.metallic = 0.1
-		else:
-			mat.roughness = 0.4
-			
+		mat.albedo_color = Color(0.05, 0.35, 0.82, 0.84) 
+		mat.roughness = 0.08 
+		mat.metallic = 0.15
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		_materials_cache[block_type] = mat
 		return mat

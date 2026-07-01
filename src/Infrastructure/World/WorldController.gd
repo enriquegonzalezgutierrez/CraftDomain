@@ -14,6 +14,8 @@
 #              BENCHMARKING:
 #              - Injected high-precision in-game profiler logs to trace the exact CPU 
 #                millisecond cost of world systems.
+#              - FIXED: Added _is_restored_save state flag to protect saved player height,
+#                preventing the spawn-activation collision penetration bug.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -49,6 +51,9 @@ var _loaded_inventory_data: Array = []
 # Profiler telemetry timer
 var _telemetry_timer: float = 0.0
 
+# Save game protection flag
+var _is_restored_save: bool = false
+
 
 func _ready() -> void:
 	assert(repository != null, "[WorldController] Fatal: WorldRepository must be injected before _ready()!")
@@ -75,6 +80,7 @@ func _initialize_systems() -> void:
 	var spawn_rot := Vector3.ZERO
 	
 	if saved_global.has("seed"):
+		_is_restored_save = true # Mark as active save to protect Y coordinates on load
 		active_seed = saved_global["seed"] as int
 		print("[WorldController] Found saved game! Restoring seed: ", active_seed)
 		if saved_global.has("player_pos"): 
@@ -92,6 +98,7 @@ func _initialize_systems() -> void:
 			elif saved_q_id != "": 
 				QuestService.set_active_quest(saved_q_id)
 	else:
+		_is_restored_save = false
 		# Fallback to unique random seed on fresh game start
 		randomize()
 		active_seed = randi()
@@ -236,15 +243,18 @@ func check_player_spawn_activation() -> void:
 
 ## Safely positions the player on the topmost solid block at spawn coordinates using Domain Rules
 func _activate_player_spawn() -> void:
-	var block_x := floori(player.position.x)
-	var block_z := floori(player.position.z)
-	var found_safe_y := 14.0 # Default safe fallback
-	
-	if is_instance_valid(world_state):
-		# Centralized Domain Rule calculation (DDD compliant)
-		found_safe_y = world_state.get_highest_solid_y(block_x, block_z)
+	if not _is_restored_save:
+		# Only calculate and overwrite vertical spawn height if this is a FRESH new world!
+		var block_x := floori(player.position.x)
+		var block_z := floori(player.position.z)
+		var found_safe_y := 14.0 # Default safe fallback
 		
-	player.position.y = found_safe_y
+		if is_instance_valid(world_state):
+			# Centralized Domain Rule calculation (DDD compliant)
+			found_safe_y = world_state.get_highest_solid_y(block_x, block_z)
+			
+		player.position.y = found_safe_y
+		
 	_restore_player_inventory()
 	player.set("is_active", true)
 	player.velocity = Vector3.ZERO

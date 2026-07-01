@@ -7,6 +7,9 @@
 #              - Added COAL_ORE (21), BRICKS (22), and GLASS (23) block types.
 #              - Configured physical solid and light-transparent properties 
 #                (Glass is solid but transparent).
+#              - OPTIMIZATION: Configured LEAVES and CLOUD as non-solid blocks to prevent
+#                players and mobs from getting physically trapped inside tree canopies,
+#                resolving the 6 FPS collision lock-up.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockType.gd
 # ==============================================================================
@@ -45,11 +48,12 @@ enum Type {
 
 
 ## Returns true if the block type occupies physical space (is solid).
-## Non-solid blocks like liquids and crops allow player/NPC passage and culling.
+## Non-solid blocks like liquids, foliage, and crops allow player/NPC passage and culling.
 static func is_solid(type: Type) -> bool:
 	match type:
 		Type.AIR, Type.WATER, Type.LAVA, \
-		Type.CROP_SEED, Type.CROP_GROWING, Type.CROP_RIPE:
+		Type.CROP_SEED, Type.CROP_GROWING, Type.CROP_RIPE, \
+		Type.LEAVES, Type.CLOUD: # Leaves and Clouds are non-solid traversable blocks!
 			return false
 		_:
 			return true

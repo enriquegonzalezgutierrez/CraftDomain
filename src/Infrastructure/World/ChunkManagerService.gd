@@ -23,6 +23,12 @@
 #              - THREAD THROTTLING: Added an asynchronous request queue to limit parallel
 #                WorkerThreadPool background tasks to a maximum of 2 concurrent hilos,
 #                resolving CPU core starvation and maintaining 60 FPS while walking.
+#              - DYNAMIC PHYSICS LOD: Leverages a lightweight permanent registry
+#                (_collision_vertices_registry) to dynamically inject chunk static collision
+#                bodies on-the-fly when player enters a 2-chunk radius, preventing void fall-throughs.
+#              - AMORTIZED PHYSICS LOD: Limits dynamic collision upgrades to a maximum of 2
+#                per tick to prevent main-thread frame freezes, fully eliminating physical
+#                wedging and sticking bugs.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -53,6 +59,10 @@ var _chunk_nodes: Dictionary = {}
 
 ## Tracking map for entities spawned within specific chunk columns: Vector3i (y=0) -> Array[Node]
 var _chunk_entities: Dictionary = {}
+
+## Lightweight permanent registry storing raw collision vertices: Vector3i -> PackedVector3Array
+## Used to dynamically generate StaticBody3D on proximity without background thread meshing.
+var _collision_vertices_registry: Dictionary = {}
 
 # Cache System (LRU)
 var _chunk_task_cache: Dictionary = {}
@@ -168,8 +178,17 @@ func _background_generate_chunk_task_wrapper(chunk_pos: Vector3i) -> void:
 
 func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	var chunk := Chunk.new(chunk_pos)
+	
+	# Thread-safe Guard: Abort if the controller has been freed during shutdown
+	if not is_instance_valid(controller):
+		return
+		
 	controller.generator.generate_chunk(chunk)
 	
+	# Thread-safe Guard: Abort if the controller or repository has been freed during shutdown
+	if not is_instance_valid(controller) or not is_instance_valid(controller.repository):
+		return
+		
 	var saved_edits: Dictionary = controller.repository.load_chunk_modifications(chunk_pos)
 	if saved_edits.size() > 0:
 		for local_pos in saved_edits.keys():
@@ -178,6 +197,10 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 			
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state)
 	
+	# Thread-safe Guard: Abort before liquid meshing
+	if not is_instance_valid(controller):
+		return
+		
 	var liquids: Dictionary = {}
 	for l_type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type)
@@ -192,6 +215,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	task_result.is_rebuild = false
 	
 	_queue_mutex.lock()
+	_collision_vertices_registry[chunk_pos] = task_result.collision_vertices # Register collision vertices permanently
 	_chunk_task_cache[chunk_pos] = task_result
 	_completed_tasks_queue.append(task_result)
 	
@@ -221,6 +245,10 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 		
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state)
 	
+	# Thread-safe Guard: Abort if the controller has been freed during shutdown
+	if not is_instance_valid(controller):
+		return
+		
 	var liquids: Dictionary = {}
 	for l_type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type)
@@ -235,6 +263,7 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 	task_result.is_rebuild = true
 
 	_queue_mutex.lock()
+	_collision_vertices_registry[chunk_pos] = task_result.collision_vertices # Update collision vertices registry
 	_completed_tasks_queue.append(task_result)
 	_queue_mutex.unlock()
 
@@ -257,7 +286,7 @@ func _render_completed_chunks_from_queue() -> void:
 		_queue_mutex.unlock()
 		
 		if task == null:
-			break # Queue is completely empty
+			break # Queue is completely empty, resume next frame
 			
 		_render_single_completed_task(task)
 		rendered_this_frame += 1
@@ -295,31 +324,39 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			controller.add_child(chunk_node)
 			_chunk_nodes[chunk_pos] = chunk_node
 			
-			var collision_body := StaticBody3D.new()
-			collision_body.name = "StaticCollisionBody"
+			var collision_body: StaticBody3D = null
 			
-			if task.collision_vertices.size() > 0:
-				var col_shape := CollisionShape3D.new()
-				col_shape.name = "ChunkCollisionShape"
-				var concave_shape := ConcavePolygonShape3D.new()
-				concave_shape.data = task.collision_vertices
-				col_shape.shape = concave_shape
-				collision_body.add_child(col_shape)
+			# Physics LOD Check: Only generate collision bodies for chunks near the player
+			var player_node: CharacterBody3D = controller.get("player") as CharacterBody3D
+			var is_within_collision_range := true
+			
+			if is_instance_valid(player_node):
+				var player_block_pos := Vector3i(
+					floor(player_node.global_position.x),
+					floor(player_node.global_position.y),
+					floor(player_node.global_position.z)
+				)
+				var player_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
+				var dx := abs(chunk_pos.x - player_chunk_pos.x)
+				var dz := abs(chunk_pos.z - player_chunk_pos.z)
+				
+				# Physics LOD limit: Only spawn static collision bodies within 2 chunks radius!
+				is_within_collision_range = (dx <= 2 and dz <= 2)
+				
+			if is_within_collision_range:
+				if task.collision_vertices.size() > 0:
+					collision_body = StaticBody3D.new()
+					collision_body.name = "StaticCollisionBody"
+					var col_shape := CollisionShape3D.new()
+					col_shape.name = "ChunkCollisionShape"
+					var concave_shape := ConcavePolygonShape3D.new()
+					concave_shape.data = task.collision_vertices
+					col_shape.shape = concave_shape
+					collision_body.add_child(col_shape)
 			
 			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
 			
-			# Spawners Trigger
-			var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
-			var spawn_chunk_pos_0 := Vector3i(chunk_pos.x, 0, chunk_pos.z)
-			var spawn_chunk_pos_1 := Vector3i(chunk_pos.x, 1, chunk_pos.z)
-			
-			if _spawn_chunk_pos_0_exists_and_valid(spawn_chunk_pos_0, spawn_chunk_pos_1):
-				if not _chunk_entities.has(col_pos):
-					var chunk_0 = _chunk_nodes[spawn_chunk_pos_0].chunk
-					var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
-					if spawned.size() > 0:
-						_chunk_entities[col_pos] = spawned
-			
+			# Clean and compliant SceneTree setup (removed redundant Case B spawning trigger)
 			controller.register_streetlights_for_chunk(task.chunk)
 			controller.check_player_spawn_activation()
 
@@ -328,12 +365,17 @@ func _spawn_chunk_pos_0_exists_and_valid(pos_0: Vector3i, pos_1: Vector3i) -> bo
 	return _chunk_nodes.has(pos_0) and _chunk_nodes.has(pos_1)
 
 
-## Dynamic Proximity Spawner: Spawns entities only in chunks close to the player's current position.
+## Dynamic Proximity Spawner & Physics LOD: Spawns entities and generates collision shapes
+## only in chunks close to the player's current position.
 ## Caches evaluated empty columns to prevent CPU evaluation loops.
 func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
 	var start_time := Time.get_ticks_usec()
 	var chunk_eval_count := 0
 	var spawned_total := 0
+	var physics_lod_upgrades := 0
+	
+	# Time-slicing limit for main thread colliders (upgraded 2 per frame max)
+	const MAX_LOD_UPGRADES_PER_TICK := 2 
 	
 	var player_block_pos := Vector3i(
 		floor(player_global_pos.x),
@@ -351,7 +393,7 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 			if _chunk_nodes.has(target_chunk_pos_0) and _chunk_nodes.has(target_chunk_pos_1):
 				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
 				
-				# Only trigger the spawner if the column has not spawned entities yet
+				# A. MOB SPAWNER TRIGGER
 				if not _chunk_entities.has(col_pos):
 					chunk_eval_count += 1
 					var chunk_0 = _chunk_nodes[target_chunk_pos_0].chunk
@@ -361,10 +403,41 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 					_chunk_entities[col_pos] = spawned
 					spawned_total += spawned.size()
 					
-	if chunk_eval_count > 0:
+				# B. DYNAMIC PHYSICS LOD TRIGGER: Check and generate collision body on the fly!
+				for cy in range(2):
+					# Guard to prevent thread blocking (Time-slicing active)
+					if physics_lod_upgrades >= MAX_LOD_UPGRADES_PER_TICK:
+						break
+						
+					var target_pos := Vector3i(target_chunk_pos_0.x, cy, target_chunk_pos_0.z)
+					var chunk_node: ChunkNode = _chunk_nodes[target_pos]
+					if is_instance_valid(chunk_node) and not chunk_node.has_collision_body():
+						_queue_mutex.lock()
+						var vertices_exist := _collision_vertices_registry.has(target_pos)
+						var vertices := PackedVector3Array()
+						if vertices_exist:
+							vertices = _collision_vertices_registry[target_pos]
+						_queue_mutex.unlock()
+						
+						if vertices_exist and vertices.size() > 0:
+							var collision_body := StaticBody3D.new()
+							collision_body.name = "StaticCollisionBody"
+							
+							var col_shape := CollisionShape3D.new()
+							col_shape.name = "ChunkCollisionShape"
+							var concave_shape := ConcavePolygonShape3D.new()
+							concave_shape.data = vertices
+							col_shape.shape = concave_shape
+							collision_body.add_child(col_shape)
+							
+							# Inject collision body directly without re-drawing MultiMeshes
+							chunk_node.set_collision_body(collision_body)
+							physics_lod_upgrades += 1
+					
+	if chunk_eval_count > 0 or physics_lod_upgrades > 0:
 		var elapsed_ms := (Time.get_ticks_usec() - start_time) / 1000.0
-		print("[Performance Diagnostics] Proximity Spawner evaluated %d chunk columns in %.3f ms. Spawned %d entities." % [
-			chunk_eval_count, elapsed_ms, spawned_total
+		print("[Performance Diagnostics] Proximity Spawner: evaluated %d chunk columns | spawned %d entities | upgraded %d physics LOD colliders in %.3f ms." % [
+			chunk_eval_count, spawned_total, physics_lod_upgrades, elapsed_ms
 		])
 
 
@@ -391,6 +464,10 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		
 	_chunk_nodes.erase(chunk_pos)
 	world_state.remove_chunk(chunk_pos)
+	
+	_queue_mutex.lock()
+	_collision_vertices_registry.erase(chunk_pos) # Clean up collision vertices to prevent memory leaks
+	_queue_mutex.unlock()
 
 
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
