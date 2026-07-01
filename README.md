@@ -160,9 +160,9 @@ sequenceDiagram
 	participant Task as GeneratedChunkTask
 	participant SB as StaticBody3D
 	participant Col as CollisionShape3D
-	participant Box as shared_box_shape (BoxShape3D)
+	participant BShape as shared_box_shape (BoxShape3D)
 
-	Note over CMS,Box: Triggered on Chunk Render or Rebuild
+	Note over CMS,BShape: Triggered on Chunk Render or Rebuild
 	CMS->>Task: Read multimesh_data (Transforms of solid blocks)
 	loop For Each Transform in Solid Block Group
 		CMS->>Col: Instantiate CollisionShape3D
