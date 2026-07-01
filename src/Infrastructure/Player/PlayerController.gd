@@ -6,8 +6,8 @@
 #                mining, building, eating, and NPC interactions to VoxelInteractionComponent, 
 #                and UI window orchestration to PlayerHUD.
 #              - Open-Closed Principle (OCP): Dynamic inputs and key-mappings.
-#              - OBSERVER PATTERN: Cleaned of obsolete UI-synchronization loops; 
-#                the HUD now binds directly to Domain events.
+#              - OBSERVER PATTERN: Cleaned of obsolete UI-synchronization loops and 
+#                unrelated keyboard UI input routings (SRP).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -199,31 +199,11 @@ func _physics_process(delta: float) -> void:
 	if global_position.y < 2.0:
 		_rescue_player_from_void()
 
+	# Freeze player movement inputs if spawn protection is active (SRP compliant)
 	if not is_active:
-		# Process UI workspace toggles even when movement physics are frozen
-		if Input.is_action_just_pressed("craft_item") and is_instance_valid(hud):
-			var is_workshop_active := hud.get("_crafting_overlay") != null
-			hud.toggle_crafting_workshop(not is_workshop_active)
-		elif Input.is_action_just_pressed("toggle_backpack") and is_instance_valid(hud):
-			var is_backpack_active := hud.get("_inventory_overlay") != null
-			hud.toggle_inventory_backpack(not is_backpack_active)
-		elif Input.is_action_just_pressed("toggle_world_map") and is_instance_valid(hud):
-			var is_map_active := hud.get("_world_map_overlay") != null
-			hud.toggle_world_map(not is_map_active)
 		return
 
 	_process_hotbar_keys()
-
-	# Contextual HUD overlays toggling loops
-	if Input.is_action_just_pressed("craft_item") and is_instance_valid(hud):
-		var is_workshop_active := hud.get("_crafting_overlay") != null
-		hud.toggle_crafting_workshop(not is_workshop_active)
-	elif Input.is_action_just_pressed("toggle_backpack") and is_instance_valid(hud):
-		var is_backpack_active := hud.get("_inventory_overlay") != null
-		hud.toggle_inventory_backpack(not is_backpack_active)
-	elif Input.is_action_just_pressed("toggle_world_map") and is_instance_valid(hud):
-		var is_map_active := hud.get("_world_map_overlay") != null
-		hud.toggle_world_map(not is_map_active)
 
 	# Delegates all targeted raycasting, mining, building, and eating calculations
 	if is_instance_valid(interaction_component):

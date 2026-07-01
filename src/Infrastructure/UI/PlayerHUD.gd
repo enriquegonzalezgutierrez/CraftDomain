@@ -3,7 +3,8 @@
 # Description: Infrastructure UI Controller acting as a decoupled Coordinator.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Delegates ALL interface 
-#                rendering, drawing, and menu components to specialized widgets.
+#                rendering, drawing, and menu components to specialized widgets,
+#                and now encapsulates its own keyboard input routing.
 #              - Open-Closed Principle (OCP): All text titles, labels, and toasts
 #                are fully i18n localized using tr() for future translation packs.
 #              - OBSERVER PATTERN: Connects reactively to Domain Events of both 
@@ -174,6 +175,23 @@ func _on_inventory_changed() -> void:
 			
 	# Refresh food drumsticks dynamically as they depend on total chicken stock count
 	update_health_display(player.domain_entity.health)
+
+
+## Presentation Input Router: Captures and handles overlay menu keyboard actions.
+func _unhandled_input(event: InputEvent) -> void:
+	# Block overlay toggle shortcuts if the game is completely paused or loading
+	if is_instance_valid(_pause_widget) and _pause_widget.visible:
+		return
+		
+	if event.is_action_pressed("craft_item"):
+		get_viewport().set_input_as_handled()
+		toggle_crafting_workshop(_crafting_overlay == null)
+	elif event.is_action_pressed("toggle_backpack"):
+		get_viewport().set_input_as_handled()
+		toggle_inventory_backpack(_inventory_overlay == null)
+	elif event.is_action_pressed("toggle_world_map"):
+		get_viewport().set_input_as_handled()
+		toggle_world_map(_world_map_overlay == null)
 
 
 func _process(_delta: float) -> void:
