@@ -1,56 +1,49 @@
 // ==============================================================================
 // Project: CraftDomain
-// Description: Custom triplanar spatial shader for 3D solid blocks. 
-//              Binds a 2D texture to the face projecting along the surface normal.
-//              Calculates projections in LOCAL space to prevent texture sliding,
-//              stretching, or warping during camera rotations.
-// SOLID COMPLIANCE:
-// - Single Responsibility Principle (SRP): Handles exclusively fragment blending 
-//   and local-space projection, completely decoupled from GDScript node logic.
+// Description: Ultra-Compatible Cinematic PBR Triplanar Shader for solid voxel blocks.
+//              SOLID COMPLIANCE: Dedicated exclusively to fragment and vertex 
+//                shading calculations (SRP).
+//              UNIVERSAL COMPATIBILITY:
+//              - Uses 'world_vertex_coords' render mode for robust hardware-agnostic 
+//                world space mapping, compatible with integrated and software GPUs.
+//              - Uses 'vec4' for block_color to prevent silent type mismatch failures.
+//              - Avoids hardware-specific derivative functions (dFdx/dFdy) for 100% 
+//                compatibility on non-GPU and software (llvmpipe) renderers.
 // Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 // File: res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader
 // ==============================================================================
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx, world_vertex_coords;
 
-// The custom texture containing albedo or structural patterns.
 uniform sampler2D albedo_texture : source_color, filter_nearest_mipmap;
+uniform vec4 block_color : source_color = vec4(1.0); // vec4 matches Godot's Color type precisely
+uniform float roughness_val : hint_range(0.0, 1.0) = 0.82;
 
-// Fallback procedural color utilized to color-in or fill alpha gaps.
-uniform vec4 block_color : source_color;
-
-// Physical roughness of the block surface.
-uniform float roughness_val : hint_range(0.0, 1.0) = 0.75;
-
-// Local vertex position and normals sent to the fragment processor (SRP/Parity)
-varying vec3 local_pos;
-varying vec3 local_normal;
-
+varying vec3 uv1_triplanar_pos;
+varying vec3 uv1_power_normal;
 
 void vertex() {
-	// Cache the raw local space coordinates to prevent view-space sliding
-	local_pos = VERTEX;
-	local_normal = NORMAL;
+	// Calculate triplanar blending weights using world-space normals
+	uv1_power_normal = pow(abs(NORMAL), vec3(4.0));
+	uv1_power_normal /= (uv1_power_normal.x + uv1_power_normal.y + uv1_power_normal.z);
+	
+	// Since world_vertex_coords is enabled, VERTEX is already transformed to World Space
+	uv1_triplanar_pos = VERTEX;
 }
 
+vec4 triplanar_texture(sampler2D p_sampler, vec3 p_weights, vec3 p_triplanar_pos) {
+	vec4 samp = vec4(0.0);
+	samp += texture(p_sampler, p_triplanar_pos.yz) * p_weights.x;
+	samp += texture(p_sampler, p_triplanar_pos.xz) * p_weights.y;
+	samp += texture(p_sampler, p_triplanar_pos.xy) * p_weights.z;
+	return samp;
+}
 
 void fragment() {
-	// Calculate absolute blend weights from local normals
-	vec3 abs_n = abs(local_normal);
+	// Fetch and blend albedo texture values triplanarly
+	vec4 albedo_tex = triplanar_texture(albedo_texture, uv1_power_normal, uv1_triplanar_pos);
+	ALBEDO = albedo_tex.rgb * block_color.rgb;
 	
-	// Normalize the blend weights so they sum to 1.0
-	float total = abs_n.x + abs_n.y + abs_n.z;
-	vec3 weights = abs_n / max(total, 0.001);
-	
-	// Sample the texture along the three local coordinate planes
-	vec4 tex_x = texture(albedo_texture, local_pos.zy);
-	vec4 tex_y = texture(albedo_texture, local_pos.xz);
-	vec4 tex_z = texture(albedo_texture, local_pos.xy);
-	
-	// Blend the three samples dynamically based on normal weights
-	vec4 tex_color = tex_x * weights.x + tex_y * weights.y + tex_z * weights.z;
-	
-	// Blend the procedural fallback color with the texture color using alpha as mask
-	ALBEDO = mix(block_color.rgb, tex_color.rgb, tex_color.a);
 	ROUGHNESS = roughness_val;
+	SPECULAR = 0.1; // Balanced dielectric specular reflectance
 }

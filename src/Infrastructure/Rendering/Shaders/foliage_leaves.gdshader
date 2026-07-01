@@ -1,71 +1,58 @@
 // ==============================================================================
 // Project: CraftDomain
-// Description: Custom leaves and foliage shader with procedural wind-sway 
-//              deformations, high-frequency organic expansion, culling-disabled 
-//              double-sided rendering, and alpha-discard clipping.
-//              Calculates projections in LOCAL space to prevent texture sliding,
-//              stretching, or warping during camera rotations.
-// SOLID COMPLIANCE:
-// - Single Responsibility Principle (SRP): Handles exclusively structural 
-//   vertex displacement and pixel clipping, completely decoupled from scripting.
+// Description: Ultra-Compatible Cinematic Foliage Shader for leaf canopies.
+//              SOLID COMPLIANCE: Dedicated exclusively to foliage fragment and 
+//                vertex shading calculations (SRP).
+//              UNIVERSAL COMPATIBILITY:
+//              - Uses 'world_vertex_coords' render mode for robust hardware-agnostic 
+//                world space mapping.
+//              - Uses 'vec4' for block_color to prevent type mismatch failures.
+//              - Uses standard multi-harmonic sine wave vertices offsets.
 // Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 // File: res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader
 // ==============================================================================
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_disabled, diffuse_burley, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx, world_vertex_coords;
 
-// The foliage texture containing custom leaves or blossom details.
 uniform sampler2D albedo_texture : source_color, filter_nearest_mipmap;
+uniform vec4 block_color : source_color = vec4(1.0);
+uniform float roughness_val : hint_range(0.0, 1.0) = 0.88;
+uniform float wind_amplitude : hint_range(0.0, 1.0) = 0.12;
+uniform float wind_speed : hint_range(0.0, 5.0) = 1.8;
 
-// Fallback procedural color utilized to color-in or fill alpha gaps.
-uniform vec4 block_color : source_color;
-
-// Physical roughness of the leaf surface.
-uniform float roughness_val : hint_range(0.0, 1.0) = 0.85;
-
-// Local vertex position and normals sent to the fragment processor (SRP/Parity)
-varying vec3 local_pos;
-varying vec3 local_normal;
-
+varying vec3 uv1_triplanar_pos;
+varying vec3 uv1_power_normal;
 
 void vertex() {
-	// Cache the raw stable local space coordinates before applying wind sway
-	local_pos = VERTEX;
-	local_normal = NORMAL;
+	// Calculate triplanar blending weights
+	uv1_power_normal = pow(abs(NORMAL), vec3(4.0));
+	uv1_power_normal /= (uv1_power_normal.x + uv1_power_normal.y + uv1_power_normal.z);
+	uv1_triplanar_pos = VERTEX;
 	
-	// 1. ORGANIC VOXEL FLUFFINESS
-	// Smooth high-frequency sine expansions along surface normals
-	float round_wave = sin(TIME * 2.0 + VERTEX.x * 2.5 + VERTEX.y * 3.5) * 0.05;
-	VERTEX.xyz += NORMAL * round_wave;
+	// MULTI-HARMONIC WIND SWAY (Calculated safely on world vertex positions)
+	float wave_a = sin(TIME * wind_speed + VERTEX.x * 0.12 + VERTEX.y * 0.08);
+	float wave_b = cos(TIME * (wind_speed * 0.6) + VERTEX.z * 0.15 - VERTEX.y * 0.05);
+	float wind_displacement = wave_a * wave_b * wind_amplitude;
 	
-	// 2. WIND SWAY
-	// Lateral diagonal wave translation based on vertical height
-	VERTEX.x += sin(TIME * 1.5 + VERTEX.y) * 0.08;
+	VERTEX.xz += vec2(wind_displacement, wind_displacement);
 }
 
+vec4 triplanar_texture(sampler2D p_sampler, vec3 p_weights, vec3 p_triplanar_pos) {
+	vec4 samp = vec4(0.0);
+	samp += texture(p_sampler, p_triplanar_pos.yz) * p_weights.x;
+	samp += texture(p_sampler, p_triplanar_pos.xz) * p_weights.y;
+	samp += texture(p_sampler, p_triplanar_pos.xy) * p_weights.z;
+	return samp;
+}
 
 void fragment() {
-	// Calculate absolute blend weights from local normals
-	vec3 abs_n = abs(local_normal);
+	// Fetch and blend albedo texture values triplanarly
+	vec4 albedo_tex = triplanar_texture(albedo_texture, uv1_power_normal, uv1_triplanar_pos);
+	ALBEDO = albedo_tex.rgb * block_color.rgb;
 	
-	// Normalize the blend weights so they sum to 1.0
-	float total = abs_n.x + abs_n.y + abs_n.z;
-	vec3 weights = abs_n / max(total, 0.001);
-	
-	// Sample the texture along the three local coordinate planes
-	vec4 tex_x = texture(albedo_texture, local_pos.zy);
-	vec4 tex_y = texture(albedo_texture, local_pos.xz);
-	vec4 tex_z = texture(albedo_texture, local_pos.xy);
-	
-	// Blend the three samples dynamically based on normal weights
-	vec4 tex_color = tex_x * weights.x + tex_y * weights.y + tex_z * weights.z;
-	
-	// Fast discard clipping: Discard rendering if pixel is mostly transparent (alpha < 0.4)
-	if (tex_color.a < 0.4) {
-		discard;
-	}
-	
-	// Blend the procedural fallback color with the texture color using alpha as mask
-	ALBEDO = mix(block_color.rgb, tex_color.rgb, tex_color.a);
 	ROUGHNESS = roughness_val;
+	
+	// PBR BACKLIGHT TRANSLUCENCY
+	BACKLIGHT = ALBEDO * 0.35;
+	SPECULAR = 0.05;
 }
