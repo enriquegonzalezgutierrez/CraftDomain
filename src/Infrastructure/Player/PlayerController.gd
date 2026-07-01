@@ -8,6 +8,8 @@
 #              - Open-Closed Principle (OCP): Dynamic inputs and key-mappings.
 #              - OBSERVER PATTERN: Cleaned of obsolete UI-synchronization loops and 
 #                unrelated keyboard UI input routings (SRP).
+#              - Domain-Driven Design (DDD): Defers spatial height calculations to 
+#                the WorldState Domain Aggregate, avoiding infrastructure domain leakage.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -180,7 +182,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
-		# FIXED: Expanded pitch clamp range up to positive 85 degrees to allow looking up
 		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(85))
 		
 	# 2. Mouse Wheel Hotbar Scrolling
@@ -230,30 +231,21 @@ func _physics_process(delta: float) -> void:
 	_process_camera_effects(delta)
 
 
-## Scan downwards to rescue player back to the surface of the topmost solid block
+## Scan downwards using Domain Rules to rescue player back to the surface of the topmost solid block
 func _rescue_player_from_void() -> void:
 	print("[PlayerController] Failsafe Shield triggered: Player fell into the void! Relocalizing to surface...")
 	velocity = Vector3.ZERO
 	
 	var block_x := floori(global_position.x)
 	var block_z := floori(global_position.z)
-	var found_safe_y: float = -1.0
+	var found_safe_y: float = 14.0 # Default fallback
 	
-	if is_instance_valid(world_controller):
-		var world_state_ref = world_controller.get("world_state") as WorldState
-		if world_state_ref != null:
-			# Scan downwards from max generation height limit
-			for y in range(31, -1, -1):
-				var check_coord := Vector3i(block_x, y, block_z)
-				var block_type := world_state_ref.get_block(check_coord)
-				if BlockType.is_solid(block_type):
-					found_safe_y = float(y) + 2.0 
-					break
-					
-	if found_safe_y >= 0.0:
-		global_position.y = found_safe_y
-	else:
-		global_position.y = 15.0 # Fallback safety height above ocean level
+	var world_ctrl := world_controller as WorldController
+	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
+		# Centralized Domain Rule calculation (DDD compliant, SRP compliant)
+		found_safe_y = world_ctrl.world_state.get_highest_solid_y(block_x, block_z)
+		
+	global_position.y = found_safe_y
 
 
 ## Controls hardware cursor visibility when holding Left Alt
@@ -398,6 +390,11 @@ func _on_domain_entity_died() -> void:
 		
 	position = Vector3(8.5, 14.0, 8.5)
 	velocity = Vector3.ZERO
+	
+	# Re-track and reload starting chunks coordinates safely
+	if is_instance_valid(world_controller):
+		var chunk_pos: Vector3i = world_controller.get("world_state").global_to_chunk_pos(Vector3i(8, 0, 8))
+		world_controller.set("_target_spawn_chunk_pos", chunk_pos)
 
 
 func _setup_inputs_mouse_actions() -> void:

@@ -9,6 +9,8 @@
 #              - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
 #                services without modifying core coordination loops.
 #              - OBSERVER PATTERN: Cleaned of manual HUD-sync calls on inventory loads.
+#              - Domain-Driven Design (DDD): Defers player spawn height calculations
+#                strictly to the WorldState Domain Aggregate, resolving domain leakage.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -92,7 +94,7 @@ func _initialize_systems() -> void:
 	generator = WorldGenerator.new(active_seed)
 	
 	# Determine initial spawn position
-	var block_pos := Vector3i(int(floor(spawn_pos.x)), int(floor(spawn_pos.y)), int(floor(spawn_pos.z)))
+	var block_pos := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
 	_target_spawn_chunk_calculation(block_pos)
 	
 	if is_instance_valid(player):
@@ -202,24 +204,17 @@ func check_player_spawn_activation() -> void:
 			_activate_player_spawn()
 
 
-## Safely positions the player on the topmost solid block at spawn coordinates
+## Safely positions the player on the topmost solid block at spawn coordinates using Domain Rules
 func _activate_player_spawn() -> void:
-	var block_x := int(floor(player.position.x))
-	var block_z := int(floor(player.position.z))
-	var found_safe_y: float = -1.0
+	var block_x := floori(player.position.x)
+	var block_z := floori(player.position.z)
+	var found_safe_y := 14.0 # Default safe fallback
 	
-	for y in range(31, -1, -1):
-		var check_coord := Vector3i(block_x, y, block_z)
-		var block_type := world_state.get_block(check_coord)
-		if BlockType.is_solid(block_type):
-			found_safe_y = float(y) + 2.0 
-			break
-			
-	if found_safe_y >= 0.0: 
-		player.position.y = found_safe_y
-	else: 
-		player.position.y = 14.0
+	if is_instance_valid(world_state):
+		# Centralized Domain Rule calculation (DDD compliant)
+		found_safe_y = world_state.get_highest_solid_y(block_x, block_z)
 		
+	player.position.y = found_safe_y
 	_restore_player_inventory()
 	player.set("is_active", true)
 	player.velocity = Vector3.ZERO
@@ -232,5 +227,3 @@ func _restore_player_inventory() -> void:
 		if is_instance_valid(inventory):
 			print("[WorldController] Restoring saved player inventory...")
 			inventory.deserialize_data(_loaded_inventory_data)
-			# Sincronización manual borrada: inventory.deserialize_data() emite
-			# la señal inventory_changed y actualiza el HUD reactivamente.
