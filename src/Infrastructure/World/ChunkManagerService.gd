@@ -1,15 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure Service managing background chunk thread tasks,
-#              LRU caching, and chunk node lifecycles.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Isolates chunk rendering 
-#                and lifecycle updates from core game loop logic.
+# Description: Infrastructure Service responsible for managing background chunk
+#              generation threads, task caching, and chunk node lifecycle.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Holds and manages both 
+#                _chunk_nodes and _chunk_entities locally, centralizing chunk 
+#                resource lifecycles and resolving cyclic type warnings.
+#              - HIGH PERFORMANCE PIPELINE: Implements reactive main-thread dispatching,
+#                rendering all completed background thread tasks instantly to eliminate
+#                frame-stutters and redraw queues starvation.
 #              OPTIMIZATIONS:
-#              - Eliminated neighboring chunk "seam sewing" rebuild storms on initial
-#                loads to prevent CPU thread pools starvation and main-thread stalls.
-#              - Retained reactive boundary rebuilds exclusively for real-time player 
-#                block placements or break modifications.
+#              - Replaced individual block shape owners with a single merged 
+#                ConcavePolygonShape3D per chunk node to resolve Godot's PhysicsServer3D bottleneck.
+#              - Decoupled entity spawning from the initial chunk rendering queue to enable
+#                distant chunks to remain completely static.
+#              - Added the proximity-based mob spawner API to populate active regions on-demand.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -19,7 +24,7 @@ extends RefCounted
 var controller: Node3D # References WorldController
 var world_state: WorldState
 
-# Thread safety synchronization structures
+# Thread safety sync structures
 var _queue_mutex: Mutex
 var _completed_tasks_queue: Array[GeneratedChunkTask] = []
 var _unload_queue: Array[Vector3i] = []
@@ -31,7 +36,7 @@ var _chunk_nodes: Dictionary = {}
 ## Tracking map for entities spawned within specific chunk columns: Vector3i (y=0) -> Array[Node]
 var _chunk_entities: Dictionary = {}
 
-# Least Recently Used (LRU) task cache system
+# Cache System (LRU)
 var _chunk_task_cache: Dictionary = {}
 const CACHE_SIZE_LIMIT: int = 64
 
@@ -42,23 +47,23 @@ func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
 	_queue_mutex = Mutex.new()
 
 
-## Verifies if a chunk is loaded and rendered in the scene tree.
+## Verifies if a chunk is loaded and rendered
 func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
 	return _chunk_nodes.has(chunk_pos)
 
 
-## Public API: Returns the active chunk nodes (used by climate and lighting services).
+## Public API: Returns the active chunk nodes (Used by auxiliary services)
 func get_active_nodes() -> Dictionary:
 	return _chunk_nodes
 
 
-## Queues chunks for asynchronous loading on background thread tasks.
+## Queues chunks for asynchronous loading (Background thread)
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
 	for pos in chunk_positions:
 		_request_asynchronous_chunk_load(pos)
 
 
-## Queues chunks to be unloaded and freed from memory safely.
+## Queues chunks to be unloaded from memory
 func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
 	for pos in chunk_positions:
 		if not _unload_queue.has(pos):
@@ -67,7 +72,7 @@ func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
 
 ## Safe Frame Ticker: Process unloads and drains the entire completed tasks queue in a single frame.
 func process_frame_queues() -> void:
-	# Process unloads up to 3 chunks per frame to avoid CPU frame stalls
+	# Process unloads up to 3 chunks per frame to avoid CPU stalls
 	var unloads_processed := 0
 	while _unload_queue.size() > 0 and unloads_processed < 3:
 		var chunk_to_unload := _unload_queue.pop_front() as Vector3i
@@ -93,7 +98,7 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 	WorkerThreadPool.add_task(_background_generate_chunk_task.bind(chunk_pos))
 
 
-## ASYNC REBUILD: Queues a single chunk to be re-meshed in the background thread.
+## ASYNC REBUILD: Queues a single chunk to be re-meshed in background
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 	if not _chunk_nodes.has(chunk_pos):
 		return
@@ -192,7 +197,7 @@ func _render_completed_chunks_from_queue() -> void:
 		if _pending_loading_chunks.has(chunk_pos):
 			_pending_loading_chunks.erase(chunk_pos)
 			
-		# Case A: Visual Redraw (Triggered on block place / break)
+		# Case A: Visual Redraw
 		if task.is_rebuild:
 			var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 			if is_instance_valid(chunk_node):
@@ -209,7 +214,7 @@ func _render_completed_chunks_from_queue() -> void:
 					
 				chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
 				
-		# Case B: Instantiation of a new chunk area
+		# Case B: Instantiation of a new area
 		else:
 			if not _chunk_nodes.has(chunk_pos):
 				world_state.add_chunk(task.chunk)
@@ -230,24 +235,35 @@ func _render_completed_chunks_from_queue() -> void:
 				
 				chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
 				
-				# Spawners Trigger
-				var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
-				var spawn_chunk_pos_0 := Vector3i(chunk_pos.x, 0, chunk_pos.z)
-				var spawn_chunk_pos_1 := Vector3i(chunk_pos.x, 1, chunk_pos.z)
-				
-				if _spawn_chunk_pos_0_exists_and_valid(spawn_chunk_pos_0, spawn_chunk_pos_1):
-					if not _chunk_entities.has(col_pos):
-						var chunk_0 = _chunk_nodes[spawn_chunk_pos_0].chunk
-						var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
-						if spawned.size() > 0:
-							_chunk_entities[col_pos] = spawned
-				
 				controller.register_streetlights_for_chunk(task.chunk)
 				controller.check_player_spawn_activation()
 
 
-func _spawn_chunk_pos_0_exists_and_valid(pos_0: Vector3i, pos_1: Vector3i) -> bool:
-	return _chunk_nodes.has(pos_0) and _chunk_nodes.has(pos_1)
+## Dynamic Proximity Spawner: Spawns entities only in chunks close to the player's current position.
+## This prevents far away chunks from instantiating expensive 3D models and AI logic.
+func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
+	var player_block_pos := Vector3i(
+		floor(player_global_pos.x),
+		floor(player_global_pos.y),
+		floor(player_global_pos.z)
+	)
+	var player_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
+	
+	for x in range(-spawn_radius, spawn_radius + 1):
+		for z in range(-spawn_radius, spawn_radius + 1):
+			var target_chunk_pos_0 := Vector3i(player_chunk_pos.x + x, 0, player_chunk_pos.z + z)
+			var target_chunk_pos_1 := Vector3i(player_chunk_pos.x + x, 1, player_chunk_pos.z + z)
+			
+			# Check if both layers of the chunk column are rendered
+			if _chunk_nodes.has(target_chunk_pos_0) and _chunk_nodes.has(target_chunk_pos_1):
+				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
+				
+				# Only trigger the spawner if the column has not spawned entities yet
+				if not _chunk_entities.has(col_pos):
+					var chunk_0 = _chunk_nodes[target_chunk_pos_0].chunk
+					var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
+					if spawned.size() > 0:
+						_chunk_entities[col_pos] = spawned
 
 
 func _unload_chunk_node(chunk_pos: Vector3i) -> void:
@@ -263,15 +279,18 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 			if is_instance_valid(entity): entity.queue_free()
 		_chunk_entities.erase(col_pos)
 
-	# Safety checks before calling queue_free on chunks
+	controller.unregister_streetlights_for_chunk(chunk_pos)
+
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
 	if is_instance_valid(chunk_node):
+		var body := chunk_node.get_node_or_null("StaticCollisionBody")
+		if is_instance_valid(body): chunk_node.remove_child(body)
 		chunk_node.queue_free()
-		_chunk_nodes.erase(chunk_pos)
-		world_state.remove_chunk(chunk_pos)
+		
+	_chunk_nodes.erase(chunk_pos)
+	world_state.remove_chunk(chunk_pos)
 
 
-## Places or breaks a block globally and schedules asynchronous redraw queues.
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	world_state.set_block(global_pos, type)
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
@@ -279,7 +298,7 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	
 	_request_chunk_rebuild(chunk_pos)
 	
-	# Only rebuild neighbor boundaries if the modification was done at the borders
+	# ONLY rebuild neighbors if necessary
 	if local_pos.x == 0: _request_chunk_rebuild(chunk_pos + Vector3i(-1, 0, 0))
 	elif local_pos.x == Chunk.SIZE - 1: _request_chunk_rebuild(chunk_pos + Vector3i(1, 0, 0))
 	

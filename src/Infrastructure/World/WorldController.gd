@@ -11,6 +11,9 @@
 #              - OBSERVER PATTERN: Cleaned of manual HUD-sync calls on inventory loads.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate, resolving domain leakage.
+#              OPTIMIZATIONS:
+#              - Integrated the dynamic proximity spawner call inside the throttled 
+#                visiblity update check (every 0.2s) and immediately upon player spawn.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -127,7 +130,7 @@ func _process(delta: float) -> void:
 		chunk_manager.process_frame_queues()
 
 
-## Calculates coordinates to request chunk loads/unloads
+## Calculates coordinates to request chunk loads/unloads and triggers proximity spawning
 func _process_dynamic_world() -> void:
 	var task: ChunkLoaderService.ChunkUpdateTask = loader_service.check_viewer_position(
 		player.global_position, 
@@ -138,6 +141,9 @@ func _process_dynamic_world() -> void:
 	if is_instance_valid(chunk_manager):
 		chunk_manager.queue_unloads(task.to_unload)
 		chunk_manager.queue_loads(task.to_load)
+		
+		# DYNAMIC PROXIMITY SPAWNING: Spawns entities only in chunks close to the player
+		chunk_manager.spawn_mobs_by_proximity(player.global_position)
 
 
 ## Coordinates dynamic streetlight updates on day/night transitions
@@ -218,6 +224,10 @@ func _activate_player_spawn() -> void:
 	_restore_player_inventory()
 	player.set("is_active", true)
 	player.velocity = Vector3.ZERO
+	
+	# Force initial proximity spawning immediately upon spawning, so active regions populate right away
+	if is_instance_valid(chunk_manager):
+		chunk_manager.spawn_mobs_by_proximity(player.global_position)
 
 
 ## Deserializes cached backpack quantities back into the player's inventory

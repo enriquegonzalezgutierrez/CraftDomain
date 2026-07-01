@@ -9,6 +9,10 @@
 #                and material binding, delegating shader compilation to shader files.
 #              - Open-Closed Principle (OCP): Loads compiled shaders from external
 #                resources, allowing visual updates without modifying scripts.
+#              OPTIMIZATIONS:
+#              - Implemented a complete Mesh recycling pool (Object Pooling) in setup_chunk_visuals.
+#                Reuses existing MultiMeshInstance3D and MeshInstance3D nodes instead of
+#                destroying (queue_free) and instantiating (add_child) them continuously.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -123,14 +127,11 @@ static func _get_leaves_wind_shader() -> Shader:
 
 
 ## Configures the segmented MultiMeshes and registers the physics collision body.
+## Uses an advanced mesh recycling pool to prevent runtime instantiation lag.
 func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D, p_liquid_meshes: Dictionary = {}) -> void:
-	# 1. Clear old visual nodes if they exist
-	for node in _multimeshes.values():
-		if is_instance_valid(node):
-			node.queue_free()
-	_multimeshes.clear()
+	var active_types: Dictionary = {}
 	
-	# 2. Re-create visual MultiMeshInstance3D nodes for solid blocks
+	# 1. Update/Recycle Solid block MultiMeshes
 	for block_type in p_multimesh_data.keys():
 		var bulk_array: PackedFloat32Array = p_multimesh_data[block_type]
 		var instance_count: int = int(bulk_array.size() / 12.0)
@@ -138,37 +139,79 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 		if instance_count == 0:
 			continue
 			
-		var mm_instance := MultiMeshInstance3D.new()
+		active_types[block_type] = true
 		
-		# Robust string formatting to prevent crashes on non-contiguous block IDs
-		mm_instance.name = "MM_" + str(block_type)
-		
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_colors = false 
-		mm.mesh = BoxMesh.new() 
-		mm.instance_count = instance_count
-		mm.buffer = bulk_array
-		
-		mm_instance.multimesh = mm
-		mm_instance.material_override = _get_material_for_block(block_type)
-		
-		add_child(mm_instance)
-		_multimeshes[block_type] = mm_instance
+		if _multimeshes.has(block_type) and _multimeshes[block_type] is MultiMeshInstance3D:
+			# POOL RECYCLE: Direct hardware buffer rewrite
+			var mm_instance: MultiMeshInstance3D = _multimeshes[block_type]
+			var mm: MultiMesh = mm_instance.multimesh
+			if mm != null:
+				mm.instance_count = instance_count
+				mm.buffer = bulk_array
+			mm_instance.visible = true
+		else:
+			# Clean old mismatching node if any
+			if _multimeshes.has(block_type):
+				var old_node = _multimeshes[block_type]
+				if is_instance_valid(old_node):
+					old_node.queue_free()
+					
+			var mm_instance := MultiMeshInstance3D.new()
+			mm_instance.name = "MM_" + str(block_type)
+			
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_colors = false 
+			mm.mesh = BoxMesh.new() 
+			mm.instance_count = instance_count
+			mm.buffer = bulk_array
+			
+			mm_instance.multimesh = mm
+			mm_instance.material_override = _get_material_for_block(block_type)
+			
+			add_child(mm_instance)
+			_multimeshes[block_type] = mm_instance
 
-	# 3. Create continuous MeshInstance3D nodes for liquids
+	# 2. Update/Recycle Liquid block MeshInstances
 	for block_type in p_liquid_meshes.keys():
 		var mesh: ArrayMesh = p_liquid_meshes[block_type]
 		if mesh == null:
 			continue
 			
-		var mi := MeshInstance3D.new()
-		mi.name = "Liquid_" + str(block_type)
-		mi.mesh = mesh
-		mi.material_override = _get_material_for_block(block_type)
+		active_types[block_type] = true
 		
-		add_child(mi)
-		_multimeshes[block_type] = mi
+		if _multimeshes.has(block_type) and _multimeshes[block_type] is MeshInstance3D:
+			# POOL RECYCLE: Direct mesh re-assignment
+			var mi: MeshInstance3D = _multimeshes[block_type]
+			mi.mesh = mesh
+			mi.visible = true
+		else:
+			if _multimeshes.has(block_type):
+				var old_node = _multimeshes[block_type]
+				if is_instance_valid(old_node):
+					old_node.queue_free()
+					
+			var mi := MeshInstance3D.new()
+			mi.name = "Liquid_" + str(block_type)
+			mi.mesh = mesh
+			mi.material_override = _get_material_for_block(block_type)
+			
+			add_child(mi)
+			_multimeshes[block_type] = mi
+
+	# 3. Clean up / Hibernate inactive block meshes
+	for block_type in _multimeshes.keys():
+		if not active_types.has(block_type):
+			var node = _multimeshes[block_type]
+			if is_instance_valid(node):
+				if node is MultiMeshInstance3D:
+					var mm: MultiMesh = node.multimesh
+					if mm != null:
+						mm.instance_count = 0 # Sleep CPU drawing
+					node.visible = false
+				elif node is MeshInstance3D:
+					node.mesh = null
+					node.visible = false
 
 	# 4. Register physical Concave Collision body on the Main Thread
 	if is_instance_valid(_collision_body):

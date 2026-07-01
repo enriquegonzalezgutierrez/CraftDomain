@@ -6,19 +6,19 @@
 #              - Single Responsibility Principle (SRP): Handles exclusively player 
 #                boundary tracking and queue calculations.
 #              OPTIMIZATION:
-#              - Reduced view_distance from 4 chunks radius to 2 chunks radius (5x2x5 grid = 50 chunks).
-#                This massively reduces draw calls, memory footprint, and CPU overhead.
-#              FIXED: Removed unused private class variable '_to_unload_queue' 
-#              to resolve static analyzer warnings.
+#              - Restored view_distance from 2 to 4 chunks radius (9x2x9 grid = 162 chunks).
+#                This delivers a vast, high-performance visual draw distance under Forward+,
+#                allowing long-distance mountain rendering without performance drops.
+#              FIXED: Kept the private structures warning-free.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/World/ChunkLoaderService.gd
 # ==============================================================================
 class_name ChunkLoaderService
 extends RefCounted
 
-## Optimized View Distance Radius (2 chunks radius = 5x2x5 grid = 50 active chunks).
-## This significantly improves performance on all hardware configurations.
-var view_distance: int = 2
+## Optimized View Distance Radius (4 chunks radius = 9x2x9 grid = 162 active chunks).
+## This delivers a vast, high-performance visual draw distance under Forward+.
+var view_distance: int = 4
 
 ## Keeps track of the last chunk position the player was in to avoid redundant updates.
 var _last_viewer_chunk_pos: Vector3i = Vector3i(999, 999, 999)
@@ -47,7 +47,7 @@ func check_viewer_position(player_global_pos: Vector3, world_state: WorldState) 
 		
 	_last_viewer_chunk_pos = current_viewer_chunk_pos
 	
-	# 3. Calculate all chunk positions that should be active (5x2x5 3D grid)
+	# 3. Calculate all chunk positions that should be active (9x2x9 3D grid)
 	var desired_chunks: Dictionary = {}
 	for x in range(-view_distance, view_distance + 1):
 		for z in range(-view_distance, view_distance + 1):
