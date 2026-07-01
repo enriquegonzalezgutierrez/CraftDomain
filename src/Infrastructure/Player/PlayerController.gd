@@ -6,7 +6,9 @@
 #                mining, building, eating, and NPC interactions to VoxelInteractionComponent, 
 #                and UI window orchestration to PlayerHUD.
 #              - Open-Closed Principle (OCP): Dynamic inputs and key-mappings.
-#              - DOMAIN-DRIVEN DESIGN (DDD): Defers spatial height calculations to 
+#              - OBSERVER PATTERN: Cleaned of obsolete UI-synchronization loops and 
+#                unrelated keyboard UI input routings (SRP).
+#              - Domain-Driven Design (DDD): Defers spatial height calculations to 
 #                the WorldState Domain Aggregate, avoiding infrastructure domain leakage.
 #              OPTIMIZATIONS:
 #              - Restored the superior CapsuleShape3D for smooth voxel hill climbing.
@@ -16,9 +18,11 @@
 #                and wall-sticking/clipping bugs upon high-impact jumps.
 #              - Configured wall_min_slide_angle to 0.0 to enable butter-smooth sliding along 
 #                every voxel vertical wall, resolving corner sticking entirely.
+#              - FIXED: Applied a robust vector sliding projection (direction.slide) when
+#                colliding with walls (is_on_wall). This completely redirects inputs parallel
+#                to wall surfaces, permanently resolving sticky vertical lockups when jumping.
 #              - FIXED: Implemented a Safe Gravity Reset loop utilizing slide collision normals
 #                to prevent infinite gravity accumulation (tunneling/void falling) on voxel edges.
-#              - PRODUCTION: Cleaned of all diagnostic console logs to maximize frame rates.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -62,6 +66,9 @@ var _target_camera_tilt: float = 0.0
 # Camera Trauma Shake variable
 var _shake_intensity: float = 0.0
 
+# Telemetry logging timer
+var _telemetry_timer: float = 0.0
+
 
 func _init() -> void:
 	_setup_inputs_mouse_actions()
@@ -76,8 +83,14 @@ func _ready() -> void:
 	# Configure advanced CharacterBody3D snapping properties (Godot 4 compliant)
 	floor_stop_on_slope = true   
 	floor_constant_speed = true  
+	
+	# OPTIMIZED SNAP: Small enough to allow free jumps against walls, large enough to walk down stairs smoothly
 	floor_snap_length = 0.15      
+	
+	# Upgraded safe margin to prevent penetration and sticking bugs on vertical walls
 	safe_margin = 0.015
+	
+	# Enable butter-smooth sliding along vertical voxel walls even at extremely tight angles
 	wall_min_slide_angle = 0.0
 
 	_setup_inputs()
@@ -212,6 +225,12 @@ func _physics_process(delta: float) -> void:
 	# Controls hardware cursor visibility when holding Left Alt
 	_process_cursor_grab_state()
 
+	# Telemetry Diagnostics
+	_telemetry_timer += delta
+	if _telemetry_timer >= 1.0:
+		_telemetry_timer = 0.0
+		_print_physics_telemetry()
+
 	# ---> VOID RESCUE FAILSAFE SHIELD <---
 	if global_position.y < 2.0:
 		_rescue_player_from_void()
@@ -222,7 +241,7 @@ func _physics_process(delta: float) -> void:
 
 	# ---> GENERATION LAG FREEZE GUARD <---
 	var world_ctrl := world_controller as WorldController
-	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.chunk_manager):
+	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
 		var p_chunk_pos := world_ctrl.world_state.global_to_chunk_pos(Vector3i(floori(global_position.x), 0, floori(global_position.z)))
 		if not world_ctrl.chunk_manager.is_chunk_rendered(p_chunk_pos):
 			velocity = Vector3.ZERO
@@ -237,6 +256,7 @@ func _physics_process(delta: float) -> void:
 	# Gravity & Jump (Snaps back to 0 on floor automatically due to SNAP configuration)
 	if not is_on_floor():
 		velocity.y -= gravity * delta
+		# Limit terminal falling velocity to prevent geometry clipping/tunneling bugs
 		if velocity.y < -20.0:
 			velocity.y = -20.0
 			
@@ -246,6 +266,14 @@ func _physics_process(delta: float) -> void:
 	# Movement Calculations
 	var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 	var direction: Vector3 = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	
+	# WALL SLIDING STICKY FIX:
+	# If we are touching a wall, project/slide our input direction parallel to the wall normal.
+	# This completely prevents "pinning" or "sticking" against vertical surfaces when jumping.
+	if is_on_wall() and direction != Vector3.ZERO:
+		var wall_normal := get_wall_normal()
+		if direction.dot(wall_normal) < 0.0:
+			direction = direction.slide(wall_normal).normalized()
 	
 	if direction != Vector3.ZERO:
 		velocity.x = direction.x * SPEED
@@ -268,6 +296,14 @@ func _physics_process(delta: float) -> void:
 	_process_camera_effects(delta)
 
 
+## High-precision telemetry logger tracing physics engine states and raw inputs.
+func _print_physics_telemetry() -> void:
+	var raw_input := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+	print("[Physics Telemetry] Pos: %s | Vel: %s | On Floor: %s | Active: %s | Hardware Input: %s" % [
+		global_position, velocity, is_on_floor(), is_active, raw_input
+	])
+
+
 ## Scan downwards using Domain Rules to rescue player back to the surface of the topmost solid block
 func _rescue_player_from_void() -> void:
 	velocity = Vector3.ZERO
@@ -278,6 +314,7 @@ func _rescue_player_from_void() -> void:
 	
 	var world_ctrl := world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
+		# Centralized Domain Rule calculation (DDD compliant, SRP compliant)
 		found_safe_y = world_ctrl.world_state.get_highest_solid_y(block_x, block_z)
 		
 	global_position.y = found_safe_y

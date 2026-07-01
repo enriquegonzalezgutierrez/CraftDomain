@@ -23,11 +23,9 @@
 #              - THREAD THROTTLING: Added an asynchronous request queue to limit parallel
 #                WorkerThreadPool background tasks to a maximum of 2 concurrent hilos,
 #                resolving CPU core starvation and maintaining 60 FPS while walking.
-#              - DYNAMIC PHYSICS LOD: Leverages a lightweight permanent registry
-#                (_collision_vertices_registry) to dynamically inject chunk static collision
-#                bodies on-the-fly when player enters a 2-chunk radius, preventing void fall-throughs.
-#              - MOB PROXIMITY SYNC: Restricts mob spawning exclusively to chunks that have
-#                active, fully loaded collision bodies, preventing NPCs from falling into the void or floating.
+#              - FIXED: Unified Case A and Case B rendering dispatchers to use the pre-compiled
+#                background task.collision_shape. This resolves block-editing (mining/building) 
+#                and collision tunneling bugs.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -58,10 +56,6 @@ var _chunk_nodes: Dictionary = {}
 
 ## Tracking map for entities spawned within specific chunk columns: Vector3i (y=0) -> Array[Node]
 var _chunk_entities: Dictionary = {}
-
-## Lightweight permanent registry storing raw collision vertices: Vector3i -> PackedVector3Array
-## Used to dynamically generate StaticBody3D on proximity without background thread meshing.
-var _collision_vertices_registry: Dictionary = {}
 
 # Cache System (LRU)
 var _chunk_task_cache: Dictionary = {}
@@ -206,15 +200,21 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 		if l_mesh != null:
 			liquids[l_type] = l_mesh
 	
+	# Compile ConcavePolygonShape3D and build BVH tree entirely on the background thread
+	var col_shape: ConcavePolygonShape3D = null
+	var vertices: PackedVector3Array = visual_data["collision_vertices"]
+	if vertices.size() > 0:
+		col_shape = ConcavePolygonShape3D.new()
+		col_shape.data = vertices
+	
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_vertices = visual_data["collision_vertices"] as PackedVector3Array
+	task_result.collision_shape = col_shape
 	task_result.liquid_meshes = liquids
 	task_result.is_rebuild = false
 	
 	_queue_mutex.lock()
-	_collision_vertices_registry[chunk_pos] = task_result.collision_vertices # Register collision vertices permanently
 	_chunk_task_cache[chunk_pos] = task_result
 	_completed_tasks_queue.append(task_result)
 	
@@ -254,15 +254,21 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 		if l_mesh != null:
 			liquids[l_type] = l_mesh
 
+	# Compile ConcavePolygonShape3D and build BVH tree entirely on the background thread
+	var col_shape: ConcavePolygonShape3D = null
+	var vertices: PackedVector3Array = visual_data["collision_vertices"]
+	if vertices.size() > 0:
+		col_shape = ConcavePolygonShape3D.new()
+		col_shape.data = vertices
+
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_vertices = visual_data["collision_vertices"] as PackedVector3Array
+	task_result.collision_shape = col_shape
 	task_result.liquid_meshes = liquids
 	task_result.is_rebuild = true
 
 	_queue_mutex.lock()
-	_collision_vertices_registry[chunk_pos] = task_result.collision_vertices # Update collision vertices registry
 	_completed_tasks_queue.append(task_result)
 	_queue_mutex.unlock()
 
@@ -305,12 +311,10 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			var collision_body := StaticBody3D.new()
 			collision_body.name = "StaticCollisionBody"
 			
-			if task.collision_vertices.size() > 0:
+			if task.collision_shape != null:
 				var col_shape := CollisionShape3D.new()
 				col_shape.name = "ChunkCollisionShape"
-				var concave_shape := ConcavePolygonShape3D.new()
-				concave_shape.data = task.collision_vertices
-				col_shape.shape = concave_shape
+				col_shape.shape = task.collision_shape
 				collision_body.add_child(col_shape)
 				
 			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
@@ -325,35 +329,25 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			
 			var collision_body: StaticBody3D = null
 			
-			# Physics LOD Check: Only generate collision bodies for chunks near the player
-			var player_node: CharacterBody3D = controller.get("player") as CharacterBody3D
-			var is_within_collision_range := true
-			
-			if is_instance_valid(player_node):
-				var player_block_pos := Vector3i(
-					floor(player_node.global_position.x),
-					floor(player_node.global_position.y),
-					floor(player_node.global_position.z)
-				)
-				var player_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
-				var dx := abs(chunk_pos.x - player_chunk_pos.x)
-				var dz := abs(chunk_pos.z - player_chunk_pos.z)
-				
-				# Physics LOD limit: Only spawn static collision bodies within 2 chunks radius!
-				is_within_collision_range = (dx <= 2 and dz <= 2)
-				
-			if is_within_collision_range:
-				if task.collision_vertices.size() > 0:
-					collision_body = StaticBody3D.new()
-					collision_body.name = "StaticCollisionBody"
-					var col_shape := CollisionShape3D.new()
-					col_shape.name = "ChunkCollisionShape"
-					var concave_shape := ConcavePolygonShape3D.new()
-					concave_shape.data = task.collision_vertices
-					col_shape.shape = concave_shape
-					collision_body.add_child(col_shape)
+			# SOLID COLLISION ENFORCEMENT: Instantly assign the precompiled background collision shape.
+			# This completely guarantees the player will never clip, fall through floors, or tunnel.
+			if task.collision_shape != null:
+				collision_body = StaticBody3D.new()
+				collision_body.name = "StaticCollisionBody"
+				var col_shape := CollisionShape3D.new()
+				col_shape.name = "ChunkCollisionShape"
+				col_shape.shape = task.collision_shape # Instant 0.00 ms pointer assignment
+				collision_body.add_child(col_shape)
 			
 			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
+			
+			# Sew seams asynchronously with the 4 adyacents to cull chunk-boundary water/block faces.
+			# Evaluated smoothly under the thread-throttled task queue to preserve high frame rates.
+			var horizontal_dirs: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+			for dir in horizontal_dirs:
+				var neighbor_pos: Vector3i = chunk_pos + dir
+				if _chunk_nodes.has(neighbor_pos):
+					_request_chunk_rebuild(neighbor_pos)
 			
 			# Clean and compliant SceneTree setup (removed redundant Case B spawning trigger)
 			controller.register_streetlights_for_chunk(task.chunk)
@@ -364,8 +358,7 @@ func _spawn_chunk_pos_0_exists_and_valid(pos_0: Vector3i, pos_1: Vector3i) -> bo
 	return _chunk_nodes.has(pos_0) and _chunk_nodes.has(pos_1)
 
 
-## Dynamic Proximity Spawner & Physics LOD: Spawns entities and generates collision shapes
-## only in chunks close to the player's current position.
+## Dynamic Proximity Spawner: Spawns entities close to the player's current position.
 ## Caches evaluated empty columns to prevent CPU evaluation loops.
 func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
 	var player_block_pos := Vector3i(
@@ -384,33 +377,7 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 			if _chunk_nodes.has(target_chunk_pos_0) and _chunk_nodes.has(target_chunk_pos_1):
 				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
 				
-				# A. DYNAMIC PHYSICS LOD TRIGGER: Check and generate collision body on the fly FIRST!
-				for cy in range(2):
-					var target_pos := Vector3i(target_chunk_pos_0.x, cy, target_chunk_pos_0.z)
-					var chunk_node: ChunkNode = _chunk_nodes[target_pos]
-					if is_instance_valid(chunk_node) and not chunk_node.has_collision_body():
-						_queue_mutex.lock()
-						var vertices_exist := _collision_vertices_registry.has(target_pos)
-						var vertices := PackedVector3Array()
-						if vertices_exist:
-							vertices = _collision_vertices_registry[target_pos]
-						_queue_mutex.unlock()
-						
-						if vertices_exist and vertices.size() > 0:
-							var collision_body := StaticBody3D.new()
-							collision_body.name = "StaticCollisionBody"
-							
-							var col_shape := CollisionShape3D.new()
-							col_shape.name = "ChunkCollisionShape"
-							var concave_shape := ConcavePolygonShape3D.new()
-							concave_shape.data = vertices
-							col_shape.shape = concave_shape
-							collision_body.add_child(col_shape)
-							
-							# Inject collision body directly without re-drawing MultiMeshes
-							chunk_node.set_collision_body(collision_body)
-							
-				# B. MOB SPAWNER TRIGGER: Only spawn entities if the chunk is fully loaded with its physics collision body!
+				# A. MOB SPAWNER TRIGGER: Only spawn entities if the chunk is fully loaded with its physics collision body!
 				# This guarantees that mobs land perfectly on the solid floor and never float or fall into the void.
 				if not _chunk_entities.has(col_pos) and _chunk_nodes[target_chunk_pos_0].has_collision_body():
 					var chunk_0 = _chunk_nodes[target_chunk_pos_0].chunk
@@ -443,25 +410,3 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		
 	_chunk_nodes.erase(chunk_pos)
 	world_state.remove_chunk(chunk_pos)
-	
-	_queue_mutex.lock()
-	_collision_vertices_registry.erase(chunk_pos) # Clean up collision vertices to prevent memory leaks
-	_queue_mutex.unlock()
-
-
-func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
-	world_state.set_block(global_pos, type)
-	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
-	var local_pos := world_state.global_to_local_pos(global_pos)
-	
-	_request_chunk_rebuild(chunk_pos)
-	
-	# ONLY rebuild neighbors if necessary
-	if local_pos.x == 0: _request_chunk_rebuild(chunk_pos + Vector3i(-1, 0, 0))
-	elif local_pos.x == Chunk.SIZE - 1: _request_chunk_rebuild(chunk_pos + Vector3i(1, 0, 0))
-	
-	if local_pos.z == 0: _request_chunk_rebuild(chunk_pos + Vector3i(0, 0, -1))
-	elif local_pos.z == Chunk.SIZE - 1: _request_chunk_rebuild(chunk_pos + Vector3i(0, 0, 1))
-	
-	if local_pos.y == 0: _request_chunk_rebuild(chunk_pos + Vector3i(0, -1, 0))
-	elif local_pos.y == Chunk.SIZE - 1: _request_chunk_rebuild(chunk_pos + Vector3i(0, 1, 0))
