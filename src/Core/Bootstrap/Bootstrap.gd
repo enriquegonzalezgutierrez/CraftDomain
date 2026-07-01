@@ -8,18 +8,28 @@
 #                and visual shader setups to specialized managers.
 #              - Open-Closed Principle (OCP): Closed for modifications when adding 
 #                new biomes, structures, or entities.
-#              PERSISTENCE UPGRADE:
-#              - Integrated startup persistent configurations loader to restore 
-#                user settings (volumes, screen modes, view distance) on boot.
+#              PERSISTENCE UPGRADE (RESTORATION FIXED):
+#              - Restored critical domain registry initializations (Quests, Recipes, 
+#                Dialogues, and 10 Biome Strategies) alongside the persistent settings 
+#                loader, resolving the missing UI mission card and minimap pins.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
 class_name Bootstrap
 extends Node
 
-# Dependencies injected by Bootstrap
+## References to active systems, strictly typed for compiler safety
+var main_menu: MainMenu
+var world_controller: WorldController
+var player_controller: PlayerController
+var audio_service: AudioService
+var celestial_service: CelestialService
+var weather_service: WeatherService
+
+var world_repository: WorldRepository
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
+
 
 func _ready() -> void:
 	_initialize_application()
@@ -34,22 +44,40 @@ func _initialize_application() -> void:
 	# Registers programmatically created English & Spanish locales into Godot's TranslationServer
 	TranslationRegistry.initialize_translations()
 	
-	# Initialize Biomes & Structures (SOLID / OCP compliant)
-	BiomeService.initialize_biomes()
+	# ---> SOLID COMPLIANCE (PHASE 4): Delegate registry startup routines <---
+	BiomeService.register_biome(BayOfSailsBiome.new())
+	BiomeService.register_biome(WarpPlateauBiome.new())
+	BiomeService.register_biome(GoldenBazaarBiome.new())
+	BiomeService.register_biome(CraggyMinesBiome.new())
+	BiomeService.register_biome(FrostbiteGlaciersBiome.new())
+	BiomeService.register_biome(RedwoodForestBiome.new())
+	BiomeService.register_biome(RedBadlandsBiome.new())
+	BiomeService.register_biome(NeonRuinsBiome.new())
+	BiomeService.register_biome(SwampOfSighsBiome.new())
+	BiomeService.register_biome(CloudKingdomBiome.new())
+	
 	StructureLibrary.initialize_structures()
 	MegaStructureService.initialize_megastructures()
+	MobRegistry.initialize_mobs()
 	
-	# Assemble the physical 3D sky environment and sun lighting (SRP compliant)
-	_setup_sky_environment()
+	_setup_persistence()
+	_setup_environment()
 	
-	# Boot up the dynamic Loop Audio Service
-	var audio_service := AudioService.new()
-	add_child(audio_service)
+	# Load external campaign quests (Critical for HUD and Minimap markers!)
+	CampaignRegistry.initialize_campaign()
 	
-	_setup_starting_scene()
+	# Load dialogue trees
+	DialogueRegistry.initialize_dialogue_database()
+	
+	# Load dynamic crafting recipes
+	RecipeRegistry.initialize_recipes()
+	
+	_setup_celestial()
+	_setup_audio()
+	_load_main_menu()
 
 
-## Persistent Loader: Queries the Settings Repository and configures system parameters.
+## Persistent Loader: Queries the Settings Repository and configures system parameters on boot.
 func _load_and_apply_user_settings() -> void:
 	var settings := SettingsRepository.load_settings()
 	if settings.is_empty():
@@ -69,7 +97,7 @@ func _load_and_apply_user_settings() -> void:
 		
 	if settings.has("sfx_volume"):
 		var sfx_vol: float = settings["sfx_volume"]
-		var idx := _get_get_or_create_bus("SFX")
+		var idx := _get_or_create_bus("SFX")
 		AudioServer.set_bus_volume_db(idx, sfx_vol)
 		AudioServer.set_bus_mute(idx, sfx_vol <= -39.0)
 		
@@ -99,65 +127,55 @@ func _get_or_create_bus(bus_name: String) -> int:
 	return idx
 
 
-func _get_get_or_create_bus(bus_name: String) -> int:
-	# Duplicate wrapper safeguard to prevent compiler reference errors
-	return _get_or_create_bus(bus_name)
+func _setup_persistence() -> void:
+	world_repository = DiskWorldRepository.new()
 
 
-func _setup_sky_environment() -> void:
-	# 1. Programmatically compile the high-fidelity post-processing WorldEnvironment
-	world_environment = EnvironmentBuilder.build_environment()
-	add_child(world_environment)
-	
-	# 2. Programmatically compile the Directional SunLight
+func _setup_environment() -> void:
 	sun_light = EnvironmentBuilder.build_sun()
 	add_child(sun_light)
-	
-	# 3. Instantiate and bind the orbital day/night service
-	var celestial_service := CelestialService.new()
+	world_environment = EnvironmentBuilder.build_environment()
+	add_child(world_environment)
+
+
+func _setup_celestial() -> void:
+	celestial_service = CelestialService.new()
 	celestial_service.name = "CelestialService"
 	celestial_service.sun_light = sun_light
 	celestial_service.world_environment = world_environment
 	add_child(celestial_service)
 	
-	# 4. Instantiate and bind the weather system
-	var weather_service := WeatherService.new()
+	weather_service = WeatherService.new()
 	weather_service.name = "WeatherService"
 	add_child(weather_service)
 
 
-func _setup_starting_scene() -> void:
-	var menu := MainMenu.new()
-	menu.name = "MainMenu"
-	menu.play_pressed.connect(_on_start_game_requested)
-	add_child(menu)
+func _setup_audio() -> void:
+	audio_service = AudioService.new()
+	add_child(audio_service)
+	audio_service.play_menu_music()
+
+
+func _load_main_menu() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	main_menu = MainMenu.new()
+	main_menu.name = "MainMenu"
+	main_menu.play_pressed.connect(_on_start_game_requested)
+	add_child(main_menu)
 
 
 func _on_start_game_requested() -> void:
-	var menu := get_node_or_null("MainMenu")
-	if is_instance_valid(menu):
-		menu.queue_free()
+	if is_instance_valid(main_menu):
+		main_menu.queue_free()
+		main_menu = null
 		
-	var audio_service := get_node_or_null("AudioService") as AudioService
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_world()
 		
-	# Instantiate World and Player Controllers (DIP injection)
-	var world_controller := WorldController.new()
-	world_controller.name = "World"
-	world_controller.repository = DiskWorldRepository.new()
+	_bootstrap_world()
+	_bootstrap_player()
+	_inject_dependencies()
 	
-	var player_controller := PlayerController.new()
-	player_controller.name = "Player"
-	
-	# Interlink dependencies cleanly
-	world_controller.player = player_controller
-	player_controller.world_controller = world_controller
-	
-	var weather_service := get_node_or_null("WeatherService") as WeatherService
-	if is_instance_valid(weather_service):
-		weather_service.player = player_controller
-		
 	add_child(world_controller)
 	add_child(player_controller)
 
@@ -168,31 +186,31 @@ func return_to_main_menu() -> void:
 	
 	await get_tree().process_frame
 	
-	var world_controller := get_node_or_null("World") as WorldController
 	if is_instance_valid(world_controller):
 		world_controller.save_all()
 		
 	await get_tree().process_frame
 	
-	var player_controller := get_node_or_null("Player")
 	if is_instance_valid(player_controller):
 		player_controller.queue_free()
+		player_controller = null
 		
 	if is_instance_valid(world_controller):
 		world_controller.queue_free()
+		world_controller = null
 		
-	var audio_service := get_node_or_null("AudioService") as AudioService
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_menu()
 		
 	await get_tree().create_timer(0.15).timeout
-	_setup_starting_scene()
+	_load_main_menu()
 	
 	var fade_tween := create_tween()
 	fade_tween.tween_property(unload_screen, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	fade_tween.tween_callback(unload_screen.queue_free)
 
 
+## Generates the unloading black-out cover using dynamic translation keys.
 func _create_unload_loading_screen() -> Panel:
 	var panel := Panel.new()
 	panel.name = "UnloadLoadingScreen"
@@ -222,3 +240,23 @@ func _create_unload_loading_screen() -> Panel:
 	vbox.add_child(title)
 	
 	return panel
+
+
+func _bootstrap_world() -> void:
+	world_controller = WorldController.new()
+	world_controller.name = "World"
+
+
+func _bootstrap_player() -> void:
+	player_controller = PlayerController.new()
+	player_controller.name = "Player"
+
+
+func _inject_dependencies() -> void:
+	if is_instance_valid(world_controller) and is_instance_valid(player_controller):
+		world_controller.repository = world_repository
+		world_controller.player = player_controller
+		player_controller.world_controller = world_controller
+		
+		if is_instance_valid(weather_service):
+			weather_service.player = player_controller
