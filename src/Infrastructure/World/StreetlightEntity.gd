@@ -124,28 +124,38 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 func set_lights_active(is_night: bool) -> void:
 	_lights_active = is_night
 	
-	# ---> PERFORMANCE TWEEN SHIELD <---
-	# Validates if any targets exist before running. This prevents "Tween started with 0 Tweeners" 
-	# errors on boot, protecting system performance and memory.
-	var has_valid_targets := is_instance_valid(_left_light) or is_instance_valid(_right_light) or is_instance_valid(_left_glass_mat) or is_instance_valid(_right_glass_mat)
-	if not has_valid_targets:
+	# 1. Instantiate the tween animator safely
+	var tween := create_tween()
+	if tween == null:
 		return
 		
-	# 1. Animate OmniLights intensity
+	tween.set_parallel(true)
+	
+	# ---> TWEEN WORKER HOOK SHIELD <---
+	# Keep track of active tweeners. If we have no valid elements to animate, 
+	# we kill the tween immediately to prevent "started with no Tweeners" console floods.
+	var has_tweeners := false
+	
 	var target_energy := 2.2 if is_night else 0.0
 	var target_emission := 1.8 if is_night else 0.0
 	
-	var tween := create_tween().set_parallel(true)
-	if is_instance_valid(_left_light):
+	if is_instance_valid(_left_light) and _left_light.is_inside_tree():
 		tween.tween_property(_left_light, "light_energy", target_energy, 1.5).set_trans(Tween.TRANS_SINE)
-	if is_instance_valid(_right_light):
+		has_tweeners = true
+	if is_instance_valid(_right_light) and _right_light.is_inside_tree():
 		tween.tween_property(_right_light, "light_energy", target_energy, 1.5).set_trans(Tween.TRANS_SINE)
+		has_tweeners = true
 		
-	# 2. Animate Glass emission glow
 	if is_instance_valid(_left_glass_mat):
 		tween.tween_property(_left_glass_mat, "emission_energy_multiplier", target_emission, 1.5).set_trans(Tween.TRANS_SINE)
+		has_tweeners = true
 	if is_instance_valid(_right_glass_mat):
 		tween.tween_property(_right_glass_mat, "emission_energy_multiplier", target_emission, 1.5).set_trans(Tween.TRANS_SINE)
+		has_tweeners = true
+		
+	# Safe Kill Trigger: Protects the console thread from thrashing
+	if not has_tweeners:
+		tween.kill()
 
 
 func core_mat_emission_color() -> Color:
