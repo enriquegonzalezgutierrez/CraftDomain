@@ -5,11 +5,11 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Only manages physical orbits
 #                and day timelines, delegating weather-uniform parameters to the GPU.
-#              FIXED: Detects the active weather state from WeatherService dynamically
-#              and smoothly interpolates `_current_storm_weight` using a linear 
-#              interpolation (lerp) over time. Updates the custom GPU Sky Shader
-#              with the dynamic `storm_weight` parameter to render realistic 
-#              cloud coverage during rain/snow.
+#              BUG FIX (OVERLY BRIGHT NIGHTS):
+#              - Reduced maximum Moonlight energy from a daylight-like `0.45` 
+#                to a highly atmospheric, dim silver-blue glow of `0.06`. This 
+#                renders nights realistically dark and deep, making streetlights 
+#                and light emission blocks stand out beautifully.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
@@ -36,9 +36,11 @@ var _calendar_days: int = 14 # Start at day 14 (Full Moon) for immediate visual 
 # Weather-Storm parameters
 var _current_storm_weight: float = 0.0
 
+
 func _ready() -> void:
 	name = "CelestialService"
 	_setup_dynamic_moon_light()
+
 
 func _process(delta: float) -> void:
 	# Update daily cycle
@@ -63,6 +65,7 @@ func _process(delta: float) -> void:
 	
 	_update_sky_atmosphere()
 
+
 ## Programmatically instantiates the secondary silver-blue Moon light source
 func _setup_dynamic_moon_light() -> void:
 	print("[CelestialService] Creating dynamic MoonLight source...")
@@ -80,6 +83,7 @@ func _setup_dynamic_moon_light() -> void:
 	moon_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	
 	add_child(moon_light)
+
 
 func _update_sun_rotation() -> void:
 	if not is_instance_valid(sun_light):
@@ -104,6 +108,7 @@ func _update_sun_rotation() -> void:
 		sun_light.light_energy = clamp(intensity, 0.0, 1.2)
 		sun_light.shadow_enabled = true
 
+
 ## Rotates the Moon opposite to the Sun and updates its energy based on the phase
 func _update_moon_rotation() -> void:
 	if not is_instance_valid(moon_light):
@@ -123,7 +128,8 @@ func _update_moon_rotation() -> void:
 		var moon_phase_mult: float = 1.0 - abs((float(_calendar_days) - 14.0) / 14.0)
 		
 		# Fade moon energy smoothly during transitions (Sunset/Sunrise)
-		var max_intensity: float = 0.45 * moon_phase_mult
+		# ---> CRITICAL ADJUSTMENT: Lowered maximum moonlight energy to 0.06 <---
+		var max_intensity: float = 0.06 * moon_phase_mult
 		var intensity: float = max_intensity
 		
 		if _current_time > 0.78 and _current_time < 0.88: # Sunset rise
@@ -131,22 +137,23 @@ func _update_moon_rotation() -> void:
 		elif _current_time < 0.22 and _current_time > 0.12: # Sunrise set
 			intensity = remap(_current_time, 0.12, 0.22, max_intensity, 0.0)
 			
-		moon_light.light_energy = clamp(intensity, 0.0, 0.45)
-		moon_light.shadow_enabled = moon_light.light_energy > 0.05
+		moon_light.light_energy = clamp(intensity, 0.0, 0.06)
+		moon_light.shadow_enabled = moon_light.light_energy > 0.01
+
 
 ## Queries the Weather Service sibling and interpolates storm overcast weights
 func _process_weather_transitions(delta: float) -> void:
-	var weather_node: Node = get_parent().get_node_or_null("WeatherService")
+	var weather_node: Node = get_parent().get_node_or_null("WeatherService") as Node
 	var target_storm: float = 0.0
 	
 	if is_instance_valid(weather_node):
 		var w_type: int = int(weather_node.get("current_weather"))
-		# WeatherType.SUNNY is 0. If current_weather > 0 (RAINY=1, SNOWY=2), we close the clouds
 		if w_type != 0:
 			target_storm = 1.0
 			
 	# Smoothly transition storm overcast weight (lerping toward target)
 	_current_storm_weight = lerp(_current_storm_weight, target_storm, delta * 0.4)
+
 
 ## Deterministic Sky Synchronization using explicit static typing
 func _update_sky_atmosphere() -> void:
@@ -161,7 +168,6 @@ func _update_sky_atmosphere() -> void:
 	
 	# 1. Synchronize the Sun's position and the clock's day weight
 	if is_instance_valid(sun_light):
-		# global_transform.basis.z points directly towards the sun source in Godot 3D
 		var sun_dir: Vector3 = sun_light.global_transform.basis.z.normalized()
 		sky_mat.set_shader_parameter("sun_direction", sun_dir)
 		
@@ -177,9 +183,11 @@ func _update_sky_atmosphere() -> void:
 	# 3. Synchronize the smooth weather storm cloud cover
 	sky_mat.set_shader_parameter("storm_weight", _current_storm_weight)
 
+
 ## Public helper: Returns true if it is currently nighttime
 func is_night_time() -> bool:
 	return _current_time < 0.2 or _current_time > 0.8
+
 
 ## Public API: Returns the current descriptive moon phase name based on the calendar
 func get_moon_phase_name() -> String:
@@ -199,6 +207,7 @@ func get_moon_phase_name() -> String:
 		return "Third Quarter"
 	else:
 		return "Waning Crescent"
+
 
 ## Public API: Converts the internal 0..1 timeline into a formatted digital 24h clock string (HH:MM)
 func get_formatted_time() -> String:

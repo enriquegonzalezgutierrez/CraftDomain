@@ -12,14 +12,10 @@
 #              - Automatically strips away heavy rendering pipelines (SSAO, Glow, Bloom) 
 #                if running on an Integrated GPU or CPU-only software rasterizer, 
 #                ensuring high-performance gameplay on any machine.
-#              WARNING FIX:
-#              - Added local bridge constants to bypass version-specific parser 
-#                mismatches across different minor releases of Godot 4.
-#              - Enforced strict explicit static typing across all variables to 
-#                completely resolve `UNTYPED_DECLARATION` compiler warnings.
-#              BUG FIX:
-#              - Corrected shader path typo from "res://res:/src" to "res://src".
-#              - Resolved duplicate ".environment" call chain crash.
+#              BUG FIX (OVERLY BRIGHT NIGHTS):
+#              - Switched `ambient_light_source` from a static COLOR to a dynamic 
+#                SKY source. This links ambient light intensity directly to the sky shader, 
+#                making nights realistically dark as the sky dome turns navy blue.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
 # ==============================================================================
@@ -28,8 +24,6 @@ extends RefCounted
 
 # ==============================================================================
 # ENGINE PORTABILITY CONSTANTS
-# Map raw integer values of RenderingServer.VideoAdapterType to bypass 
-# version-specific compiler parser discrepancies across Godot 4.x.
 # ==============================================================================
 const ADAPTER_TYPE_INTEGRATED := 1
 const ADAPTER_TYPE_CPU := 4
@@ -40,7 +34,6 @@ static func build_sun() -> DirectionalLight3D:
 	var sun_light := DirectionalLight3D.new()
 	sun_light.name = "SunLight"
 	
-	# Detect if running on low-end hardware using local bridge constants
 	var adapter_type: int = RenderingServer.get_video_adapter_type()
 	var is_low_end: bool = (adapter_type == ADAPTER_TYPE_INTEGRATED or 
 							adapter_type == ADAPTER_TYPE_CPU)
@@ -74,7 +67,6 @@ static func build_sun() -> DirectionalLight3D:
 
 ## Loads and returns the compiled celestial sky shader resource.
 static func _get_custom_sky_shader() -> Shader:
-	# FIX: Corrected double path typo "res://res:/src/" to "res://src/"
 	return load("res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader") as Shader
 
 
@@ -98,16 +90,20 @@ static func build_environment() -> WorldEnvironment:
 	var is_low_end: bool = (adapter_type == ADAPTER_TYPE_INTEGRATED or 
 							adapter_type == ADAPTER_TYPE_CPU)
 	
+	# ---> REALISTIC AMBIENT LIGHTING FIX <---
+	# We derive ambient light from the SKY itself. When the sky shader turns
+	# dark blue/black at night, the ambient light will be near zero, creating
+	# a realistic, deep night where only the moon and lampposts provide light.
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	environment.ambient_light_sky_contribution = 0.45 # A moderate amount of bounced light
+	environment.ambient_light_energy = 1.0
+	
 	if is_low_end:
 		# ======================================================================
 		# POTATO PROFILE (Integrated GPUs / CPU Software Rendering)
-		# Deactivates all heavy shading algorithms to lock fluid framerates.
 		# ======================================================================
-		environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		environment.ambient_light_color = Color(0.4, 0.42, 0.45) # Flat ambient
-		
-		environment.ssao_enabled = false # SSAO completely disabled (huge performance saver)
-		environment.glow_enabled = false # Glow completely disabled
+		environment.ssao_enabled = false
+		environment.glow_enabled = false
 		environment.adjustment_enabled = false
 		environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 		
@@ -119,12 +115,7 @@ static func build_environment() -> WorldEnvironment:
 	else:
 		# ======================================================================
 		# CINEMATIC PROFILE (Dedicated GPUs)
-		# Activates high-fidelity PBR rendering, SSAO, and streetlight bloom.
 		# ======================================================================
-		environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		environment.ambient_light_color = Color(0.24, 0.28, 0.35) 
-		environment.ambient_light_sky_contribution = 0.18 
-		
 		environment.ssao_enabled = true
 		environment.ssao_radius = 0.65
 		environment.ssao_intensity = 2.8
@@ -152,7 +143,6 @@ static func build_environment() -> WorldEnvironment:
 		environment.adjustment_saturation = 1.35
 		
 	environment.volumetric_fog_enabled = false
-	# FIX: Corrected duplicate `.environment` property chain call
 	environment.ssr_enabled = false
 	
 	world_environment.environment = environment

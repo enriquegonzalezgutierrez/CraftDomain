@@ -27,6 +27,16 @@ func _ready() -> void:
 	name = "Prop_STREETLIGHT"
 	_build_procedural_3d_model()
 	_setup_collision()
+	
+	# ---> AUTONOMOUS SPATIAL SOWING <---
+	# Queries the global celestial timeline once fully built to auto-ignite 
+	# if spawned during nighttime, completely resolving any race conditions.
+	var bootstrap := get_node_or_null("/root/Bootstrap")
+	if is_instance_valid(bootstrap):
+		var celestial: Node = bootstrap.get_node_or_null("CelestialService") as Node
+		if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
+			var is_night: bool = celestial.call("is_night_time") as bool
+			set_lights_active(is_night)
 
 
 ## Programmatically assembles the 3D lamppost out of colored box meshes.
@@ -114,6 +124,13 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 func set_lights_active(is_night: bool) -> void:
 	_lights_active = is_night
 	
+	# ---> PERFORMANCE TWEEN SHIELD <---
+	# Validates if any targets exist before running. This prevents "Tween started with 0 Tweeners" 
+	# errors on boot, protecting system performance and memory.
+	var has_valid_targets := is_instance_valid(_left_light) or is_instance_valid(_right_light) or is_instance_valid(_left_glass_mat) or is_instance_valid(_right_glass_mat)
+	if not has_valid_targets:
+		return
+		
 	# 1. Animate OmniLights intensity
 	var target_energy := 2.2 if is_night else 0.0
 	var target_emission := 1.8 if is_night else 0.0
