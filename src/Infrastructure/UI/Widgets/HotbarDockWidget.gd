@@ -1,11 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: SRP-compliant UI Widget responsible ONLY for building and managing
-#              the unified bottom HUD dock.
+#              the unified bottom HUD selection dock (Hotbar).
 #              RESPONSIVE RESOLUTION FIX: Built using nested, elastically centered
 #              VBox and HBox Containers. All elements (hearts, hotbar, drumsticks)
 #              maintain pixel-perfect alignment across any screen resolution.
-#              i18n UPGRADE: Uses dynamic tr() translations for tooltips.
+#              UX TEXTURE OVERHAUL:
+#              - Replaced flat ColorRects with a composite layout containing 
+#                real pixel-art block textures (`TextureRect`) and high-fidelity 
+#                unicode overlays (`🍗`, `⚔️`, `🌱`) for specialized tool slots.
+#              - Built an internal cached preloader to avoid frame-time disk I/O stalls.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd
 # ==============================================================================
@@ -23,13 +27,19 @@ var _food_container: HBoxContainer
 var _item_name_toast: Label
 var _toast_tween: Tween
 
+# Static in-memory cache for loaded 2D textures (prevents continuous disk reads)
+static var _textures_cache: Dictionary = {}
+
+## Fallback colors used when block textures are missing
 const BLOCK_COLORS = {
 	-1: Color(0, 0, 0, 0),       
 	1: Color(0.55, 0.55, 0.55), 2: Color(0.55, 0.38, 0.25), 
 	3: Color(0.42, 0.78, 0.25), 4: Color(0.72, 0.55, 0.35), 
 	5: Color(0.25, 0.65, 0.18), 15: Color(1.0, 0.45, 0.0),  
-	16: Color(0.92, 0.62, 0.62), 17: Color(0.75, 0.75, 0.80) 
+	16: Color(0.85, 0.35, 0.25), 17: Color(0.25, 0.35, 0.45), # Stylized backgrounds for tools
+	18: Color(0.48, 0.35, 0.22)
 }
+
 
 func _ready() -> void:
 	name = "HotbarDockWidget"
@@ -52,6 +62,7 @@ func _ready() -> void:
 	_setup_responsive_ui_layout()
 	_setup_item_name_toast()
 	update_health_display(3)
+
 
 ## Builds the structured VBox so status bars stack elegantly over the hotbar Panel
 func _setup_responsive_ui_layout() -> void:
@@ -119,7 +130,7 @@ func _setup_responsive_ui_layout() -> void:
 	sep_left.add_theme_constant_override("separation", 6)
 	hbox.add_child(sep_left)
 	
-	# B. Middle Area: Slots 0 to 7 (UPGRADED TO 54x54 GIANTS SHAPES)
+	# B. Middle Area: Slots 0 to 7 (54x54 Giant Shapes)
 	for i in range(8):
 		var slot := Panel.new()
 		slot.name = "Slot_%d" % i
@@ -132,15 +143,34 @@ func _setup_responsive_ui_layout() -> void:
 		slot.add_theme_stylebox_override("panel", slot_style)
 		hbox.add_child(slot)
 		
-		# Giant Inner Color Icon Rect (Updated dynamically on sync)
-		var icon := ColorRect.new()
-		icon.name = "ItemIcon"
-		icon.custom_minimum_size = Vector2(32, 32)
-		icon.size = Vector2(32, 32)
-		icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-		icon.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		icon.grow_vertical = Control.GROW_DIRECTION_BOTH
-		slot.add_child(icon)
+		# --- COMPOSITE GRAPHIC SYSTEM: Holds the 3D-like icons ---
+		var icon_container := Control.new()
+		icon_container.name = "ItemIconContainer"
+		icon_container.custom_minimum_size = Vector2(36, 36)
+		icon_container.size = Vector2(36, 36)
+		icon_container.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		icon_container.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		icon_container.grow_vertical = Control.GROW_DIRECTION_BOTH
+		icon_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon_container)
+		
+		# Overlay 1: Color Fallback (used when textures are not found, or for special backgrounds)
+		var fallback_rect := ColorRect.new()
+		fallback_rect.name = "FallbackColor"
+		fallback_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		fallback_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_container.add_child(fallback_rect)
+		
+		# Overlay 2: Real block textures
+		var tex_rect := TextureRect.new()
+		tex_rect.name = "TextureDisplay"
+		tex_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex_rect.stretch_mode = TextureRect.STRETCH_SCALE
+		tex_rect.texture_filter = TextureRect.TEXTURE_FILTER_NEAREST # Preserves crisp pixel-art!
+		tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_container.add_child(tex_rect)
+		# -----------------------------------------------------------
 		
 		var qty_label := Label.new()
 		qty_label.name = "QtyLabel"
@@ -180,96 +210,230 @@ func _setup_responsive_ui_layout() -> void:
 	
 	_add_hotkey_label(hotbar_bg, "[C]", -40, false)
 
+
 func _setup_item_name_toast() -> void:
-	_item_name_toast = Label.new(); _item_name_toast.name = "ItemNameToast"
+	_item_name_toast = Label.new()
+	_item_name_toast.name = "ItemNameToast"
 	_item_name_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	_item_name_toast.offset_bottom = -140
 	_item_name_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls := LabelSettings.new(); ls.font_size = 18; ls.font_color = Color.WHITE
-	ls.outline_size = 5; ls.outline_color = Color.BLACK
+	var ls := LabelSettings.new()
+	ls.font_size = 18
+	ls.font_color = Color.WHITE
+	ls.outline_size = 5
+	ls.outline_color = Color.BLACK
 	_item_name_toast.label_settings = ls
-	_item_name_toast.modulate.a = 0.0; add_child(_item_name_toast)
+	_item_name_toast.modulate.a = 0.0
+	add_child(_item_name_toast)
+
 
 func _on_backpack_shortcut_pressed() -> void:
-	if is_instance_valid(hud_orchestrator): hud_orchestrator.toggle_inventory_backpack(true)
+	if is_instance_valid(hud_orchestrator):
+		hud_orchestrator.toggle_inventory_backpack(true)
+
 
 func _on_workshop_shortcut_pressed() -> void:
-	if is_instance_valid(hud_orchestrator): hud_orchestrator.toggle_crafting_workshop(true)
+	if is_instance_valid(hud_orchestrator):
+		hud_orchestrator.toggle_crafting_workshop(true)
+
 
 func _on_shortcut_hover(btn: Button, hover: bool) -> void:
 	if is_instance_valid(btn):
 		var target_scale := Vector2(1.08, 1.08) if hover else Vector2(1.0, 1.0)
-		var tw := create_tween(); tw.tween_property(btn, "scale", target_scale, 0.08).set_trans(Tween.TRANS_SINE)
+		var tw := create_tween()
+		tw.tween_property(btn, "scale", target_scale, 0.08).set_trans(Tween.TRANS_SINE)
+
 
 func update_active_slot(index: int) -> void:
 	for i in range(_hotbar_slots.size()):
 		var slot: Panel = _hotbar_slots[i]
 		var style: StyleBoxFlat = slot.get_theme_stylebox("panel")
-		if style == null: continue
+		if style == null:
+			continue
 		var tween := create_tween()
 		if i == index:
-			style.bg_color = Color(0.25, 0.25, 0.25, 0.8); style.border_width_left = 3
-			style.border_width_top = 3; style.border_width_right = 3; style.border_width_bottom = 3
-			style.border_color = Color(1.0, 0.85, 0.2)
-			tween.tween_property(slot, "scale", Vector2(1.15, 1.15), 0.1).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
-			_show_toast_notification(index)
+			style.bg_color = Color(0.25, 0.25, 0.25, 0.8)
+			style.border_width_left = 3
+			style.border_width_top = 3
+			style.border_width_right = 3
+			style.border_width_bottom = 3
+			style.border_color = Color(1.0, 0.85, 0.2) # Gold Highlight
+			tween.tween_property(slot, "scale", Vector2(1.15, 1.15), 0.1)
 		else:
-			style.bg_color = Color(0.12, 0.12, 0.12, 0.5); style.border_width_left = 1
-			style.border_width_top = 1; style.border_width_right = 1; style.border_width_bottom = 1
-			style.border_color = Color(0.2, 0.2, 0.2, 0.4)
-			tween.tween_property(slot, "scale", Vector2(1.0, 1.0), 0.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			style.bg_color = Color(0.12, 0.12, 0.12, 0.6)
+			style.border_width_left = 0
+			style.border_width_top = 0
+			style.border_width_right = 0
+			style.border_width_bottom = 0
+			tween.tween_property(slot, "scale", Vector2(1.0, 1.0), 0.1)
 
-func _show_toast_notification(index: int) -> void:
-	if not is_instance_valid(player) or not is_instance_valid(_item_name_toast): return
-	var inventory = player.get("inventory") as InventoryComponent
-	if not is_instance_valid(inventory): return
-	var item_name := inventory.get_slot_item_name(index)
-	_item_name_toast.text = item_name.to_upper()
-	if is_instance_valid(_toast_tween) and _toast_tween.is_running(): _toast_tween.kill()
-	_item_name_toast.modulate.a = 1.0; _toast_tween = create_tween()
-	_toast_tween.tween_interval(1.8)
-	_toast_tween.tween_property(_item_name_toast, "modulate:a", 0.0, 0.4).set_trans(Tween.TRANS_SINE)
 
-func update_slot_quantity(index: int, item_id: int, quantity: int) -> void:
-	if index >= 0 and index < _hotbar_slots.size():
-		var slot: Panel = _hotbar_slots[index]
-		var icon := slot.get_node_or_null("ItemIcon") as ColorRect
+func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
+	if slot_index >= 0 and slot_index < _hotbar_slots.size():
+		var slot: Panel = _hotbar_slots[slot_index]
+		var icon_container := slot.get_node_or_null("ItemIconContainer") as Control
 		var label := slot.get_node_or_null("MarginContainer/QtyLabel") as Label
-		if is_instance_valid(icon):
-			for child in icon.get_children(): child.queue_free()
-			icon.color = BLOCK_COLORS.get(item_id, Color(0,0,0,0)); icon.visible = (item_id != -1)
-			if item_id >= 1 and item_id <= 15:
-				var shadow := ColorRect.new()
-				shadow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-				shadow.offset_left = 3; shadow.offset_top = 3
-				shadow.color = Color(0, 0, 0, 0.18)
-				icon.add_child(shadow)
+		
+		if is_instance_valid(icon_container):
+			var fallback := icon_container.get_node_or_null("FallbackColor") as ColorRect
+			var tex_display := icon_container.get_node_or_null("TextureDisplay") as TextureRect
+			
+			if is_instance_valid(fallback) and is_instance_valid(tex_display):
+				if item_id == -1 or quantity <= 0:
+					icon_container.visible = false
+				else:
+					icon_container.visible = true
+					var tex: Texture2D = _get_item_texture(item_id)
+					
+					# Case A: Real 2D PNG texture found!
+					if tex != null:
+						tex_display.texture = tex
+						tex_display.visible = true
+						fallback.visible = false
+						# Clear any legacy unicode text overlay children
+						for child in fallback.get_children():
+							child.queue_free()
+					# Case B: No texture exists. Apply fallback color + specialized unicode shape
+					else:
+						tex_display.texture = null
+						tex_display.visible = false
+						fallback.color = BLOCK_COLORS.get(item_id, Color.DARK_GRAY)
+						fallback.visible = true
+						_apply_special_fallback_decoration(fallback, item_id)
+						
 		if is_instance_valid(label):
 			label.text = "" if item_id == -1 or quantity <= 0 else str(quantity)
 
+
+## Helper: Scans disk and preloads block textures to avoid rendering lag spikes
+func _get_item_texture(item_id: int) -> Texture2D:
+	if _textures_cache.has(item_id):
+		return _textures_cache[item_id] as Texture2D
+		
+	var texture_file := ""
+	# Map block indices (representing item IDs) to their exact albedo texture file names
+	match item_id:
+		1: texture_file = "stone.png"
+		2: texture_file = "dirt.png"
+		3: texture_file = "grass_top.png"
+		4: texture_file = "wood.png"
+		5: texture_file = "leaves.png"
+		7: texture_file = "sand.png"
+		8: texture_file = "red_sand.png"
+		9: texture_file = "snow.png"
+		10: texture_file = "ice.png"
+		11: texture_file = "mud.png"
+		13: texture_file = "sakura_leaves.png"
+		15: texture_file = "lava.png"
+		21: texture_file = "coal_ore.png"
+		22: texture_file = "bricks.png"
+		23: texture_file = "glass.png"
+		24: texture_file = "birch_log.png"
+		
+	if texture_file != "":
+		var full_path := "res://assets/textures/" + texture_file
+		if FileAccess.file_exists(full_path):
+			var tex = load(full_path)
+			if tex is Texture2D:
+				_textures_cache[item_id] = tex
+				return tex
+				
+	_textures_cache[item_id] = null # Cache missing to prevent re-checks
+	return null
+
+
+## Helper: Overlays beautiful, high-contrast symbols over flat fallback rectangles (tools, seeds)
+func _apply_special_fallback_decoration(fallback_node: ColorRect, item_id: int) -> void:
+	# Clear old children first
+	for child in fallback_node.get_children():
+		child.queue_free()
+		
+	var symbol := Label.new()
+	symbol.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	symbol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	symbol.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	
+	var ls := LabelSettings.new()
+	ls.font_size = 18
+	ls.outline_size = 3
+	ls.outline_color = Color.BLACK
+	symbol.label_settings = ls
+	
+	match item_id:
+		16: symbol.text = "🍗" # Fried Chicken
+		17: symbol.text = "⚔️" # Wooden Training Sword
+		18: symbol.text = "🌱" # Crop Seeds
+		_: symbol_label_fallback_pattern(symbol, item_id)
+		
+	if symbol.text != "":
+		fallback_node.add_child(symbol)
+
+
+## Secondary fallback character mapper
+func symbol_label_fallback_pattern(lbl: Label, item_id: int) -> void:
+	match item_id:
+		12: lbl.text = "💠" # Neon Cyan block symbol
+		14: lbl.text = "☁️" # Cloud block symbol
+		_: lbl.text = ""
+
+
+func _show_toast_notification(index: int) -> void:
+	if not is_instance_valid(player) or not is_instance_valid(_item_name_toast):
+		return
+	var inventory = player.get("inventory") as InventoryComponent
+	if not is_instance_valid(inventory):
+		return
+	var item_name := inventory.get_slot_item_name(index)
+	_item_name_toast.text = item_name.to_upper()
+	if is_instance_valid(_toast_tween) and _toast_tween.is_running():
+		_toast_tween.kill()
+	_item_name_toast.modulate.a = 1.0
+	_toast_tween = create_tween()
+	_toast_tween.tween_interval(1.8)
+	_toast_tween.tween_property(_item_name_toast, "modulate:a", 0.0, 0.4).set_trans(Tween.TRANS_SINE)
+
+
 func update_health_display(hp: int) -> void:
-	if not is_instance_valid(_hearts_container) or not is_instance_valid(_food_container): return
-	for child in _hearts_container.get_children(): child.queue_free()
-	for child in _food_container.get_children(): child.queue_free()
+	if not is_instance_valid(_hearts_container) or not is_instance_valid(_food_container):
+		return
+	for child in _hearts_container.get_children():
+		child.queue_free()
+	for child in _food_container.get_children():
+		child.queue_free()
 	
 	for i in range(3):
-		var heart := Label.new(); var hs := LabelSettings.new()
-		hs.font_size = 20; hs.outline_size = 4; hs.outline_color = Color.BLACK
-		if i < hp: heart.text = "❤"; hs.font_color = Color(0.95, 0.15, 0.15)
-		else: heart.text = "🖤"; hs.font_color = Color(0.22, 0.22, 0.26)
-		heart.label_settings = hs; _hearts_container.add_child(heart)
+		var heart := Label.new()
+		var hs := LabelSettings.new()
+		hs.font_size = 20
+		hs.outline_size = 4
+		hs.outline_color = Color.BLACK
+		if i < hp:
+			heart.text = "❤"
+			hs.font_color = Color(0.95, 0.15, 0.15)
+		else:
+			heart.text = "🖤"
+			hs.font_color = Color(0.22, 0.22, 0.26)
+		heart.label_settings = hs
+		_hearts_container.add_child(heart)
 		
 	var food_count := 0
 	if is_instance_valid(player):
 		var inv = player.get("inventory") as InventoryComponent
-		if is_instance_valid(inv): food_count = inv.get_item_total_quantity(16)
+		if is_instance_valid(inv):
+			food_count = inv.get_item_total_quantity(16)
 			
 	var display_food := clamp(food_count, 0, 10)
 	for i in range(display_food):
-		var food := Label.new(); food.text = "🍗"; var ds := LabelSettings.new()
-		ds.font_size = 20; ds.outline_size = 4; ds.outline_color = Color.BLACK
+		var food := Label.new()
+		food.text = "🍗"
+		var ds := LabelSettings.new()
+		ds.font_size = 20
+		ds.outline_size = 4
+		ds.outline_color = Color.BLACK
 		ds.font_color = Color(1.0, 0.7, 0.35) if food_count > 0 else Color(0.22, 0.22, 0.26)
-		food.label_settings = ds; _food_container.add_child(food)
+		food.label_settings = ds
+		_food_container.add_child(food)
+
 
 func _setup_hud_shortcut_button_style(btn: Button) -> void:
 	var sn := StyleBoxFlat.new()
@@ -291,12 +455,24 @@ func _setup_hud_shortcut_button_style(btn: Button) -> void:
 	btn.mouse_entered.connect(_on_shortcut_hover.bind(btn, true))
 	btn.mouse_exited.connect(_on_shortcut_hover.bind(btn, false))
 
+
 func _add_hotkey_label(dock: Control, text: String, offset: int, is_left: bool) -> void:
-	var label := Label.new(); label.text = text; label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls := LabelSettings.new(); ls.font_size = 9; ls.font_color = Color(0.65, 0.65, 0.7)
-	ls.outline_size = 2; ls.outline_color = Color.BLACK; label.label_settings = ls
+	var label := Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ls := LabelSettings.new()
+	ls.font_size = 9
+	ls.font_color = Color(0.65, 0.65, 0.7)
+	ls.outline_size = 2
+	ls.outline_color = Color.BLACK
+	label.label_settings = ls
 	label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT if is_left else Control.PRESET_BOTTOM_RIGHT)
-	if is_left: label.offset_left = offset; label.offset_right = offset + 40
-	else: label.offset_right = offset; label.offset_left = offset - 40
-	label.offset_bottom = 2; label.offset_top = -10
+	if is_left:
+		label.offset_left = offset
+		label.offset_right = offset + 40
+	else:
+		label.offset_right = offset
+		label.offset_left = offset - 40
+	label.offset_bottom = 2
+	label.offset_top = -10
 	dock.add_child(label)

@@ -8,10 +8,10 @@
 #                and visual shader setups to specialized managers.
 #              - Open-Closed Principle (OCP): Closed for modifications when adding 
 #                new biomes, structures, or entities.
-#              PERSISTENCE UPGRADE (RESTORATION FIXED):
-#              - Restored critical domain registry initializations (Quests, Recipes, 
-#                Dialogues, and 10 Biome Strategies) alongside the persistent settings 
-#                loader, resolving the missing UI mission card and minimap pins.
+#              BUG FIX (STATE LEAK):
+#              - Removed `CampaignRegistry.initialize_campaign()` from Bootstrap. 
+#                It is now correctly managed inside WorldController on every load/new game 
+#                to ensure state resets and prevent RAM static leaks.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -62,9 +62,6 @@ func _initialize_application() -> void:
 	
 	_setup_persistence()
 	_setup_environment()
-	
-	# Load external campaign quests (Critical for HUD and Minimap markers!)
-	CampaignRegistry.initialize_campaign()
 	
 	# Load dialogue trees
 	DialogueRegistry.initialize_dialogue_database()

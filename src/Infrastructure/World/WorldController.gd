@@ -8,15 +8,12 @@
 #                is delegated to specialized services.
 #              - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
 #                services without modifying core coordination loops.
-#              - OBSERVER PATTERN: Cleaned of manual HUD-sync calls on inventory loads.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
-#                strictly to the WorldState Domain Aggregate, avoiding infrastructure domain leakage.
-#              OPTIMIZATIONS:
-#              - Integrated the dynamic proximity spawner call inside the throttled 
-#                visiblity update check (every 0.2s) and immediately upon player spawn.
-#              - FIXED: Added _is_restored_save state flag to protect saved player height,
-#                preventing the spawn-activation collision penetration bug.
-#              - PRODUCTION: Cleaned of all diagnostics and profiling logs to maximize frame rates.
+#                strictly to the WorldState Domain Aggregate.
+#              BUG FIX (STATE LEAK): 
+#              - Moved CampaignRegistry.initialize_campaign() here to ensure 
+#                Quest resources and statuses are completely reset into RAM 
+#                every time a world is loaded or restarted from the main menu.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -70,6 +67,11 @@ func _initialize_systems() -> void:
 	# Instantiate our specialized SRP Services
 	chunk_manager = ChunkManagerService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
+	
+	# ==========================================================================
+	# STATE LEAK FIX: Reset and initialize the campaign dynamically on World load
+	# ==========================================================================
+	CampaignRegistry.initialize_campaign()
 	
 	# Attempt to load saved global game parameters from the repository
 	var saved_global: Dictionary = repository.load_global_state()

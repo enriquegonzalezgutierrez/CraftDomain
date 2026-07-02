@@ -4,9 +4,7 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates hostile AI behaviors,
 #                chase tracking, and combat cooldowns.
-#              DEATH OVERHAUL UPGRADE:
-#              - Replaced immediate queue_free() deletion with a unified shrinking 
-#                and spinning death animation, accompanied by GPU smoke particles.
+#              BUG FIX (DEAD CODE): Removed legacy UI calls to `_sync_hud_counters`.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -197,8 +195,6 @@ func _on_domain_entity_died() -> void:
 				inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
 				QuestService.complete_active_quest(player)
 				
-			player.call("_sync_hud_counters") 
-			
 	# 3. Spawn death smoke particles
 	_spawn_death_particles()
 	

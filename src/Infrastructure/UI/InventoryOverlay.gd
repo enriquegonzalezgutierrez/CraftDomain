@@ -4,11 +4,11 @@
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating layout drawing and slot sorting.
 #              STRICT MODE & MEMORY FIX: 
-#              - Fixed variable mismatch (instantiating _backpack_grid_container instead 
-#                of the legacy _grid_container) resolving the null get_children() crashes.
+#              - Fixed variable mismatch resolving null get_children() crashes.
 #              - Replaced all unstable C++ inline lambdas with robust native 
-#                `Callable.bind()` references to prevent lambda memory leaks/crashes.
-#              - BUG FIX: Instantiated missing _hotbar_grid_container to resolve null crash.
+#                `Callable.bind()` references to prevent lambda memory leaks.
+#              BUG FIX (DEAD CODE): Removed legacy calls to `_sync_hud_counters`.
+#              Now emits `inventory_changed` properly to rely on reactive Domain Events.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/InventoryOverlay.gd
 # ==============================================================================
@@ -423,9 +423,6 @@ func _on_slot_clicked(slot_index: int) -> void:
 	else:
 		inventory.swap_slots(_first_selected_slot_index, slot_index)
 		
-		# Sync player's hands and quickbar visually
-		player.call("_sync_hud_counters")
-		
 		# Re-evaluates active visual tools if player swapped active item
 		player.call("_apply_hotbar_selection", player.get("active_slot_index"))
 		
@@ -508,7 +505,9 @@ func _on_use_pressed() -> void:
 			
 		player.domain_entity.health = min(3, hp + 1)
 		
-		player.call("_sync_hud_counters")
+		# Emit Domain Event to sync HUD reactively (SRP / Observer Pattern)
+		inventory.inventory_changed.emit()
+		
 		var hud = player.get("hud") as PlayerHUD
 		if is_instance_valid(hud):
 			hud.update_health_display(player.domain_entity.health)

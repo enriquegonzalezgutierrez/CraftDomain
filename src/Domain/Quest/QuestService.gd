@@ -4,9 +4,9 @@
 #              game Quests, tracking active objectives and global progression.
 #              SOLID COMPLIANCE: Stripped of hardcoded registries (SRP). Now 
 #              autonomously processes rewards and chain transitions (OCP).
-#              STRICT MODE & FASE 1 FIX: Updated complete_active_quest to utilize 
-#              the new stack-based dynamic `add_item` DIP method instead of the 
-#              nonexistent modify_slot_quantity, completely resolving crash errors.
+#              BUG FIX (DEAD CODE): Removed legacy calls to `_sync_hud_counters`.
+#              UI synchronization is now handled reactively through the 
+#              `inventory_changed` signal inside `IInventory`.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Quest/QuestService.gd
 # ==============================================================================
@@ -58,9 +58,9 @@ static func complete_active_quest(player_node: CharacterBody3D = null) -> void:
 		if player_node != null and _active_quest.reward_item_index >= 0:
 			var inv: IInventory = player_node.get("inventory")
 			if is_instance_valid(inv):
-				# FASE 1 FIX: Use the new dynamic stack-based API method (DIP compliant)
+				# Reward items added safely. The HUD will update automatically 
+				# by listening to the `inventory_changed` signal.
 				var _success := inv.add_item(_active_quest.reward_item_index, _active_quest.reward_quantity)
-				player_node.call("_sync_hud_counters")
 				
 		# Cache the next quest link before clearing
 		var next_id := _active_quest.next_quest_id

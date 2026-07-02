@@ -5,6 +5,7 @@
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by managing only the layout representation and 
 #              UI events, delegating the transaction rules to `CraftingService`.
+#              BUG FIX (DEAD CODE): Removed legacy calls to `_sync_hud_counters`.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/CraftingOverlay.gd
 # ==============================================================================
@@ -307,8 +308,6 @@ func _on_craft_pressed() -> void:
 		
 	var inventory = player.get("inventory")
 	if CraftingService.craft(inventory, _selected_recipe):
-		# Sync hud counters on player directly
-		player.call("_sync_hud_counters")
 		
 		# Play tactile viewmodel swing feedback
 		var viewmodel = player.get("viewmodel")
