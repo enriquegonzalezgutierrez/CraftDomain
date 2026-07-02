@@ -10,14 +10,12 @@
 #                services without modifying core coordination loops.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate.
-#              OPTIMIZATION (SPAWN SHIELD BUFFER):
-#              - Implemented a 3x3 horizontal chunk neighborhood verification (18 chunks total)
-#                centered around the spawn coordinate. Player spawn is only activated 
-#                when the immediate surrounding region is completely compiled,
-#                preventing players from seeing any initial out-of-bounds void popping.
-#              WARNING FIX:
-#              - Added explicit static typing to all parameters, loop iterators 
-#                (including spatial offsets `x` and `z`), and intermediate getters.
+#              BUG FIX (FLOATING TELEPORTATION STANDSTILL):
+#              - Introduced `_is_teleport_spawn` state property. This bypasses the 
+#                `_is_restored_save` height protection during fast-travel teleports, 
+#                forcing a vertical ground scan to safely drop the player onto the 
+#                topmost solid block of the target chunk.
+#              WARNING FIX: Added explicit static typing to all parameters and loops.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -50,9 +48,12 @@ const UPDATE_INTERVAL: float = 0.2
 var _target_spawn_chunk_pos: Vector3i = Vector3i(0, 0, 0)
 var _loaded_inventory_data: Array = []
 
-# Save game protection flag
+# Save game protection flags
 var _is_restored_save: bool = false
 var _is_startup_phase: bool = true
+
+# BUG FIX FLAG: Forces vertical height recalculation on fast-travel teleport spawner
+var _is_teleport_spawn: bool = false
 
 
 func _ready() -> void:
@@ -77,10 +78,10 @@ func _initialize_systems() -> void:
 	CampaignRegistry.initialize_campaign()
 	
 	# Attempt to load saved global game parameters from the repository
-	var saved_global: Dictionary = repository.load_global_state()
+	var saved_global: Dictionary = repository.load_global_state() as Dictionary
 	var active_seed: int
-	var spawn_pos := Vector3(8.5, 14.0, 8.5)
-	var spawn_rot := Vector3.ZERO
+	var spawn_pos: Vector3 = Vector3(8.5, 14.0, 8.5)
+	var spawn_rot: Vector3 = Vector3.ZERO
 	
 	if saved_global.has("seed"):
 		_is_restored_save = true # Mark as active save to protect Y coordinates on load
@@ -110,7 +111,7 @@ func _initialize_systems() -> void:
 	generator = WorldGenerator.new(active_seed)
 	
 	# Determine initial spawn position
-	var block_pos := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
+	var block_pos: Vector3i = Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
 	_target_spawn_chunk_calculation(block_pos)
 	
 	if is_instance_valid(player):
@@ -222,13 +223,13 @@ func unregister_streetlights_for_chunk(chunk_pos: Vector3i) -> void:
 func check_player_spawn_activation() -> void:
 	if is_instance_valid(player) and not player.get("is_active"):
 		if is_instance_valid(chunk_manager):
-			var all_rendered := true
+			var all_rendered: bool = true
 			
-			# FIX (UX SHIELD): Validate that the entire 3x3 surrounding column region is fully compiled in RAM
+			# Validate that the entire 3x3 surrounding column region is fully compiled in RAM
 			for x: int in range(-1, 2):
 				for z: int in range(-1, 2):
-					var pos_0 := Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z)
-					var pos_1 := Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z)
+					var pos_0: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z)
+					var pos_1: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z)
 					
 					if not chunk_manager.is_chunk_rendered(pos_0) or not chunk_manager.is_chunk_rendered(pos_1):
 						all_rendered = false
@@ -242,11 +243,13 @@ func check_player_spawn_activation() -> void:
 
 ## Safely positions the player on the topmost solid block at spawn coordinates using Domain Rules
 func _activate_player_spawn() -> void:
-	if not _is_restored_save:
-		# Only calculate and overwrite vertical spawn height if this is a FRESH new world!
-		var block_x := floori(player.position.x)
-		var block_z := floori(player.position.z)
-		var found_safe_y := 14.0 # Default safe fallback
+	# BUG FIX: Recalculate safe ground height if it is a fresh game OR a fast-travel teleport spawn!
+	if not _is_restored_save or _is_teleport_spawn:
+		_is_teleport_spawn = false # Reset the bug fix trigger flag
+		
+		var block_x: int = floori(player.position.x)
+		var block_z: int = floori(player.position.z)
+		var found_safe_y: float = 14.0 # Default safe fallback
 		
 		if is_instance_valid(world_state):
 			# Centralized Domain Rule calculation (DDD compliant)
@@ -265,8 +268,8 @@ func _activate_player_spawn() -> void:
 	# EXPAND HORIZON: After successful drop, release the throttler and load full user settings
 	if _is_startup_phase:
 		_is_startup_phase = false
-		var settings := SettingsRepository.load_settings()
-		var target_distance := 8 # Default
+		var settings: Dictionary = SettingsRepository.load_settings() as Dictionary
+		var target_distance: int = 8 # Default
 		if settings.has("render_distance"):
 			target_distance = int(settings["render_distance"])
 		

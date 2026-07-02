@@ -17,6 +17,10 @@
 #              - Replaced implicit math inferences (`:=`) with explicit static types 
 #                (`: float =`) on `chunk_center_x` and all local variables to 
 #                prevent Godot's static analyzer from failing to infer types.
+#              BUG FIX (COMPASS CENTERING):
+#              - Re-engineered `_draw_holographic_compass_plate` with explicit 
+#                diameter bounds and dynamic font metric baseline formulas to 
+#                achieve pixel-perfect horizontal and vertical letter centering.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/MinimapWidget.gd
 # ==============================================================================
@@ -277,9 +281,21 @@ func _on_border_draw() -> void:
 
 ## Private Helper: Draws an incredibly polished glowing circular plate under each compass letter
 func _draw_holographic_compass_plate(f: Font, plate_pos: Vector2, text_char: String, f_size: int, text_color: Color) -> void:
+	var radius: float = 10.0
 	# 1. Dark backing plate to occlude the map underneath
-	_border_canvas.draw_circle(plate_pos, 10.0, Color(0.06, 0.06, 0.08, 0.95))
-	# 2. Glowing outer cian outline
-	_border_canvas.draw_circle(plate_pos, 10.0, Color(0.2, 0.85, 0.85, 0.65), false, 1.5)
-	# 3. Center localized letter
-	_border_canvas.draw_string(f, plate_pos + Vector2(0.0, 4.0), text_char, HORIZONTAL_ALIGNMENT_CENTER, -1, f_size, text_color)
+	_border_canvas.draw_circle(plate_pos, radius, Color(0.06, 0.06, 0.08, 0.95))
+	# 2. Glowing outer cyan outline
+	_border_canvas.draw_circle(plate_pos, radius, Color(0.2, 0.85, 0.85, 0.65), false, 1.5)
+	
+	# 3. Center localized letter horizontally and vertically
+	# We start the draw at the left edge of the circle (plate_pos.x - radius) and set width to diameter (radius * 2)
+	var start_x: float = plate_pos.x - radius
+	var diameter: float = radius * 2.0
+	
+	# Calculate baseline offset based on font metrics for perfect vertical centering
+	var font_height: float = f.get_height(f_size)
+	var font_ascent: float = f.get_ascent(f_size)
+	# Vertical center baseline formula: center_y + ascent - (height / 2)
+	var baseline_y: float = plate_pos.y + font_ascent - (font_height / 2.0)
+	
+	_border_canvas.draw_string(f, Vector2(start_x, baseline_y), text_char, HORIZONTAL_ALIGNMENT_CENTER, diameter, f_size, text_color)

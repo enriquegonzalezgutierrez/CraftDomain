@@ -11,9 +11,10 @@
 #              - Fluid Texture Offset: Biome cache slides using high-performance 
 #                matrix transforms, maintaining locked 120 FPS.
 #              SOLID COMPLIANCE: Adheres strictly to SRP by isolating map drawing.
-#              WARNING FIXES:
+#              BUG FIXES & SECURE TELEPORT:
+#              - Injected `_is_teleport_spawn = true` to force vertical height 
+#                re-calculations upon landing, resolving the mid-air floating bug.
 #              - Fixed variable shadowing by renaming local `is_visible` to `is_pin_visible`.
-#              - Resolved the truncation bug to restore all missing helper methods.
 #              - Fully strictly-typed variables to eliminate warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MapOverlay.gd
@@ -491,7 +492,7 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	if not is_instance_valid(player):
 		return
 		
-	var world_controller: Node = player.get("world_controller") as Node
+	var world_controller: WorldController = player.get("world_controller") as WorldController
 	if not is_instance_valid(world_controller):
 		return
 		
@@ -511,9 +512,13 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	if is_instance_valid(hud_node) and hud_node.has_method("show_loading_screen"):
 		hud_node.call("show_loading_screen")
 	
-	var w_state: WorldState = world_controller.get("world_state") as WorldState
-	if w_state != null:
-		var chunk_pos: Vector3i = w_state.global_to_chunk_pos(Vector3i(floori(target_x), 0, floori(target_z)))
+	# ---> SECURE TELEPORT FLAG <---
+	# Instruct the World Controller that this is a fast-travel teleport spawner 
+	# to bypass static height-safeguards and scan the target terrain ground!
+	world_controller.set("_is_teleport_spawn", true)
+	
+	if is_instance_valid(world_controller.world_state):
+		var chunk_pos: Vector3i = world_controller.world_state.global_to_chunk_pos(Vector3i(floori(target_x), 0, floori(target_z)))
 		world_controller.set("_target_spawn_chunk_pos", chunk_pos)
 		
 	closed.emit()
