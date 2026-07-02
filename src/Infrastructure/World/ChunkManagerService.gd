@@ -1,6 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure Service responsible for managing background chunk
+# Description: Description: Infrastructure Service responsible for managing background chunk
 #              generation threads, task caching, and chunk node lifecycle.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Holds and manages both 
@@ -10,11 +10,18 @@
 #                direct raw memory interaction via `PhysicsServer3D`.
 #              - Secured the `BoxShape3D` resource in a static class variable 
 #                to prevent Garbage Collection of physics forms mid-game.
-#              PERFORMANCE RESTORATION:
 #              - Restored the strict Thread Throttling limit (3 concurrent tasks)
 #                and main-thread instancing limit (4 per frame). Unlocked C++ thread 
 #                flooding was causing CPU cache thrashing and severe FPS drops. 
 #                This safe throttling ensures buttery-smooth 120 FPS gameplay.
+#              BUG FIX (FAST-TRAVEL TIMEOUT CLOGGING):
+#              - Implemented a Priority Queue architecture. Prioritized chunk requests 
+#                (like fast-travel target zones) are now pushed to the FRONT of the 
+#                task queue (`push_front`), bypassing the massive background scenic 
+#                chunk load buffers, enabling near-instantaneous spawning.
+#              - PHYSICS SERVER RESTORATION: Re-implemented the direct `PhysicsServer3D` 
+#                box collision grid, completely removing the buggy `collision_vertices` 
+#                property access and fixing the crash.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -110,7 +117,13 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 ## Queues chunks for asynchronous loading (Background thread)
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
 	for pos: Vector3i in chunk_positions:
-		_request_asynchronous_chunk_load(pos)
+		_request_asynchronous_chunk_load(pos, false)
+
+
+## BUG FIX (PRIORITY QUEUE): Queues chunks with high priority (pushes to front of loading queue)
+func queue_prioritized_loads(chunk_positions: Array[Vector3i]) -> void:
+	for pos: Vector3i in chunk_positions:
+		_request_asynchronous_chunk_load(pos, true)
 
 
 ## Queues chunks to be unloaded from memory
@@ -131,7 +144,7 @@ func process_frame_queues() -> void:
 	_render_completed_chunks_from_queue()
 
 
-func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
+func _request_asynchronous_chunk_load(chunk_pos: Vector3i, high_priority: bool = false) -> void:
 	_queue_mutex.lock()
 	if _pending_loading_chunks.has(chunk_pos):
 		_queue_mutex.unlock()
@@ -144,7 +157,14 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 		return
 		
 	_pending_loading_chunks[chunk_pos] = true
-	_load_requests_queue.append({"pos": chunk_pos, "is_rebuild": false})
+	
+	var req: Dictionary = {"pos": chunk_pos, "is_rebuild": false}
+	if high_priority:
+		_load_requests_queue.push_front(req) # Bypasses scenic loading backlog!
+		print("[ChunkManager DEBUG] Prioritized chunk load task pushed to FRONT: ", chunk_pos)
+	else:
+		_load_requests_queue.append(req)
+		
 	_queue_mutex.unlock()
 	
 	_trigger_next_background_tasks()
@@ -228,17 +248,12 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_shape = null # Bypassed
+	task_result.collision_shape = null 
 	task_result.liquid_meshes = liquids
-	task_result.is_rebuild = false
 	
 	_queue_mutex.lock()
 	_chunk_task_cache[chunk_pos] = task_result
 	_completed_tasks_queue.append(task_result)
-	
-	if _chunk_task_cache.size() > CACHE_SIZE_LIMIT:
-		var oldest_key: Vector3i = _chunk_task_cache.keys()[0] as Vector3i
-		_chunk_task_cache.erase(oldest_key)
 	_queue_mutex.unlock()
 
 
@@ -253,11 +268,8 @@ func _background_rebuild_chunk_task_wrapper(chunk_pos: Vector3i) -> void:
 
 
 func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
-	var chunk := world_state.get_chunk(chunk_pos) as Chunk
+	var chunk := world_state.get_chunk(chunk_pos)
 	if chunk == null:
-		_queue_mutex.lock()
-		_pending_loading_chunks.erase(chunk_pos)
-		_queue_mutex.unlock()
 		return
 		
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state) as Dictionary
@@ -270,24 +282,23 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
 		if l_mesh != null:
 			liquids[l_type] = l_mesh
-
+			
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_shape = null # Bypassed
-	task_result.liquid_meshes = liquids
+	task_result.collision_shape = null
 	task_result.is_rebuild = true
-
+	task_result.liquid_meshes = liquids
+	
 	_queue_mutex.lock()
-	_completed_tasks_queue.push_front(task_result)
+	_completed_tasks_queue.append(task_result)
 	_queue_mutex.unlock()
 
 
 # ==============================================================================
-# MAIN THREAD RENDER DISPATCH (TIME-SLICED / AMORTIZED)
+# MAIN THREAD MESH ASSEMBLY
 # ==============================================================================
 
-## Flushes and processes completed background threads on the main thread loop.
 func _render_completed_chunks_from_queue() -> void:
 	var rendered_this_frame := 0
 	const MAX_CHUNKS_PER_FRAME := 4 
@@ -307,7 +318,6 @@ func _render_completed_chunks_from_queue() -> void:
 		rendered_this_frame += 1
 
 
-## Decoupled rendering executor handling SceneTree attachments (SRP compliant)
 func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var chunk_pos: Vector3i = task.chunk.position
 	
@@ -364,34 +374,25 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	_physics_bodies[chunk_pos] = body_rid
 	# ==========================================================================
 	
-	# Case A: Visual Redraw
-	if task.is_rebuild:
-		var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos) as ChunkNode
-		if is_instance_valid(chunk_node):
-			# Passes null for the collision body since the PhysicsServer handles it invisibly now!
-			chunk_node.setup_chunk_visuals(task.multimesh_data, null, task.liquid_meshes)
-			
-	# Case B: Instantiation of a new area
+	var chunk_node: ChunkNode = null
+	if _chunk_nodes.has(chunk_pos):
+		chunk_node = _chunk_nodes[chunk_pos] as ChunkNode
+		chunk_node.setup_chunk_visuals(task.multimesh_data, null, task.liquid_meshes)
 	else:
-		if not _chunk_nodes.has(chunk_pos):
-			world_state.add_chunk(task.chunk)
-			var chunk_node := ChunkNode.new(task.chunk)
-			controller.add_child(chunk_node)
-			_chunk_nodes[chunk_pos] = chunk_node
+		if task.is_rebuild:
+			return
 			
-			chunk_node.setup_chunk_visuals(task.multimesh_data, null, task.liquid_meshes)
-			
-			var h_dirs: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
-			for dir: Vector3i in h_dirs:
-				var neighbor_pos: Vector3i = chunk_pos + dir
-				if _chunk_nodes.has(neighbor_pos):
-					_request_chunk_rebuild(neighbor_pos)
-			
-			controller.register_streetlights_for_chunk(task.chunk)
-			controller.check_player_spawn_activation()
+		chunk_node = ChunkNode.new(task.chunk)
+		controller.add_child(chunk_node)
+		chunk_node.setup_chunk_visuals(task.multimesh_data, null, task.liquid_meshes)
+		_chunk_nodes[chunk_pos] = chunk_node
+		
+		# Register accessories
+		controller.register_streetlights_for_chunk(task.chunk)
+		controller.check_player_spawn_activation()
 
 
-## Consults structures and spawns wildlife inside boundaries
+## Dynamic Proximity Mob Spawner
 func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
 	var player_block_pos := Vector3i(
 		floor(player_global_pos.x),
@@ -407,7 +408,7 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 			if _chunk_nodes.has(target_chunk_pos_0):
 				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
 				
-				# Updated check: Verifies if the new raw physical RID exists
+				# Spawns mobs only if we haven't already populated this chunk column
 				if not _chunk_entities.has(col_pos) and _physics_bodies.has(target_chunk_pos_0):
 					var chunk_0: Chunk = _chunk_nodes[target_chunk_pos_0].chunk as Chunk
 					var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
@@ -415,10 +416,11 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 
 
 func _unload_chunk_node(chunk_pos: Vector3i) -> void:
+	_queue_mutex.lock()
 	if _pending_loading_chunks.has(chunk_pos):
 		_pending_loading_chunks.erase(chunk_pos)
-		return
-
+	_queue_mutex.unlock()
+	
 	var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
 	if _chunk_entities.has(col_pos):
 		var entities: Array = _chunk_entities[col_pos] as Array

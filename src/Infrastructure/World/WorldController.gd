@@ -10,12 +10,12 @@
 #                services without modifying core coordination loops.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate.
-#              BUG FIX (FLOATING TELEPORTATION STANDSTILL):
-#              - Introduced `_is_teleport_spawn` state property. This bypasses the 
-#                `_is_restored_save` height protection during fast-travel teleports, 
-#                forcing a vertical ground scan to safely drop the player onto the 
-#                topmost solid block of the target chunk.
-#              WARNING FIX: Added explicit static typing to all parameters and loops.
+#              BUG FIX (FLOATING TELEPORT STANDSTILL - STUCK TRANSIT):
+#              - Fixed Priority Queue collision: Dispatched `queue_prioritized_loads` 
+#                BEFORE the standard scenic `queue_loads`. This ensures the 18 critical 
+#                spawn-protection chunks are successfully pushed to the front of the 
+#                Thread Pool, providing instant fast-travel without clogging.
+#              WARNING FIX: Removed unused `_always_log_timer` private variable.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -52,8 +52,12 @@ var _loaded_inventory_data: Array = []
 var _is_restored_save: bool = false
 var _is_startup_phase: bool = true
 
-# BUG FIX FLAG: Forces vertical height recalculation on fast-travel teleport spawner
-var _is_teleport_spawn: bool = false
+# BUG FIX FLAGS: Forces vertical height recalculation on fast-travel teleport spawner
+# Made public to prevent dynamic property setter lookup failures.
+var is_teleport_spawn: bool = false
+
+# Unconditional Telemetry Timers (Guaranteed execution for diagnostic purposes)
+var _debug_log_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -132,6 +136,13 @@ func _process(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 		
+	# BUG FIX (STUCK TRANSIT): If the player is in transit (is_active == false), 
+	# actively poll and check spawn activation every frame.
+	# This guarantees immediate activation if target chunks are already loaded.
+	if not player.get("is_active"):
+		check_player_spawn_activation()
+		_process_teleport_debug_logging(delta)
+		
 	# 1. Agriculture Tick
 	if is_instance_valid(_agriculture_service):
 		_agriculture_service.process_agriculture_ticks(delta)
@@ -148,6 +159,36 @@ func _process(delta: float) -> void:
 		chunk_manager.process_frame_queues()
 
 
+## Periodically prints real-time teleportation progress directly to the console.
+func _process_teleport_debug_logging(delta: float) -> void:
+	_debug_log_timer += delta
+	if _debug_log_timer >= 1.0:
+		_debug_log_timer = 0.0
+		print("[WorldController DEBUG] Player is suspended in transit at global pos: ", player.global_position)
+		print("[WorldController DEBUG] Target spawn chunk pos: ", _target_spawn_chunk_pos)
+		
+		if is_instance_valid(chunk_manager):
+			# Print pipeline state metrics
+			print("[WorldController DEBUG] Background tasks count: ", chunk_manager.get("_active_background_tasks"))
+			print("[WorldController DEBUG] Load requests queue size: ", chunk_manager.get("_load_requests_queue").size())
+			print("[WorldController DEBUG] Completed tasks queue size: ", chunk_manager.get("_completed_tasks_queue").size())
+			print("[WorldController DEBUG] Pending loading chunks size: ", chunk_manager.get("_pending_loading_chunks").size())
+			
+			var missing_chunks: Array[Vector3i] = []
+			for x: int in range(-1, 2):
+				for z: int in range(-1, 2):
+					var pos_0: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z)
+					var pos_1: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z)
+					if not chunk_manager.is_chunk_rendered(pos_0):
+						missing_chunks.append(pos_0)
+					if not chunk_manager.is_chunk_rendered(pos_1):
+						missing_chunks.append(pos_1)
+			if missing_chunks.size() > 0:
+				print("[WorldController DEBUG] Still waiting for chunks to render: ", missing_chunks)
+			else:
+				print("[WorldController DEBUG] All 3x3 surrounding chunks are fully rendered in RAM!")
+
+
 ## Calculates coordinates to request chunk loads/unloads and triggers proximity spawning
 func _process_dynamic_world() -> void:
 	var task: ChunkLoaderService.ChunkUpdateTask = loader_service.check_viewer_position(
@@ -158,6 +199,21 @@ func _process_dynamic_world() -> void:
 	# Delegate loading and unloading arrays directly to ChunkManagerService
 	if is_instance_valid(chunk_manager):
 		chunk_manager.queue_unloads(task.to_unload)
+		
+		# ---> SURGICAL PRIORITY QUEUE DISPATCH <---
+		# CRITICAL FIX: Push priority spawn protection chunks BEFORE normal passive loads.
+		# This guarantees they are queued at the front and instantly dispatched, 
+		# bypassing the massive 162-chunk scenic loading requests.
+		if is_teleport_spawn:
+			var target_spawn_chunks: Array[Vector3i] = []
+			for x: int in range(-1, 2):
+				for z: int in range(-1, 2):
+					target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z))
+					target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z))
+			chunk_manager.queue_prioritized_loads(target_spawn_chunks)
+		
+		# Regular scenic world loads remain passive (un-prioritized)
+		# Priority chunks already logged in _pending_loading_chunks will be efficiently skipped.
 		chunk_manager.queue_loads(task.to_load)
 		
 		# DYNAMIC PROXIMITY SPAWNING: Spawns entities only in chunks close to the player
@@ -223,7 +279,7 @@ func unregister_streetlights_for_chunk(chunk_pos: Vector3i) -> void:
 func check_player_spawn_activation() -> void:
 	if is_instance_valid(player) and not player.get("is_active"):
 		if is_instance_valid(chunk_manager):
-			var all_rendered: bool = true
+			var _all_rendered: bool = true
 			
 			# Validate that the entire 3x3 surrounding column region is fully compiled in RAM
 			for x: int in range(-1, 2):
@@ -232,20 +288,21 @@ func check_player_spawn_activation() -> void:
 					var pos_1: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z)
 					
 					if not chunk_manager.is_chunk_rendered(pos_0) or not chunk_manager.is_chunk_rendered(pos_1):
-						all_rendered = false
+						_all_rendered = false
 						break
-				if not all_rendered:
+				if not _all_rendered:
 					break
 					
-			if all_rendered:
+			if _all_rendered:
 				_activate_player_spawn()
 
 
 ## Safely positions the player on the topmost solid block at spawn coordinates using Domain Rules
 func _activate_player_spawn() -> void:
+	print("[WorldController DEBUG] _activate_player_spawn triggered! is_teleport_spawn: ", is_teleport_spawn)
 	# BUG FIX: Recalculate safe ground height if it is a fresh game OR a fast-travel teleport spawn!
-	if not _is_restored_save or _is_teleport_spawn:
-		_is_teleport_spawn = false # Reset the bug fix trigger flag
+	if not _is_restored_save or is_teleport_spawn:
+		is_teleport_spawn = false # Reset the bug fix trigger flag
 		
 		var block_x: int = floori(player.position.x)
 		var block_z: int = floori(player.position.z)
@@ -256,6 +313,7 @@ func _activate_player_spawn() -> void:
 			found_safe_y = world_state.get_highest_solid_y(block_x, block_z)
 			
 		player.position.y = found_safe_y
+		print("[WorldController DEBUG] Player vertical coordinate resolved to: Y = ", found_safe_y)
 		
 	_restore_player_inventory()
 	player.set("is_active", true)

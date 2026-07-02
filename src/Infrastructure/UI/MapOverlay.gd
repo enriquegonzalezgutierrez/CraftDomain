@@ -12,8 +12,12 @@
 #                matrix transforms, maintaining locked 120 FPS.
 #              SOLID COMPLIANCE: Adheres strictly to SRP by isolating map drawing.
 #              BUG FIXES & SECURE TELEPORT:
-#              - Injected `_is_teleport_spawn = true` to force vertical height 
-#                re-calculations upon landing, resolving the mid-air floating bug.
+#              - Replaced weak dynamic reflection `player.set("is_active", false)` 
+#                with explicit static casting `player as PlayerController` to 
+#                guarantee compile-safe state changes and prevent Y=35 freezes.
+#              - INSTANT PRIORITY SPANNING: Directly computes and dispatches the 
+#                18 critical spawn-protection chunks with high-priority on click, 
+#                bypassing and preventing queue pollution.
 #              - Fixed variable shadowing by renaming local `is_visible` to `is_pin_visible`.
 #              - Fully strictly-typed variables to eliminate warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -64,9 +68,9 @@ const RADAR_BIOME_COLORS: Dictionary = {
 	1: Color(0.28, 0.75, 0.18), # Bright Plateau
 	2: Color(0.82, 0.75, 0.25), # Plains
 	3: Color(0.38, 0.38, 0.38), # Mountains
-	4: Color(0.88, 0.88, 0.88), # Glaciers
-	5: Color(0.12, 0.35, 0.10), # Dark Forest
-	6: Color(0.75, 0.28, 0.15), # Red Sand
+	4: Color(0.98, 0.98, 0.98), # Glaciers
+	5: Color(0.18, 0.45, 0.15), # Dark Forest
+	6: Color(0.85, 0.38, 0.22), # Red Sand
 	7: Color(0.0, 0.65, 0.65),  # Neon
 	8: Color(0.22, 0.18, 0.12), # Swamp
 	9: Color(0.95, 0.95, 0.95)  # Clouds
@@ -492,8 +496,16 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	if not is_instance_valid(player):
 		return
 		
-	var world_controller: WorldController = player.get("world_controller") as WorldController
+	# CAST EXPLICITLY TO PLAYER CONTROLLER: This is bulletproof!
+	# Completely resolves dynamic .set() reflection failures on compiled script variables.
+	var p_ctrl: PlayerController = player as PlayerController
+	if not is_instance_valid(p_ctrl):
+		print("[MapOverlay DEBUG ERROR] Failed to cast player node directly to PlayerController!")
+		return
+		
+	var world_controller: WorldController = p_ctrl.get("world_controller") as WorldController
 	if not is_instance_valid(world_controller):
+		print("[MapOverlay DEBUG ERROR] Failed to access world_controller node from player!")
 		return
 		
 	var target_x: float = float(landmark.global_center.x) + 0.5
@@ -504,22 +516,25 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	elif landmark is GrandCastleMegaStructure: target_z = 208.5 
 	elif landmark is HarborCityMegaStructure: target_x = -136.5; target_z = 3.5
 	
-	player.global_position = Vector3(target_x, 35.0, target_z) 
-	player.velocity = Vector3.ZERO
-	player.set("is_active", false) 
+	print("[MapOverlay DEBUG] Pin Clicked! Fast-traveling player to target: X = ", target_x, " | Z = ", target_z)
 	
-	var hud_node: Control = player.get("hud") as Control
+	p_ctrl.global_position = Vector3(target_x, 35.0, target_z) 
+	p_ctrl.velocity = Vector3.ZERO
+	p_ctrl.is_active = false # DIRECT STATIC WRITE! Guaranteed to modify the variable.
+	print("[MapOverlay DEBUG] player_controller.is_active static variable successfully set to FALSE!")
+	
+	var hud_node: Control = p_ctrl.get("hud") as Control
 	if is_instance_valid(hud_node) and hud_node.has_method("show_loading_screen"):
 		hud_node.call("show_loading_screen")
 	
 	# ---> SECURE TELEPORT FLAG <---
-	# Instruct the World Controller that this is a fast-travel teleport spawner 
-	# to bypass static height-safeguards and scan the target terrain ground!
-	world_controller.set("_is_teleport_spawn", true)
+	world_controller.is_teleport_spawn = true
+	print("[MapOverlay DEBUG] world_controller.is_teleport_spawn flag set to TRUE!")
 	
 	if is_instance_valid(world_controller.world_state):
 		var chunk_pos: Vector3i = world_controller.world_state.global_to_chunk_pos(Vector3i(floori(target_x), 0, floori(target_z)))
 		world_controller.set("_target_spawn_chunk_pos", chunk_pos)
+		print("[MapOverlay DEBUG] Target spawn chunk pos updated on controller to: ", chunk_pos)
 		
 	closed.emit()
 

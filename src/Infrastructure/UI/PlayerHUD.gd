@@ -9,9 +9,11 @@
 #                are fully i18n localized using tr() for future translation packs.
 #              - OBSERVER PATTERN: Connects reactively to Domain Events of both 
 #                IInventory and VoxelEntity, eliminating manual sync cascades.
-#              UX TEXT FIX:
-#              - Forced `font_size` and `outline_size` to use Crisp scaling 
-#                to eliminate blurry/fuzzy text artifacts caused by global 3D filters.
+#              BUG FIX (OVERLAPPING TRANSIT OVERRIDE):
+#              - Refactored `toggle_world_map()` to query the world controller's 
+#                `is_teleport_spawn` state before re-activating the player on close.
+#                This prevents the UI from instantly overriding the physical 
+#                is_active state during fast-travel.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -236,15 +238,29 @@ func toggle_world_map(p_visible: bool) -> void:
 		add_child(_world_map_overlay)
 		
 		if is_instance_valid(player):
-			player.set("is_active", false)
+			var p_ctrl: PlayerController = player as PlayerController
+			if is_instance_valid(p_ctrl):
+				p_ctrl.is_active = false
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
 		if is_instance_valid(_world_map_overlay):
 			_world_map_overlay.queue_free()
 			_world_map_overlay = null
 		if is_instance_valid(player):
-			player.set("is_active", true)
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			# ---> TELEPORT STATE LIFE-CYCLE SHIELD <---
+			# Check if the player is currently in a fast-travel spawn phase.
+			# If so, do NOT force is_active back to true. Let the WorldController 
+			# handle safe ground landing reactivation in the background!
+			var is_teleporting: bool = false
+			var world_ctrl: WorldController = world_controller as WorldController
+			if is_instance_valid(world_ctrl):
+				is_teleporting = world_ctrl.is_teleport_spawn
+				
+			if not is_teleporting:
+				var p_ctrl: PlayerController = player as PlayerController
+				if is_instance_valid(p_ctrl):
+					p_ctrl.is_active = true
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func toggle_crafting_workshop(p_visible: bool) -> void:
