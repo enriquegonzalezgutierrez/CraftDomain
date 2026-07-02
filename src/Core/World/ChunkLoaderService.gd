@@ -7,9 +7,14 @@
 #                boundary tracking and queue calculations.
 #              - Open-Closed Principle (OCP): Dynamically reacts to static 
 #                configuration changes without modifying core logic.
+#              OPTIMIZATION (RADIAL SORTING):
+#              - Implemented a custom radial sort on the `to_load` queue. Chunks 
+#                are now strictly prioritized by their squared distance from the 
+#                player's center, generating the immediate vicinity first and 
+#                expanding outward like a smooth spiral.
 #              WARNING FIX:
 #              - Added explicit static typing `Vector3i` to the `active_pos` iterator 
-#                on line 70 to eliminate `UNTYPED_DECLARATION` warnings.
+#                to eliminate `UNTYPED_DECLARATION` warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/World/ChunkLoaderService.gd
 # ==============================================================================
@@ -54,19 +59,27 @@ func check_viewer_position(player_global_pos: Vector3, world_state: WorldState) 
 	
 	# 3. Calculate all chunk positions that should be active
 	var desired_chunks: Dictionary = {}
-	for x in range(-current_distance, current_distance + 1):
-		for z in range(-current_distance, current_distance + 1):
+	for x: int in range(-current_distance, current_distance + 1):
+		for z: int in range(-current_distance, current_distance + 1):
 			# We load layers Y=0 and Y=1 (Height range 0 to 31) to support full heights & building
-			for y in range(2):
+			for y: int in range(2):
 				var target_pos := Vector3i(current_viewer_chunk_pos.x + x, y, current_viewer_chunk_pos.z + z)
 				desired_chunks[target_pos] = true
 				
 				# If the desired chunk does not exist in the database, queue it for loading
 				if world_state.get_chunk(target_pos) == null:
 					task.to_load.append(target_pos)
+					
+	# RADIAL SORTING: Sort the load queue so chunks closest to the player load first!
+	var center := current_viewer_chunk_pos
+	task.to_load.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		# Calculate 2D squared distance (ignoring Y to load columns together)
+		var dist_a := Vector2(a.x - center.x, a.z - center.z).length_squared()
+		var dist_b := Vector2(b.x - center.x, b.z - center.z).length_squared()
+		return dist_a < dist_b
+	)
 				
 	# 4. Identify chunks currently in the database that are outside the view distance
-	# FIX: Added explicit type declaration `Vector3i` to iterator variable
 	for active_pos: Vector3i in world_state._chunks.keys():
 		if not desired_chunks.has(active_pos):
 			task.to_unload.append(active_pos)

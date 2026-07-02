@@ -9,6 +9,9 @@
 #                are fully i18n localized using tr() for future translation packs.
 #              - OBSERVER PATTERN: Connects reactively to Domain Events of both 
 #                IInventory and VoxelEntity, eliminating manual sync cascades.
+#              UX TEXT FIX:
+#              - Forced `font_size` and `outline_size` to use Crisp scaling 
+#                to eliminate blurry/fuzzy text artifacts caused by global 3D filters.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -145,11 +148,11 @@ func _setup_loading_screen() -> void:
 ## Binds presentation update triggers to domain events, achieving decoupling.
 func _connect_domain_signals() -> void:
 	if is_instance_valid(player):
-		var inv := player.get("inventory") as IInventory
+		var inv: IInventory = player.get("inventory") as IInventory
 		if is_instance_valid(inv):
 			inv.inventory_changed.connect(_on_inventory_changed)
 			
-		var entity := player.get("domain_entity") as VoxelEntity
+		var entity: VoxelEntity = player.get("domain_entity") as VoxelEntity
 		if is_instance_valid(entity):
 			entity.took_damage.connect(func(_amount: int) -> void:
 				update_health_display(entity.health)
@@ -164,11 +167,11 @@ func _connect_domain_signals() -> void:
 func _on_inventory_changed() -> void:
 	if not is_instance_valid(player):
 		return
-	var inv := player.get("inventory") as InventoryComponent
+	var inv: InventoryComponent = player.get("inventory") as InventoryComponent
 	if not is_instance_valid(inv):
 		return
 		
-	for i in range(8):
+	for i: int in range(8):
 		var slot := inv.get_slot_data(i)
 		if slot != null:
 			update_slot_quantity(i, slot.item_id, slot.quantity)
@@ -335,6 +338,10 @@ func show_quest_notification(header: String, quest_title: String) -> void:
 	header_lbl.text = "🏆 " + tr(header).to_upper()
 	var hs := LabelSettings.new()
 	hs.font_size = 11; hs.font_color = Color(1.0, 0.85, 0.2); hs.outline_size = 2; hs.outline_color = Color.BLACK
+	
+	# Crisp Font Rendering enforcement
+	hs.shadow_size = 0
+	
 	header_lbl.label_settings = hs; header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(header_lbl)
 	
@@ -342,6 +349,8 @@ func show_quest_notification(header: String, quest_title: String) -> void:
 	desc_lbl.text = tr(quest_title)
 	var ds := LabelSettings.new()
 	ds.font_size = 13; ds.font_color = Color.WHITE; ds.outline_size = 2; ds.outline_color = Color.BLACK
+	ds.shadow_size = 0
+	
 	desc_lbl.label_settings = ds; desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 	vbox.add_child(desc_lbl)

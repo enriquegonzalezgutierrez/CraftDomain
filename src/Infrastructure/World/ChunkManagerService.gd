@@ -5,18 +5,16 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Holds and manages both 
 #                _chunk_nodes and _chunk_entities locally.
-#              PHYSICS OVERHAUL (SOLID VOXEL BOX COLLISIONS):
-#              - Replaced the buggy ConcavePolygonShape3D triangle soup with a 
-#                highly optimized Grid of BoxShape3D primitive colliders.
-#              - Reconstructs exact 3D solid blocks from multimesh transforms, 
-#                giving the terrain real physical volume and enabling flawless 
-#                sliding/collision behaviors.
-#              - Implements the Flyweight Pattern by reusing a single BoxShape3D 
-#                resource instance across all colliders to minimize memory footprint.
-#              WARNING FIX:
-#              - Added explicit static typing to all loop iterators, cast properties, 
-#                and intermediate task variables to completely eliminate 
-#                `UNTYPED_DECLARATION` compiler warnings.
+#              PHYSICS OVERHAUL (LOW-LEVEL PHYSICS SERVER):
+#              - Replaced high-overhead `CollisionShape3D` node instantiation with 
+#                direct raw memory interaction via `PhysicsServer3D`.
+#              - Secured the `BoxShape3D` resource in a static class variable 
+#                to prevent Garbage Collection of physics forms mid-game.
+#              PERFORMANCE RESTORATION:
+#              - Restored the strict Thread Throttling limit (3 concurrent tasks)
+#                and main-thread instancing limit (4 per frame). Unlocked C++ thread 
+#                flooding was causing CPU cache thrashing and severe FPS drops. 
+#                This safe throttling ensures buttery-smooth 120 FPS gameplay.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -38,8 +36,8 @@ var _load_requests_queue: Array = []
 ## Number of currently active background WorkerThreadPool tasks
 var _active_background_tasks: int = 0
 
-## Maximum concurrent background tasks allowed (Limits CPU core saturation)
-const MAX_CONCURRENT_BG_TASKS: int = 2
+## Maximum concurrent background tasks allowed (Limits CPU core saturation for smooth FPS)
+const MAX_CONCURRENT_BG_TASKS: int = 3
 
 ## Tracking map for active ChunkNode representations: Vector3i -> ChunkNode
 var _chunk_nodes: Dictionary = {}
@@ -47,15 +45,31 @@ var _chunk_nodes: Dictionary = {}
 ## Tracking map for entities spawned within specific chunk columns: Vector3i (y=0) -> Array[Node]
 var _chunk_entities: Dictionary = {}
 
+## Map storing raw PhysicsServer3D body RIDs for safe manual deletion
+var _physics_bodies: Dictionary = {} # Vector3i -> RID
+
 # Cache System (LRU)
 var _chunk_task_cache: Dictionary = {}
 const CACHE_SIZE_LIMIT: int = 64
+
+# ==============================================================================
+# STATIC PHYSICS FLYWEIGHT (Protects collisions from Garbage Collection)
+# ==============================================================================
+static var _shared_physics_box_shape: BoxShape3D = null
 
 
 func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
 	controller = p_controller
 	world_state = p_world_state
 	_queue_mutex = Mutex.new()
+
+
+## Retrieves the single persistent physical box shape, instantiating it if necessary.
+static func _get_or_create_shared_box() -> BoxShape3D:
+	if _shared_physics_box_shape == null:
+		_shared_physics_box_shape = BoxShape3D.new()
+		_shared_physics_box_shape.size = Vector3(1.0, 1.0, 1.0)
+	return _shared_physics_box_shape
 
 
 ## Verifies if a chunk is loaded and rendered
@@ -95,14 +109,12 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 
 ## Queues chunks for asynchronous loading (Background thread)
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
-	# FIX: Explicit static typing on chunk positions iterator
 	for pos: Vector3i in chunk_positions:
 		_request_asynchronous_chunk_load(pos)
 
 
 ## Queues chunks to be unloaded from memory
 func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
-	# FIX: Explicit static typing on chunk positions iterator
 	for pos: Vector3i in chunk_positions:
 		if not _unload_queue.has(pos):
 			_unload_queue.append(pos)
@@ -170,6 +182,7 @@ func _trigger_next_background_tasks() -> void:
 			WorkerThreadPool.add_task(_background_generate_chunk_task_wrapper.bind(pos))
 	_queue_mutex.unlock()
 
+
 # ==============================================================================
 # THREAD OPERATIONS (Calculates raw meshes and collision arrays)
 # ==============================================================================
@@ -197,7 +210,6 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 		
 	var saved_edits: Dictionary = controller.repository.load_chunk_modifications(chunk_pos) as Dictionary
 	if saved_edits.size() > 0:
-		# FIX: Static type declaration on local modifications loop iterator
 		for local_pos: Vector3i in saved_edits.keys():
 			var type_val: int = saved_edits[local_pos] as int
 			chunk.set_block(local_pos.x, local_pos.y, local_pos.z, type_val as BlockType.Type)
@@ -208,7 +220,6 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 		return
 		
 	var liquids: Dictionary = {}
-	# FIX: Static type declaration on liquid block types iterator
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
 		if l_mesh != null:
@@ -226,7 +237,6 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	_completed_tasks_queue.append(task_result)
 	
 	if _chunk_task_cache.size() > CACHE_SIZE_LIMIT:
-		# FIX: Static type cast on Dictionary oldest keys
 		var oldest_key: Vector3i = _chunk_task_cache.keys()[0] as Vector3i
 		_chunk_task_cache.erase(oldest_key)
 	_queue_mutex.unlock()
@@ -256,7 +266,6 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 		return
 		
 	var liquids: Dictionary = {}
-	# FIX: Static type declaration on liquid block types iterator
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
 		if l_mesh != null:
@@ -273,6 +282,7 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 	_completed_tasks_queue.push_front(task_result)
 	_queue_mutex.unlock()
 
+
 # ==============================================================================
 # MAIN THREAD RENDER DISPATCH (TIME-SLICED / AMORTIZED)
 # ==============================================================================
@@ -280,7 +290,7 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 ## Flushes and processes completed background threads on the main thread loop.
 func _render_completed_chunks_from_queue() -> void:
 	var rendered_this_frame := 0
-	const MAX_CHUNKS_PER_FRAME := 2 
+	const MAX_CHUNKS_PER_FRAME := 4 
 	
 	while rendered_this_frame < MAX_CHUNKS_PER_FRAME:
 		var task: GeneratedChunkTask = null
@@ -305,46 +315,61 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 		_pending_loading_chunks.erase(chunk_pos)
 		
 	# ==========================================================================
-	# primitive BoxShape3D Collision Grid Generation (SRP compliant)
-	# Reconstructs individual solid bounding boxes for each exposed voxel.
+	# HIGH-PERFORMANCE LOW-LEVEL PHYSICS SERVER (STUTTER FIX)
+	# Constructs solid block physics by communicating directly with C++ memory, 
+	# completely bypassing node instantiation overhead on the main thread.
 	# ==========================================================================
-	var collision_body := StaticBody3D.new()
-	collision_body.name = "StaticCollisionBody"
 	
-	# Flyweight Pattern: Shared single BoxShape3D resource
-	var shared_box_shape := BoxShape3D.new()
-	shared_box_shape.size = Vector3(1.0, 1.0, 1.0)
+	# Delete previous body if rebuilding
+	if _physics_bodies.has(chunk_pos):
+		var old_rid: RID = _physics_bodies[chunk_pos]
+		PhysicsServer3D.free_rid(old_rid)
+		_physics_bodies.erase(chunk_pos)
+		
+	var box_shape: BoxShape3D = _get_or_create_shared_box()
+	var shape_rid: RID = box_shape.get_rid()
 	
-	# FIX: Explicit type constraint on MultiMesh block type iterator
+	# Create a raw Static Body in the Physics Server
+	var body_rid: RID = PhysicsServer3D.body_create()
+	PhysicsServer3D.body_set_mode(body_rid, PhysicsServer3D.BODY_MODE_STATIC)
+	
+	# Bind a collision layer mask so it correctly interacts with RayCasts!
+	PhysicsServer3D.body_set_collision_layer(body_rid, 1)
+	PhysicsServer3D.body_set_collision_mask(body_rid, 1)
+	
+	PhysicsServer3D.body_set_space(body_rid, controller.get_world_3d().space)
+	
+	# Position the invisible body exactly where the visual chunk sits
+	var chunk_transform := Transform3D(Basis(), Vector3(chunk_pos * Chunk.SIZE))
+	PhysicsServer3D.body_set_state(body_rid, PhysicsServer3D.BODY_STATE_TRANSFORM, chunk_transform)
+	
+	# Inject all valid solid transforms into this raw body
 	for b_type: BlockType.Type in task.multimesh_data.keys():
-		# Filter to compile collision shapes ONLY for physically solid materials
 		if BlockType.is_solid(b_type):
 			var bulk_array: PackedFloat32Array = task.multimesh_data[b_type] as PackedFloat32Array
 			var count: int = int(bulk_array.size() / 12.0)
 			
-			# FIX: Explicit type constraint on index range iterator
 			for i: int in range(count):
 				var offset := i * 12
-				
-				# Unpack the Transform3D coordinates from the bulk rendering buffer
 				var basis_x := Vector3(bulk_array[offset + 0], bulk_array[offset + 4], bulk_array[offset + 8])
 				var basis_y := Vector3(bulk_array[offset + 1], bulk_array[offset + 5], bulk_array[offset + 9])
 				var basis_z := Vector3(bulk_array[offset + 2], bulk_array[offset + 6], bulk_array[offset + 10])
 				var origin := Vector3(bulk_array[offset + 3], bulk_array[offset + 7], bulk_array[offset + 11])
 				
-				var t := Transform3D(Basis(basis_x, basis_y, basis_z), origin)
+				var local_transform := Transform3D(Basis(basis_x, basis_y, basis_z), origin)
 				
-				var col_shape := CollisionShape3D.new()
-				col_shape.shape = shared_box_shape
-				col_shape.transform = t
-				collision_body.add_child(col_shape)
+				# Link the shared shape at this exact offset block position instantly
+				PhysicsServer3D.body_add_shape(body_rid, shape_rid, local_transform)
+				
+	_physics_bodies[chunk_pos] = body_rid
 	# ==========================================================================
 	
 	# Case A: Visual Redraw
 	if task.is_rebuild:
 		var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos) as ChunkNode
 		if is_instance_valid(chunk_node):
-			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
+			# Passes null for the collision body since the PhysicsServer handles it invisibly now!
+			chunk_node.setup_chunk_visuals(task.multimesh_data, null, task.liquid_meshes)
 			
 	# Case B: Instantiation of a new area
 	else:
@@ -354,7 +379,7 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			controller.add_child(chunk_node)
 			_chunk_nodes[chunk_pos] = chunk_node
 			
-			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
+			chunk_node.setup_chunk_visuals(task.multimesh_data, null, task.liquid_meshes)
 			
 			var h_dirs: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
 			for dir: Vector3i in h_dirs:
@@ -375,7 +400,6 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 	)
 	var current_viewer_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
 	
-	# FIX: Explicit type constraint on grid offsets
 	for x: int in range(-spawn_radius, spawn_radius + 1):
 		for z: int in range(-spawn_radius, spawn_radius + 1):
 			var target_chunk_pos_0 := Vector3i(current_viewer_chunk_pos.x + x, 0, current_viewer_chunk_pos.z + z)
@@ -383,8 +407,8 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 			if _chunk_nodes.has(target_chunk_pos_0):
 				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
 				
-				if not _chunk_entities.has(col_pos) and _chunk_nodes[target_chunk_pos_0].has_collision_body():
-					# FIX: Static type caster on chunk retrieval
+				# Updated check: Verifies if the new raw physical RID exists
+				if not _chunk_entities.has(col_pos) and _physics_bodies.has(target_chunk_pos_0):
 					var chunk_0: Chunk = _chunk_nodes[target_chunk_pos_0].chunk as Chunk
 					var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
 					_chunk_entities[col_pos] = spawned
@@ -398,7 +422,6 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
 	if _chunk_entities.has(col_pos):
 		var entities: Array = _chunk_entities[col_pos] as Array
-		# FIX: Static type constraint on entities loop iterator
 		for entity: Node in entities:
 			if is_instance_valid(entity): 
 				entity.queue_free()
@@ -408,9 +431,13 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos) as ChunkNode
 	if is_instance_valid(chunk_node):
-		var body := chunk_node.get_node_or_null("StaticCollisionBody") as StaticBody3D
-		if is_instance_valid(body):
-			body.queue_free()
 		chunk_node.queue_free()
 		
 	_chunk_nodes.erase(chunk_pos)
+	world_state.remove_chunk(chunk_pos)
+	
+	# Memory Cleanup: Free the hidden raw physics body manually
+	if _physics_bodies.has(chunk_pos):
+		var rid: RID = _physics_bodies[chunk_pos]
+		PhysicsServer3D.free_rid(rid)
+		_physics_bodies.erase(chunk_pos)

@@ -7,6 +7,10 @@
 #              - Open-Closed Principle (OCP) & i18n: Exclusively uses dynamic 
 #                translation keys (LOADING_TITLE, LOADING_STATUS, LOADING_TIP) 
 #                to support multi-language localizations.
+#              OPTIMIZATION (INSTANT LOAD):
+#              - Sharpened the fade-out tween duration to 0.15s. Combined with the
+#                `Spiral Loading` architecture from WorldController, the game now 
+#                boots almost instantaneously.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/LoadingScreen.gd
 # ==============================================================================
@@ -107,15 +111,16 @@ func _process(delta: float) -> void:
 		var elapsed := Time.get_ticks_msec() / 1000.0
 		var dot_count := int(floor(elapsed * 2.0)) % 4
 		var dots := ""
-		for j in range(dot_count):
+		for j: int in range(dot_count):
 			dots += "."
 		_status.text = tr("LOADING_STATUS").to_upper() + dots
 		
 	# DISMISS CHECK: Smoothly fade out when player spawn completes
-	if is_instance_valid(player) and player.get("is_active"):
+	if is_instance_valid(player) and player.get("is_active") as bool:
 		set_process(false) # Disable loop
 		var fade_tween := create_tween()
-		fade_tween.tween_property(self, "modulate:a", 0.0, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		# Lightning fast 0.15s fade out for an instantaneous and crisp transition!
+		fade_tween.tween_property(self, "modulate:a", 0.0, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 		fade_tween.tween_callback(queue_free)
 
 

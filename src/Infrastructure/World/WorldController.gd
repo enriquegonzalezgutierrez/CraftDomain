@@ -10,14 +10,14 @@
 #                services without modifying core coordination loops.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate.
-#              BUG FIX (STATE LEAK): 
-#              - Moved CampaignRegistry.initialize_campaign() here to ensure 
-#                Quest resources and statuses are completely reset into RAM 
-#                every time a world is loaded or restarted from the main menu.
+#              OPTIMIZATION (SPAWN SHIELD BUFFER):
+#              - Implemented a 3x3 horizontal chunk neighborhood verification (18 chunks total)
+#                centered around the spawn coordinate. Player spawn is only activated 
+#                when the immediate surrounding region is completely compiled,
+#                preventing players from seeing any initial out-of-bounds void popping.
 #              WARNING FIX:
-#              - Added explicit static typing to sibling reference variables 
-#                (including `celestial` and `inventory`) to completely resolve 
-#                `UNTYPED_DECLARATION` compiler warnings.
+#              - Added explicit static typing to all parameters, loop iterators 
+#                (including spatial offsets `x` and `z`), and intermediate getters.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -52,6 +52,7 @@ var _loaded_inventory_data: Array = []
 
 # Save game protection flag
 var _is_restored_save: bool = false
+var _is_startup_phase: bool = true
 
 
 func _ready() -> void:
@@ -72,9 +73,7 @@ func _initialize_systems() -> void:
 	chunk_manager = ChunkManagerService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
 	
-	# ==========================================================================
-	# STATE LEAK FIX: Reset and initialize the campaign dynamically on World load
-	# ==========================================================================
+	# Reset and initialize the campaign dynamically on World load
 	CampaignRegistry.initialize_campaign()
 	
 	# Attempt to load saved global game parameters from the repository
@@ -117,6 +116,10 @@ func _initialize_systems() -> void:
 	if is_instance_valid(player):
 		player.position = spawn_pos
 		player.rotation = spawn_rot
+		
+	# FORCE MINIMUM DISTANCE: Throttle view distance during initial load for instant entry
+	_is_startup_phase = true
+	ChunkLoaderService.global_view_distance = 1 
 
 
 func _target_spawn_chunk_calculation(block_pos: Vector3i) -> void:
@@ -162,7 +165,7 @@ func _process_dynamic_world() -> void:
 
 ## Coordinates dynamic streetlight updates on day/night transitions
 func _process_day_night_lighting() -> void:
-	# FIX: Explicit static typing on retrieved celestial sibling node reference
+	# Explicit static typing on retrieved celestial sibling node reference
 	var celestial: Node = get_parent().get_node_or_null("CelestialService") as Node
 	if not is_instance_valid(celestial) or not celestial.has_method("is_night_time"):
 		return
@@ -218,11 +221,23 @@ func unregister_streetlights_for_chunk(chunk_pos: Vector3i) -> void:
 ## Verifies if spawn area chunks are loaded and coordinates player spawn drops
 func check_player_spawn_activation() -> void:
 	if is_instance_valid(player) and not player.get("is_active"):
-		var spawn_chunk_pos_0_p := Vector3i(_target_spawn_chunk_pos.x, 0, _target_spawn_chunk_pos.z)
-		var spawn_chunk_pos_1_p := Vector3i(_target_spawn_chunk_pos.x, 1, _target_spawn_chunk_pos.z)
-		
-		if is_instance_valid(chunk_manager) and chunk_manager.is_chunk_rendered(spawn_chunk_pos_0_p) and chunk_manager.is_chunk_rendered(spawn_chunk_pos_1_p):
-			_activate_player_spawn()
+		if is_instance_valid(chunk_manager):
+			var all_rendered := true
+			
+			# FIX (UX SHIELD): Validate that the entire 3x3 surrounding column region is fully compiled in RAM
+			for x: int in range(-1, 2):
+				for z: int in range(-1, 2):
+					var pos_0 := Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z)
+					var pos_1 := Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z)
+					
+					if not chunk_manager.is_chunk_rendered(pos_0) or not chunk_manager.is_chunk_rendered(pos_1):
+						all_rendered = false
+						break
+				if not all_rendered:
+					break
+					
+			if all_rendered:
+				_activate_player_spawn()
 
 
 ## Safely positions the player on the topmost solid block at spawn coordinates using Domain Rules
@@ -246,12 +261,23 @@ func _activate_player_spawn() -> void:
 	# Force initial proximity spawning immediately upon spawning, so active regions populate right away
 	if is_instance_valid(chunk_manager):
 		chunk_manager.spawn_mobs_by_proximity(player.global_position)
+		
+	# EXPAND HORIZON: After successful drop, release the throttler and load full user settings
+	if _is_startup_phase:
+		_is_startup_phase = false
+		var settings := SettingsRepository.load_settings()
+		var target_distance := 8 # Default
+		if settings.has("render_distance"):
+			target_distance = int(settings["render_distance"])
+		
+		# Slowly and safely expand the view distance natively in the background
+		ChunkLoaderService.global_view_distance = target_distance
 
 
 ## Deserializes cached backpack quantities back into the player's inventory
 func _restore_player_inventory() -> void:
 	if _loaded_inventory_data.size() > 0 and is_instance_valid(player):
-		# FIX: Explicit static typing on player inventory reference
+		# Explicit static typing on player inventory reference
 		var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
 			print("[WorldController] Restoring saved player inventory...")
