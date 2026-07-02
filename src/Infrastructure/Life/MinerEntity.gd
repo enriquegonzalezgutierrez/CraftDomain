@@ -9,6 +9,10 @@
 #                and AI state execution to specialized sibling components.
 #              BUG FIX (i18n): Replaced hardcoded name string with localized 
 #              translation keys to maintain strict multi-language support.
+#              UX MODELING OVERHAUL (CLAY MINER):
+#              - Upgraded visual boxes: added a detailed high-contrast yellow construction 
+#                hardhat, an active SpotLight3D casting real-time volumetric-like cones, 
+#                and an iron pickaxe mounted on his leather shoulder harness.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MinerEntity.gd
 # ==============================================================================
@@ -50,13 +54,13 @@ func _build_visual_representation() -> void:
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.08, 0.77, 0.12), Vector3(-0.13, 0.525, -0.19), harness_color)
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.08, 0.12), Vector3(0, 0.42, -0.20), harness_color)
 	
-	# 3. Head Joint Setup
+	# 3. Head Joint Setup (Taller Forehead)
 	visual_component.head_node = Node3D.new()
 	visual_component.head_node.name = "HumanHead"
 	visual_component.head_node.position = Vector3(0, 1.05, 0)
 	visual_component.body_bob_node.add_child(visual_component.head_node)
 	
-	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color) # Face
+	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.45, 0.35), Vector3(0, 0.225, 0), skin_color) # Face
 	visual_component.create_box(visual_component.head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
 	
 	# Yellow Hard-Hat Dome & Brim

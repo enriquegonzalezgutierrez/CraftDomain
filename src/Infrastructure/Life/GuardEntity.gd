@@ -7,11 +7,14 @@
 #                safely overriding the movement, task routing, and visualization loops.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
-#              WARNING FIX:
-#              - Added explicit static typing to all retrieval and combat entities 
-#                (including `zombie_entity`, `world_controller_ref`, `generator`, 
-#                `terrain_noise`, and `child`) to completely resolve 
-#                `UNTYPED_DECLARATION` compiler warnings.
+#              UX MODELING OVERHAUL (CLAY MOVIE KNIGHT):
+#              - Assembled programmatically to perfectly match the high-fidelity 
+#                clay-voxel Knight from the Minecraft Movie. Features heavy steel-plated 
+#                armor, thick physical shoulder pauldrons, an elaborate helmet with a 
+#                flowing crimson plume, a sheathed iron broadsword on its back, and 
+#                a wood-and-steel knightly heater shield.
+#              - Preserves the iconic villager facial features (unibrow, long nose) 
+#                recessed underneath the open helmet visor.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GuardEntity.gd
 # ==============================================================================
@@ -41,61 +44,61 @@ func _init(spawn_pos: Vector3) -> void:
 ## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
 ## to the visual component joints.
 func _build_visual_representation() -> void:
-	var armor_base_color := Color(0.40, 0.40, 0.45) # Heavy steel
-	
-	# Extract procedural color parameters calculated on boot by the visual component
-	var sash_color: Color = visual_component.variant_clothing_color         # Procedural tunic trim
-	var plume_color: Color = visual_component.variant_hair_color            # Procedural helmet plume
+	var steel_armor := Color(0.40, 0.40, 0.45)      # Heavy textured steel plates
+	var iron_color := Color(0.55, 0.55, 0.60)       # Raw iron highlights
+	var gold_trim := Color(0.85, 0.6, 0.15)         # Gold ornaments and trims
+	var plume_red := Color(0.85, 0.12, 0.15)        # Flowing crimson red plume
 	var skin_color: Color = visual_component.variant_skin_color             # Procedural skin tone
+	var brow_brown := Color(0.18, 0.12, 0.08)       # Unibrow dark brown
+	var nose_brown := Color(0.55, 0.42, 0.32)       # Big long nose brown
+	var wood_color := Color(0.45, 0.3, 0.15)         # Shield wooden board backing
 	
-	# Fallback accessory colors
-	var gold_trim := Color(0.85, 0.6, 0.15)          # Gold accents
-	var wood_color := Color(0.45, 0.3, 0.15)         # Shield backing
-	var iron_color := Color(0.55, 0.55, 0.6)         # Raw iron
-	
-	# 1. Base Legs & Iron Greaves (Attached to the bouncing joint of visual component)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), armor_base_color)
+	# 1. Base Legs & Heavy Steel Greaves (Attached to the bouncing joint of visual component)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), steel_armor)
 	
 	# 2. Torso Steel Breastplate
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), armor_base_color)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), steel_armor)
 	
-	# 3D Shoulder Pauldrons (Gives broad, bulky silhouette)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.12, 0.22, 0.35), Vector3(-0.25, 0.75, 0), iron_color)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.12, 0.22, 0.35), Vector3(0.25, 0.75, 0), iron_color)
+	# 3D Shoulder Pauldrons (Gives broad, bulky knightly silhouette)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.14, 0.24, 0.38), Vector3(-0.25, 0.75, 0), iron_color)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.14, 0.24, 0.38), Vector3(0.25, 0.75, 0), iron_color)
 	
-	# Localized Crimson Belt
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.08, 0.48), Vector3(0, 0.45, 0), sash_color)
+	# Localized Gold Waist Belt
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.08, 0.48), Vector3(0, 0.45, 0), gold_trim)
 	
-	# 3. Head Joint Setup
+	# 3. Head Joint Setup (Heavy Knight Helmet)
 	visual_component.head_node = Node3D.new()
 	visual_component.head_node.name = "HumanHead"
 	visual_component.head_node.position = Vector3(0, 1.05, 0)
 	visual_component.body_bob_node.add_child(visual_component.head_node)
 	
-	# Peachy skin core
-	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color)
-	visual_component.create_box(visual_component.head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
+	# Face blocks (Taller forehead)
+	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.45, 0.35), Vector3(0, 0.225, 0), skin_color) # Face core
+	visual_component.create_box(visual_component.head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), nose_brown) # Nose
 	
-	# Steel Helmet Dome
-	visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.22, 0.38), Vector3(0, 0.28, 0), iron_color)
+	# Voxel Unibrow (recessed under the helmet visor)
+	visual_component.create_box(visual_component.head_node, Vector3(0.28, 0.04, 0.06), Vector3(0, 0.20, -0.19), brow_brown)
+	
+	# Steel Helmet Dome & Nose Visor Guard
+	visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.22, 0.38), Vector3(0, 0.32, 0), steel_armor)
 	visual_component.create_box(visual_component.head_node, Vector3(0.05, 0.18, 0.04), Vector3(0, 0.19, -0.20), iron_color) # Visor Guard
 	
-	# Colored Plume
-	visual_component.create_box(visual_component.head_node, Vector3(0.04, 0.24, 0.14), Vector3(0, 0.45, 0.05), plume_color)
+	# Flowing Crimson Plume (Hanging off the back of the helmet dome)
+	visual_component.create_box(visual_component.head_node, Vector3(0.04, 0.28, 0.16), Vector3(0, 0.48, 0.05), plume_red)
 	
 	# Deep-set Blinking Eyes (Assigned to visual component tracking)
-	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.15, -0.18), Color.WHITE)
 	visual_component.create_box(visual_component.left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.15, 0.15, 0.15))
 	
-	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.15, -0.18), Color.WHITE)
 	visual_component.create_box(visual_component.right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.15, 0.15, 0.15))
 	
-	# 4. Arms Folded (Sash-colored sleeves)
+	# 4. Arms Folded (Steel-colored sleeves matching the breastplate)
 	visual_component.arms_node = Node3D.new()
 	visual_component.arms_node.name = "ArmsJoint"
 	visual_component.arms_node.position = Vector3(0, 0.65, -0.23)
 	visual_component.body_bob_node.add_child(visual_component.arms_node)
-	visual_component.create_box(visual_component.arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), sash_color)
+	visual_component.create_box(visual_component.arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), steel_armor * 0.95)
 	
 	# 5. Weaponry Equipment Joints (Parented directly to the bouncing body bob node)
 	_sword_joint = Node3D.new()
@@ -109,14 +112,14 @@ func _build_visual_representation() -> void:
 	_shield_joint.rotation = Vector3(0, deg_to_rad(15), deg_to_rad(10))
 	visual_component.body_bob_node.add_child(_shield_joint)
 	
-	# Shield Board
+	# Knightly Heater Shield Board
 	visual_component.create_box(_shield_joint, Vector3(0.35, 0.5, 0.05), Vector3(0, 0, 0), wood_color)
 	# Steel Border trims
 	visual_component.create_box(_shield_joint, Vector3(0.39, 0.04, 0.07), Vector3(0, 0.24, 0.01), iron_color)
 	visual_component.create_box(_shield_joint, Vector3(0.04, 0.52, 0.07), Vector3(-0.18, -0.01, 0.01), iron_color)
 	visual_component.create_box(_shield_joint, Vector3(0.04, 0.52, 0.07), Vector3(0.18, -0.01, 0.01), iron_color)
-	# Tunic color matching crest pattern
-	visual_component.create_box(_shield_joint, Vector3(0.12, 0.32, 0.08), Vector3(0, 0, 0.01), sash_color)
+	# Gold-plated central crest pattern
+	visual_component.create_box(_shield_joint, Vector3(0.12, 0.32, 0.08), Vector3(0, 0, 0.01), gold_trim)
 
 
 ## Constructs the sword boxes and positions the joint in sheathed (passive) transforms.
@@ -325,7 +328,7 @@ func _detect_current_biome() -> int:
 					int(round(global_position.z)), 
 					terrain_noise
 				)
-				return profile.biome_id
+				return profile.id
 				
 	return default_biome_id
 

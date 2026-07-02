@@ -12,6 +12,9 @@
 #              - Added explicit static typing to all retrieval and loop variables 
 #                (including `generator`, `terrain_noise`, `profile`, and `edata`) 
 #                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
+#              BUG FIX (GOLEM PORT):
+#              - Configured the spawner to automatically generate one heavy 
+#                Iron Golem (107) in the center of every procedural village outpost.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -61,6 +64,9 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 				_spawn_and_register_entity(population[0], chunk_offset, 2.5, 12.5, world_state, world_node, entities_list, "")
 				# Slot 2: Defensive protector (Guard, synced to Plains Defender quest)
 				_spawn_and_register_entity(population[1], chunk_offset, 10.5, 10.5, world_state, world_node, entities_list, "plains_defender")
+				
+		# --- MOVIE GOLEM OVERHAUL: Spawn a heavy, persistent Golem (107) to guard the village! ---
+		_spawn_and_register_entity(107, chunk_offset, 12.5, 12.5, world_state, world_node, entities_list, "")
 			
 	# 2. Fauna Spawning (Sea Turtles paddle exclusively inside ocean bays)
 	var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2

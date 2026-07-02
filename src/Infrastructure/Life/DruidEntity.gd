@@ -9,6 +9,10 @@
 #                and AI state execution to specialized sibling components.
 #              BUG FIX (i18n): Replaced hardcoded name string with localized 
 #              translation keys to maintain strict multi-language support.
+#              UX MODELING OVERHAUL (CLAY DRUID):
+#              - Upgraded visual boxes: added a detailed gold leaf crown with mossy accents, 
+#                a multi-layered green forest ranger tunic, and a high-fidelity curved 
+#                wood bow complete with a white string backing.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/DruidEntity.gd
 # ==============================================================================
@@ -34,6 +38,8 @@ func _build_visual_representation() -> void:
 	var gold_trim := Color(0.85, 0.6, 0.15)          # Golden leaf crowns
 	var boots_color := Color(0.15, 0.1, 0.08)        # Dark leather boots
 	var wood_color := Color(0.48, 0.35, 0.22)        # Bow wood
+	var brow_brown := Color(0.18, 0.12, 0.08)       # Unibrow dark brown
+	var nose_brown := Color(0.55, 0.42, 0.32)       # Big long nose brown
 	
 	# 1. Base Legs & Feet (Attached to the bobbing joint of visual component)
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), boots_color)
@@ -45,14 +51,17 @@ func _build_visual_representation() -> void:
 	# Diagonal shoulder harness strap (for mounting the bow)
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.08, 0.77, 0.12), Vector3(-0.13, 0.525, -0.19), harness_color)
 	
-	# 3. Head Joint Setup
+	# 3. Head Joint Setup (Taller Forehead)
 	visual_component.head_node = Node3D.new()
 	visual_component.head_node.name = "HumanHead"
 	visual_component.head_node.position = Vector3(0, 1.05, 0)
 	visual_component.body_bob_node.add_child(visual_component.head_node)
 	
-	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color) # Face
+	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.45, 0.35), Vector3(0, 0.225, 0), skin_color) # Face
 	visual_component.create_box(visual_component.head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
+	
+	# Prominent Voxel Unibrow
+	visual_component.create_box(visual_component.head_node, Vector3(0.28, 0.04, 0.06), Vector3(0, 0.20, -0.19), brow_brown)
 	
 	# Procedural Hair Plates
 	visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.18, 0.38), Vector3(0, 0.30, 0.03), hair_color)
@@ -62,10 +71,10 @@ func _build_visual_representation() -> void:
 	visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.12, 0.04), Vector3(0, 0.34, -0.18), Color(0.25, 0.65, 0.18)) # Leaf accent
 	
 	# Blinking Eyes (Warm brown pupils, assigned to visual component tracking)
-	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.15, -0.18), Color.WHITE)
 	visual_component.create_box(visual_component.left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.3, 0.2, 0.1))
 	
-	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
+	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.15, -0.18), Color.WHITE)
 	visual_component.create_box(visual_component.right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.3, 0.2, 0.1))
 	
 	# 4. Arms Folded

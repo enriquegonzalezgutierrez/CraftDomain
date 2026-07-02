@@ -6,10 +6,12 @@
 #              - Liskov Substitution Principle (LSP): Inherits PassiveEntity.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
-#              WARNING FIX:
-#              - Added explicit static typing to all local variables and references
-#                (including `world_controller_ref`, `generator`, and `terrain_noise`) 
-#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
+#              BUG FIX (i18n): Replaced hardcoded name string with localized 
+#              translation keys to maintain strict multi-language support.
+#              UX MODELING OVERHAUL (CLAY MERCHAND):
+#              - Upgraded visual boxes: added a double-layered silk turban, 
+#                an elegant gold-plated front apron, and a persistent 3D leather 
+#                money pouch (zurrón) hanging from his waist belt.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MerchantEntity.gd
 # ==============================================================================
@@ -36,7 +38,8 @@ func _build_visual_representation() -> void:
 	var apron_color := Color(0.85, 0.6, 0.15)        # Golden yellow apron
 	var boots_color := Color(0.15, 0.1, 0.08)        # Dark leather boots
 	var turban_color := Color(0.9, 0.82, 0.45)       # Soft gold turban
-	var jewel_color := Color(0.0, 0.85, 0.35)        # Glowing green emerald gem
+	var jewel_color := Color(0.92, 0.12, 0.15)       # Glowing red ruby gem
+	var leather_pouch_color := Color(0.35, 0.22, 0.15) # Leather brown for the zurrón
 	
 	# Determine specialized colors based on biome
 	match biome_id:
@@ -66,6 +69,10 @@ func _build_visual_representation() -> void:
 	# 3. Double-Layered Front Apron (Adds volume and thickness)
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.3, 0.5, 0.05), Vector3(0, 0.38, -0.23), apron_color)
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.34, 0.08, 0.48), Vector3(0, 0.45, 0), sash_color) # Waist sash band
+	
+	# --- ZURRÓN OVERHAUL: Spawns a 3D leather coin pouch hanging off his left hip ---
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.12, 0.18, 0.12), Vector3(-0.24, 0.38, -0.15), leather_pouch_color)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.04, 0.08, 0.04), Vector3(-0.24, 0.49, -0.12), Color.BLACK) # Pouch cord strap
 	
 	# 4. Head Joint Setup
 	visual_component.head_node = Node3D.new()
@@ -98,25 +105,26 @@ func _build_visual_representation() -> void:
 func _build_custom_headwear(biome_id: int, turban_color: Color, jewel_color: Color, robe_color: Color) -> void:
 	match biome_id:
 		0: # Bay of Sails (Sailor Bandana cap)
-			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.10, 0.38), Vector3(0, 0.35, 0), Color(0.85, 0.15, 0.15))
-			visual_component.create_box(visual_component.head_node, Vector3(0.10, 0.10, 0.15), Vector3(0, 0.28, 0.22), Color(0.85, 0.15, 0.15))
+			var _un1 := visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.10, 0.38), Vector3(0, 0.35, 0), Color(0.85, 0.15, 0.15))
+			var _un2 := visual_component.create_box(visual_component.head_node, Vector3(0.10, 0.10, 0.15), Vector3(0, 0.28, 0.22), Color(0.85, 0.15, 0.15))
 		4: # Frostbite Glaciers (Heavy insulated white fur)
-			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), robe_color)
-			visual_component.create_box(visual_component.head_node, Vector3(0.42, 0.42, 0.10), Vector3(0, 0.185, -0.15), Color(0.98, 0.98, 0.98))
+			var _un3 := visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), robe_color)
+			var _un4 := visual_component.create_box(visual_component.head_node, Vector3(0.42, 0.42, 0.10), Vector3(0, 0.185, -0.15), Color(0.98, 0.98, 0.98))
 		7: # Neon Ruins (Techwear glowing visor)
-			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), Color(0.12, 0.12, 0.15))
-			visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.04), Vector3(0, 0.36, -0.20), jewel_color)
+			var _un5 := visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), Color(0.12, 0.12, 0.15))
+			var _un6 := visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.04), Vector3(0, 0.36, -0.20), jewel_color)
 		8: # Swamp of Sighs (Alchemist tattered cowl)
-			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), robe_color)
-			visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.08, 0.32), Vector3(0, 0.39, -0.05), Color(0.18, 0.32, 0.15))
+			var _un7 := visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), robe_color)
+			var _un8 := visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.08, 0.32), Vector3(0, 0.39, -0.05), Color(0.18, 0.32, 0.15))
 		9: # Cloud Kingdom (Golden Crown)
-			visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.03, 0.32), Vector3(0, 0.52, 0), Color(1.0, 0.85, 0.2))
-			visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.12, 0.06), Vector3(0, 0.38, -0.18), Color(1.0, 0.85, 0.2))
+			var _un9 := visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.03, 0.32), Vector3(0, 0.52, 0), Color(1.0, 0.85, 0.2))
+			var _un10 := visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.12, 0.06), Vector3(0, 0.38, -0.18), Color(1.0, 0.85, 0.2))
 		_: # Default Plains (Classic Silk Turban & Emerald Gem)
-			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), turban_color)
-			visual_component.create_box(visual_component.head_node, Vector3(0.22, 0.08, 0.22), Vector3(0, 0.44, 0), turban_color)
+			# Double-layered silk turban cap
+			var _un11 := visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), turban_color)
+			var _un12 := visual_component.create_box(visual_component.head_node, Vector3(0.24, 0.08, 0.24), Vector3(0, 0.44, 0), turban_color)
 			# Mounted glowing emerald jewel on the forehead
-			visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.08, 0.04), Vector3(0, 0.36, -0.20), jewel_color)
+			var _un13 := visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.08, 0.04), Vector3(0, 0.36, -0.20), jewel_color)
 
 
 ## Public Interaction: Triggers centralized trading dialogue overlays.
@@ -159,7 +167,7 @@ func _detect_current_biome() -> int:
 					int(round(global_position.z)), 
 					terrain_noise
 				)
-				return profile.biome_id
+				return profile.id
 				
 	return default_biome_id
 

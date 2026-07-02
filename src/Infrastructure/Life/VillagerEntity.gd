@@ -7,10 +7,13 @@
 #                fully satisfies all base physics and signals.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
-#              WARNING FIX:
-#              - Added explicit static typing to all local variables and references
-#                (including `world_controller_ref`, `generator`, and `terrain_noise`) 
-#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
+#              UX MODELING OVERHAUL (CLAY MOVIE VILLAGER):
+#              - Assembled programmatically to perfectly match the high-fidelity 
+#                clay-voxel Villager from the Minecraft Movie. Features an elongated 
+#                bald head, prominent unibrow, extra long protruding nose, 
+#                emerald green eyes, and the iconic folded-arms pose.
+#              - Preserved the procedural biome clothing system (Sailors, Eskimos, 
+#                Cybertech, Alchemists) while applying these cinematic facial features globally.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
@@ -34,31 +37,42 @@ func _build_visual_representation() -> void:
 	var robe_color: Color = visual_component.variant_clothing_color
 	
 	# Fallback accessory colors
-	var boots_color := Color(0.15, 0.1, 0.08) 
-	var accessory_color := Color(0.18, 0.12, 0.08) 
+	var boots_color := Color(0.12, 0.12, 0.15)       # Dark boots black
+	var pants_color := Color(0.18, 0.15, 0.12)       # Dark trousers brown
+	var brow_brown := Color(0.18, 0.12, 0.08)        # Unibrow dark brown
+	var nose_brown := Color(0.55, 0.42, 0.32)        # Big long nose brown
+	var eye_green := Color(0.0, 0.75, 0.35)          # High-contrast emerald eye cian
 	
-	# 1. Base Legs / Feet (Attached to the bobbing joint)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), boots_color)
+	# 1. Base Legs & Segmented Feet (Attached to the bobbing joint)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.16, 0.28, 0.16), Vector3(-0.1, 0.14, 0.0), pants_color) # Left leg
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.16, 0.28, 0.16), Vector3(0.1, 0.14, 0.0), pants_color)  # Right leg
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.18, 0.08, 0.20), Vector3(-0.1, 0.04, -0.02), boots_color) # Left boot
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.18, 0.08, 0.20), Vector3(0.1, 0.04, -0.02), boots_color)  # Right boot
 	
 	# 2. Torso Robe (Customized dynamically by biome)
-	_build_custom_torso_robe(biome_id, robe_color, accessory_color)
+	_build_custom_torso_robe(biome_id, robe_color, pants_color)
 	
-	# 3. Head Joint Setup
+	# 3. Head Joint Setup (Elongated bald forehead style!)
 	visual_component.head_node = Node3D.new()
 	visual_component.head_node.name = "HumanHead"
 	visual_component.head_node.position = Vector3(0, 1.05, 0)
 	visual_component.body_bob_node.add_child(visual_component.head_node)
 	
-	# Face blocks
-	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color) # Face core
-	visual_component.create_box(visual_component.head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
+	# Face blocks (Scaled height to 0.52 to create the iconic bald towering forehead!)
+	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.52, 0.35), Vector3(0, 0.26, 0), skin_color) # Elongated Face core
 	
-	# Deep-set Blinking Eyes (Assigned to visual component tracking)
-	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
-	visual_component.create_box(visual_component.left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
+	# Giant Protruding Nose (Dangling down past its chin)
+	visual_component.create_box(visual_component.head_node, Vector3(0.10, 0.26, 0.12), Vector3(0, 0.06, -0.22), nose_brown)
 	
-	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
-	visual_component.create_box(visual_component.right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
+	# Prominent Voxel Unibrow (Flat dark-brown plate directly above eyes)
+	visual_component.create_box(visual_component.head_node, Vector3(0.28, 0.04, 0.06), Vector3(0, 0.22, -0.19), brow_brown)
+	
+	# Deep-set Blinking Emerald Eyes (Assigned to visual component tracking)
+	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.09, 0.15, -0.18), Color.WHITE)
+	visual_component.create_box(visual_component.left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), eye_green) # Left emerald pupil
+	
+	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.09, 0.15, -0.18), Color.WHITE)
+	visual_component.create_box(visual_component.right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), eye_green) # Right emerald pupil
 	
 	# 4. Folded Arms (Classic Villager folded pose joint)
 	visual_component.arms_node = Node3D.new()
@@ -99,11 +113,11 @@ func _build_custom_torso_robe(biome_id: int, base_color: Color, accessory_color:
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.06, 0.47), Vector3(0, 0.45, 0), Color(0.95, 0.0, 0.95)) # Magenta stripe
 		8: # Swamp of Sighs (Murky Mud robes)
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.28, 0.22, 0.15)) # Mud brown
-			visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.18, 0.48), Vector3(0, 0.32, 0), Color(0.18, 0.15, 0.12)) # Dark patches
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.18, 0.47), Vector3(0, 0.32, 0), Color(0.18, 0.15, 0.12)) # Dark patches
 		9: # Cloud Kingdom (Sky Clouds Tunic)
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.95, 0.98, 1.0)) # Cloud white
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.15, 0.48), Vector3(0, 0.80, 0), Color(1.0, 0.98, 0.85)) # Light gold trim
-		_: # Default Plains
+		_: # Default Plains (High-collared purple tunic)
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), base_color)
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.08, 0.48), Vector3(0, 0.45, 0), accessory_color)
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.12, 0.1, 0.05), Vector3(0, 0.45, -0.25), Color(0.65, 0.65, 0.7))
@@ -113,29 +127,29 @@ func _build_custom_torso_robe(biome_id: int, base_color: Color, accessory_color:
 func _build_custom_headwear(biome_id: int, hair_color: Color) -> void:
 	match biome_id:
 		0: # Bay of Sails (Sailor Bandana)
-			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.10, 0.38), Vector3(0, 0.35, 0), Color(0.12, 0.45, 0.82)) 
-			visual_component.create_box(visual_component.head_node, Vector3(0.10, 0.10, 0.15), Vector3(0, 0.28, 0.22), Color(0.12, 0.45, 0.82)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.10, 0.38), Vector3(0, 0.50, 0), Color(0.12, 0.45, 0.82)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.10, 0.10, 0.15), Vector3(0, 0.42, 0.22), Color(0.12, 0.45, 0.82)) 
 		1: # Warp Plateau (Mario Plumber Cap)
-			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), Color(0.85, 0.12, 0.12)) 
-			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.32, -0.22), Color(0.85, 0.12, 0.12)) 
-			visual_component.create_box(visual_component.head_node, Vector3(0.12, 0.10, 0.03), Vector3(0, 0.36, -0.20), Color.WHITE) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.52, 0), Color(0.85, 0.12, 0.12)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.48, -0.22), Color(0.85, 0.12, 0.12)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.12, 0.10, 0.03), Vector3(0, 0.52, -0.20), Color.WHITE) 
 		4: # Frostbite Glaciers (Winter Fur-Hood)
-			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), Color(0.82, 0.82, 0.85)) 
-			visual_component.create_box(visual_component.head_node, Vector3(0.42, 0.42, 0.10), Vector3(0, 0.185, -0.15), Color(0.98, 0.98, 0.98)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.48, 0.39), Vector3(0, 0.26, 0.02), Color(0.82, 0.82, 0.85)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.42, 0.52, 0.10), Vector3(0, 0.26, -0.15), Color(0.98, 0.98, 0.98)) 
 		5: # Whispering Redwood Forest (Elven Leaf Crown)
-			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.05, 0.38), Vector3(0, 0.30, 0), Color(0.85, 0.6, 0.15)) 
-			visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.14, 0.04), Vector3(0, 0.38, -0.19), Color(0.18, 0.45, 0.15)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.05, 0.38), Vector3(0, 0.48, 0), Color(0.85, 0.6, 0.15)) 
+			visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.14, 0.04), Vector3(0, 0.52, -0.19), Color(0.18, 0.45, 0.15)) 
 		7: # Neon Ruins (Cyber Visor)
 			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.10, 0.08), Vector3(0, 0.19, -0.16), Color(0.0, 0.95, 0.95))
 		8: # Swamp of Sighs (Murky Mud Tattered Hood)
-			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), Color(0.28, 0.22, 0.15))
-			visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.08, 0.32), Vector3(0, 0.39, -0.05), Color(0.18, 0.15, 0.12))
+			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.48, 0.39), Vector3(0, 0.26, 0.02), Color(0.28, 0.22, 0.15))
+			visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.08, 0.32), Vector3(0, 0.48, -0.05), Color(0.18, 0.15, 0.12))
 		9: # Cloud Kingdom (Angelic Golden Halo)
-			visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.03, 0.32), Vector3(0, 0.52, 0), Color(1.0, 0.85, 0.2)) 
-		_: # Default Plains
-			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.18, 0.38), Vector3(0, 0.30, 0.03), hair_color)
-			visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.20, 0.38), Vector3(-0.18, 0.18, 0.03), hair_color)
-			visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.20, 0.38), Vector3(0.18, 0.18, 0.03), hair_color)
+			visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.03, 0.32), Vector3(0, 0.58, 0), Color(1.0, 0.85, 0.2)) 
+		_: # Default Plains (Aesthetic hair modeling, offset upwards to clear the tall forehead)
+			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.18, 0.38), Vector3(0, 0.46, 0.03), hair_color)
+			visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.20, 0.38), Vector3(-0.18, 0.34, 0.03), hair_color)
+			visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.20, 0.38), Vector3(0.18, 0.34, 0.03), hair_color)
 
 
 ## Public Gaze Interaction: Triggers localized village dialogue progression.

@@ -6,6 +6,12 @@
 #                factories and instantiation parameters.
 #              - Open-Closed Principle (OCP): Encapsulates default entity registrations 
 #                internally on startup, removing registration bloat from Bootstrap.
+#              WARNING FIX:
+#              - Added explicit static typing to all callable lambda parameters 
+#                and return signatures (`-> Node`) to completely resolve 
+#                `UNTYPED_DECLARATION` compiler warnings.
+#              BUG FIX (GOLEM PORT):
+#              - Registered the Iron Golem (ID 107) dynamically into the system.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Life/MobRegistry.gd
 # ==============================================================================
@@ -22,22 +28,25 @@ static func initialize_mobs() -> void:
 	print("[MobRegistry] Initializing and registering dynamic entity spawning factories...")
 	_spawners.clear()
 	
-	# Wildlife Spawn Mappings
+	# Wildlife Spawn Mappings (0-3)
 	register_mob(0, func(pos: Vector3) -> Node: return PigEntity.new(pos))
 	register_mob(1, func(pos: Vector3) -> Node: return ChickenEntity.new(pos))
 	register_mob(2, func(pos: Vector3) -> Node: return SheepEntity.new(pos))
 	register_mob(3, func(pos: Vector3) -> Node: return CowEntity.new(pos))
 	
-	# Villagers & Interactive NPCs
+	# Villagers & Interactive NPCs (100-103)
 	register_mob(100, func(pos: Vector3) -> Node: return VillagerEntity.new(pos))
 	register_mob(101, func(pos: Vector3) -> Node: return MerchantEntity.new(pos))
 	register_mob(102, func(pos: Vector3) -> Node: return GuardEntity.new(pos))
 	register_mob(103, func(pos: Vector3) -> Node: return FarmerEntity.new(pos))
 	
-	# NPC VARIETY OVERHAUL: Register Druid, Miner, and Android citizens
+	# NPC VARIETY OVERHAUL: Register Druid, Miner, and Android citizens (104-106)
 	register_mob(104, func(pos: Vector3) -> Node: return DruidEntity.new(pos))
 	register_mob(105, func(pos: Vector3) -> Node: return MinerEntity.new(pos))
 	register_mob(106, func(pos: Vector3) -> Node: return CyberCitizenEntity.new(pos))
+	
+	# --- MOVIE OVERHAUL: Register the Iron Golem (ID 107) ---
+	register_mob(107, func(pos: Vector3) -> Node: return GolemEntity.new(pos))
 	
 	# Hostile Mobs (ZOMBIE registered as ID 10)
 	register_mob(10, func(pos: Vector3) -> Node: return HostileEntity.new(pos))
@@ -49,7 +58,7 @@ static func initialize_mobs() -> void:
 		return chest
 	)
 	
-	# ---> MARINE OVERHAUL: Register the Sea Turtle <---
+	# MARINE OVERHAUL: Register the Sea Turtle
 	register_mob(201, func(pos: Vector3) -> Node: return TurtleEntity.new(pos))
 	
 	print("[MobRegistry] Initialization complete. Registered dynamic spawners count: ", _spawners.size())
