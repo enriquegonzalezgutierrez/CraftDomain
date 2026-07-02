@@ -7,10 +7,9 @@
 #                boundary tracking and queue calculations.
 #              - Open-Closed Principle (OCP): Dynamically reacts to static 
 #                configuration changes without modifying core logic.
-#              SETTINGS UPGRADE:
-#              - Replaced hardcoded view distance with `global_view_distance`.
-#              - Added `_last_view_distance` tracking to instantly trigger 
-#                recalculations if the user changes settings while standing still.
+#              WARNING FIX:
+#              - Added explicit static typing `Vector3i` to the `active_pos` iterator 
+#                on line 70 to eliminate `UNTYPED_DECLARATION` warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/World/ChunkLoaderService.gd
 # ==============================================================================
@@ -67,7 +66,8 @@ func check_viewer_position(player_global_pos: Vector3, world_state: WorldState) 
 					task.to_load.append(target_pos)
 				
 	# 4. Identify chunks currently in the database that are outside the view distance
-	for active_pos in world_state._chunks.keys():
+	# FIX: Added explicit type declaration `Vector3i` to iterator variable
+	for active_pos: Vector3i in world_state._chunks.keys():
 		if not desired_chunks.has(active_pos):
 			task.to_unload.append(active_pos)
 			

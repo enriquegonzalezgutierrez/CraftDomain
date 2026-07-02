@@ -10,6 +10,14 @@
 #                to a block library provider.
 #              - OBSERVER PATTERN: Emits the interface `inventory_changed` signal 
 #                on state mutations to cleanly notify presentation layers.
+#              UX FEATURE OVERHAUL:
+#              - Added `consolidate_and_sort_backpack()` to merge identical item stack 
+#                fragments and sort them by ID, cleanly organizing the backpack 
+#                while leaving the player's active Hotbar dock completely untouched.
+#              WARNING FIX:
+#              - Added explicit static typing to all loop iterators (including `slot`, 
+#                `item_id`, etc.) and variable declarations (`def`) to completely 
+#                resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/InventoryComponent.gd
 # ==============================================================================
@@ -69,7 +77,8 @@ func _setup_starting_survival_inventory() -> void:
 
 func get_item_total_quantity(item_id: int) -> int:
 	var total := 0
-	for slot in _slots:
+	# FIX: Explicit static typing on SlotData iterator
+	for slot: SlotData in _slots:
 		if slot.item_id == item_id:
 			if slot.quantity == -1:
 				return 9999
@@ -87,7 +96,8 @@ func add_item(item_id: int, quantity: int) -> bool:
 	var modified := false
 	
 	if not is_weapon:
-		for slot in _slots:
+		# FIX: Explicit static typing on SlotData iterator
+		for slot: SlotData in _slots:
 			if slot.item_id == item_id and slot.quantity < slot.max_stack and slot.quantity != -1:
 				var available_space := slot.max_stack - slot.quantity
 				var add_amount := min(remaining, available_space)
@@ -151,13 +161,15 @@ func can_receive_item(item_id: int, quantity: int) -> bool:
 	var max_stack := 1 if is_weapon else 64
 	
 	if not is_weapon:
-		for slot in _slots:
+		# FIX: Explicit static typing on SlotData iterator
+		for slot: SlotData in _slots:
 			if slot.item_id == item_id and slot.quantity < slot.max_stack:
 				remaining -= (slot.max_stack - slot.quantity)
 				if remaining <= 0:
 					return true
 					
-	for slot in _slots:
+	# FIX: Explicit static typing on SlotData iterator
+	for slot: SlotData in _slots:
 		if slot.item_id == -1:
 			remaining -= max_stack
 			if remaining <= 0:
@@ -199,7 +211,8 @@ func get_slot_item_name(index: int) -> String:
 		return tr("INVENTORY_EMPTY")
 		
 	# DIP INVERSION: Ask the injected block library provider for metadata
-	var def = block_library_provider.get_definition(slot.item_id as BlockType.Type)
+	# FIX: Explicit static typing to `def` as `BlockDefinition` prevents variant warning
+	var def: BlockDefinition = block_library_provider.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
 	if def != null and def.type != BlockType.Type.AIR:
 		return def.get_localized_name()
 		
@@ -231,6 +244,50 @@ func add_block_by_type(block_type: BlockType.Type) -> void:
 		add_item(18, 1) 
 			
 	add_item(target_id, 1)
+
+
+# ==============================================================================
+# UX ENHANCEMENT: AUTO-SORT & CONSOLIDATE
+# ==============================================================================
+
+## Consolidates fragmented item stacks and sorts the backpack storage area
+## (slots 8 to 23) in ascending order, leaving the active Hotbar (slots 0 to 7)
+## completely undisturbed for uninterrupted combat/building setups.
+func consolidate_and_sort_backpack() -> void:
+	# 1. Gather all item amounts inside the backpack section (slots 8 to 23)
+	var consolidated: Dictionary = {} # item_id (int) -> total_qty (int)
+	
+	for i in range(8, 24):
+		var slot := _slots[i]
+		if slot.item_id != -1 and slot.quantity > 0:
+			if not consolidated.has(slot.item_id):
+				consolidated[slot.item_id] = 0
+			consolidated[slot.item_id] += slot.quantity
+			
+	# 2. Reset the backpack slots cleanly to Empty (AIR)
+	for i in range(8, 24):
+		_slots[i] = SlotData.new(-1, 0)
+		
+	# 3. Sort item IDs in ascending order for consistent item grouping
+	var sorted_item_ids := consolidated.keys()
+	sorted_item_ids.sort()
+	
+	# 4. Redistribute items back into backpack slots, packing them into full stacks
+	var current_slot_index := 8
+	# FIX: Explicit static typing on sorted item IDs iterator
+	for item_id: int in sorted_item_ids:
+		var total_qty: int = consolidated[item_id]
+		var is_weapon: bool = item_id == 17 # FIX: Explicit typing prevents analytical compiler issues!
+		var max_stack := 1 if is_weapon else 64
+		
+		while total_qty > 0 and current_slot_index < 24:
+			var pack_qty := min(total_qty, max_stack)
+			_slots[current_slot_index] = SlotData.new(item_id, pack_qty, max_stack)
+			total_qty -= pack_qty
+			current_slot_index += 1
+			
+	# Notify observers (like InventoryOverlay and PlayerHUD) of the state change
+	inventory_changed.emit()
 
 
 # ==============================================================================

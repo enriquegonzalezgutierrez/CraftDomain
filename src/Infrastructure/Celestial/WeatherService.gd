@@ -3,9 +3,10 @@
 # Description: Infrastructure Weather Service managing dynamic meteorological cycles.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating particle setups and climate routines.
-#              UPDATED: Introduces a dynamic Sunny/Rainy/Snowy cycle that tracks 
-#              the player's position, dynamically generating falling rain needles 
-#              or drifting snowflakes based on regional biomes.
+#              WARNING FIX:
+#              - Added explicit static typing to all intermediate biome check variables 
+#                (including `world_node`, `generator`, `terrain_noise`, and `profile`) 
+#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/WeatherService.gd
 # ==============================================================================
@@ -30,10 +31,12 @@ var _particles_material: ParticleProcessMaterial
 var _particles_mesh: BoxMesh
 var _mesh_material: ORMMaterial3D
 
+
 func _ready() -> void:
 	name = "WeatherService"
 	_setup_particles_system()
 	_cycle_weather()
+
 
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(player):
@@ -49,11 +52,13 @@ func _physics_process(delta: float) -> void:
 	if _weather_timer <= 0.0:
 		_cycle_weather()
 
+
 ## Locates the sibling player controller node dynamically
 func _locate_player() -> void:
-	var parent := get_parent()
+	var parent: Node = get_parent()
 	if is_instance_valid(parent):
 		player = parent.get_node_or_null("Player") as CharacterBody3D
+
 
 ## Programmatically builds and registers the GPUParticles3D emitter
 func _setup_particles_system() -> void:
@@ -83,6 +88,7 @@ func _setup_particles_system() -> void:
 	
 	add_child(_particles)
 
+
 ## Automates weather state shifts based on regional biomes
 func _cycle_weather() -> void:
 	_weather_timer = randf_range(60.0, 120.0) # Next shift in 1-2 minutes
@@ -91,12 +97,17 @@ func _cycle_weather() -> void:
 	var is_polar_region := false
 	if is_instance_valid(player) and is_instance_valid(get_node_or_null("../World")):
 		var p_pos := player.global_position
-		var world_node = get_node("../World")
-		var generator = world_node.get("generator")
+		
+		# FIX: Explicit static typing on intermediate getter variables
+		var world_node: Node = get_node("../World") as Node
+		var generator: WorldGenerator = world_node.get("generator") as WorldGenerator
+		
 		if is_instance_valid(generator):
-			var terrain_noise = generator.get("_terrain_noise")
+			# FIX: Explicit static typing on terrain noise provider
+			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
-				var profile = BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), terrain_noise)
+				# FIX: Explicit static typing on evaluated biome profile
+				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), terrain_noise) as BiomeService.BiomeProfile
 				# Biome 4 is Frostbite Glaciers (North Cap), Biome 9 is Cloud Kingdom
 				is_polar_region = (profile.biome_id == 4 or profile.biome_id == 9)
 
@@ -119,6 +130,7 @@ func _cycle_weather() -> void:
 			_particles.emitting = true
 			print("[WeatherService] Weather shifted to: RAINY (Regional Rain needles).")
 
+
 ## Sets up thin, fast-falling translucent blue rain needles
 func _apply_rain_parameters() -> void:
 	_particles_mesh.size = Vector3(0.02, 0.75, 0.02) # Elongated needles
@@ -128,6 +140,7 @@ func _apply_rain_parameters() -> void:
 	_particles_material.initial_velocity_min = 16.0
 	_particles_material.initial_velocity_max = 22.0
 	_particles_material.gravity = Vector3(0.0, -12.0, 0.0)
+
 
 ## Sets up fluffy, slowly drifting, wind-blown white snowflakes
 func _apply_snow_parameters() -> void:

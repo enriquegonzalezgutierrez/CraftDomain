@@ -4,6 +4,10 @@
 #              3D handheld tool models out of colored boxes.
 #              UX IMPROVED: Added dynamic idle breathing and movement-based bobbing
 #              to make the first-person perspective feel highly immersive and alive.
+#              WARNING FIX:
+#              - Added explicit static typing `PlayerController` to the `player` 
+#                variable on line 52 to completely resolve the 
+#                `UNTYPED_DECLARATION` compiler warning.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerViewModel.gd
 # ==============================================================================
@@ -49,7 +53,8 @@ func _process(delta: float) -> void:
 		return # Do not apply bobbing math while a swing animation tween is active
 		
 	# 1. Obtain the player controller dynamically (Camera3D -> CharacterBody3D)
-	var player = get_parent().get_parent() as CharacterBody3D
+	# FIX: Added explicit static typing `PlayerController` to prevent variant warning
+	var player: PlayerController = get_parent().get_parent() as PlayerController
 	
 	if is_instance_valid(player):
 		# Calculate lateral movement speed (ignore vertical falling/jumping velocity)
@@ -107,7 +112,7 @@ func play_swing_animation() -> void:
 		
 	_is_swinging = true
 	
-	# Assemble a dual-step rotating swing animation
+	# Create a dual-step rotating swing animation
 	var swing_tween := create_tween()
 	
 	# Step 1: Rapid downward strike rotation (0.06 seconds)
@@ -159,13 +164,13 @@ func _build_sword() -> void:
 	_create_box_mesh(_tool_root, Vector3(0.04, 0.14, 0.04), Vector3(0, -0.16, 0), hilt_color)  # Grip Handle
 
 func _create_box_mesh(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> void:
-	var mesh_instance := MeshInstance3D.new()
-	var box_mesh := BoxMesh.new()
+	var mesh_instance: MeshInstance3D = MeshInstance3D.new()
+	var box_mesh: BoxMesh = BoxMesh.new()
 	box_mesh.size = size
 	mesh_instance.mesh = box_mesh
 	mesh_instance.position = box_pos
 	
-	var mat := ORMMaterial3D.new()
+	var mat: ORMMaterial3D = ORMMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.9
 	mesh_instance.material_override = mat

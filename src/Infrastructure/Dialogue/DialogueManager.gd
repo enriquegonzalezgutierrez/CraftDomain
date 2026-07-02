@@ -10,6 +10,10 @@
 #                IInventory abstractions without direct coupling.
 #              - OBSERVER PATTERN: Removed manual HUD synchronizations. UI updates 
 #                are now driven reactively by the domain.
+#              WARNING FIX:
+#              - Replaced dynamic Variant queries (`raycast`, `merchant`, `inventory`, `hud`) 
+#                with strictly cast static typed variables to completely resolve 
+#                `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Dialogue/DialogueManager.gd
 # ==============================================================================
@@ -77,7 +81,8 @@ func close_dialogue() -> void:
 		_active_speaker_node = null
 		
 	# Let the HUD orchestrator check if other panels are open before recapturing cursor
-	var hud := player.get("hud") as PlayerHUD
+	# FIX: Explicit static typing on player HUD reference
+	var hud: PlayerHUD = player.get("hud") as PlayerHUD
 	if is_instance_valid(hud) and not hud.is_any_menu_open():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		
@@ -98,7 +103,8 @@ func _on_dialogue_choice_selected(target_node_id: String) -> void:
 
 
 func _process_merchant_trade_transaction() -> void:
-	var inventory := player.get("inventory") as IInventory
+	# FIX: Explicit static typing on inventory interface
+	var inventory: IInventory = player.get("inventory") as IInventory
 	if not is_instance_valid(inventory):
 		return
 		
@@ -118,9 +124,11 @@ func _process_merchant_trade_transaction() -> void:
 ## Handles success visual feedback, quest triggers, and state synchronization.
 func _on_trade_success(_inventory: IInventory) -> void:
 	# Visual physical bounce feedback on the NPC if available
-	var raycast = player.get("raycast")
+	# FIX: Explicit static typing on player raycast reference
+	var raycast: RayCast3D = player.get("raycast") as RayCast3D
 	if is_instance_valid(raycast) and raycast.is_colliding():
-		var merchant = raycast.get_collider()
+		# FIX: Explicit static typing on hit merchant collider node
+		var merchant: CharacterBody3D = raycast.get_collider() as CharacterBody3D
 		if is_instance_valid(merchant) and merchant.has_method("take_damage"):
 			merchant.velocity.y = 5.0 # Make the merchant hop with physical joy!
 			

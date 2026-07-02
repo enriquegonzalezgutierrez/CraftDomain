@@ -1,7 +1,8 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Concrete Biome Strategy implementing rules for Warp Plateau.
-#              UPDATED: Added scatter blueprint routing to spawn Giant Mushrooms.
+#              BUG FIX (i18n): Replaced hardcoded name string with localized `tr()` 
+#              translation keys to maintain strict multi-language support.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WarpPlateauBiome.gd
 # ==============================================================================
@@ -11,8 +12,9 @@ extends IBiome
 func get_biome_id() -> int:
 	return 1
 
+## Concrete Implementation: Returns the HUD localized friendly name of the biome
 func get_biome_name() -> String:
-	return "Warp Plateau (Mario Steps)"
+	return tr("BIOME_WARP_PLATEAU")
 
 func get_minimap_color() -> Color:
 	return Color(0.38, 0.85, 0.28)

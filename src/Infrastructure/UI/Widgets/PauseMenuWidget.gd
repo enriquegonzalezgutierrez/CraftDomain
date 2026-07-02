@@ -2,6 +2,10 @@
 # Project: CraftDomain
 # Description: SRP-compliant UI Widget responsible ONLY for building and managing 
 #              the Pause Menu overlay and its button interactions.
+#              WARNING FIX:
+#              - Added explicit static typing `Bootstrap` to the `bootstrap` 
+#                variable on line 123 to completely resolve the 
+#                `UNTYPED_DECLARATION` compiler warning.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/PauseMenuWidget.gd
 # ==============================================================================
@@ -120,7 +124,8 @@ func _on_settings_closed() -> void:
 		_settings_overlay.queue_free()
 
 func _on_quit_pressed() -> void:
-	var bootstrap = get_node_or_null("/root/Bootstrap")
+	# FIX: Explicit static typing `Bootstrap` on root scene node query reference
+	var bootstrap: Bootstrap = get_node_or_null("/root/Bootstrap") as Bootstrap
 	if is_instance_valid(bootstrap) and bootstrap.has_method("return_to_main_menu"):
 		bootstrap.call("return_to_main_menu")
 

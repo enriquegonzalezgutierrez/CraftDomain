@@ -7,6 +7,8 @@
 #              - Liskov Substitution Principle (LSP): Inherits PassiveEntity.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
+#              BUG FIX (i18n): Replaced hardcoded name string with localized 
+#              translation keys to maintain strict multi-language support.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/DruidEntity.gd
 # ==============================================================================
@@ -111,7 +113,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		intro_node.node_id = "druid_intro_temp"
 		intro_node.text = _select_procedural_greeting_key()
 			
-		hud.open_dialogue(intro_node, "Druid", self)
+		hud.open_dialogue(intro_node, "NPC_NAME_DRUID", self)
 
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.

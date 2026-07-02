@@ -7,6 +7,10 @@
 #                guaranteeing this class will never become a God Object.
 #              - Open-Closed Principle (OCP): Closed to code modification. Adding
 #                new languages (e.g., fr.json) is done purely via external assets.
+#              WARNING FIX:
+#              - Added explicit static typing `String` to the locale dictionary key 
+#                loop iterator on line 76 to completely resolve the 
+#                `UNTYPED_DECLARATION` compiler warning.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/TranslationRegistry.gd
 # ==============================================================================
@@ -73,7 +77,8 @@ static func _load_translation_pack(file_path: String, locale_code: String) -> vo
 	translation.locale = locale_code
 	
 	# Seed the translations mapping dynamically
-	for key in translation_data.keys():
+	# FIX: Added explicit static typing `String` to translation keys loop iterator
+	for key: String in translation_data.keys():
 		translation.add_message(key, str(translation_data[key]))
 		
 	TranslationServer.add_translation(translation)

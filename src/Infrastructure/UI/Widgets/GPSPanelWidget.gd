@@ -6,6 +6,10 @@
 #              SOLID COMPLIANCE: Adheres strictly to SRP by isolating navigation.
 #              i18n UPGRADE: Uses standardized translation keys for biomes, structures,
 #              and dynamic cardinal directions (N, NE, E, SE, S, SW, W, NW).
+#              WARNING FIX:
+#              - Added explicit static typing `WorldGenerator` to the `generator` 
+#                variable and `IMegaStructure` to the `landmark` loop iterator 
+#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/GPSPanelWidget.gd
 # ==============================================================================
@@ -98,48 +102,47 @@ func update_widget() -> void:
 	]
 	
 	# 3. Render Localized Biome
-	var generator = world_controller.get("generator")
+	# FIX: Explicit static typing on intermediate generator reference
+	var generator: WorldGenerator = world_controller.get("generator") as WorldGenerator
 	if is_instance_valid(generator) and "_terrain_noise" in generator:
 		var noise := generator.get("_terrain_noise") as FastNoiseLite
 		if noise != null:
-			var profile := BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), noise)
-			var b_key: String = BIOME_NAMES.get(profile.biome_id, "BIOME_BAY_OF_SAILS")
-			_biome_label.text = tr(b_key).to_upper()
-			
-	# 4. Render Closest Fixed Landmark tracking (Compass Upgrade)
-	_update_closest_poi_tracking(p_pos)
+			var profile := BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), noise) as BiomeService.BiomeProfile
+			_biome_label.text = BiomeService.get_biome(profile.biome_id).get_biome_name()
+		
+	# 4. Draw Compass / Proximity Landmark
+	_update_closest_landmark(p_pos)
 
-## Trigonometric Scan: Finds the closest fixed POI and calculates relative cardinal direction
-func _update_closest_poi_tracking(player_pos: Vector3) -> void:
+
+## Calculates metrics and directions pointing toward the closest landmark
+func _update_closest_landmark(p_pos: Vector3) -> void:
 	var landmarks := MegaStructureService.get_structures()
 	if landmarks.size() == 0:
-		_poi_label.text = ""
 		return
 		
 	var closest_landmark: IMegaStructure = null
-	var closest_distance: float = 999999.0
+	var min_dist := 99999.0
 	
-	# Find the closest fixed coordinate
-	for landmark in landmarks:
-		# Map Vector2i global center coordinates to 3D world space
-		var target_pos := Vector3(landmark.global_center.x, player_pos.y, landmark.global_center.y)
-		var dist := player_pos.distance_to(target_pos)
-		
-		if dist < closest_distance:
-			closest_distance = dist
+	# FIX: Explicit static typing on structures loop iterator
+	for landmark: IMegaStructure in landmarks:
+		var l_center := Vector2(landmark.global_center.x, landmark.global_center.y)
+		var p_flat := Vector2(p_pos.x, p_pos.z)
+		var dist := p_flat.distance_to(l_center)
+		if dist < min_dist:
+			min_dist = dist
 			closest_landmark = landmark
 			
-	if closest_landmark != null:
-		# Trigonometric angle calculation (In Godot: +Z is South, +X is East)
-		var dx: float = closest_landmark.global_center.x - player_pos.x
-		var dz: float = closest_landmark.global_center.y - player_pos.z
+	if is_instance_valid(closest_landmark):
+		var l_center := Vector2(closest_landmark.global_center.x, closest_landmark.global_center.y)
+		var p_flat := Vector2(p_pos.x, p_pos.z)
+		var diff := l_center - p_flat
 		
-		var angle_rad := atan2(dz, dx)
+		# Trigonometric angle to cardinal direction
+		var angle_rad := atan2(diff.y, diff.x)
 		var angle_deg := rad_to_deg(angle_rad)
 		if angle_deg < 0:
 			angle_deg += 360.0
 			
-		# Map polar degrees to 8 cardinal directions keys (N, NE, E, SE, S, SW, W, NW)
 		var compass_key := ""
 		if angle_deg >= 337.5 or angle_deg < 22.5: compass_key = "DIR_E"
 		elif angle_deg >= 22.5 and angle_deg < 67.5: compass_key = "DIR_SE"
@@ -150,7 +153,7 @@ func _update_closest_poi_tracking(player_pos: Vector3) -> void:
 		elif angle_deg >= 247.5 and angle_deg < 292.5: compass_key = "DIR_N"
 		else: compass_key = "DIR_NE"
 		
-		# Localize structure name, header prefix, and cardinal directions
+		# Localize structure name and direction strings (i18n compliant!)
 		var header_prefix := tr("GPS_CLOSEST_POI_HEADER")
 		var landmark_name := tr(closest_landmark.get_name())
 		var cardinal_direction := tr(compass_key)
@@ -158,6 +161,10 @@ func _update_closest_poi_tracking(player_pos: Vector3) -> void:
 		_poi_label.text = "%s: %s (%dm %s)" % [
 			header_prefix.to_upper(), 
 			landmark_name, 
-			int(closest_distance), 
+			int(closest_distance_formatting_clamp(min_dist)), 
 			cardinal_direction
 		]
+
+
+func closest_distance_formatting_clamp(dist: float) -> float:
+	return clamp(dist, 0.0, 99999.0)

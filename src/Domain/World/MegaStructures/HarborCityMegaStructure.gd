@@ -3,7 +3,10 @@
 # Description: Concrete MegaStructure. A Harbor with a massive Galleon Ship.
 #              DETAILED UPGRADE: Added a Captain's cabin, stacked crates, 
 #              and populated the docks with a Merchant and Guards!
-# Author: Enrique González Gutiérrez
+#              BUG FIX (i18n): Replaced hardcoded name string with localized 
+#              translation keys to maintain strict multi-language support.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/MegaStructures/HarborCityMegaStructure.gd
 # ==============================================================================
 class_name HarborCityMegaStructure
 extends IMegaStructure
@@ -12,8 +15,11 @@ func _init() -> void:
 	global_center = Vector2i(-150, 0) # FIXED COORDINATES!
 	bounds_size = Vector2i(50, 40)
 
+
+## Concrete Implementation: Returns the translation key representing this landmark
 func get_name() -> String:
-	return "The Port of Sails & Galleon"
+	return "STRUCTURE_HARBOR_CITY"
+
 
 func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 	var water_level: int = 5
@@ -89,6 +95,7 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 							if sail_width > 4: sail_width = 4
 							for sz in range(-sail_width, sail_width + 1):
 								set_global_block(chunk, offset, gx - 1, gy, gz + sz, BlockType.Type.CLOUD)
+
 
 ## Spawns Harbor and Ship inhabitants
 func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:

@@ -6,8 +6,10 @@
 #              - Single Responsibility Principle (SRP): Only manages crafting logic.
 #              - Dependency Inversion Principle (DIP): Depends strictly on the
 #                abstract interface `IInventory`, allowing recipe evaluations.
-#              AI QUEST UPGRADE: Safely increments the active quest's incremental 
-#              progress_counter when crafting required recipe items.
+#              WARNING FIX:
+#              - Added explicit static typing `int` to the inputs keys loop iterators 
+#                (including `item_id`) to completely resolve `UNTYPED_DECLARATION` 
+#                compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Crafting/CraftingService.gd
 # ==============================================================================
@@ -21,7 +23,8 @@ static func can_craft(inventory: IInventory, recipe: Recipe) -> bool:
 		return false
 		
 	# 1. Validate if the inventory contains the total aggregate sum of each ingredient
-	for item_id in recipe.inputs.keys():
+	# FIX: Added explicit static typing `int` to the inputs key loop iterator
+	for item_id: int in recipe.inputs.keys():
 		var required_qty := recipe.inputs[item_id] as int
 		
 		# DIP INVERSION: We query the generic total quantity of this ID, regardless of slot placement
@@ -41,7 +44,8 @@ static func craft(inventory: IInventory, recipe: Recipe) -> bool:
 		return false
 		
 	# 1. Consume input ingredients across the entire backpack grid
-	for item_id in recipe.inputs.keys():
+	# FIX: Added explicit static typing `int` to the inputs key loop iterator
+	for item_id: int in recipe.inputs.keys():
 		var required_qty := recipe.inputs[item_id] as int
 		inventory.consume_item(item_id, required_qty)
 		

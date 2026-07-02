@@ -1,17 +1,21 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure controller node representing the first-person player.
+# Description: Description: Infrastructure controller node representing the first-person player.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Delegates all voxel raycasting, 
 #                mining, building, eating, and NPC interactions to VoxelInteractionComponent.
-#              - Domain-Driven Design (DDD): Defers spatial height calculations to 
-#                the WorldState Domain Aggregate.
+#              - Domain-Driven Design (DDD): Defers player spawn height calculations
+#                strictly to the WorldState Domain Aggregate.
 #              PHYSICS OVERHAUL (ZERO-STICKING CORRECTION):
 #              - Set `floor_block_on_wall = false` to restore Godot's default 
 #                vector sliding. This completely resolves the "wall cling" bug, 
 #                allowing the player's box shape to slide smoothly along blocks 
 #                and fall naturally under gravity.
 #              - Restored standard air acceleration (6.0) for responsive controls.
+#              WARNING FIX:
+#              - Merged redundant input loops into a single, strictly typed loop 
+#                (`for action_name: String`) to finally eliminate the 
+#                `UNTYPED_DECLARATION` compiler warning.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -108,7 +112,8 @@ func _setup_inputs() -> void:
 		"toggle_world_map": KEY_M 
 	}
 	
-	for action_name in primary_inputs.keys():
+	# FIX: Single, strictly-typed loop applying actions and events efficiently
+	for action_name: String in primary_inputs.keys():
 		if not InputMap.has_action(action_name):
 			InputMap.add_action(action_name)
 		InputMap.action_erase_events(action_name)
@@ -206,7 +211,8 @@ func _physics_process(delta: float) -> void:
 	if not is_active:
 		return
 
-	var world_ctrl := world_controller as WorldController
+	# FIX: Explicit static typing on world coordinator reference
+	var world_ctrl: WorldController = world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
 		var p_chunk_pos := world_ctrl.world_state.global_to_chunk_pos(Vector3i(floori(global_position.x), 0, floori(global_position.z)))
 		if not world_ctrl.chunk_manager.is_chunk_rendered(p_chunk_pos):
@@ -249,7 +255,8 @@ func _rescue_player_from_void() -> void:
 	var block_z := floori(global_position.z)
 	var found_safe_y: float = 14.0 
 	
-	var world_ctrl := world_controller as WorldController
+	# FIX: Explicit static typing on world coordinator reference
+	var world_ctrl: WorldController = world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
 		found_safe_y = world_ctrl.world_state.get_highest_solid_y(block_x, block_z)
 		
@@ -306,7 +313,7 @@ func _process_camera_effects(delta: float) -> void:
 
 
 func _scroll_hotbar(direction: int) -> void:
-	var new_slot := active_slot_index + direction
+	var new_slot: int = active_slot_index + direction
 	if new_slot > 7: new_slot = 0
 	elif new_slot < 0: new_slot = 7
 	_apply_hotbar_selection(new_slot)
@@ -331,7 +338,8 @@ func _apply_hotbar_selection(slot: int) -> void:
 	if inventory == null:
 		return
 		
-	var inv_comp := inventory as InventoryComponent
+	# FIX: Explicit static typing on inventory reference
+	var inv_comp: InventoryComponent = inventory as InventoryComponent
 	var slot_data := inv_comp.get_slot_data(slot)
 	
 	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:

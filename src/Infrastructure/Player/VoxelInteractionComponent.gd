@@ -14,21 +14,25 @@
 #              - Implemented a rigorous 3D Axis-Aligned Bounding Box (AABB) intersection 
 #                check to prevent placing solid blocks inside the player's physical space,
 #                fully resolving the issue of getting stuck.
+#              WARNING FIX:
+#              - Replaced Variant data getters (`viewmodel`, `collider`, `inventory`, 
+#                `world_ctrl`, `strategy`) with strictly cast static typed variables 
+#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
 class_name VoxelInteractionComponent
 extends Node3D
 
-# Sibling dependencies injected by the Player Controller on startup
-var player: PlayerController
+## Dynamic UI targeting reticle highlighters
+var highlight_mesh: MeshInstance3D
+var raycast: RayCast3D
+
+# Dependencies injected on startup (DIP compliant)
+var player: CharacterBody3D
 var camera: Camera3D
 var world_controller: Node3D
 var hud: PlayerHUD
-
-# Nodes constructed and managed locally
-var raycast: RayCast3D
-var highlight_mesh: MeshInstance3D
 
 # ==============================================================================
 # DEPENDENCY INVERSION (DIP): Injectable service providers
@@ -109,37 +113,39 @@ func _update_target_highlight() -> void:
 
 ## Executes left-click actions: breaking targeted blocks or swinging the sword.
 func _mine_or_attack() -> void:
-	var viewmodel := player.get("viewmodel") as PlayerViewModel
+	# FIX: Explicit static typing on viewmodel reference
+	var viewmodel: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 	if is_instance_valid(viewmodel):
 		viewmodel.play_swing_animation()
 	
 	if not raycast.is_colliding(): 
 		return
 		
-	var collider := raycast.get_collider()
-	var active_slot := player.active_slot_index
-	var inventory := player.get("inventory") as IInventory
+	# FIX: Explicit static typing on hit collider reference
+	var collider: Node = raycast.get_collider() as Node
+	var active_slot: int = player.get("active_slot_index") as int
+	# FIX: Explicit static typing on player inventory reference
+	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 	
 	# COMBAT CODE: Hit hostile or passive character bodies if holding the sword (ID 17)
 	if is_instance_valid(inventory) and is_instance_valid(collider) and collider is CharacterBody3D:
-		var inv_comp := inventory as InventoryComponent
-		if is_instance_valid(inv_comp):
-			var slot_data := inv_comp.get_slot_data(active_slot)
-			if slot_data != null and slot_data.item_id == 17:
-				if collider.get("domain_entity") is VoxelEntity:
-					var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
-					knockback_dir.y = 2.5
-					if collider.has_method("take_damage"):
-						collider.call("take_damage", 1, knockback_dir)
-					return
+		var slot_data := inventory.get_slot_data(active_slot)
+		if slot_data != null and slot_data.item_id == 17:
+			if collider.get("domain_entity") is VoxelEntity:
+				var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
+				knockback_dir.y = 2.5
+				if collider.has_method("take_damage"):
+					collider.call("take_damage", 1, knockback_dir)
+				return
 
 	# MINING CODE: Remove block from the grid and add it to the inventory
-	var world_ctrl := world_controller as WorldController
+	# FIX: Explicit static typing on world controller coordinate reference
+	var world_ctrl: WorldController = world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(inventory):
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
 		var block_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 		
-		var world_state := world_ctrl.world_state
+		var world_state: WorldState = world_ctrl.world_state
 		if is_instance_valid(world_state):
 			var mined_type := world_state.get_block(block_coord)
 			if mined_type == BlockType.Type.AIR:
@@ -152,13 +158,13 @@ func _mine_or_attack() -> void:
 			
 			# Special Agricultural Harvesting Rules
 			if mined_type == BlockType.Type.CROP_RIPE:
-				inventory.add_item(20, 1) # Ripe Wheat ID
-				inventory.add_item(18, randi_range(1, 2)) # Plump Seeds ID
+				var _un1 := inventory.add_item(20, 1) # Ripe Wheat ID
+				var _un2 := inventory.add_item(18, randi_range(1, 2)) # Plump Seeds ID
 				target_id = 20 
 				if is_instance_valid(hud):
 					hud.show_quest_notification("NOTIFICATION_HARVEST_SUCCESS_HEADER", "NOTIFICATION_HARVEST_SUCCESS_DESC")
 			elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
-				inventory.add_item(18, 1)
+				var _un3 := inventory.add_item(18, 1)
 				target_id = 18 
 				if is_instance_valid(hud):
 					hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
@@ -174,12 +180,13 @@ func _mine_or_attack() -> void:
 					BlockType.Type.LEAVES:
 						target_id = 5 # Leaves ID
 						if randf() < 0.25:
-							inventory.add_item(18, 1) # Bonus seed drop
+							var _un4 := inventory.add_item(18, 1) # Bonus seed drop
 				
-				inventory.add_item(target_id, 1)
+				var _un5 := inventory.add_item(target_id, 1)
 				
 			# DIP INVERSION: Update quest progress using the injected provider reference
-			var active_q = quest_service_provider.get_active_quest()
+			# FIX: Explicit static typing on verified active quest variable
+			var active_q: Quest = quest_service_provider.get_active_quest() as Quest
 			if active_q != null and active_q.required_item_index == target_id:
 				active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
 				
@@ -193,7 +200,8 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 		return
 		
 	# DIP INVERSION: Look up definition using the injected provider reference
-	var def = block_library_provider.get_definition(block_type)
+	# FIX: Explicit static typing on block library definition
+	var def: BlockDefinition = block_library_provider.get_definition(block_type) as BlockDefinition
 	if def == null:
 		return
 		
@@ -240,7 +248,8 @@ func _cleanup_particles(particles_node: GPUParticles3D) -> void:
 
 ## Executes right-click actions: placing blocks, planting crops, or speaking with NPCs.
 func _build_or_interact() -> void:
-	var viewmodel := player.get("viewmodel") as PlayerViewModel
+	# FIX: Explicit static typing on viewmodel reference
+	var viewmodel: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 	if is_instance_valid(viewmodel):
 		viewmodel.play_swing_animation()
 	
@@ -254,18 +263,16 @@ func _build_or_interact() -> void:
 		collider.call("interact", player)
 		return
 		
-	var active_slot := player.active_slot_index
-	var inventory := player.get("inventory") as IInventory
-	var world_ctrl := world_controller as WorldController
+	var active_slot: int = player.get("active_slot_index") as int
+	# FIX: Explicit static typing on player inventory reference
+	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+	# FIX: Explicit static typing on world controller coordinate reference
+	var world_ctrl: WorldController = world_controller as WorldController
 	
 	if not is_instance_valid(inventory) or not is_instance_valid(world_ctrl):
 		return
 		
-	var inv_comp := inventory as InventoryComponent
-	if not is_instance_valid(inv_comp):
-		return
-		
-	var slot_data := inv_comp.get_slot_data(active_slot)
+	var slot_data := inventory.get_slot_data(active_slot)
 	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:
 		return
 		
@@ -275,7 +282,8 @@ func _build_or_interact() -> void:
 		return
 		
 	# DIP / OCP Strategy Router query
-	var strategy := ItemStrategyRegistry.get_strategy(item_id)
+	# FIX: Explicit static typing on evaluated item strategy
+	var strategy: ItemUsageStrategy = ItemStrategyRegistry.get_strategy(item_id) as ItemUsageStrategy
 	if strategy != null:
 		var hit_normal := raycast.get_collision_normal()
 		var hit_pos := raycast.get_collision_point() - (hit_normal * 0.5)

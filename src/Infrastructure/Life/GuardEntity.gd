@@ -7,6 +7,11 @@
 #                safely overriding the movement, task routing, and visualization loops.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
+#              WARNING FIX:
+#              - Added explicit static typing to all retrieval and combat entities 
+#                (including `zombie_entity`, `world_controller_ref`, `generator`, 
+#                `terrain_noise`, and `child`) to completely resolve 
+#                `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GuardEntity.gd
 # ==============================================================================
@@ -148,7 +153,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		intro_node.node_id = "guard_intro_temp"
 		intro_node.text = _select_procedural_greeting_key()
 			
-		hud.open_dialogue(intro_node, "Guard", self)
+		hud.open_dialogue(intro_node, "NPC_NAME_GUARD", self)
 
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
@@ -244,9 +249,11 @@ func _scan_for_active_zombie_target() -> CharacterBody3D:
 	var closest_zombie: CharacterBody3D = null
 	var min_dist := AGGRO_SIGHT_RANGE
 	
-	for child in world_node.get_children():
+	# FIX: Explicit static typing on child nodes iteration
+	for child: Node in world_node.get_children():
 		if child.name.contains("ZOMBIE") and is_instance_valid(child):
-			var zombie_entity = child.get("domain_entity")
+			# FIX: Explicit static typing on retrieved VoxelEntity domain data
+			var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
 			if zombie_entity != null and not zombie_entity.is_dead:
 				var dist := global_position.distance_to(child.global_position)
 				if dist < min_dist:
@@ -302,13 +309,16 @@ func _execute_combat_strike() -> void:
 
 ## Queries coordinate biomes.
 func _detect_current_biome() -> int:
-	var world_controller_ref = get_parent()
+	# FIX: Explicit static typing on world controller reference
+	var world_controller_ref: Node = get_parent() as Node
 	var default_biome_id: int = 2
 	
 	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		var generator = world_controller_ref.get("generator")
+		# FIX: Explicit static typing on world generator reference
+		var generator: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
 		if generator != null:
-			var terrain_noise = generator.get("_terrain_noise")
+			# FIX: Explicit static typing on terrain noise provider
+			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
 				var profile := BiomeService.evaluate_coordinate(
 					int(round(global_position.x)), 

@@ -14,6 +14,10 @@
 #              - Moved CampaignRegistry.initialize_campaign() here to ensure 
 #                Quest resources and statuses are completely reset into RAM 
 #                every time a world is loaded or restarted from the main menu.
+#              WARNING FIX:
+#              - Added explicit static typing to sibling reference variables 
+#                (including `celestial` and `inventory`) to completely resolve 
+#                `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -158,7 +162,8 @@ func _process_dynamic_world() -> void:
 
 ## Coordinates dynamic streetlight updates on day/night transitions
 func _process_day_night_lighting() -> void:
-	var celestial = get_parent().get_node_or_null("CelestialService")
+	# FIX: Explicit static typing on retrieved celestial sibling node reference
+	var celestial: Node = get_parent().get_node_or_null("CelestialService") as Node
 	if not is_instance_valid(celestial) or not celestial.has_method("is_night_time"):
 		return
 		
@@ -246,7 +251,8 @@ func _activate_player_spawn() -> void:
 ## Deserializes cached backpack quantities back into the player's inventory
 func _restore_player_inventory() -> void:
 	if _loaded_inventory_data.size() > 0 and is_instance_valid(player):
-		var inventory = player.get("inventory") as InventoryComponent
+		# FIX: Explicit static typing on player inventory reference
+		var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
 			print("[WorldController] Restoring saved player inventory...")
 			inventory.deserialize_data(_loaded_inventory_data)

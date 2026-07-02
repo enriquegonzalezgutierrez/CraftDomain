@@ -7,6 +7,10 @@
 #                contract with safe default virtual values for subclasses.
 #              - Single Responsibility Principle (SRP): Decoupled into specialized 
 #                components, leaving this class strictly in charge of sliding physics.
+#              WARNING FIX:
+#              - Added explicit static typing `Node` to intermediate parents 
+#                on lines 188 and 205 to completely resolve `UNTYPED_DECLARATION` 
+#                compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -138,7 +142,7 @@ func _on_domain_entity_died() -> void:
 	
 	# 1. Disable physics and interactions instantly
 	set_physics_process(false)
-	var col := get_node_or_null("EntityCollider")
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
 	if is_instance_valid(col):
 		col.queue_free()
 	if is_instance_valid(_bubble):
@@ -185,7 +189,8 @@ func _spawn_death_particles() -> void:
 	mesh.material = mat
 	particles.draw_pass_1 = mesh
 	
-	var world_node = get_parent()
+	# FIX: Explicit static typing on world parent reference
+	var world_node: Node = get_parent() as Node
 	if is_instance_valid(world_node):
 		world_node.add_child(particles)
 		particles.global_position = global_position + Vector3(0, 0.5, 0)
@@ -194,11 +199,12 @@ func _spawn_death_particles() -> void:
 
 
 func _try_drop_player_loot() -> void:
-	var parent := get_parent()
+	# FIX: Explicit static typing on parent reference
+	var parent: Node = get_parent() as Node
 	if is_instance_valid(parent):
 		var player_node := parent.get_node_or_null("Player") as CharacterBody3D
 		if is_instance_valid(player_node):
-			var inv: IInventory = player_node.get("inventory")
+			var inv: IInventory = player_node.get("inventory") as IInventory
 			if is_instance_valid(inv):
 				_drop_loot(inv)
 

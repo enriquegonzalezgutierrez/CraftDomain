@@ -5,6 +5,8 @@
 #              - Liskov Substitution Principle (LSP): Fully implements IBiome.
 #              - Open-Closed Principle (OCP): Returns specialized Cyber Citizens (106)
 #                and Guards (102) for its outposts.
+#              BUG FIX (i18n): Replaced hardcoded name string with localized `tr()` 
+#              translation keys to maintain strict multi-language support.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/NeonRuinsBiome.gd
 # ==============================================================================
@@ -14,8 +16,9 @@ extends IBiome
 func get_biome_id() -> int:
 	return 7
 
+## Concrete Implementation: Returns the HUD localized friendly name of the biome
 func get_biome_name() -> String:
-	return "Neon Ruins (Cyber Basin)"
+	return tr("BIOME_NEON_RUINS")
 
 func get_minimap_color() -> Color:
 	return Color(0.0, 0.85, 0.85)

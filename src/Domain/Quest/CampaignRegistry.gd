@@ -4,6 +4,9 @@
 #              quests from external JSON data.
 #              SOLID COMPLIANCE: Adheres strictly to the Open-Closed Principle (OCP).
 #              STRICT MODE FIX: Implemented safe type parsing for JSON variants.
+#              WARNING FIX:
+#              - Added explicit static typing `Dictionary` to the `item` loop iterator 
+#                on line 70 to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Quest/CampaignRegistry.gd
 # ==============================================================================
@@ -67,8 +70,9 @@ static func _load_quests_from_file(file_path: String) -> void:
 	if quest_array == null:
 		return
 	
-	for item in quest_array:
-		var q_data := item as Dictionary
+	# FIX: Added explicit static typing `Dictionary` to the JSON quests objects loop iterator
+	for item: Dictionary in quest_array:
+		var q_data := item
 		var q := Quest.new()
 		
 		q.quest_id = str(q_data.get("quest_id", ""))

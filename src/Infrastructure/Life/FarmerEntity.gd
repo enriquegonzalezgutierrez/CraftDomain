@@ -7,6 +7,11 @@
 #              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
+#              WARNING FIX:
+#              - Added explicit static typing to all retrieval and delta math variables 
+#                (including `anim_time`, `world_node`, `world_controller_ref`, `generator`, 
+#                and `terrain_noise`) to completely resolve `UNTYPED_DECLARATION` 
+#                compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
@@ -139,7 +144,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		intro_node.node_id = "farmer_intro_temp"
 		intro_node.text = _select_procedural_greeting_key()
 		
-		hud.open_dialogue(intro_node, "Farmer", self)
+		hud.open_dialogue(intro_node, "NPC_NAME_FARMER", self)
 
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
@@ -272,7 +277,8 @@ func _animate_harvesting_hoe(delta: float) -> void:
 		_hoe_joint.position = _hoe_joint.position.lerp(Vector3(0.18, 0.52, -0.32), delta * 8.0)
 		
 		# Swing back and forth based on high-frequency sin waves
-		var anim_time = visual_component._animation_time if is_instance_valid(visual_component) else 0.0
+		# FIX: Static type constraint on intermediate visual component variable
+		var anim_time: float = visual_component._animation_time if is_instance_valid(visual_component) else 0.0
 		var swing_offset := sin(anim_time * 12.0) * 0.45
 		_hoe_joint.rotation.x = lerp(_hoe_joint.rotation.x, deg_to_rad(45) + swing_offset, delta * 12.0)
 		_hoe_joint.rotation.y = lerp(_hoe_joint.rotation.y, deg_to_rad(-45), delta * 8.0)
@@ -313,7 +319,8 @@ func _spawn_replant_particle(pos: Vector3) -> void:
 	mesh.material = mat
 	particles.draw_pass_1 = mesh
 	
-	var world_node = get_parent()
+	# FIX: Explicit static typing on world parent node
+	var world_node: Node = get_parent() as Node
 	if is_instance_valid(world_node):
 		world_node.add_child(particles)
 		particles.global_position = pos + Vector3(0.5, 0.25, 0.5)
@@ -327,13 +334,16 @@ func _spawn_replant_particle(pos: Vector3) -> void:
 
 ## Queries coordinate biomes.
 func _detect_current_biome() -> int:
-	var world_controller_ref = get_parent()
+	# FIX: Explicit static typing on world controller node reference
+	var world_controller_ref: Node = get_parent() as Node
 	var default_biome_id: int = 2
 	
 	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		var generator = world_controller_ref.get("generator")
+		# FIX: Explicit static typing on world generator reference
+		var generator: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
 		if generator != null:
-			var terrain_noise = generator.get("_terrain_noise")
+			# FIX: Explicit static typing on terrain noise provider
+			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
 				var profile := BiomeService.evaluate_coordinate(
 					int(round(global_position.x)), 

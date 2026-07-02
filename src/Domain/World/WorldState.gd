@@ -8,6 +8,9 @@
 #              - Domain-Driven Design (DDD): Centralizes core geographic rules 
 #                (like vertical ground scans) in the Domain layer, preventing 
 #                Domain leakage to Infrastructure.
+#              WARNING FIX:
+#              - Added explicit static typing `Vector3i` to the `apply_chunk_modifications` 
+#                loop iterator variable to eliminate `UNTYPED_DECLARATION` warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldState.gd
 # ==============================================================================
@@ -46,7 +49,7 @@ func global_to_local_pos(global_pos: Vector3i) -> Vector3i:
 ## Returns a Chunk entity if registered, otherwise returns null.
 func get_chunk(chunk_pos: Vector3i) -> Chunk:
 	if _chunks.has(chunk_pos):
-		return _chunks[chunk_pos]
+		return _chunks[chunk_pos] as Chunk
 	return null
 
 
@@ -64,7 +67,7 @@ func remove_chunk(chunk_pos: Vector3i) -> void:
 ## Returns the modification dictionary for a specific chunk (Returns empty if none).
 func get_chunk_modifications(chunk_pos: Vector3i) -> Dictionary:
 	if _chunk_modifications.has(chunk_pos):
-		return _chunk_modifications[chunk_pos]
+		return _chunk_modifications[chunk_pos] as Dictionary
 	return {}
 
 
@@ -73,9 +76,10 @@ func apply_chunk_modifications(chunk_pos: Vector3i, modifications: Dictionary) -
 	_chunk_modifications[chunk_pos] = modifications
 	var chunk := get_chunk(chunk_pos)
 	if chunk != null:
-		for local_pos in modifications.keys():
-			var pos: Vector3i = local_pos
-			chunk.set_block(pos.x, pos.y, pos.z, modifications[local_pos])
+		# FIX: Strongly typed iterator loop variable eliminates untyped warnings
+		for local_pos: Vector3i in modifications.keys():
+			var type_val: int = modifications[local_pos] as int
+			chunk.set_block(local_pos.x, local_pos.y, local_pos.z, type_val as BlockType.Type)
 
 
 ## Queries any block in global world space coordinates.
@@ -123,6 +127,5 @@ func get_highest_solid_y(global_x: int, global_z: int) -> float:
 			var space_above_1 := get_block(check_pos + Vector3i(0, 1, 0))
 			var space_above_2 := get_block(check_pos + Vector3i(0, 2, 0))
 			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
-				# FIXED: Return float(y) + 2.0 (safe capsule origin above solid block top face)
 				return float(y) + 2.0
 	return 14.0 # Default safe fallback above water level

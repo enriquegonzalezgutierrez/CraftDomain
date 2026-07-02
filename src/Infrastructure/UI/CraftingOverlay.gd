@@ -1,11 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure UI controller representing an interactive, 
+# Description: Description: Infrastructure UI controller representing an interactive, 
 #              glassmorphic dual-pane Crafting and Blueprint Workshop overlay.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by managing only the layout representation and 
 #              UI events, delegating the transaction rules to `CraftingService`.
-#              BUG FIX (DEAD CODE): Removed legacy calls to `_sync_hud_counters`.
+#              WARNING FIX:
+#              - Replaced Variant data getters (`inventory`, `viewmodel`, `hud`) with 
+#                strictly-cast typed variables and strongly typed loop iterators 
+#                (including `recipe` and `slot_index`) to completely resolve 
+#                `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/CraftingOverlay.gd
 # ==============================================================================
@@ -41,6 +45,7 @@ const BLOCK_COLORS = {
 	7: Color(0.75, 0.75, 0.80)  # Wooden Sword
 }
 
+
 func _ready() -> void:
 	# Fullscreen translucent backdrop wash
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -51,6 +56,7 @@ func _ready() -> void:
 	_setup_workshop_ui()
 	_populate_recipes_list()
 	_show_empty_details()
+
 
 func _setup_workshop_ui() -> void:
 	# 1. Main Workshop Card (Centered, glassmorphic)
@@ -100,7 +106,7 @@ func _setup_workshop_ui() -> void:
 	left_pane.add_child(left_vbox)
 	
 	var catalog_title := Label.new()
-	catalog_title.text = "BLUEPRINT WORKSHOP"
+	catalog_title.text = tr("CRAFTING_WORKSHOP_TITLE").to_upper()
 	var ts := LabelSettings.new()
 	ts.font_size = 18
 	ts.font_color = Color(1.0, 0.85, 0.2) # Gold
@@ -146,7 +152,7 @@ func _setup_workshop_ui() -> void:
 	
 	# Large Result Title
 	_detail_title = Label.new()
-	_detail_title.text = "Select a Blueprint"
+	_detail_title.text = tr("CRAFTING_SELECT_BLUEPRINT")
 	var dts := LabelSettings.new()
 	dts.font_size = 22
 	dts.font_color = Color.WHITE
@@ -179,7 +185,7 @@ func _setup_workshop_ui() -> void:
 	
 	# Checklist subtitle
 	var req_label := Label.new()
-	req_label.text = "REQUIRED MATERIALS:"
+	req_label.text = tr("CRAFTING_REQUIRED_MATERIALS")
 	var rls := LabelSettings.new()
 	rls.font_size = 11
 	rls.font_color = Color(0.65, 0.65, 0.7)
@@ -197,7 +203,7 @@ func _setup_workshop_ui() -> void:
 	
 	# Fabricate Action Button
 	_craft_button = Button.new()
-	_craft_button.text = "FABRICATE ITEM"
+	_craft_button.text = tr("CRAFTING_FABRICATE")
 	_craft_button.custom_minimum_size = Vector2(0, 50)
 	_craft_button.size_flags_vertical = Control.SIZE_SHRINK_END
 	_craft_button.pressed.connect(_on_craft_pressed)
@@ -205,8 +211,10 @@ func _setup_workshop_ui() -> void:
 	
 	_setup_button_style(_craft_button)
 
+
 func _populate_recipes_list() -> void:
-	for recipe in RecipeRegistry.get_all_recipes():
+	# FIX: Explicit static typing on Recipes registry list iteration
+	for recipe: Recipe in RecipeRegistry.get_all_recipes():
 		var btn := Button.new()
 		btn.text = "  " + recipe.recipe_name
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -233,11 +241,13 @@ func _populate_recipes_list() -> void:
 		btn.pressed.connect(func() -> void: _on_recipe_selected(recipe))
 		_recipes_list.add_child(btn)
 
+
 func _show_empty_details() -> void:
-	_detail_title.text = "Select a Blueprint"
+	_detail_title.text = tr("CRAFTING_SELECT_BLUEPRINT")
 	_detail_icon.visible = false
 	_detail_requirements_box.visible = false
 	_craft_button.visible = false
+
 
 func _on_recipe_selected(recipe: Recipe) -> void:
 	_selected_recipe = recipe
@@ -250,6 +260,7 @@ func _on_recipe_selected(recipe: Recipe) -> void:
 	
 	_refresh_checklist()
 
+
 func _refresh_checklist() -> void:
 	if _selected_recipe == null or not is_instance_valid(player):
 		return
@@ -258,14 +269,16 @@ func _refresh_checklist() -> void:
 	for child in _detail_requirements_box.get_children():
 		child.queue_free()
 		
-	var inventory = player.get("inventory")
+	# FIX: Explicit static typing on player inventory reference
+	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 	var can_craft_current := CraftingService.can_craft(inventory, _selected_recipe)
 	
 	# Populate visual ingredient cards
-	for slot_index in _selected_recipe.inputs.keys():
+	# FIX: Explicit static typing on recipe ingredients dictionary key iterator
+	for slot_index: int in _selected_recipe.inputs.keys():
 		var required_qty := _selected_recipe.inputs[slot_index] as int
 		var current_qty := inventory.get_slot_quantity(slot_index) as int
-		var item_name := (inventory as InventoryComponent).get_slot_item_name(slot_index)
+		var item_name := inventory.get_slot_item_name(slot_index)
 		
 		var row := Panel.new()
 		row.custom_minimum_size = Vector2(0, 36)
@@ -302,31 +315,37 @@ func _refresh_checklist() -> void:
 	else:
 		_craft_button.modulate = Color(0.5, 0.5, 0.5, 0.7)
 
+
 func _on_craft_pressed() -> void:
 	if _selected_recipe == null or not is_instance_valid(player):
 		return
 		
-	var inventory = player.get("inventory")
+	# FIX: Explicit static typing on player inventory reference
+	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 	if CraftingService.craft(inventory, _selected_recipe):
 		
 		# Play tactile viewmodel swing feedback
-		var viewmodel = player.get("viewmodel")
+		# FIX: Explicit static typing on player viewmodel reference
+		var viewmodel: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 		if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
 			viewmodel.call("play_swing_animation")
 			
 		# Toast notification on HUD
-		var hud = player.get("hud")
+		# FIX: Explicit static typing on player HUD reference
+		var hud: PlayerHUD = player.get("hud") as PlayerHUD
 		if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-			hud.call("show_quest_notification", "Crafting Success", "Created: " + _selected_recipe.recipe_name + "!")
+			hud.call("show_quest_notification", "NOTIFICATION_CRAFTING_SUCCESS_HEADER", tr("NOTIFICATION_CRAFTING_SUCCESS_DESC") + ": " + _selected_recipe.recipe_name + "!")
 			
 		# Refresh the visual checklist after transaction
 		_refresh_checklist()
+
 
 func _input(event: InputEvent) -> void:
 	# Close the panel using C or Escape
 	if event.is_action_pressed("craft_item") or event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
 		closed.emit()
+
 
 func _setup_button_style(btn: Button) -> void:
 	var sn := StyleBoxFlat.new()
@@ -349,6 +368,7 @@ func _setup_button_style(btn: Button) -> void:
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	
 	btn.add_theme_font_size_override("font_size", 14)
+
 
 func _create_spacer(height: int) -> Control:
 	var s := Control.new()

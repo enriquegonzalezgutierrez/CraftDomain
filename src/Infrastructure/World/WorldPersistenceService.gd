@@ -6,6 +6,9 @@
 #              from SceneTree physics or game loop frames.
 #              FIXED: Added is_instance_valid check on the repository reference
 #              to prevent "previously freed" null assertion crashes upon game exit.
+#              WARNING FIX:
+#              - Added explicit static typing `Vector3i` to the `chunk_pos` loop iterator 
+#                on line 30 to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldPersistenceService.gd
 # ==============================================================================
@@ -27,14 +30,15 @@ func save_game(player: CharacterBody3D, world_state: WorldState) -> void:
 	print("[WorldPersistenceService] Initiating asynchronous disk save sequence...")
 	
 	# 1. Save all tracked chunk modification deltas
-	for chunk_pos in world_state._chunk_modifications.keys():
+	# FIX: Added explicit static typing `Vector3i` to loop iterator
+	for chunk_pos: Vector3i in world_state._chunk_modifications.keys():
 		var modifications: Dictionary = world_state.get_chunk_modifications(chunk_pos)
 		repository.save_chunk_modifications(chunk_pos, modifications)
 		
 	# 2. Extract, serialize, and pack Player profile metadata
 	if is_instance_valid(player):
 		var inv_data: Array = []
-		var inventory := player.get("inventory") as InventoryComponent
+		var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
 			inv_data = inventory.get_serialize_data()
 			
@@ -47,11 +51,11 @@ func save_game(player: CharacterBody3D, world_state: WorldState) -> void:
 			
 		# Extract World Seed safely from coordinator
 		var seed_val: int = 42
-		var world_controller := player.get("world_controller") as Node
+		var world_controller: Node = player.get("world_controller") as Node
 		if is_instance_valid(world_controller) and "generator" in world_controller:
-			var generator := world_controller.get("generator") as RefCounted
+			var generator: WorldGenerator = world_controller.get("generator") as WorldGenerator
 			if is_instance_valid(generator) and "_terrain_noise" in generator:
-				var noise := generator.get("_terrain_noise") as RefCounted
+				var noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 				if noise != null:
 					seed_val = noise.get("seed") as int
 				

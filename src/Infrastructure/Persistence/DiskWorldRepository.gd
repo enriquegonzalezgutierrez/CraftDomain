@@ -4,6 +4,10 @@
 #              JSON serialization, and delta chunk saving to Godot's user directory.
 #              FIXED: Corrected the chunk path Z-coordinate overwrite collision bug.
 #              UPDATED: Added persistence for player inventory and active quests.
+#              WARNING FIX:
+#              - Added explicit static typing `Vector3i` and `String` to chunk 
+#                serialization loop iterators to completely resolve 
+#                `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Persistence/DiskWorldRepository.gd
 # ==============================================================================
@@ -33,9 +37,9 @@ func save_chunk_modifications(chunk_pos: Vector3i, modifications: Dictionary) ->
 
 	# Convert Vector3i dictionary keys to JSON-compatible strings "x,y,z"
 	var json_data: Dictionary = {}
-	for local_pos in modifications.keys():
-		var pos: Vector3i = local_pos
-		var str_key := "%d,%d,%d" % [pos.x, pos.y, pos.z]
+	# FIX: Added explicit static typing `Vector3i` to loop iterator
+	for local_pos: Vector3i in modifications.keys():
+		var str_key := "%d,%d,%d" % [local_pos.x, local_pos.y, local_pos.z]
 		json_data[str_key] = modifications[local_pos]
 
 	# Serialize and write to disk
@@ -62,8 +66,9 @@ func load_chunk_modifications(chunk_pos: Vector3i) -> Dictionary:
 		var json := JSON.new()
 		var error := json.parse(json_string)
 		if error == OK:
-			var json_data: Dictionary = json.data
-			for str_key in json_data.keys():
+			var json_data: Dictionary = json.data as Dictionary
+			# FIX: Added explicit static typing `String` to loop iterator
+			for str_key: String in json_data.keys():
 				var parts: PackedStringArray = str_key.split(",")
 				if parts.size() == 3:
 					var local_pos := Vector3i(int(parts[0]), int(parts[1]), int(parts[2]))
@@ -109,18 +114,18 @@ func load_global_state() -> Dictionary:
 		var json := JSON.new()
 		var error := json.parse(json_string)
 		if error == OK:
-			var json_data: Dictionary = json.data
+			var json_data: Dictionary = json.data as Dictionary
 			
 			state["seed"] = int(json_data["seed"])
 			
-			var p_pos: Dictionary = json_data["player_pos"]
+			var p_pos: Dictionary = json_data["player_pos"] as Dictionary
 			state["player_pos"] = Vector3(float(p_pos["x"]), float(p_pos["y"]), float(p_pos["z"]))
 			
-			var p_rot: Dictionary = json_data["player_rot"]
+			var p_rot: Dictionary = json_data["player_rot"] as Dictionary
 			state["player_rot"] = Vector3(float(p_rot["x"]), float(p_rot["y"]), float(p_rot["z"]))
 			
 			if json_data.has("inventory"):
-				state["inventory"] = json_data["inventory"]
+				state["inventory"] = json_data["inventory"] as Array
 			else:
 				state["inventory"] = []
 				

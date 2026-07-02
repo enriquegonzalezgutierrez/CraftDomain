@@ -8,10 +8,10 @@
 #                and material binding, delegating shader calculations to external files.
 #              - Open-Closed Principle (OCP): Loads compiled shaders from external
 #                resources.
-#              TEXTURE OVERHAUL UPGRADE:
-#              - Expanded `TEXTURE_MAP` to include snow, ice, mud, lava, and birch bark.
-#              - Configured custom emission maps for textured Lava and translucency 
-#                parameters for textured Ice/Glass blocks.
+#              WARNING FIX:
+#              - Added explicit static typing to all parameters, loop iterators 
+#                (`block_type`), and intermediate variables (`file_path`, `tex`, `old_node`) 
+#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -84,10 +84,11 @@ static func _preload_all_textures() -> void:
 	print("\n[ChunkNode] ========================================================")
 	print("[ChunkNode] STATIC BOOTLOADER: Pre-loading custom textures...")
 	
-	for block_type in TEXTURE_MAP.keys():
-		var file_path = TEXTURE_DIR + TEXTURE_MAP[block_type]
+	# FIX: Added explicit static typing to iterator
+	for block_type: BlockType.Type in TEXTURE_MAP.keys():
+		var file_path: String = TEXTURE_DIR + TEXTURE_MAP[block_type]
 		if FileAccess.file_exists(file_path):
-			var tex = load(file_path)
+			var tex: Resource = load(file_path)
 			if tex is Texture2D:
 				_loaded_textures[block_type] = tex
 				var img: Image = tex.get_image()
@@ -131,14 +132,14 @@ static func _get_shared_box_mesh() -> BoxMesh:
 ## Loads and returns the compiled triplanar shader resource.
 static func _get_triplanar_shader() -> Shader:
 	if _triplanar_shader == null:
-		_triplanar_shader = load("res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader")
+		_triplanar_shader = load("res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader") as Shader
 	return _triplanar_shader
 
 
 ## Loads and returns the compiled wind-sway foliage shader resource.
 static func _get_leaves_wind_shader() -> Shader:
 	if _leaves_wind_shader == null:
-		_leaves_wind_shader = load("res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader")
+		_leaves_wind_shader = load("res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader") as Shader
 	return _leaves_wind_shader
 
 
@@ -164,7 +165,8 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 	var active_types: Dictionary = {}
 	
 	# 1. Update/Recycle Solid block MultiMeshes
-	for block_type in p_multimesh_data.keys():
+	# FIX: Added explicit static typing to loop key iterator
+	for block_type: BlockType.Type in p_multimesh_data.keys():
 		var bulk_array: PackedFloat32Array = p_multimesh_data[block_type]
 		var instance_count: int = int(bulk_array.size() / 12.0)
 		
@@ -174,7 +176,7 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 		active_types[block_type] = true
 		
 		if _multimeshes.has(block_type) and _multimeshes[block_type] is MultiMeshInstance3D:
-			var mm_instance: MultiMeshInstance3D = _multimeshes[block_type]
+			var mm_instance: MultiMeshInstance3D = _multimeshes[block_type] as MultiMeshInstance3D
 			var mm: MultiMesh = mm_instance.multimesh
 			if mm != null:
 				mm.instance_count = instance_count
@@ -182,7 +184,7 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 			mm_instance.visible = true
 		else:
 			if _multimeshes.has(block_type):
-				var old_node = _multimeshes[block_type]
+				var old_node: Node = _multimeshes[block_type] as Node
 				if is_instance_valid(old_node):
 					old_node.queue_free()
 					
@@ -203,20 +205,21 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 			_multimeshes[block_type] = mm_instance
 
 	# 2. Update/Recycle Liquid block MeshInstances
-	for block_type in p_liquid_meshes.keys():
-		var mesh: ArrayMesh = p_liquid_meshes[block_type]
+	# FIX: Added explicit static typing to loop key iterator
+	for block_type: BlockType.Type in p_liquid_meshes.keys():
+		var mesh: ArrayMesh = p_liquid_meshes[block_type] as ArrayMesh
 		if mesh == null:
 			continue
 			
 		active_types[block_type] = true
 		
 		if _multimeshes.has(block_type) and _multimeshes[block_type] is MeshInstance3D:
-			var mi: MeshInstance3D = _multimeshes[block_type]
+			var mi: MeshInstance3D = _multimeshes[block_type] as MeshInstance3D
 			mi.mesh = mesh
 			mi.visible = true
 		else:
 			if _multimeshes.has(block_type):
-				var old_node = _multimeshes[block_type]
+				var old_node: Node = _multimeshes[block_type] as Node
 				if is_instance_valid(old_node):
 					old_node.queue_free()
 					
@@ -229,9 +232,10 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 			_multimeshes[block_type] = mi
 
 	# 3. Clean up / Hibernate inactive block meshes
-	for block_type in _multimeshes.keys():
+	# FIX: Added explicit static typing to loop key iterator and Node caster
+	for block_type: BlockType.Type in _multimeshes.keys():
 		if not active_types.has(block_type):
-			var node = _multimeshes[block_type]
+			var node: Node = _multimeshes[block_type] as Node
 			if is_instance_valid(node):
 				if node is MultiMeshInstance3D:
 					var mm: MultiMesh = node.multimesh
@@ -257,7 +261,7 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 ## Generates or retrieves a cached material with customized PBR features.
 func _get_material_for_block(block_type: BlockType.Type) -> Material:
 	if _materials_cache.has(block_type):
-		return _materials_cache[block_type]
+		return _materials_cache[block_type] as Material
 		
 	var def := BlockLibrary.get_definition(block_type)
 	
@@ -282,8 +286,8 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 		mat.emission_energy_multiplier = 1.8
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		if _loaded_textures.has(block_type):
-			mat.albedo_texture = _loaded_textures[block_type]
-			mat.emission_texture = _loaded_textures[block_type]
+			mat.albedo_texture = _loaded_textures[block_type] as Texture2D
+			mat.emission_texture = _loaded_textures[block_type] as Texture2D
 		_materials_cache[block_type] = mat
 		return mat
 		
@@ -306,7 +310,7 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 		mat.metallic = 0.2
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		if _loaded_textures.has(block_type):
-			mat.albedo_texture = _loaded_textures[block_type]
+			mat.albedo_texture = _loaded_textures[block_type] as Texture2D
 		_materials_cache[block_type] = mat
 		return mat
 		
@@ -314,7 +318,7 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 	else:
 		var has_custom_texture := false
 		if _loaded_textures.has(block_type):
-			var tex: Texture2D = _loaded_textures[block_type]
+			var tex: Texture2D = _loaded_textures[block_type] as Texture2D
 			has_custom_texture = true
 			
 			# Wind-swaying leaves & blossom canopies

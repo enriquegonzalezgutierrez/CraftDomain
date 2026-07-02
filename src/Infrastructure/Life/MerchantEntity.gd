@@ -6,6 +6,10 @@
 #              - Liskov Substitution Principle (LSP): Inherits PassiveEntity.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
+#              WARNING FIX:
+#              - Added explicit static typing to all local variables and references
+#                (including `world_controller_ref`, `generator`, and `terrain_noise`) 
+#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MerchantEntity.gd
 # ==============================================================================
@@ -96,7 +100,7 @@ func _build_custom_headwear(biome_id: int, turban_color: Color, jewel_color: Col
 		0: # Bay of Sails (Sailor Bandana cap)
 			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.10, 0.38), Vector3(0, 0.35, 0), Color(0.85, 0.15, 0.15))
 			visual_component.create_box(visual_component.head_node, Vector3(0.10, 0.10, 0.15), Vector3(0, 0.28, 0.22), Color(0.85, 0.15, 0.15))
-		4: # Frostbite Glaciers (Fur-lined polar winter cowl)
+		4: # Frostbite Glaciers (Heavy insulated white fur)
 			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.39, 0.39), Vector3(0, 0.185, 0.02), robe_color)
 			visual_component.create_box(visual_component.head_node, Vector3(0.42, 0.42, 0.10), Vector3(0, 0.185, -0.15), Color(0.98, 0.98, 0.98))
 		7: # Neon Ruins (Techwear glowing visor)
@@ -126,7 +130,7 @@ func interact(player_node: CharacterBody3D) -> void:
 			intro_node = DialogueService.get_dialogue_node("merchant_intro")
 			
 		if intro_node != null:
-			hud.open_dialogue(intro_node, "Merchant", self)
+			hud.open_dialogue(intro_node, "NPC_NAME_MERCHANT", self)
 
 
 func _setup_floating_bubble() -> void:
@@ -139,13 +143,16 @@ func _setup_floating_bubble() -> void:
 
 ## Queries coordinate biomes.
 func _detect_current_biome() -> int:
-	var world_controller_ref = get_parent()
+	# FIX: Explicit static typing on world controller reference
+	var world_controller_ref: Node = get_parent() as Node
 	var default_biome_id: int = 2
 	
 	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		var generator = world_controller_ref.get("generator")
+		# FIX: Explicit static typing on world generator reference
+		var generator: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
 		if generator != null:
-			var terrain_noise = generator.get("_terrain_noise")
+			# FIX: Explicit static typing on terrain noise provider
+			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
 				var profile := BiomeService.evaluate_coordinate(
 					int(round(global_position.x)), 

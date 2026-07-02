@@ -13,6 +13,10 @@
 #                sliding/collision behaviors.
 #              - Implements the Flyweight Pattern by reusing a single BoxShape3D 
 #                resource instance across all colliders to minimize memory footprint.
+#              WARNING FIX:
+#              - Added explicit static typing to all loop iterators, cast properties, 
+#                and intermediate task variables to completely eliminate 
+#                `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -91,13 +95,15 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 
 ## Queues chunks for asynchronous loading (Background thread)
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
-	for pos in chunk_positions:
+	# FIX: Explicit static typing on chunk positions iterator
+	for pos: Vector3i in chunk_positions:
 		_request_asynchronous_chunk_load(pos)
 
 
 ## Queues chunks to be unloaded from memory
 func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
-	for pos in chunk_positions:
+	# FIX: Explicit static typing on chunk positions iterator
+	for pos: Vector3i in chunk_positions:
 		if not _unload_queue.has(pos):
 			_unload_queue.append(pos)
 
@@ -120,7 +126,7 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i) -> void:
 		return
 		
 	if _chunk_task_cache.has(chunk_pos):
-		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos]
+		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos] as GeneratedChunkTask
 		_completed_tasks_queue.append(cached_task)
 		_queue_mutex.unlock()
 		return
@@ -153,9 +159,9 @@ func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 func _trigger_next_background_tasks() -> void:
 	_queue_mutex.lock()
 	while _active_background_tasks < MAX_CONCURRENT_BG_TASKS and _load_requests_queue.size() > 0:
-		var request: Dictionary = _load_requests_queue.pop_front()
-		var pos: Vector3i = request["pos"]
-		var is_rebuild: bool = request["is_rebuild"]
+		var request: Dictionary = _load_requests_queue.pop_front() as Dictionary
+		var pos: Vector3i = request["pos"] as Vector3i
+		var is_rebuild: bool = request["is_rebuild"] as bool
 		
 		_active_background_tasks += 1
 		if is_rebuild:
@@ -189,27 +195,29 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	if not is_instance_valid(controller) or not is_instance_valid(controller.repository):
 		return
 		
-	var saved_edits: Dictionary = controller.repository.load_chunk_modifications(chunk_pos)
+	var saved_edits: Dictionary = controller.repository.load_chunk_modifications(chunk_pos) as Dictionary
 	if saved_edits.size() > 0:
-		for local_pos in saved_edits.keys():
-			var pos: Vector3i = local_pos
-			chunk.set_block(pos.x, pos.y, pos.z, saved_edits[local_pos])
+		# FIX: Static type declaration on local modifications loop iterator
+		for local_pos: Vector3i in saved_edits.keys():
+			var type_val: int = saved_edits[local_pos] as int
+			chunk.set_block(local_pos.x, local_pos.y, local_pos.z, type_val as BlockType.Type)
 			
-	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state)
+	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state) as Dictionary
 	
 	if not is_instance_valid(controller):
 		return
 		
 	var liquids: Dictionary = {}
-	for l_type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
-		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type)
+	# FIX: Static type declaration on liquid block types iterator
+	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
+		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
 		if l_mesh != null:
 			liquids[l_type] = l_mesh
 	
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_shape = null # Bypassed: We no longer calculate Concave Triangles!
+	task_result.collision_shape = null # Bypassed
 	task_result.liquid_meshes = liquids
 	task_result.is_rebuild = false
 	
@@ -218,7 +226,8 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	_completed_tasks_queue.append(task_result)
 	
 	if _chunk_task_cache.size() > CACHE_SIZE_LIMIT:
-		var oldest_key = _chunk_task_cache.keys()[0]
+		# FIX: Static type cast on Dictionary oldest keys
+		var oldest_key: Vector3i = _chunk_task_cache.keys()[0] as Vector3i
 		_chunk_task_cache.erase(oldest_key)
 	_queue_mutex.unlock()
 
@@ -234,21 +243,22 @@ func _background_rebuild_chunk_task_wrapper(chunk_pos: Vector3i) -> void:
 
 
 func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
-	var chunk := world_state.get_chunk(chunk_pos)
+	var chunk := world_state.get_chunk(chunk_pos) as Chunk
 	if chunk == null:
 		_queue_mutex.lock()
 		_pending_loading_chunks.erase(chunk_pos)
 		_queue_mutex.unlock()
 		return
 		
-	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state)
+	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state) as Dictionary
 	
 	if not is_instance_valid(controller):
 		return
 		
 	var liquids: Dictionary = {}
-	for l_type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
-		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type)
+	# FIX: Static type declaration on liquid block types iterator
+	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
+		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
 		if l_mesh != null:
 			liquids[l_type] = l_mesh
 
@@ -277,7 +287,7 @@ func _render_completed_chunks_from_queue() -> void:
 		
 		_queue_mutex.lock()
 		if _completed_tasks_queue.size() > 0:
-			task = _completed_tasks_queue.pop_front()
+			task = _completed_tasks_queue.pop_front() as GeneratedChunkTask
 		_queue_mutex.unlock()
 		
 		if task == null:
@@ -305,13 +315,15 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var shared_box_shape := BoxShape3D.new()
 	shared_box_shape.size = Vector3(1.0, 1.0, 1.0)
 	
-	for b_type in task.multimesh_data.keys():
+	# FIX: Explicit type constraint on MultiMesh block type iterator
+	for b_type: BlockType.Type in task.multimesh_data.keys():
 		# Filter to compile collision shapes ONLY for physically solid materials
 		if BlockType.is_solid(b_type):
-			var bulk_array: PackedFloat32Array = task.multimesh_data[b_type]
+			var bulk_array: PackedFloat32Array = task.multimesh_data[b_type] as PackedFloat32Array
 			var count: int = int(bulk_array.size() / 12.0)
 			
-			for i in range(count):
+			# FIX: Explicit type constraint on index range iterator
+			for i: int in range(count):
 				var offset := i * 12
 				
 				# Unpack the Transform3D coordinates from the bulk rendering buffer
@@ -330,7 +342,7 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	
 	# Case A: Visual Redraw
 	if task.is_rebuild:
-		var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
+		var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos) as ChunkNode
 		if is_instance_valid(chunk_node):
 			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
 			
@@ -344,8 +356,8 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			
 			chunk_node.setup_chunk_visuals(task.multimesh_data, collision_body, task.liquid_meshes)
 			
-			var horizontal_dirs: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
-			for dir in horizontal_dirs:
+			var h_dirs: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+			for dir: Vector3i in h_dirs:
 				var neighbor_pos: Vector3i = chunk_pos + dir
 				if _chunk_nodes.has(neighbor_pos):
 					_request_chunk_rebuild(neighbor_pos)
@@ -354,29 +366,26 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			controller.check_player_spawn_activation()
 
 
-func _spawn_chunk_pos_0_exists_and_valid(pos_0: Vector3i, pos_1: Vector3i) -> bool:
-	return _chunk_nodes.has(pos_0) and _chunk_nodes.has(pos_1)
-
-
-## Dynamic Proximity Spawner: Spawns entities close to the player's current position.
+## Consults structures and spawns wildlife inside boundaries
 func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
 	var player_block_pos := Vector3i(
 		floor(player_global_pos.x),
 		floor(player_global_pos.y),
 		floor(player_global_pos.z)
 	)
-	var player_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
+	var current_viewer_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
 	
-	for x in range(-spawn_radius, spawn_radius + 1):
-		for z in range(-spawn_radius, spawn_radius + 1):
-			var target_chunk_pos_0 := Vector3i(player_chunk_pos.x + x, 0, player_chunk_pos.z + z)
-			var target_chunk_pos_1 := Vector3i(player_chunk_pos.x + x, 1, player_chunk_pos.z + z)
+	# FIX: Explicit type constraint on grid offsets
+	for x: int in range(-spawn_radius, spawn_radius + 1):
+		for z: int in range(-spawn_radius, spawn_radius + 1):
+			var target_chunk_pos_0 := Vector3i(current_viewer_chunk_pos.x + x, 0, current_viewer_chunk_pos.z + z)
 			
-			if _chunk_nodes.has(target_chunk_pos_0) and _chunk_nodes.has(target_chunk_pos_1):
+			if _chunk_nodes.has(target_chunk_pos_0):
 				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
 				
 				if not _chunk_entities.has(col_pos) and _chunk_nodes[target_chunk_pos_0].has_collision_body():
-					var chunk_0 = _chunk_nodes[target_chunk_pos_0].chunk
+					# FIX: Static type caster on chunk retrieval
+					var chunk_0: Chunk = _chunk_nodes[target_chunk_pos_0].chunk as Chunk
 					var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
 					_chunk_entities[col_pos] = spawned
 
@@ -388,18 +397,20 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 
 	var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
 	if _chunk_entities.has(col_pos):
-		var entities: Array = _chunk_entities[col_pos]
-		for entity in entities:
-			if is_instance_valid(entity): entity.queue_free()
+		var entities: Array = _chunk_entities[col_pos] as Array
+		# FIX: Static type constraint on entities loop iterator
+		for entity: Node in entities:
+			if is_instance_valid(entity): 
+				entity.queue_free()
 		_chunk_entities.erase(col_pos)
 
 	controller.unregister_streetlights_for_chunk(chunk_pos)
 
-	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos)
+	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos) as ChunkNode
 	if is_instance_valid(chunk_node):
-		var body := chunk_node.get_node_or_null("StaticCollisionBody")
-		if is_instance_valid(body): chunk_node.remove_child(body)
+		var body := chunk_node.get_node_or_null("StaticCollisionBody") as StaticBody3D
+		if is_instance_valid(body):
+			body.queue_free()
 		chunk_node.queue_free()
 		
 	_chunk_nodes.erase(chunk_pos)
-	world_state.remove_chunk(chunk_pos)

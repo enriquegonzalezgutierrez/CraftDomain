@@ -7,7 +7,10 @@
 #              outside the castle gates when "Plains Defender" is active!
 #              COLLISION VOID FIX: Adjusted Zombie coordinate strictly to Chunk 13 
 #              to prevent it from falling through unloaded collision bounds.
-# Author: Enrique González Gutiérrez
+#              BUG FIX (i18n): Replaced hardcoded name string with localized 
+#              translation keys to maintain strict multi-language support.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/MegaStructures/GrandCastleMegaStructure.gd
 # ==============================================================================
 class_name GrandCastleMegaStructure
 extends IMegaStructure
@@ -16,8 +19,11 @@ func _init() -> void:
 	global_center = Vector2i(200, 200) 
 	bounds_size = Vector2i(60, 60)
 
+
+## Concrete Implementation: Returns the translation key representing this landmark
 func get_name() -> String:
-	return "The Grand Stone Castle"
+	return "STRUCTURE_GRAND_CASTLE"
+
 
 func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 	var base_y: int = 12
@@ -122,6 +128,7 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 				for sx in range(-1, 2):
 					for sz in range(-1, 2):
 						set_global_block(chunk, offset, gx + sx, base_y + 3, gz + sz, BlockType.Type.LEAVES)
+
 
 ## Spawns inhabitants directly into the castle's specific chunks!
 func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:

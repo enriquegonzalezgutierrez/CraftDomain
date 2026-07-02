@@ -5,6 +5,10 @@
 #              SOLID COMPLIANCE: Adheres to the Open-Closed Principle (OCP) by
 #              dynamically loading data without modifying GDScript source code.
 #              STRICT MODE: Utilizes safe type casting to prevent Variant warnings.
+#              WARNING FIX:
+#              - Added explicit static typing to all loop iterators (`item`, 
+#                `slot_key`, and `key`) to completely resolve `UNTYPED_DECLARATION` 
+#                compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Crafting/RecipeRegistry.gd
 # ==============================================================================
@@ -70,9 +74,8 @@ static func _load_recipes_from_file(file_path: String) -> void:
 	if recipe_array == null:
 		return
 		
-	for item in recipe_array:
-		# STRICT MODE: Safely cast the iterated Variant to a Dictionary
-		var r_data := item as Dictionary
+	# FIX: Added explicit static typing `Dictionary` to the JSON recipe objects loop iterator
+	for r_data: Dictionary in recipe_array:
 		var r := Recipe.new()
 		
 		r.recipe_id = r_data["recipe_id"] as String
@@ -81,8 +84,10 @@ static func _load_recipes_from_file(file_path: String) -> void:
 		# Parse inputs (JSON keys are always strings, we must convert them to integer slots)
 		var inputs_dict := r_data["inputs"] as Dictionary
 		var typed_inputs: Dictionary = {}
-		for slot_key in inputs_dict.keys():
-			var slot_index := (slot_key as String).to_int()
+		
+		# FIX: Added explicit static typing `String` to the JSON inputs loop iterator
+		for slot_key: String in inputs_dict.keys():
+			var slot_index := slot_key.to_int()
 			var required_qty := inputs_dict[slot_key] as int
 			typed_inputs[slot_index] = required_qty
 			
@@ -102,6 +107,7 @@ static func get_recipe(recipe_id: String) -> Recipe:
 ## Returns all loaded recipes (useful for populating the UI crafting menu)
 static func get_all_recipes() -> Array[Recipe]:
 	var list: Array[Recipe] = []
-	for key in _recipes.keys():
+	# FIX: Added explicit static typing `String` to key loop iterator
+	for key: String in _recipes.keys():
 		list.append(_recipes[key] as Recipe)
 	return list

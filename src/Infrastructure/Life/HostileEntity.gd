@@ -4,7 +4,13 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates hostile AI behaviors,
 #                chase tracking, and combat cooldowns.
-#              BUG FIX (DEAD CODE): Removed legacy UI calls to `_sync_hud_counters`.
+#              DEATH OVERHAUL UPGRADE:
+#              - Replaced immediate queue_free() deletion with a unified shrinking 
+#                and spinning death animation, accompanied by GPU smoke particles.
+#              WARNING FIX:
+#              - Added explicit static typing to all parameters, loop iterators 
+#                (`mat`, `child`), and intermediate variables (`bubble`, `world_node`) 
+#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -99,9 +105,10 @@ func _locate_player() -> void:
 func _setup_quest_bubble() -> void:
 	var active_q := QuestService.get_active_quest()
 	if active_q != null and active_q.quest_id == "plains_defender":
-		var sb_script: Script = load("res://src/Infrastructure/UI/SpeechBubble.gd")
+		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
 		if sb_script != null:
-			var bubble = sb_script.new() as Node3D
+			# FIX: Explicit static typing on custom Node3D speech bubble
+			var bubble: Node3D = sb_script.new() as Node3D
 			add_child(bubble)
 			bubble.call("set_text", "☠️ [ TARGET MONSTER ] ☠️")
 
@@ -160,7 +167,8 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 
 
 func _flash_red() -> void:
-	for mat in _visual_materials:
+	# FIX: Explicit static typing on ORMMaterial3D loop iterator
+	for mat: ORMMaterial3D in _visual_materials:
 		mat.emission_enabled = true
 		mat.emission = Color(0.8, 0.0, 0.0) # Red glow
 		
@@ -168,7 +176,8 @@ func _flash_red() -> void:
 
 
 func _reset_damage_flash() -> void:
-	for mat in _visual_materials:
+	# FIX: Explicit static typing on ORMMaterial3D loop iterator
+	for mat: ORMMaterial3D in _visual_materials:
 		if is_instance_valid(mat):
 			mat.emission_enabled = false
 
@@ -181,26 +190,27 @@ func _on_domain_entity_died() -> void:
 	
 	# 1. Disable physics
 	set_physics_process(false)
-	var col := get_node_or_null("ZombieCollider")
-	if is_instance_valid(col): col.queue_free()
+	var col := get_node_or_null("ZombieCollider") as CollisionShape3D
+	if is_instance_valid(col): 
+		col.queue_free()
 	
 	# 2. Grant rewards
 	if is_instance_valid(player):
 		var inv := player.get("inventory") as IInventory
 		if is_instance_valid(inv):
-			inv.add_item(15, 1) # Grants 1x Lava Bucket safely
+			var _un1 := inv.add_item(15, 1) # Grants 1x Lava Bucket safely
 			
 			var active_q := QuestService.get_active_quest()
 			if active_q != null and active_q.quest_id == "plains_defender":
-				inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
+				var _un2 := inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
 				QuestService.complete_active_quest(player)
-				
+			
 	# 3. Spawn death smoke particles
 	_spawn_death_particles()
 	
 	# 4. Play a quick spinning/shrinking animation before deleting
 	var death_tween := create_tween().set_parallel(true)
-	var visuals_node: Node3D = get_node("Visuals")
+	var visuals_node: Node3D = get_node("Visuals") as Node3D
 	if is_instance_valid(visuals_node):
 		death_tween.tween_property(visuals_node, "scale", Vector3.ZERO, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 		death_tween.tween_property(visuals_node, "rotation:y", deg_to_rad(180), 0.25).set_trans(Tween.TRANS_SINE)
@@ -236,7 +246,7 @@ func _spawn_death_particles() -> void:
 	mesh.material = mat
 	particles.draw_pass_1 = mesh
 	
-	var world_node = get_parent()
+	var world_node := get_parent() as Node
 	if is_instance_valid(world_node):
 		world_node.add_child(particles)
 		particles.global_position = global_position + Vector3(0, 0.5, 0)
@@ -245,7 +255,7 @@ func _spawn_death_particles() -> void:
 
 
 # ==============================================================================
-# MAIN PROCESSING LOOPS
+# MAIN PHYSICS CALCULATIONS
 # ==============================================================================
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
@@ -278,7 +288,7 @@ func _process_ai_intelligence(delta: float) -> void:
 			_wander_timer = randf_range(1.0, 3.0)
 			
 	var is_player_trackable: bool = false
-	if is_instance_valid(player) and player.get("is_active"):
+	if is_instance_valid(player) and player.get("is_active") as bool:
 		if global_position.distance_to(player.global_position) < CHASE_RANGE:
 			_is_wandering = true
 			_wander_direction = (player.global_position - global_position).normalized()
@@ -298,7 +308,7 @@ func _process_ai_intelligence(delta: float) -> void:
 		velocity.x = _wander_direction.x * speed_mult
 		velocity.z = _wander_direction.z * speed_mult
 		
-		var visuals_node: Node3D = get_node("Visuals")
+		var visuals_node: Node3D = get_node("Visuals") as Node3D
 		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
 			var target_look_at: Vector3 = global_position + _wander_direction
 			if not global_position.is_equal_approx(target_look_at):

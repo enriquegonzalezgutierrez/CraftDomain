@@ -7,6 +7,10 @@
 #                fully satisfies all base physics and signals.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
+#              WARNING FIX:
+#              - Added explicit static typing to all local variables and references
+#                (including `world_controller_ref`, `generator`, and `terrain_noise`) 
+#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
@@ -95,7 +99,7 @@ func _build_custom_torso_robe(biome_id: int, base_color: Color, accessory_color:
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.06, 0.47), Vector3(0, 0.45, 0), Color(0.95, 0.0, 0.95)) # Magenta stripe
 		8: # Swamp of Sighs (Murky Mud robes)
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.28, 0.22, 0.15)) # Mud brown
-			visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.18, 0.47), Vector3(0, 0.32, 0), Color(0.18, 0.15, 0.12)) # Dark patches
+			visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.18, 0.48), Vector3(0, 0.32, 0), Color(0.18, 0.15, 0.12)) # Dark patches
 		9: # Cloud Kingdom (Sky Clouds Tunic)
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.95, 0.98, 1.0)) # Cloud white
 			visual_component.create_box(visual_component.body_bob_node, Vector3(0.48, 0.15, 0.48), Vector3(0, 0.80, 0), Color(1.0, 0.98, 0.85)) # Light gold trim
@@ -149,7 +153,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		
 		var hud := player_node.get("hud") as PlayerHUD
 		if is_instance_valid(hud):
-			hud.open_dialogue(complete_node, "Villager", self)
+			hud.open_dialogue(complete_node, "NPC_NAME_VILLAGER", self)
 	else:
 		# Standard procedural dialogue routing
 		var hud := player_node.get("hud") as PlayerHUD
@@ -158,7 +162,7 @@ func interact(player_node: CharacterBody3D) -> void:
 			intro_node.node_id = "villager_intro_temp"
 			intro_node.text = _select_procedural_greeting_key()
 			
-			hud.open_dialogue(intro_node, "Villager", self)
+			hud.open_dialogue(intro_node, "NPC_NAME_VILLAGER", self)
 
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
@@ -196,13 +200,16 @@ func _setup_floating_bubble() -> void:
 
 ## Queries coordinate biomes.
 func _detect_current_biome() -> int:
-	var world_controller_ref = get_parent()
+	# FIX: Explicit static typing on world controller node reference
+	var world_controller_ref: Node = get_parent() as Node
 	var default_biome_id: int = 2
 	
 	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		var generator = world_controller_ref.get("generator")
+		# FIX: Explicit static typing on world generator reference
+		var generator: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
 		if generator != null:
-			var terrain_noise = generator.get("_terrain_noise")
+			# FIX: Explicit static typing on terrain noise provider
+			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
 				var profile := BiomeService.evaluate_coordinate(
 					int(round(global_position.x)), 

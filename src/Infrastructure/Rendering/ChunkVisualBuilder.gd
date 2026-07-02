@@ -1,16 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure Rendering Service responsible for evaluating raw
+# Description: Description: Infrastructure Rendering Service responsible for evaluating raw
 #              domain chunks and compiling their physical and visual transformation
 #              data for rendering.
-#              PERFORMANCE UPGRADE: 
-#              - Implemented robust Occlusion Culling to eliminate hidden geometry.
-#              - Pre-caching neighbor chunks for ultra-fast boundary lookups.
-#              - Memory packing (PackedFloat32Array) offloaded to the background 
-#                thread to prevent main-thread stuttering (GC Spikes).
-#              - Optimized collision generation by exporting exposed faces as a single
-#                merged vertex array (PackedVector3Array) for ConcavePolygonShape3D.
-#              FIXED: Removed shadowed 'local_pos' declaration to clear compiler warnings.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Only handles world carving rules.
+#              WARNING FIX:
+#              - Added explicit static typing to all loop iterators (including `b_type`, 
+#                `x`, `y`, `z`, `dir`, and `i`) to prevent all potential 
+#                `UNTYPED_DECLARATION` warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkVisualBuilder.gd
 # ==============================================================================
@@ -50,9 +48,10 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState) -> Dictio
 		Vector3i(0, 0, -1): world_state.get_chunk(chunk.position + Vector3i(0, 0, -1))
 	}
 	
-	for x in range(Chunk.SIZE):
-		for y in range(Chunk.SIZE):
-			for z in range(Chunk.SIZE):
+	# FIX: Added explicit static typing to spatial iterators
+	for x: int in range(Chunk.SIZE):
+		for y: int in range(Chunk.SIZE):
+			for z: int in range(Chunk.SIZE):
 				var block_type: BlockType.Type = chunk.get_block(x, y, z)
 				
 				# Skip air and dynamically meshed liquids
@@ -62,7 +61,8 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState) -> Dictio
 				var local_pos := Vector3(x, y, z)
 				var is_exposed: bool = false
 				
-				for dir in DIRECTIONS:
+				# FIX: Explicit static typing on directional iterators
+				for dir: Vector3i in DIRECTIONS:
 					var nx: int = x + dir.x
 					var ny: int = y + dir.y
 					var nz: int = z + dir.z
@@ -122,15 +122,17 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState) -> Dictio
 	# BACKGROUND THREAD MEMORY PACKING
 	# ======================================================================
 	var final_multimesh_data: Dictionary = {}
-	for b_type in render_data.keys():
-		var transforms: Array = render_data[b_type]
+	# FIX: Explicit type constraint on BlockType key iterator
+	for b_type: BlockType.Type in render_data.keys():
+		var transforms: Array = render_data[b_type] as Array
 		var count: int = transforms.size()
 		
 		var bulk_array := PackedFloat32Array()
 		bulk_array.resize(count * 12)
 		
-		for i in range(count):
-			var t: Transform3D = transforms[i]
+		# FIX: Explicit type constraint on index range iterator
+		for i: int in range(count):
+			var t: Transform3D = transforms[i] as Transform3D
 			var offset := i * 12
 			bulk_array[offset + 0] = t.basis.x.x
 			bulk_array[offset + 1] = t.basis.y.x

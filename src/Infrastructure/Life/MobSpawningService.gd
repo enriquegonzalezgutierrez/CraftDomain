@@ -8,11 +8,10 @@
 #              - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
 #                population registry, removing hardcoded match maps.
 #              - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome.
-#              FIXED:
-#              - Restricted _get_ground_surface_y to ignore foliage tree canopies
-#                and spawn animals exclusively on true floor-like blocks (Grass, Dirt, etc.).
-#              - Replaced the blind 11.0 fallback with a -1.0 sentinel abort check,
-#                completely preventing NPCs from spawning buried underground.
+#              WARNING FIX:
+#              - Added explicit static typing to all retrieval and loop variables 
+#                (including `generator`, `terrain_noise`, `profile`, and `edata`) 
+#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -28,14 +27,19 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 	
 	var is_real_village: bool = false
 	var active_biome_id: int = 2 # Default Golden Bazaar plains
-	var generator = world_node.get("generator")
+	
+	# FIX: Explicit static typing on intermediate generator variable
+	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator
 	
 	if is_instance_valid(generator):
-		var terrain_noise = generator.get("_terrain_noise")
+		# FIX: Explicit static typing on terrain noise provider
+		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if terrain_noise != null:
 			var center_x := chunk_pos.x * Chunk.SIZE + 8
 			var center_z := chunk_pos.z * Chunk.SIZE + 8
-			var profile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise)
+			
+			# FIX: Explicit static typing on evaluated biome profile
+			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
 			is_real_village = (profile.landmark_id == 3)
 			active_biome_id = profile.biome_id
 
@@ -70,9 +74,10 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 
 	# 3. Global Mega-Structure spawns (Castle Guards, Harbor Merchants, etc.)
 	var mega_entities := MegaStructureService.get_entities_for_chunk(chunk_pos)
-	for edata in mega_entities:
-		var mob_id: int = edata["mob_id"]
-		var exact_pos: Vector3 = edata["pos"]
+	# FIX: Explicit static typing on Dictionary elements loop iterator
+	for edata: Dictionary in mega_entities:
+		var mob_id: int = edata["mob_id"] as int
+		var exact_pos: Vector3 = edata["pos"] as Vector3
 		
 		if MobRegistry.has_mob(mob_id):
 			var entity: Node = MobRegistry.create_mob(mob_id, exact_pos)
@@ -99,7 +104,8 @@ func _spawn_and_register_entity(mob_id: int, offset: Vector3, lx: float, lz: flo
 		world_node.add_child(entity)
 		list.append(entity)
 		if quest_sync_id != "":
-			var quest := QuestService.get_quest(quest_sync_id)
+			# FIX: Explicit static typing on synced quest objects
+			var quest: Quest = QuestService.get_quest(quest_sync_id) as Quest
 			if quest != null:
 				quest.target_position = pos
 

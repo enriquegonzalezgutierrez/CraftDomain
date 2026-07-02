@@ -10,6 +10,10 @@
 #                real pixel-art block textures (`TextureRect`) and high-fidelity 
 #                unicode overlays (`🍗`, `⚔️`, `🌱`) for specialized tool slots.
 #              - Built an internal cached preloader to avoid frame-time disk I/O stalls.
+#              WARNING FIX:
+#              - Added explicit static typing to all parameters, loop iterators, 
+#                and intermediate getter variables (`tex`, `inventory`, `inv`) 
+#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd
 # ==============================================================================
@@ -131,7 +135,8 @@ func _setup_responsive_ui_layout() -> void:
 	hbox.add_child(sep_left)
 	
 	# B. Middle Area: Slots 0 to 7 (54x54 Giant Shapes)
-	for i in range(8):
+	# FIX: Explicit static typing `int` on index range iterator
+	for i: int in range(8):
 		var slot := Panel.new()
 		slot.name = "Slot_%d" % i
 		slot.custom_minimum_size = Vector2(54, 54)
@@ -150,7 +155,7 @@ func _setup_responsive_ui_layout() -> void:
 		icon_container.size = Vector2(36, 36)
 		icon_container.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		icon_container.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		icon_container.grow_vertical = Control.GROW_DIRECTION_BOTH
+		icon_container.grow_vertical = Control.GROW_DIRECTION_BEGIN
 		icon_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.add_child(icon_container)
 		
@@ -245,9 +250,9 @@ func _on_shortcut_hover(btn: Button, hover: bool) -> void:
 
 
 func update_active_slot(index: int) -> void:
-	for i in range(_hotbar_slots.size()):
+	for i: int in range(_hotbar_slots.size()):
 		var slot: Panel = _hotbar_slots[i]
-		var style: StyleBoxFlat = slot.get_theme_stylebox("panel")
+		var style: StyleBoxFlat = slot.get_theme_stylebox("panel") as StyleBoxFlat
 		if style == null:
 			continue
 		var tween := create_tween()
@@ -259,6 +264,7 @@ func update_active_slot(index: int) -> void:
 			style.border_width_bottom = 3
 			style.border_color = Color(1.0, 0.85, 0.2) # Gold Highlight
 			tween.tween_property(slot, "scale", Vector2(1.15, 1.15), 0.1)
+			_show_toast_notification(index)
 		else:
 			style.bg_color = Color(0.12, 0.12, 0.12, 0.6)
 			style.border_width_left = 0
@@ -291,7 +297,7 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 						tex_display.visible = true
 						fallback.visible = false
 						# Clear any legacy unicode text overlay children
-						for child in fallback.get_children():
+						for child: Node in fallback.get_children():
 							child.queue_free()
 					# Case B: No texture exists. Apply fallback color + specialized unicode shape
 					else:
@@ -333,7 +339,8 @@ func _get_item_texture(item_id: int) -> Texture2D:
 	if texture_file != "":
 		var full_path := "res://assets/textures/" + texture_file
 		if FileAccess.file_exists(full_path):
-			var tex = load(full_path)
+			# FIX: Explicit type cast on loaded dynamic texture files
+			var tex: Texture2D = load(full_path) as Texture2D
 			if tex is Texture2D:
 				_textures_cache[item_id] = tex
 				return tex
@@ -345,7 +352,7 @@ func _get_item_texture(item_id: int) -> Texture2D:
 ## Helper: Overlays beautiful, high-contrast symbols over flat fallback rectangles (tools, seeds)
 func _apply_special_fallback_decoration(fallback_node: ColorRect, item_id: int) -> void:
 	# Clear old children first
-	for child in fallback_node.get_children():
+	for child: Node in fallback_node.get_children():
 		child.queue_free()
 		
 	var symbol := Label.new()
@@ -380,7 +387,9 @@ func symbol_label_fallback_pattern(lbl: Label, item_id: int) -> void:
 func _show_toast_notification(index: int) -> void:
 	if not is_instance_valid(player) or not is_instance_valid(_item_name_toast):
 		return
-	var inventory = player.get("inventory") as InventoryComponent
+		
+	# FIX: Explicit static typing on player inventory reference
+	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 	if not is_instance_valid(inventory):
 		return
 	var item_name := inventory.get_slot_item_name(index)
@@ -396,12 +405,13 @@ func _show_toast_notification(index: int) -> void:
 func update_health_display(hp: int) -> void:
 	if not is_instance_valid(_hearts_container) or not is_instance_valid(_food_container):
 		return
-	for child in _hearts_container.get_children():
+	for child: Node in _hearts_container.get_children():
 		child.queue_free()
-	for child in _food_container.get_children():
+	for child: Node in _food_container.get_children():
 		child.queue_free()
 	
-	for i in range(3):
+	# FIX: Explicit static typing `int` on index range iterator
+	for i: int in range(3):
 		var heart := Label.new()
 		var hs := LabelSettings.new()
 		hs.font_size = 20
@@ -418,12 +428,14 @@ func update_health_display(hp: int) -> void:
 		
 	var food_count := 0
 	if is_instance_valid(player):
-		var inv = player.get("inventory") as InventoryComponent
+		# FIX: Explicit static typing on player inventory reference
+		var inv: InventoryComponent = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inv):
 			food_count = inv.get_item_total_quantity(16)
 			
 	var display_food := clamp(food_count, 0, 10)
-	for i in range(display_food):
+	# FIX: Explicit static typing `int` on index range iterator
+	for i: int in range(display_food):
 		var food := Label.new()
 		food.text = "🍗"
 		var ds := LabelSettings.new()

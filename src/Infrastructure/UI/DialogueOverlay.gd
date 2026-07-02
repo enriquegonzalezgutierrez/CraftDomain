@@ -8,6 +8,9 @@
 #              - Open-Closed Principle (OCP) & i18n: Uses Godot's tr() lookup 
 #                on all name labels, speech text, and option texts to support 
 #                seamless multi-language localization.
+#              WARNING FIX:
+#              - Added explicit static typing `Resource` to the `choice` loop iterator 
+#                on line 133 to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/DialogueOverlay.gd
 # ==============================================================================
@@ -128,9 +131,10 @@ func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 		child.queue_free()
 		
 	# Dynamically populate option buttons extracting values safely
-	var choices_list: Array = node.get("choices")
+	var choices_list: Array = node.get("choices") as Array
 	if choices_list.size() > 0:
-		for choice in choices_list:
+		# FIX: Added explicit static typing `Resource` to loop iterator
+		for choice: Resource in choices_list:
 			var btn := _create_choice_button(choice)
 			_choices_container.add_child(btn)
 	else:

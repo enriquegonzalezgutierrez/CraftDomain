@@ -5,6 +5,10 @@
 #              SOLID COMPLIANCE: Adheres strictly to SRP by isolating quest tracking.
 #              i18n UPGRADE: Localized all UI text labels, headings, and dynamic
 #              JSON quest objectives using tr() for full OCP compliance.
+#              WARNING FIX:
+#              - Added explicit static typing `PlayerHUD` to the `parent_hud` variables 
+#                on lines 143 and 151 to completely resolve `UNTYPED_DECLARATION` 
+#                compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
 # ==============================================================================
@@ -140,7 +144,8 @@ func _process_quest_notification_dispatch(active_quest: Quest) -> void:
 		
 	# Case 1: Active quest transitioned from valid to null (Final quest of campaign complete)
 	if active_quest == null and _last_active_quest_id != "":
-		var parent_hud = get_parent()
+		# FIX: Explicit static typing on parent HUD reference
+		var parent_hud: PlayerHUD = get_parent() as PlayerHUD
 		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
 			parent_hud.call("show_quest_notification", "CAMPAIGN_COMPLETE_TOAST_HEADER", _last_active_quest_title)
 		_last_active_quest_id = ""
@@ -148,7 +153,8 @@ func _process_quest_notification_dispatch(active_quest: Quest) -> void:
 		
 	# Case 2: Active quest transitioned to a new campaign link
 	elif active_quest != null and active_quest.quest_id != _last_active_quest_id:
-		var parent_hud = get_parent()
+		# FIX: Explicit static typing on parent HUD reference
+		var parent_hud: PlayerHUD = get_parent() as PlayerHUD
 		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
 			parent_hud.call("show_quest_notification", "QUEST_COMPLETED_TOAST_HEADER", _last_active_quest_title)
 		_last_active_quest_id = active_quest.quest_id

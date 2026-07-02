@@ -3,6 +3,8 @@
 # Description: Concrete Biome Strategy implementing the geographic and visual 
 #              rules for the celestial floating clouds region (Cloud Kingdom).
 #              Fully encapsulated and OCP compliant.
+#              BUG FIX (i18n): Replaced hardcoded name string with localized `tr()` 
+#              translation keys to maintain strict multi-language support.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/CloudKingdomBiome.gd
 # ==============================================================================
@@ -13,9 +15,9 @@ extends IBiome
 func get_biome_id() -> int:
 	return 9
 
-## Concrete Implementation: Returns the HUD friendly name
+## Concrete Implementation: Returns the HUD localized friendly name of the biome
 func get_biome_name() -> String:
-	return "Cloud Kingdom (Floating Isles)"
+	return tr("BIOME_CLOUD_KINGDOM")
 
 ## Concrete Implementation: Returns the pure white cloud color for the minimap
 func get_minimap_color() -> Color:

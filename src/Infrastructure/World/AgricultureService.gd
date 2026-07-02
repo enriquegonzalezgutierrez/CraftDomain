@@ -4,7 +4,10 @@
 #              growth dynamics across all loaded chunks.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating farming tick algorithms.
-#              i18n UPGRADE: Uses clean dynamic proxy calls to retrieve active nodes.
+#              WARNING FIX:
+#              - Added explicit static typing to all loop iterators (including `chunk_pos` 
+#                and `i`) to completely resolve `UNTYPED_DECLARATION` 
+#                compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/AgricultureService.gd
 # ==============================================================================
@@ -36,17 +39,19 @@ func _execute_random_crop_ticks() -> void:
 		return
 		
 	# Fetch the active renderable chunk nodes list dynamically via clean SRP API
-	var active_nodes: Dictionary = world_controller.call("get_active_chunk_nodes")
+	var active_nodes: Dictionary = world_controller.call("get_active_chunk_nodes") as Dictionary
 	if active_nodes.is_empty():
 		return
 		
-	for chunk_pos in active_nodes.keys():
-		var chunk_node: ChunkNode = active_nodes[chunk_pos]
+	# FIX: Explicit static typing `Vector3i` on chunk coordinate keys loop iterator
+	for chunk_pos: Vector3i in active_nodes.keys():
+		var chunk_node: ChunkNode = active_nodes[chunk_pos] as ChunkNode
 		if not is_instance_valid(chunk_node) or chunk_node.chunk == null:
 			continue
 			
 		# Perform exactly 3 random voxel evaluations per active chunk
-		for i in range(3):
+		# FIX: Explicit static typing `int` on index range iterator
+		for i: int in range(3):
 			var rx := randi() % Chunk.SIZE
 			var ry := randi() % Chunk.SIZE
 			var rz := randi() % Chunk.SIZE

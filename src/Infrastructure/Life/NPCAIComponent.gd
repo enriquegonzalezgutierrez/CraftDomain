@@ -7,6 +7,10 @@
 #                and scanning logic from the physical and visual entity wrapper.
 #              - Dependency Inversion Principle (DIP): Controls movements on 
 #                general CharacterBody3D hosts using abstract vectors.
+#              WARNING FIX:
+#              - Added explicit static typing to all loop iterators (`child`) and 
+#                retrieved variables (`zombie_entity`, `ai_comp`) to completely resolve 
+#                `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/NPCAIComponent.gd
 # ==============================================================================
@@ -76,7 +80,7 @@ func process_ai(delta: float) -> void:
 	if is_instance_valid(player_node):
 		distance_to_player = _host.global_position.distance_to(player_node.global_position)
 		
-	var can_socialize: bool = _host.has_method("_can_socialize") and _host.call("_can_socialize")
+	var can_socialize: bool = _host.has_method("_can_socialize") and _host.call("_can_socialize") as bool
 	
 	if can_socialize and current_task != TaskState.PANIC:
 		if distance_to_player <= GREET_DISTANCE:
@@ -110,7 +114,7 @@ func process_ai(delta: float) -> void:
 
 ## Evasion: Calculates and applies velocities to the parent host based on task states.
 func _apply_movement_vectors() -> void:
-	var base_speed: float = _host.get("BASE_SPEED") if "BASE_SPEED" in _host else 1.3
+	var base_speed: float = _host.get("BASE_SPEED") as float if "BASE_SPEED" in _host else 1.3
 	
 	match current_task:
 		TaskState.IDLE, TaskState.GREETING, TaskState.CHATTIING:
@@ -142,7 +146,7 @@ func _process_movement_avoidance(delta: float) -> void:
 		
 	if _host.is_on_wall():
 		if _host.is_on_floor():
-			var jump_vel: float = _host.get("JUMP_VELOCITY") if "JUMP_VELOCITY" in _host else 5.0
+			var jump_vel: float = _host.get("JUMP_VELOCITY") as float if "JUMP_VELOCITY" in _host else 5.0
 			_host.velocity.y = jump_vel
 			
 		stuck_timer += delta
@@ -185,14 +189,16 @@ func _detect_closest_zombie_threat() -> Node3D:
 	var closest_zombie: Node3D = null
 	var min_dist := SIGHT_RANGE
 	
-	for child in world_node.get_children():
+	# FIX: Explicit static typing on child nodes iteration
+	for child: Node in world_node.get_children():
 		if child.name.contains("ZOMBIE") and is_instance_valid(child):
-			var zombie_entity = child.get("domain_entity")
+			# FIX: Explicit static typing on VoxelEntity domain data reference
+			var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
 			if zombie_entity != null and not zombie_entity.is_dead:
 				var dist := _host.global_position.distance_to(child.global_position)
 				if dist < min_dist:
 					min_dist = dist
-					closest_zombie = child
+					closest_zombie = child as Node3D
 					
 	return closest_zombie
 
@@ -205,15 +211,17 @@ func _detect_closest_peer_npc() -> Node3D:
 	var closest_peer: Node3D = null
 	var min_dist := SOCIAL_RANGE
 	
-	for child in world_node.get_children():
+	# FIX: Explicit static typing on child nodes iteration
+	for child: Node in world_node.get_children():
 		if child != _host and child is PassiveEntity and is_instance_valid(child):
-			var ai_comp = child.get_node_or_null("NPCAIComponent")
+			# FIX: Explicit static typing on NPCAIComponent script reference
+			var ai_comp: NPCAIComponent = child.get_node_or_null("NPCAIComponent") as NPCAIComponent
 			if is_instance_valid(ai_comp):
 				var peer_state: TaskState = ai_comp.current_task
 				if peer_state == TaskState.IDLE or peer_state == TaskState.CHATTIING:
 					var dist := _host.global_position.distance_to(child.global_position)
 					if dist < min_dist:
 						min_dist = dist
-						closest_peer = child
+						closest_peer = child as Node3D
 						
 	return closest_peer
