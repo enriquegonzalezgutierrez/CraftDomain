@@ -4,11 +4,11 @@
 #              save metadata to the injected WorldRepository.
 #              SOLID COMPLIANCE: SRP compliant by isolating I/O serialization
 #              from SceneTree physics or game loop frames.
-#              FIXED: Added is_instance_valid check on the repository reference
-#              to prevent "previously freed" null assertion crashes upon game exit.
+#              UPDATED: Added extraction of celestial clock parameters from 
+#              CelestialService at runtime to preserve time of day and moon phases.
 #              WARNING FIX:
-#              - Added explicit static typing `Vector3i` to the `chunk_pos` loop iterator 
-#                on line 30 to completely resolve `UNTYPED_DECLARATION` compiler warnings.
+#              - Added explicit static typing `Node` to the dynamic `celestial` 
+#                variable to resolve the `UNTYPED_DECLARATION` warning.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldPersistenceService.gd
 # ==============================================================================
@@ -30,7 +30,6 @@ func save_game(player: CharacterBody3D, world_state: WorldState) -> void:
 	print("[WorldPersistenceService] Initiating asynchronous disk save sequence...")
 	
 	# 1. Save all tracked chunk modification deltas
-	# FIX: Added explicit static typing `Vector3i` to loop iterator
 	for chunk_pos: Vector3i in world_state._chunk_modifications.keys():
 		var modifications: Dictionary = world_state.get_chunk_modifications(chunk_pos)
 		repository.save_chunk_modifications(chunk_pos, modifications)
@@ -58,12 +57,26 @@ func save_game(player: CharacterBody3D, world_state: WorldState) -> void:
 				var noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 				if noise != null:
 					seed_val = noise.get("seed") as int
+		
+		# ---> CELESTIAL TIMELINE EXTRACTION <---
+		# Query CelestialService via the player's parent Bootstrap node (safe fallback)
+		var celestial_time := 0.5
+		var calendar_day := 14 # Default Full Moon
+		
+		var bootstrap := player.get_parent()
+		if is_instance_valid(bootstrap):
+			var celestial: Node = bootstrap.get_node_or_null("CelestialService") as Node
+			if is_instance_valid(celestial):
+				celestial_time = celestial.get("_current_time") as float
+				calendar_day = celestial.get("_calendar_days") as int
 				
 		repository.save_global_state(
 			player.global_position, 
 			player.rotation, 
 			seed_val,
 			inv_data,
-			active_q_id
+			active_q_id,
+			celestial_time,
+			calendar_day
 		)
 		print("[WorldPersistenceService] Atomic disk serialization finished.")

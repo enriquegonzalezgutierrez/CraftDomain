@@ -8,13 +8,14 @@
 #              - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
 #                population registry, removing hardcoded match maps.
 #              - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome.
+#              UPDATED:
+#              - Integrated the new 3D Streetlight Entity (ID 202) Spawning.
+#                Replaced the buggy voxel-based lamppost with robust 3D physical 
+#                entities. Spawns village lamps at caminos and organic wilderness 
+#                lamps scattered at safe ground levels in plains and forests.
 #              WARNING FIX:
-#              - Added explicit static typing to all retrieval and loop variables 
-#                (including `generator`, `terrain_noise`, `profile`, and `edata`) 
-#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
-#              BUG FIX (GOLEM PORT):
-#              - Configured the spawner to automatically generate one heavy 
-#                Iron Golem (107) in the center of every procedural village outpost.
+#              - Added explicit static typing `bool` to `should_spawn_organic_light` 
+#                variable to resolve the dynamic type inference warning.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -22,7 +23,7 @@ class_name MobSpawningService
 extends RefCounted
 
 
-## Spawns procedural wildlife and themed outpost populations inside a newly loaded chunk.
+## Spawns procedural wildlife, themed outposts, and physical streetlights inside a newly loaded chunk.
 func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
 	var entities_list: Array[Node] = []
 	var chunk_pos := chunk.position
@@ -31,17 +32,13 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 	var is_real_village: bool = false
 	var active_biome_id: int = 2 # Default Golden Bazaar plains
 	
-	# FIX: Explicit static typing on intermediate generator variable
 	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator
-	
 	if is_instance_valid(generator):
-		# FIX: Explicit static typing on terrain noise provider
 		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if terrain_noise != null:
 			var center_x := chunk_pos.x * Chunk.SIZE + 8
 			var center_z := chunk_pos.z * Chunk.SIZE + 8
 			
-			# FIX: Explicit static typing on evaluated biome profile
 			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
 			is_real_village = (profile.landmark_id == 3)
 			active_biome_id = profile.biome_id
@@ -55,32 +52,42 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 		# Loot chest spawns in all outposts
 		_spawn_and_register_entity(200, chunk_offset, 4.5, 8.5, world_state, world_node, entities_list, "")
 		
+		# ---> PHYSICAL 3D VILLAGE STREETLIGHT SPAWN <---
+		# Spawns 1 gorgeous, non-floating, 100% solid 3D Streetlight Entity (ID 202) at the road side
+		_spawn_and_register_entity(202, chunk_offset, 2.5, 10.5, world_state, world_node, entities_list, "")
+		
 		# DYNAMIC BIOME OUTPOST SPAWNING: Query population list from active Biome strategy
 		var biome := BiomeService.get_biome(active_biome_id)
 		if is_instance_valid(biome):
 			var population := biome.get_outpost_population_ids()
 			if population.size() >= 2:
-				# Slot 1: Primary specialized inhabitant (Farmer, Miner, Druid, Android)
 				_spawn_and_register_entity(population[0], chunk_offset, 2.5, 12.5, world_state, world_node, entities_list, "")
-				# Slot 2: Defensive protector (Guard, synced to Plains Defender quest)
 				_spawn_and_register_entity(population[1], chunk_offset, 10.5, 10.5, world_state, world_node, entities_list, "plains_defender")
 				
-		# --- MOVIE GOLEM OVERHAUL: Spawn a heavy, persistent Golem (107) to guard the village! ---
+		# Spawn a heavy, persistent Golem (107) to guard the village
 		_spawn_and_register_entity(107, chunk_offset, 12.5, 12.5, world_state, world_node, entities_list, "")
 			
-	# 2. Fauna Spawning (Sea Turtles paddle exclusively inside ocean bays)
-	var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2
-	if should_spawn_animal:
-		if active_biome_id == 0: # Bay of Sails (Spawn Ocean) -> Spawn exclusively Sea Turtles
-			_spawn_and_register_entity(201, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
-		else:
-			# Standard land fauna
-			var spawn_roll: int = int(abs(chunk_pos.x + chunk_pos.z)) % 4
-			_spawn_and_register_entity(spawn_roll, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
+	else:
+		# ---> PHYSICAL 3D ORGANIC WILDERNESS STREETLIGHT SPAWN <---
+		# If we are in civilized plains (2) or Redwood forest (5), we have a deterministic 
+		# 1/35 chance per chunk to spawn a majestic 3D lamppost exactly at safe ground levels
+		if active_biome_id == 2 or active_biome_id == 5:
+			# WARNING FIX: Explicit static typing as bool prevents compiler warnings
+			var should_spawn_organic_light: bool = (abs(chunk_pos.x) * 11 + abs(chunk_pos.z) * 17) % 35 == 3
+			if should_spawn_organic_light:
+				_spawn_and_register_entity(202, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
 
-	# 3. Global Mega-Structure spawns (Castle Guards, Harbor Merchants, etc.)
+		# Fauna Spawning (Sea Turtles paddle exclusively inside ocean bays)
+		var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2
+		if should_spawn_animal:
+			if active_biome_id == 0: # Bay of Sails (Spawn Ocean)
+				_spawn_and_register_entity(201, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
+			else:
+				var spawn_roll: int = int(abs(chunk_pos.x + chunk_pos.z)) % 4
+				_spawn_and_register_entity(spawn_roll, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
+
+	# 2. Global Mega-Structure spawns (Castle Guards, Harbor Merchants, etc.)
 	var mega_entities := MegaStructureService.get_entities_for_chunk(chunk_pos)
-	# FIX: Explicit static typing on Dictionary elements loop iterator
 	for edata: Dictionary in mega_entities:
 		var mob_id: int = edata["mob_id"] as int
 		var exact_pos: Vector3 = edata["pos"] as Vector3
@@ -90,7 +97,6 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			if entity != null:
 				world_node.add_child(entity)
 				entities_list.append(entity)
-				print("[MobSpawningService] Spawned MegaStructure NPC (ID:", mob_id, ") at ", exact_pos)
 
 	return entities_list
 
@@ -110,7 +116,6 @@ func _spawn_and_register_entity(mob_id: int, offset: Vector3, lx: float, lz: flo
 		world_node.add_child(entity)
 		list.append(entity)
 		if quest_sync_id != "":
-			# FIX: Explicit static typing on synced quest objects
 			var quest: Quest = QuestService.get_quest(quest_sync_id) as Quest
 			if quest != null:
 				quest.target_position = pos

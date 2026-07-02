@@ -4,7 +4,8 @@
 #              for world chunks and player persistence, keeping domain logic
 #              independent of disk serialization methods.
 #              UPDATED: Added contracts to support saving and loading player 
-#              inventory quantities and active campaign quest states.
+#              inventory quantities, active campaign quest states, celestial time,
+#              and the current calendar day to persist moon phases.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldRepository.gd
 # ==============================================================================
@@ -22,12 +23,21 @@ func load_chunk_modifications(_chunk_pos: Vector3i) -> Dictionary:
 	assert(false, "[WorldRepository] load_chunk_modifications() must be implemented by concrete subclass.")
 	return {}
 
-## Abstract contract: Saves global metadata (coordinates, rotation, world seed, inventory state, and active quest).
-func save_global_state(_player_pos: Vector3, _player_rot: Vector3, _seed_val: int, _inventory_quantities: Array = [], _active_quest_id: String = "") -> void:
+## Abstract contract: Saves global metadata (coordinates, rotation, world seed, inventory, quests, time).
+func save_global_state(
+	_player_pos: Vector3, 
+	_player_rot: Vector3, 
+	_seed_val: int, 
+	_inventory_quantities: Array = [], 
+	_active_quest_id: String = "",
+	_celestial_time: float = 0.5,
+	_calendar_day: int = 1
+) -> void:
 	assert(false, "[WorldRepository] save_global_state() must be implemented by concrete subclass.")
 
 ## Abstract contract: Loads global metadata.
-## Returns a dictionary containing 'player_pos', 'player_rot', 'seed', 'inventory_quantities' and 'active_quest_id'.
+## Returns a dictionary containing 'player_pos', 'player_rot', 'seed', 'inventory', 
+## 'active_quest_id', 'celestial_time', and 'calendar_day'.
 func load_global_state() -> Dictionary:
 	assert(false, "[WorldRepository] load_global_state() must be implemented by concrete subclass.")
 	return {}

@@ -7,8 +7,11 @@
 #              - Single Responsibility Principle (SRP): Only manages plains topography, 
 #                soil blocks, and local plant scattering rules.
 #              LANDSCAPE OVERHAUL:
-#              - Integrated organic scattering selectors for Birch Trees (ID 13) 
-#                and flowering Rose Bushes (ID 12).
+#              - Integrated organic scattering selectors for Birch Trees (ID 13),
+#                flowering Rose Bushes (ID 12).
+#              CLEANUP:
+#              - Removed the obsolete voxel-based StreetlightBlueprint scatter trigger (ID 15)
+#                to avoid visual void glitches.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/GoldenBazaarBiome.gd
 # ==============================================================================

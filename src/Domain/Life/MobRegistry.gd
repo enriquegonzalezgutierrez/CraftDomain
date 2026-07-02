@@ -6,12 +6,9 @@
 #                factories and instantiation parameters.
 #              - Open-Closed Principle (OCP): Encapsulates default entity registrations 
 #                internally on startup, removing registration bloat from Bootstrap.
-#              WARNING FIX:
-#              - Added explicit static typing to all callable lambda parameters 
-#                and return signatures (`-> Node`) to completely resolve 
-#                `UNTYPED_DECLARATION` compiler warnings.
-#              BUG FIX (GOLEM PORT):
-#              - Registered the Iron Golem (ID 107) dynamically into the system.
+#              UPDATED:
+#              - Registered the new physical 3D Streetlight Entity as Prop ID `202` 
+#                to support spawning robust, non-floating, voxel-free lampposts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Life/MobRegistry.gd
 # ==============================================================================
@@ -51,7 +48,7 @@ static func initialize_mobs() -> void:
 	# Hostile Mobs (ZOMBIE registered as ID 10)
 	register_mob(10, func(pos: Vector3) -> Node: return HostileEntity.new(pos))
 	
-	# Interactive Props (Loot Chests)
+	# Interactive Props (Loot Chests and Entities)
 	register_mob(200, func(pos: Vector3) -> Node: 
 		var chest := ChestEntity.new()
 		chest.position = pos
@@ -60,6 +57,14 @@ static func initialize_mobs() -> void:
 	
 	# MARINE OVERHAUL: Register the Sea Turtle
 	register_mob(201, func(pos: Vector3) -> Node: return TurtleEntity.new(pos))
+	
+	# ---> REGISTRATION OF 3D STREETLIGHT PROP <---
+	# Registering our gorgeous 3D Streetlight Entity as Prop ID `202`
+	register_mob(202, func(pos: Vector3) -> Node: 
+		var light := StreetlightEntity.new()
+		light.position = pos
+		return light
+	)
 	
 	print("[MobRegistry] Initialization complete. Registered dynamic spawners count: ", _spawners.size())
 

@@ -11,11 +11,11 @@
 #                vector sliding. This completely resolves the "wall cling" bug, 
 #                allowing the player's box shape to slide smoothly along blocks 
 #                and fall naturally under gravity.
-#              - Restored standard air acceleration (6.0) for responsive controls.
-#              WARNING FIX:
-#              - Merged redundant input loops into a single, strictly typed loop 
-#                (`for action_name: String`) to finally eliminate the 
-#                `UNTYPED_DECLARATION` compiler warning.
+#              BUG FIX (DEATH RESPAWN INFINITE LOADING):
+#              - Added the activation of `is_teleport_spawn = true` inside 
+#                `_on_domain_entity_died()`. This guarantees the WorldController 
+#                prioritizes the spawn area chunks immediately, preventing an 
+#                infinite loading screen on death.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
@@ -112,7 +112,6 @@ func _setup_inputs() -> void:
 		"toggle_world_map": KEY_M 
 	}
 	
-	# FIX: Single, strictly-typed loop applying actions and events efficiently
 	for action_name: String in primary_inputs.keys():
 		if not InputMap.has_action(action_name):
 			InputMap.add_action(action_name)
@@ -211,7 +210,6 @@ func _physics_process(delta: float) -> void:
 	if not is_active:
 		return
 
-	# FIX: Explicit static typing on world coordinator reference
 	var world_ctrl: WorldController = world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
 		var p_chunk_pos := world_ctrl.world_state.global_to_chunk_pos(Vector3i(floori(global_position.x), 0, floori(global_position.z)))
@@ -255,7 +253,6 @@ func _rescue_player_from_void() -> void:
 	var block_z := floori(global_position.z)
 	var found_safe_y: float = 14.0 
 	
-	# FIX: Explicit static typing on world coordinator reference
 	var world_ctrl: WorldController = world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
 		found_safe_y = world_ctrl.world_state.get_highest_solid_y(block_x, block_z)
@@ -338,7 +335,6 @@ func _apply_hotbar_selection(slot: int) -> void:
 	if inventory == null:
 		return
 		
-	# FIX: Explicit static typing on inventory reference
 	var inv_comp: InventoryComponent = inventory as InventoryComponent
 	var slot_data := inv_comp.get_slot_data(slot)
 	
@@ -386,6 +382,7 @@ func _on_domain_entity_died() -> void:
 	domain_entity.health = 3
 	domain_entity.is_dead = false
 	is_active = false
+	
 	if is_instance_valid(hud):
 		hud.show_loading_screen()
 		
@@ -393,8 +390,11 @@ func _on_domain_entity_died() -> void:
 	velocity = Vector3.ZERO
 	
 	if is_instance_valid(world_controller):
-		var chunk_pos: Vector3i = world_controller.get("world_state").global_to_chunk_pos(Vector3i(8, 0, 8))
-		world_controller.set("_target_spawn_chunk_pos", chunk_pos)
+		var w_ctrl: WorldController = world_controller as WorldController
+		w_ctrl.is_teleport_spawn = true
+		
+		var chunk_pos: Vector3i = w_ctrl.world_state.global_to_chunk_pos(Vector3i(8, 0, 8))
+		w_ctrl.set("_target_spawn_chunk_pos", chunk_pos)
 
 
 func _setup_inputs_mouse_actions() -> void:

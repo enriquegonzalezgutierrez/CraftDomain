@@ -8,6 +8,9 @@
 #                and local blueprint instantiation.
 #              - Open-Closed Principle (OCP): Registers default blueprints 
 #                internally on startup, removing registration bloat from Bootstrap.
+#              CLEANUP:
+#              - Removed the obsolete voxel-based StreetlightBlueprint registration 
+#                since streetlights are now managed entirely as 3D physical entities.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/StructureLibrary.gd
 # ==============================================================================
@@ -19,7 +22,7 @@ static var _blueprints: Dictionary = {}
 
 
 ## Startup Initializer: Instantiates and registers the default set of 
-## local structure, shrub, and tree blueprints, keeping Bootstrap.gd clean.
+## local structure, shrub, and tree blueprints.
 static func initialize_structures() -> void:
 	print("[StructureLibrary] Initializing and registering local structure blueprints...")
 	_blueprints.clear()
@@ -35,8 +38,6 @@ static func initialize_structures() -> void:
 	register_blueprint(HarborPierBlueprint.new())
 	register_blueprint(SakuraTreeBlueprint.new())
 	register_blueprint(UnderworldFungusBlueprint.new())
-	
-	# ---> LANDSCAPE OVERHAUL: Register new shrubs and trees <---
 	register_blueprint(RoseBushBlueprint.new())
 	register_blueprint(BirchTreeBlueprint.new())
 	register_blueprint(DeadShrubBlueprint.new())

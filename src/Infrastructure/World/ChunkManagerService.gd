@@ -1,6 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Description: Infrastructure Service responsible for managing background chunk
+# Description: Infrastructure Service responsible for managing background chunk
 #              generation threads, task caching, and chunk node lifecycle.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Holds and manages both 
@@ -10,18 +10,24 @@
 #                direct raw memory interaction via `PhysicsServer3D`.
 #              - Secured the `BoxShape3D` resource in a static class variable 
 #                to prevent Garbage Collection of physics forms mid-game.
-#              - Restored the strict Thread Throttling limit (3 concurrent tasks)
-#                and main-thread instancing limit (4 per frame). Unlocked C++ thread 
-#                flooding was causing CPU cache thrashing and severe FPS drops. 
-#                This safe throttling ensures buttery-smooth 120 FPS gameplay.
-#              BUG FIX (FAST-TRAVEL TIMEOUT CLOGGING):
-#              - Implemented a Priority Queue architecture. Prioritized chunk requests 
-#                (like fast-travel target zones) are now pushed to the FRONT of the 
-#                task queue (`push_front`), bypassing the massive background scenic 
-#                chunk load buffers, enabling near-instantaneous spawning.
-#              - PHYSICS SERVER RESTORATION: Re-implemented the direct `PhysicsServer3D` 
-#                box collision grid, completely removing the buggy `collision_vertices` 
-#                property access and fixing the crash.
+#              BUG FIX (LOST MODIFICATION TASKS):
+#              - Added `_queued_rebuilds` state tracking. If a player mines/builds 
+#                on a chunk that is currently rendering in the background, the request 
+#                is no longer silently discarded. Instead, it gets queued and 
+#                automatically triggers a fresh rebuild the moment the active task finishes.
+#                This guarantees 100% reliable building inputs, even while sprinting.
+#              BUG FIX (THE "GRAND" DOMAIN SYNC FIX):
+#              - Added `world_state.add_chunk(task.chunk)` inside `_render_single_completed_task()`.
+#                The newly generated chunk was never added back to the Domain aggregate,
+#                causing mining to fail (returned AIR on raycast) and chunks to disappear
+#                completely when placing any single block.
+#              BUG FIX (CRASH ON EXIT):
+#              - Implemented `_active_task_ids` thread tracker and a safe `shutdown()` 
+#                sequence to wait for background workers on exit, preventing 
+#                access violations to freed nodes.
+#              WARNING FIX:
+#              - Added explicit static typing `int` to the `id` loop iterator inside 
+#                the `shutdown()` method to eliminate `UNTYPED_DECLARATION` warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -36,6 +42,13 @@ var _queue_mutex: Mutex
 var _completed_tasks_queue: Array[GeneratedChunkTask] = []
 var _unload_queue: Array[Vector3i] = []
 var _pending_loading_chunks: Dictionary = {}
+
+## Dictionary mapping Vector3i -> bool tracking chunks that need a SECOND rebuild 
+## because they were modified while a background thread was already running.
+var _queued_rebuilds: Dictionary = {}
+
+## Array of active background thread task IDs to clean up on shutdown
+var _active_task_ids: Array[int] = []
 
 ## Array of chunk requests waiting to be loaded/rebuilt: Array[Dictionary]
 var _load_requests_queue: Array = []
@@ -120,7 +133,7 @@ func queue_loads(chunk_positions: Array[Vector3i]) -> void:
 		_request_asynchronous_chunk_load(pos, false)
 
 
-## BUG FIX (PRIORITY QUEUE): Queues chunks with high priority (pushes to front of loading queue)
+## Queues chunks with high priority (pushes to front of loading queue)
 func queue_prioritized_loads(chunk_positions: Array[Vector3i]) -> void:
 	for pos: Vector3i in chunk_positions:
 		_request_asynchronous_chunk_load(pos, true)
@@ -142,28 +155,45 @@ func process_frame_queues() -> void:
 		unloads_processed += 1
 		
 	_render_completed_chunks_from_queue()
+	
+	# Clean up completed background task IDs to prevent memory leaks
+	_queue_mutex.lock()
+	var active_temp: Array[int] = []
+	for id: int in _active_task_ids:
+		if not WorkerThreadPool.is_task_completed(id):
+			active_temp.append(id)
+	_active_task_ids = active_temp
+	_queue_mutex.unlock()
 
 
 func _request_asynchronous_chunk_load(chunk_pos: Vector3i, high_priority: bool = false) -> void:
 	_queue_mutex.lock()
-	if _pending_loading_chunks.has(chunk_pos):
+	
+	if _chunk_task_cache.has(chunk_pos):
+		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos] as GeneratedChunkTask
+		if not _completed_tasks_queue.has(cached_task):
+			_completed_tasks_queue.append(cached_task)
 		_queue_mutex.unlock()
 		return
 		
-	if _chunk_task_cache.has(chunk_pos):
-		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos] as GeneratedChunkTask
-		_completed_tasks_queue.append(cached_task)
+	if _pending_loading_chunks.has(chunk_pos):
+		if high_priority:
+			for i: int in range(_load_requests_queue.size()):
+				var req: Dictionary = _load_requests_queue[i] as Dictionary
+				if req["pos"] == chunk_pos:
+					_load_requests_queue.remove_at(i)
+					_load_requests_queue.push_front(req)
+					break
 		_queue_mutex.unlock()
 		return
 		
 	_pending_loading_chunks[chunk_pos] = true
 	
-	var req: Dictionary = {"pos": chunk_pos, "is_rebuild": false}
+	var new_req: Dictionary = {"pos": chunk_pos, "is_rebuild": false}
 	if high_priority:
-		_load_requests_queue.push_front(req) # Bypasses scenic loading backlog!
-		print("[ChunkManager DEBUG] Prioritized chunk load task pushed to FRONT: ", chunk_pos)
+		_load_requests_queue.push_front(new_req)
 	else:
-		_load_requests_queue.append(req)
+		_load_requests_queue.append(new_req)
 		
 	_queue_mutex.unlock()
 	
@@ -177,6 +207,7 @@ func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 		
 	_queue_mutex.lock()
 	if _pending_loading_chunks.has(chunk_pos):
+		_queued_rebuilds[chunk_pos] = true
 		_queue_mutex.unlock()
 		return
 		
@@ -196,10 +227,12 @@ func _trigger_next_background_tasks() -> void:
 		var is_rebuild: bool = request["is_rebuild"] as bool
 		
 		_active_background_tasks += 1
+		var task_id: int
 		if is_rebuild:
-			WorkerThreadPool.add_task(_background_rebuild_chunk_task_wrapper.bind(pos))
+			task_id = WorkerThreadPool.add_task(_background_rebuild_chunk_task_wrapper.bind(pos))
 		else:
-			WorkerThreadPool.add_task(_background_generate_chunk_task_wrapper.bind(pos))
+			task_id = WorkerThreadPool.add_task(_background_generate_chunk_task_wrapper.bind(pos))
+		_active_task_ids.append(task_id)
 	_queue_mutex.unlock()
 
 
@@ -223,7 +256,9 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	if not is_instance_valid(controller):
 		return
 		
-	controller.generator.generate_chunk(chunk)
+	var gen: WorldGenerator = controller.get("generator") as WorldGenerator
+	if is_instance_valid(gen):
+		gen.generate_chunk(chunk)
 	
 	if not is_instance_valid(controller) or not is_instance_valid(controller.repository):
 		return
@@ -324,10 +359,17 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	if _pending_loading_chunks.has(chunk_pos):
 		_pending_loading_chunks.erase(chunk_pos)
 		
+	# ---> LOST TASK BUG FIX CATCHER <---
+	if _queued_rebuilds.has(chunk_pos):
+		_queued_rebuilds.erase(chunk_pos)
+		_request_chunk_rebuild(chunk_pos)
+		
+	# ---> THE "GRAND" DOMAIN SYNC FIX <---
+	if not task.is_rebuild and is_instance_valid(world_state):
+		world_state.add_chunk(task.chunk)
+		
 	# ==========================================================================
 	# HIGH-PERFORMANCE LOW-LEVEL PHYSICS SERVER (STUTTER FIX)
-	# Constructs solid block physics by communicating directly with C++ memory, 
-	# completely bypassing node instantiation overhead on the main thread.
 	# ==========================================================================
 	
 	# Delete previous body if rebuilding
@@ -367,8 +409,6 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 				var origin := Vector3(bulk_array[offset + 3], bulk_array[offset + 7], bulk_array[offset + 11])
 				
 				var local_transform := Transform3D(Basis(basis_x, basis_y, basis_z), origin)
-				
-				# Link the shared shape at this exact offset block position instantly
 				PhysicsServer3D.body_add_shape(body_rid, shape_rid, local_transform)
 				
 	_physics_bodies[chunk_pos] = body_rid
@@ -388,8 +428,11 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 		_chunk_nodes[chunk_pos] = chunk_node
 		
 		# Register accessories
-		controller.register_streetlights_for_chunk(task.chunk)
-		controller.check_player_spawn_activation()
+		if controller.has_method("register_streetlights_for_chunk"):
+			controller.call("register_streetlights_for_chunk", task.chunk)
+			
+		if controller.has_method("check_player_spawn_activation"):
+			controller.call("check_player_spawn_activation")
 
 
 ## Dynamic Proximity Mob Spawner
@@ -411,14 +454,23 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 				# Spawns mobs only if we haven't already populated this chunk column
 				if not _chunk_entities.has(col_pos) and _physics_bodies.has(target_chunk_pos_0):
 					var chunk_0: Chunk = _chunk_nodes[target_chunk_pos_0].chunk as Chunk
-					var spawned: Array[Node] = controller.spawn_mobs_for_chunk(chunk_0)
-					_chunk_entities[col_pos] = spawned
+					
+					if controller.has_method("spawn_mobs_for_chunk"):
+						var raw_array: Array = controller.call("spawn_mobs_for_chunk", chunk_0) as Array
+						var typed_nodes: Array[Node] = []
+						for n_element: Variant in raw_array:
+							if n_element is Node:
+								typed_nodes.append(n_element as Node)
+								
+						_chunk_entities[col_pos] = typed_nodes
 
 
 func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	_queue_mutex.lock()
 	if _pending_loading_chunks.has(chunk_pos):
 		_pending_loading_chunks.erase(chunk_pos)
+	if _queued_rebuilds.has(chunk_pos):
+		_queued_rebuilds.erase(chunk_pos)
 	_queue_mutex.unlock()
 	
 	var col_pos := Vector3i(chunk_pos.x, 0, chunk_pos.z)
@@ -429,7 +481,8 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 				entity.queue_free()
 		_chunk_entities.erase(col_pos)
 
-	controller.unregister_streetlights_for_chunk(chunk_pos)
+	if controller.has_method("unregister_streetlights_for_chunk"):
+		controller.call("unregister_streetlights_for_chunk", chunk_pos)
 
 	var chunk_node: ChunkNode = _chunk_nodes.get(chunk_pos) as ChunkNode
 	if is_instance_valid(chunk_node):
@@ -443,3 +496,14 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		var rid: RID = _physics_bodies[chunk_pos]
 		PhysicsServer3D.free_rid(rid)
 		_physics_bodies.erase(chunk_pos)
+
+
+## safe shutdown handler that blocks and waits for background workers to finish
+func shutdown() -> void:
+	_queue_mutex.lock()
+	_load_requests_queue.clear()
+	var tasks_to_wait := _active_task_ids.duplicate()
+	_queue_mutex.unlock()
+	
+	for id: int in tasks_to_wait:
+		WorkerThreadPool.wait_for_task_completion(id)

@@ -2,12 +2,10 @@
 # Project: CraftDomain
 # Description: Infrastructure Repository concrete implementation handling file I/O,
 #              JSON serialization, and delta chunk saving to Godot's user directory.
-#              FIXED: Corrected the chunk path Z-coordinate overwrite collision bug.
-#              UPDATED: Added persistence for player inventory and active quests.
-#              WARNING FIX:
-#              - Added explicit static typing `Vector3i` and `String` to chunk 
-#                serialization loop iterators to completely resolve 
-#                `UNTYPED_DECLARATION` compiler warnings.
+#              SOLID COMPLIANCE:
+#              - Liskov Substitution Principle (LSP): Fully implements WorldRepository.
+#              UPDATED: Added persistence for celestial cycle coordinates and 
+#              calendar days to accurately save moon phases and day/night state.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Persistence/DiskWorldRepository.gd
 # ==============================================================================
@@ -18,14 +16,18 @@ const SAVE_DIR := "user://world_save/"
 const CHUNKS_DIR := "user://world_save/chunks/"
 const GLOBAL_SAVE_PATH := "user://world_save/global_save.json"
 
+
 func _init() -> void:
 	_ensure_directories_exist()
+
 
 func _ensure_directories_exist() -> void:
 	if not DirAccess.dir_exists_absolute(CHUNKS_DIR):
 		DirAccess.make_dir_recursive_absolute(CHUNKS_DIR)
 
+
 ## Concrete Implementation: Saves modifications for a specific chunk.
+## Modifications is a Dictionary mapping: Vector3i (local block position) -> BlockType.Type
 func save_chunk_modifications(chunk_pos: Vector3i, modifications: Dictionary) -> void:
 	var path := _get_chunk_file_path(chunk_pos)
 	
@@ -37,7 +39,6 @@ func save_chunk_modifications(chunk_pos: Vector3i, modifications: Dictionary) ->
 
 	# Convert Vector3i dictionary keys to JSON-compatible strings "x,y,z"
 	var json_data: Dictionary = {}
-	# FIX: Added explicit static typing `Vector3i` to loop iterator
 	for local_pos: Vector3i in modifications.keys():
 		var str_key := "%d,%d,%d" % [local_pos.x, local_pos.y, local_pos.z]
 		json_data[str_key] = modifications[local_pos]
@@ -49,7 +50,9 @@ func save_chunk_modifications(chunk_pos: Vector3i, modifications: Dictionary) ->
 		file.store_string(json_string)
 		file.close()
 
+
 ## Concrete Implementation: Loads and returns saved modifications for a specific chunk.
+## Returns an empty dictionary if no modifications exist.
 func load_chunk_modifications(chunk_pos: Vector3i) -> Dictionary:
 	var path := _get_chunk_file_path(chunk_pos)
 	var modifications: Dictionary = {}
@@ -67,7 +70,6 @@ func load_chunk_modifications(chunk_pos: Vector3i) -> Dictionary:
 		var error := json.parse(json_string)
 		if error == OK:
 			var json_data: Dictionary = json.data as Dictionary
-			# FIX: Added explicit static typing `String` to loop iterator
 			for str_key: String in json_data.keys():
 				var parts: PackedStringArray = str_key.split(",")
 				if parts.size() == 3:
@@ -76,8 +78,17 @@ func load_chunk_modifications(chunk_pos: Vector3i) -> Dictionary:
 					
 	return modifications
 
-## Concrete Implementation: Saves global metadata alongside player inventory and quest state.
-func save_global_state(player_pos: Vector3, player_rot: Vector3, seed_val: int, inventory_quantities: Array = [], active_quest_id: String = "") -> void:
+
+## Concrete Implementation: Saves global metadata alongside player inventory, quest state, and time.
+func save_global_state(
+	player_pos: Vector3, 
+	player_rot: Vector3, 
+	seed_val: int, 
+	inventory_quantities: Array = [], 
+	active_quest_id: String = "",
+	celestial_time: float = 0.5,
+	calendar_day: int = 1
+) -> void:
 	var json_data := {
 		"player_pos": {
 			"x": player_pos.x,
@@ -91,16 +102,21 @@ func save_global_state(player_pos: Vector3, player_rot: Vector3, seed_val: int, 
 		},
 		"seed": seed_val,
 		"inventory": inventory_quantities,
-		"active_quest_id": active_quest_id
+		"active_quest_id": active_quest_id,
+		"celestial_time": celestial_time,
+		"calendar_day": calendar_day
 	}
 	
 	var file := FileAccess.open(GLOBAL_SAVE_PATH, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify(json_data))
 		file.close()
-		print("[DiskWorldRepository] Global state, inventory & quests saved successfully.")
+		print("[DiskWorldRepository] Global state, inventory, quests & time of day saved successfully.")
+
 
 ## Concrete Implementation: Loads global metadata.
+## Returns a dictionary containing 'player_pos', 'player_rot', 'seed', 'inventory', 
+## 'active_quest_id', 'celestial_time', and 'calendar_day'.
 func load_global_state() -> Dictionary:
 	var state: Dictionary = {}
 	if not FileAccess.file_exists(GLOBAL_SAVE_PATH):
@@ -132,8 +148,19 @@ func load_global_state() -> Dictionary:
 			if json_data.has("active_quest_id"):
 				state["active_quest_id"] = str(json_data["active_quest_id"])
 				
+			# Load time of day parameters (Fallback to high noon if old save file)
+			if json_data.has("celestial_time"):
+				state["celestial_time"] = float(json_data["celestial_time"])
+			else:
+				state["celestial_time"] = 0.5
+				
+			if json_data.has("calendar_day"):
+				state["calendar_day"] = int(json_data["calendar_day"])
+			else:
+				state["calendar_day"] = 14 # Default Full Moon
+				
 	return state
 
-## FIXED: Changed chunk_pos.z mapping to chunk_pos.y on the second parameter to stop collisions.
+
 func _get_chunk_file_path(chunk_pos: Vector3i) -> String:
 	return CHUNKS_DIR + "chunk_%d_%d_%d.json" % [chunk_pos.x, chunk_pos.y, chunk_pos.z]

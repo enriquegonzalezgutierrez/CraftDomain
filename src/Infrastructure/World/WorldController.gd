@@ -10,12 +10,21 @@
 #                services without modifying core coordination loops.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate.
-#              BUG FIX (FLOATING TELEPORT STANDSTILL - STUCK TRANSIT):
-#              - Fixed Priority Queue collision: Dispatched `queue_prioritized_loads` 
-#                BEFORE the standard scenic `queue_loads`. This ensures the 18 critical 
-#                spawn-protection chunks are successfully pushed to the front of the 
-#                Thread Pool, providing instant fast-travel without clogging.
-#              WARNING FIX: Removed unused `_always_log_timer` private variable.
+#              BUG FIX (UI MENU JUMPING):
+#              - Added strict gating to `check_player_spawn_activation()` so it 
+#                only runs if `_is_startup_phase` or `is_teleport_spawn` is true. 
+#                This prevents the controller from erroneously teleporting the 
+#                player to the ground when opening UI menus (which set `is_active` to false).
+#              BUG FIX (CRASH ON EXIT):
+#              - Integrated `_exit_tree()` lifecycle hook to trigger a clean 
+#                `chunk_manager.shutdown()`, preventing background threads from 
+#                accessing the coordinator after it has been freed.
+#              WARNING FIX:
+#              - Added explicit static typing `Node` to the dynamic `celestial` 
+#                variable to resolve the `UNTYPED_DECLARATION` warning.
+#              UPDATED: Added restoration of celestial time and calendar days 
+#              from saved global metadata to load precise day/night timelines.
+#              CLEANUP: Removed temporary telemetry debug logs.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -56,9 +65,6 @@ var _is_startup_phase: bool = true
 # Made public to prevent dynamic property setter lookup failures.
 var is_teleport_spawn: bool = false
 
-# Unconditional Telemetry Timers (Guaranteed execution for diagnostic purposes)
-var _debug_log_timer: float = 0.0
-
 
 func _ready() -> void:
 	assert(repository != null, "[WorldController] Fatal: WorldRepository must be injected before _ready()!")
@@ -87,6 +93,10 @@ func _initialize_systems() -> void:
 	var spawn_pos: Vector3 = Vector3(8.5, 14.0, 8.5)
 	var spawn_rot: Vector3 = Vector3.ZERO
 	
+	# Celestial restoration parameters
+	var current_time := 0.5
+	var calendar_days := 14 # Default Full Moon
+	
 	if saved_global.has("seed"):
 		_is_restored_save = true # Mark as active save to protect Y coordinates on load
 		active_seed = saved_global["seed"] as int
@@ -97,6 +107,12 @@ func _initialize_systems() -> void:
 			spawn_rot = saved_global["player_rot"] as Vector3
 		if saved_global.has("inventory"): 
 			_loaded_inventory_data = saved_global["inventory"] as Array
+		
+		# ---> RESTORE CELESTIAL TIMELINE <---
+		if saved_global.has("celestial_time"):
+			current_time = saved_global["celestial_time"] as float
+		if saved_global.has("calendar_day"):
+			calendar_days = saved_global["calendar_day"] as int
 		
 		# Restore campaign quest progression cleanly
 		if saved_global.has("active_quest_id"):
@@ -113,6 +129,16 @@ func _initialize_systems() -> void:
 		print("[WorldController] No save found. Generating new world with unique Seed: ", active_seed)
 		
 	generator = WorldGenerator.new(active_seed)
+	
+	# ---> APPLY LOADED CELESTIAL TIMELINE <---
+	# Find and safely update CelestialService fields via reflection
+	var bootstrap := get_node_or_null("/root/Bootstrap")
+	if is_instance_valid(bootstrap):
+		var celestial: Node = bootstrap.get_node_or_null("CelestialService") as Node
+		if is_instance_valid(celestial):
+			celestial.set("_current_time", current_time)
+			celestial.set("_calendar_days", calendar_days)
+			print("[WorldController] Successfully restored celestial time: ", current_time, " | Calendar Day: ", calendar_days)
 	
 	# Determine initial spawn position
 	var block_pos: Vector3i = Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
@@ -136,12 +162,10 @@ func _process(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 		
-	# BUG FIX (STUCK TRANSIT): If the player is in transit (is_active == false), 
-	# actively poll and check spawn activation every frame.
-	# This guarantees immediate activation if target chunks are already loaded.
-	if not player.get("is_active"):
+	# BUG FIX (UI MENU JUMPING): We only poll the spawn activation logic if we are 
+	# actively loading the world or fast-traveling. We ignore UI-induced pauses!
+	if not player.get("is_active") and (_is_startup_phase or is_teleport_spawn):
 		check_player_spawn_activation()
-		_process_teleport_debug_logging(delta)
 		
 	# 1. Agriculture Tick
 	if is_instance_valid(_agriculture_service):
@@ -159,34 +183,11 @@ func _process(delta: float) -> void:
 		chunk_manager.process_frame_queues()
 
 
-## Periodically prints real-time teleportation progress directly to the console.
-func _process_teleport_debug_logging(delta: float) -> void:
-	_debug_log_timer += delta
-	if _debug_log_timer >= 1.0:
-		_debug_log_timer = 0.0
-		print("[WorldController DEBUG] Player is suspended in transit at global pos: ", player.global_position)
-		print("[WorldController DEBUG] Target spawn chunk pos: ", _target_spawn_chunk_pos)
-		
-		if is_instance_valid(chunk_manager):
-			# Print pipeline state metrics
-			print("[WorldController DEBUG] Background tasks count: ", chunk_manager.get("_active_background_tasks"))
-			print("[WorldController DEBUG] Load requests queue size: ", chunk_manager.get("_load_requests_queue").size())
-			print("[WorldController DEBUG] Completed tasks queue size: ", chunk_manager.get("_completed_tasks_queue").size())
-			print("[WorldController DEBUG] Pending loading chunks size: ", chunk_manager.get("_pending_loading_chunks").size())
-			
-			var missing_chunks: Array[Vector3i] = []
-			for x: int in range(-1, 2):
-				for z: int in range(-1, 2):
-					var pos_0: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z)
-					var pos_1: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z)
-					if not chunk_manager.is_chunk_rendered(pos_0):
-						missing_chunks.append(pos_0)
-					if not chunk_manager.is_chunk_rendered(pos_1):
-						missing_chunks.append(pos_1)
-			if missing_chunks.size() > 0:
-				print("[WorldController DEBUG] Still waiting for chunks to render: ", missing_chunks)
-			else:
-				print("[WorldController DEBUG] All 3x3 surrounding chunks are fully rendered in RAM!")
+## SAFE SHUTDOWN: Clears requests and blocks the main thread on exit until 
+## background thread workers have finished processing safely.
+func _exit_tree() -> void:
+	if is_instance_valid(chunk_manager):
+		chunk_manager.shutdown()
 
 
 ## Calculates coordinates to request chunk loads/unloads and triggers proximity spawning
@@ -222,7 +223,6 @@ func _process_dynamic_world() -> void:
 
 ## Coordinates dynamic streetlight updates on day/night transitions
 func _process_day_night_lighting() -> void:
-	# Explicit static typing on retrieved celestial sibling node reference
 	var celestial: Node = get_parent().get_node_or_null("CelestialService") as Node
 	if not is_instance_valid(celestial) or not celestial.has_method("is_night_time"):
 		return
@@ -299,7 +299,6 @@ func check_player_spawn_activation() -> void:
 
 ## Safely positions the player on the topmost solid block at spawn coordinates using Domain Rules
 func _activate_player_spawn() -> void:
-	print("[WorldController DEBUG] _activate_player_spawn triggered! is_teleport_spawn: ", is_teleport_spawn)
 	# BUG FIX: Recalculate safe ground height if it is a fresh game OR a fast-travel teleport spawn!
 	if not _is_restored_save or is_teleport_spawn:
 		is_teleport_spawn = false # Reset the bug fix trigger flag
@@ -313,7 +312,6 @@ func _activate_player_spawn() -> void:
 			found_safe_y = world_state.get_highest_solid_y(block_x, block_z)
 			
 		player.position.y = found_safe_y
-		print("[WorldController DEBUG] Player vertical coordinate resolved to: Y = ", found_safe_y)
 		
 	_restore_player_inventory()
 	player.set("is_active", true)
@@ -338,8 +336,6 @@ func _activate_player_spawn() -> void:
 ## Deserializes cached backpack quantities back into the player's inventory
 func _restore_player_inventory() -> void:
 	if _loaded_inventory_data.size() > 0 and is_instance_valid(player):
-		# Explicit static typing on player inventory reference
 		var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
-			print("[WorldController] Restoring saved player inventory...")
 			inventory.deserialize_data(_loaded_inventory_data)

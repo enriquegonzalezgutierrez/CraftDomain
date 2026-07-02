@@ -13,14 +13,13 @@
 #                cardinal point badges (N, S, E, W) with glowing cyan borders.
 #              - CRT Vignette Shading: Added concentric alpha gradients to give 
 #                the radar a spherical, 3D glass lens aesthetic.
-#              WARNING FIX (STRICT TYPING):
-#              - Replaced implicit math inferences (`:=`) with explicit static types 
-#                (`: float =`) on `chunk_center_x` and all local variables to 
-#                prevent Godot's static analyzer from failing to infer types.
-#              BUG FIX (COMPASS CENTERING):
-#              - Re-engineered `_draw_holographic_compass_plate` with explicit 
-#                diameter bounds and dynamic font metric baseline formulas to 
-#                achieve pixel-perfect horizontal and vertical letter centering.
+#              CLEANUP:
+#              - Removed the obsolete and coupled `_streetlight_coords` scanner, 
+#                fully decoupling the Minimap from StreetlightService. Streetlights 
+#                are now natively rendered as standard orange dots by checking 
+#                for `child is StreetlightEntity`.
+#              - Removed incorrect fullscreen map helper imports to resolve compiler 
+#                scope errors.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/MinimapWidget.gd
 # ==============================================================================
@@ -125,7 +124,6 @@ func _on_radar_draw() -> void:
 	var chunk_center_z: float = floor(player_pos.z / 16.0) * 16.0 + 8.0
 	var player_offset: Vector2 = Vector2(player_pos.x - chunk_center_x, player_pos.z - chunk_center_z)
 	
-	# FIX: Explicit static typing on generator references
 	var generator: WorldGenerator = world_controller.get("generator") as WorldGenerator
 	if not is_instance_valid(generator): return
 	var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
@@ -142,9 +140,7 @@ func _on_radar_draw() -> void:
 			var draw_pos: Vector2 = CENTER + (Vector2(float(cx), float(cz)) * step_size) - player_offset - Vector2(step_size / 2.0, step_size / 2.0)
 			var rect_target: Rect2 = Rect2(draw_pos, Vector2(step_size, step_size))
 			
-			# Draw the biome solid block (It gets clipped mathematically by the parent panel!)
 			_radar_canvas.draw_rect(rect_target, biome_color, true)
-			# Draw digital screen grid lines
 			_radar_canvas.draw_rect(rect_target, Color(0.0, 0.0, 0.0, 0.12), false, 1.0)
 
 	# 2. DRAW TACTICAL SONAR RINGS
@@ -155,7 +151,6 @@ func _on_radar_draw() -> void:
 	_radar_canvas.draw_circle(CENTER, MAX_RADIUS * 0.75, grid_color, false, 1.0)
 
 	# 3. DRAW TACTICAL ENTITY PINS
-	# FIX: Explicit static typing on children loop iterator
 	for child: Node in world_controller.get_children():
 		if not is_instance_valid(child):
 			continue
@@ -180,6 +175,10 @@ func _on_radar_draw() -> void:
 			pin_color = Color(1.0, 0.82, 0.2) # Golden Chest
 			is_chest = true
 			is_valid_entity = true
+		elif child is StreetlightEntity:
+			child_pos = child.global_position
+			pin_color = Color(1.0, 0.55, 0.0) # Warm Orange Streetlight pin
+			is_valid_entity = true
 			
 		if is_valid_entity:
 			var diff: Vector2 = Vector2(child_pos.x - player_pos.x, child_pos.z - player_pos.z)
@@ -197,18 +196,6 @@ func _on_radar_draw() -> void:
 					_radar_canvas.draw_circle(draw_pos, 2.0, pin_color)
 					_radar_canvas.draw_circle(draw_pos, 2.0, Color.BLACK, false, 1.0)
 
-	# 4. DRAW STREETLIGHT POSTS
-	var streetlight_service: StreetlightService = world_controller.get("_streetlight_service") as StreetlightService
-	if is_instance_valid(streetlight_service):
-		var coords: Array = streetlight_service.get("_streetlight_coords") as Array
-		for coord_val: Variant in coords:
-			var coord: Vector3i = coord_val as Vector3i
-			var diff: Vector2 = Vector2(float(coord.x) - player_pos.x, float(coord.z) - player_pos.z)
-			if diff.length() < MAX_RADIUS - 2.0:
-				var draw_pos: Vector2 = CENTER + diff
-				var rect: Rect2 = Rect2(draw_pos - Vector2(1.5, 1.5), Vector2(3, 3))
-				_radar_canvas.draw_rect(rect, Color(1.0, 0.55, 0.0), true)
-
 
 # ==============================================================================
 # LAYER 2: OVERLAY BORDER CANVAS (Vignette, Compass Plates, Player)
@@ -220,7 +207,6 @@ func _on_border_draw() -> void:
 	var player_pos: Vector3 = player.global_position
 	
 	# 1. DRAW CRT LENS VIGNETTE SHADOWS
-	# Draws concentric alpha rings to make the edges of the radar look like curved glass
 	for i: int in range(12):
 		var r: float = MAX_RADIUS - float(i)
 		var alpha: float = (float(12 - i) / 12.0) * 0.35
@@ -234,7 +220,7 @@ func _on_border_draw() -> void:
 	var default_font: Font = get_theme_font("font")
 	var compass_color: Color = Color(1.0, 0.85, 0.2) # High contrast Gold
 	var f_size: int = 11
-	var offset: float = (SIZE_DIM / 2.0) - 1.0 # Pins sit exactly on the border ring
+	var offset: float = (SIZE_DIM / 2.0) - 1.0
 	
 	_draw_holographic_compass_plate(default_font, Vector2(CENTER.x, CENTER.y - offset), tr("DIR_N").left(1).to_upper(), f_size, compass_color)
 	_draw_holographic_compass_plate(default_font, Vector2(CENTER.x, CENTER.y + offset), tr("DIR_S").left(1).to_upper(), f_size, compass_color)
@@ -282,20 +268,14 @@ func _on_border_draw() -> void:
 ## Private Helper: Draws an incredibly polished glowing circular plate under each compass letter
 func _draw_holographic_compass_plate(f: Font, plate_pos: Vector2, text_char: String, f_size: int, text_color: Color) -> void:
 	var radius: float = 10.0
-	# 1. Dark backing plate to occlude the map underneath
 	_border_canvas.draw_circle(plate_pos, radius, Color(0.06, 0.06, 0.08, 0.95))
-	# 2. Glowing outer cyan outline
 	_border_canvas.draw_circle(plate_pos, radius, Color(0.2, 0.85, 0.85, 0.65), false, 1.5)
 	
-	# 3. Center localized letter horizontally and vertically
-	# We start the draw at the left edge of the circle (plate_pos.x - radius) and set width to diameter (radius * 2)
 	var start_x: float = plate_pos.x - radius
 	var diameter: float = radius * 2.0
 	
-	# Calculate baseline offset based on font metrics for perfect vertical centering
 	var font_height: float = f.get_height(f_size)
 	var font_ascent: float = f.get_ascent(f_size)
-	# Vertical center baseline formula: center_y + ascent - (height / 2)
 	var baseline_y: float = plate_pos.y + font_ascent - (font_height / 2.0)
 	
 	_border_canvas.draw_string(f, Vector2(start_x, baseline_y), text_char, HORIZONTAL_ALIGNMENT_CENTER, diameter, f_size, text_color)
