@@ -9,6 +9,10 @@
 #                and AI state execution to specialized sibling components.
 #              BUG FIX (i18n): Replaced hardcoded name string with localized 
 #              translation keys to maintain strict multi-language support.
+#              WARNING FIX:
+#              - Removed the unused local variable `nose_brown` from 
+#                `_build_visual_representation()` to completely resolve the 
+#                `UNUSED_VARIABLE` compiler warning.
 #              UX MODELING OVERHAUL (CLAY DRUID):
 #              - Upgraded visual boxes: added a detailed gold leaf crown with mossy accents, 
 #                a multi-layered green forest ranger tunic, and a high-fidelity curved 
@@ -38,8 +42,7 @@ func _build_visual_representation() -> void:
 	var gold_trim := Color(0.85, 0.6, 0.15)          # Golden leaf crowns
 	var boots_color := Color(0.15, 0.1, 0.08)        # Dark leather boots
 	var wood_color := Color(0.48, 0.35, 0.22)        # Bow wood
-	var brow_brown := Color(0.18, 0.12, 0.08)       # Unibrow dark brown
-	var nose_brown := Color(0.55, 0.42, 0.32)       # Big long nose brown
+	var brow_brown := Color(0.18, 0.12, 0.08)        # Unibrow dark brown
 	
 	# 1. Base Legs & Feet (Attached to the bobbing joint of visual component)
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), boots_color)

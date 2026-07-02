@@ -8,6 +8,8 @@
 #                and AI state execution to specialized sibling components.
 #              BUG FIX (i18n): Replaced hardcoded name string with localized 
 #              translation keys to maintain strict multi-language support.
+#              BUG FIX (PROPERTIES): Corrected `profile.id` to `profile.biome_id` 
+#              in `_detect_current_biome()` to match the BiomeProfile struct.
 #              UX MODELING OVERHAUL (CLAY MERCHAND):
 #              - Upgraded visual boxes: added a double-layered silk turban, 
 #                an elegant gold-plated front apron, and a persistent 3D leather 
@@ -167,7 +169,7 @@ func _detect_current_biome() -> int:
 					int(round(global_position.z)), 
 					terrain_noise
 				)
-				return profile.id
+				return profile.biome_id
 				
 	return default_biome_id
 
