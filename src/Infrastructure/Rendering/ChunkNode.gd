@@ -6,8 +6,8 @@
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Handles chunk mesh assembly 
 #   and material binding, delegating shader calculations to external files.
-# - Open-Closed Principle (OCP): Loads compiled shaders from external
-#   resources.
+# - Open-Closed Principle (OCP): Dynamically preloads and registers companion 
+#   PBR maps (Normal, Ambient, Specular) if they exist on disk, without editing mappings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -26,6 +26,9 @@ var _multimeshes: Dictionary = {}
 ## Static cache of compiled materials and loaded textures to save GPU memory.
 static var _materials_cache: Dictionary = {}
 static var _loaded_textures: Dictionary = {}
+static var _loaded_normals: Dictionary = {}
+static var _loaded_ambients: Dictionary = {}
+static var _loaded_speculars: Dictionary = {}
 static var _textures_preloaded: bool = false
 
 ## Shared geometry cache (Flyweight Pattern)
@@ -70,17 +73,43 @@ func _init(p_chunk: Chunk) -> void:
 
 
 ## Static texture caching to prevent CPU execution stalls during real-time generation.
+## Dynamically checks and registers companion Normal, Ambient, and Specular maps.
 static func _preload_all_textures() -> void:
 	if _textures_preloaded:
 		return
 	_textures_preloaded = true
 	
 	for block_type: BlockType.Type in TEXTURE_MAP.keys():
-		var file_path: String = TEXTURE_DIR + TEXTURE_MAP[block_type]
+		var base_file_name: String = TEXTURE_MAP[block_type]
+		var base_name := base_file_name.get_basename()
+		
+		# 1. Preload Albedo Map
+		var file_path: String = TEXTURE_DIR + base_file_name
 		if FileAccess.file_exists(file_path):
 			var tex: Resource = load(file_path)
 			if tex is Texture2D:
 				_loaded_textures[block_type] = tex
+				
+		# 2. Check and preload companion Normal Maps (e.g., stone_normal.png)
+		var normal_path := TEXTURE_DIR + base_name + "_normal.png"
+		if FileAccess.file_exists(normal_path):
+			var normal_tex: Resource = load(normal_path)
+			if normal_tex is Texture2D:
+				_loaded_normals[block_type] = normal_tex
+				
+		# 3. Check and preload companion Ambient Occlusion Maps (e.g., stone_ambient.png)
+		var ambient_path := TEXTURE_DIR + base_name + "_ambient.png"
+		if FileAccess.file_exists(ambient_path):
+			var ambient_tex: Resource = load(ambient_path)
+			if ambient_tex is Texture2D:
+				_loaded_ambients[block_type] = ambient_tex
+				
+		# 4. Check and preload companion Specular/Brillo Maps (e.g., stone_specular.png)
+		var specular_path := TEXTURE_DIR + base_name + "_specular.png"
+		if FileAccess.file_exists(specular_path):
+			var specular_tex: Resource = load(specular_path)
+			if specular_tex is Texture2D:
+				_loaded_speculars[block_type] = specular_tex
 
 
 ## Lazy loading getter for the shared static BoxMesh instance.
@@ -305,13 +334,36 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 				_materials_cache[block_type] = mat
 				return mat
 			
-			# Standard triplanar blocks
+			# Standard triplanar blocks: Bind separate PBR Channels (Normal, Ambient, Specular) dynamically!
 			else:
 				var mat := ShaderMaterial.new()
 				mat.shader = _get_triplanar_shader()
 				mat.set_shader_parameter("albedo_texture", tex)
 				mat.set_shader_parameter("block_color", def.color_top)
-				mat.set_shader_parameter("roughness_val", 0.75)
+				mat.set_shader_parameter("roughness_val", _roughness_val_by_block(block_type))
+				
+				# A. Dynamic Normal map binding (Normal vector relief - _normal.png)
+				if _loaded_normals.has(block_type):
+					mat.set_shader_parameter("normal_texture", _loaded_normals[block_type])
+					mat.set_shader_parameter("use_normal_map", true)
+					mat.set_shader_parameter("normal_scale", 1.0)
+				else:
+					mat.set_shader_parameter("use_normal_map", false)
+					
+				# B. Dynamic Ambient Occlusion map binding (Crevice shadows - _ambient.png)
+				if _loaded_ambients.has(block_type):
+					mat.set_shader_parameter("ambient_texture", _loaded_ambients[block_type])
+					mat.set_shader_parameter("use_ambient_map", true)
+				else:
+					mat.set_shader_parameter("use_ambient_map", false)
+					
+				# C. Dynamic Specular / Reflective map binding (Specular gloss - _specular.png)
+				if _loaded_speculars.has(block_type):
+					mat.set_shader_parameter("specular_texture", _loaded_speculars[block_type])
+					mat.set_shader_parameter("use_specular_map", true)
+				else:
+					mat.set_shader_parameter("use_specular_map", false)
+					
 				_materials_cache[block_type] = mat
 				return mat
 					
@@ -324,3 +376,14 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 			return mat
 			
 	return null
+
+
+## Static Helper: Returns standard physical roughness values per BlockType.
+static func _roughness_val_by_block(type: BlockType.Type) -> float:
+	match type:
+		BlockType.Type.STONE, BlockType.Type.ROAD:
+			return 0.55 # Slightly reflective stone/cobble
+		BlockType.Type.GLASS:
+			return 0.05 # Highly glossy
+		_:
+			return 0.85 # Matte dirt, grass, leaves

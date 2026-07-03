@@ -1,102 +1,118 @@
-// ==============================================================================
-// Project: CraftDomain
-// Description: Advanced spatial PBR shader implementing procedural triplanar mapping 
-//              and real-time automatic bump-mapping based on texture luminance.
-//              UX ENHANCEMENT:
-//              - Calculates tangent-space displacement on-the-fly, allowing block 
-//                faces to project micro-relief shading reacting to Streetlights, 
-//                SunLight, and MoonLight orbits with zero CPU/RAM cost.
-// Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-// File: res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader
-// ==============================================================================
+/* ==============================================================================
+   Project: CraftDomain
+   Description: Custom High-Fidelity Retro-PBR Triplanar Spatial Shader.
+   SOLID COMPLIANCE:
+   - Single Responsibility Principle (SRP): Exclusively manages GPU rendering.
+   CRITICAL FIXES & OPTIMIZATIONS:
+   - Triplanar Normal Unpacking: Fixed severe Specular Aliasing (Moiré noise) 
+     and inverted shadows by properly unpacking [0,1] RGB normal textures into 
+     [-1,1] vectors, flipping X/Y axes based on spatial projection signs, 
+     blending them mathematically, and repacking them.
+   - Filter Nearest Mipmap: Enforces mipmapping to prevent pixel-skipping noise.
+   Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+   File: res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader
+   ============================================================================== */
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 
-// Uniform variables injected from the ChunkNode materials builder
-uniform sampler2D albedo_texture : source_color, filter_nearest_mipmap;
-uniform vec3 block_color : source_color = vec3(1.0);
-uniform float roughness_val : hint_range(0.0, 1.0) = 0.8;
+// ==============================================================================
+// UNIFORMS
+// ==============================================================================
+uniform sampler2D albedo_texture   : source_color, hint_default_white, filter_nearest_mipmap, repeat_enable;
+uniform sampler2D normal_texture   : hint_normal, filter_nearest_mipmap, repeat_enable;
+uniform sampler2D ambient_texture  : hint_default_white, filter_nearest_mipmap, repeat_enable;
+uniform sampler2D specular_texture : hint_default_black, filter_nearest_mipmap, repeat_enable;
 
-// Relief strength controller (Higher values create deeper, more prominent pixel cracks)
-uniform float bump_strength : hint_range(0.0, 1.0) = 0.14;
+// Material physical properties
+uniform vec4 block_color : source_color = vec4(1.0);
+uniform float roughness_val : hint_range(0.0, 1.0) = 0.85;
+uniform float normal_scale : hint_range(-16.0, 16.0) = 1.0;
+uniform float triplanar_sharpness : hint_range(1.0, 64.0) = 16.0;
 
-varying vec3 v_world_pos;
-varying vec3 v_world_normal;
+// Dynamic performance branch toggles
+uniform bool use_normal_map = false;
+uniform bool use_ambient_map = false;
+uniform bool use_specular_map = false;
+
+varying vec3 uv_triplanar_pos;
+varying vec3 uv_triplanar_normal;
 
 
 void vertex() {
-	// Unpack vertices and normals directly to world space
-	v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	v_world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
-}
-
-
-// Helper: Calculates relative pixel height based on standard RGB grayscale luminance
-float get_pixel_height(vec4 color) {
-	return dot(color.rgb, vec3(0.299, 0.587, 0.114));
+	// 1. TANGENT SPACE RECONSTRUCTION
+	vec3 n = abs(NORMAL);
+	if (n.x > n.y && n.x > n.z) {
+		TANGENT = vec3(0.0, 0.0, sign(NORMAL.x));
+		BINORMAL = vec3(0.0, 1.0, 0.0);
+	} else if (n.y > n.x && n.y > n.z) {
+		TANGENT = vec3(1.0, 0.0, 0.0);
+		BINORMAL = vec3(0.0, 0.0, sign(NORMAL.y));
+	} else {
+		TANGENT = vec3(1.0, 0.0, 0.0);
+		BINORMAL = vec3(0.0, 1.0, 0.0);
+	}
+	
+	// 2. WORLD-SPACE TRANSLATION
+	uv_triplanar_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	uv_triplanar_normal = normalize((MODEL_NORMAL_MATRIX * NORMAL));
 }
 
 
 void fragment() {
-	// 1. Calculate absolute triplanar blend weights
-	vec3 blend_weights = abs(v_world_normal);
-	blend_weights = normalize(max(blend_weights, 0.0001)); // Prevent division by zero
-	float total_weight = blend_weights.x + blend_weights.y + blend_weights.z;
-	blend_weights /= total_weight;
-
-	// Scale texture repeat based on 3D coordinates (1 block = 1 complete wrap)
-	vec2 uv_x = v_world_pos.zy;
-	vec2 uv_y = v_world_pos.xz;
-	vec2 uv_z = v_world_pos.xy;
-
-	// Symmetrically flip UV projections to align textures cleanly across negative seams
-	uv_x.x = -uv_x.x;
-	uv_z.x = -uv_z.x;
-
-	// Sample Albedo on all three projection planes
-	vec4 col_x = texture(albedo_texture, uv_x);
-	vec4 col_y = texture(albedo_texture, uv_y);
-	vec4 col_z = texture(albedo_texture, uv_z);
-
-	// Blend colors mathematically
-	vec4 blended_albedo = (col_x * blend_weights.x) + (col_y * blend_weights.y) + (col_z * blend_weights.z);
-	ALBEDO = blended_albedo.rgb * block_color;
-
-	// ==========================================================================
-	// PROCEDURAL BUMP MAPPING (STREETLIGHT SHADOW RELIEF)
-	// Analyzes color luminance derivatives to project dynamic micro-reliefs.
-	// ==========================================================================
-	float texel_size = 0.015625; // 1.0 / 64.0 (Tailored for 64x64 retro textures)
+	// 1. BLEND WEIGHTS
+	vec3 blend_weights = pow(abs(uv_triplanar_normal), vec3(triplanar_sharpness));
+	blend_weights = blend_weights / max(blend_weights.x + blend_weights.y + blend_weights.z, 0.00001);
 	
-	// A. Sample height offsets for X projection plane
-	float h_x = get_pixel_height(col_x);
-	float h_x_u = get_pixel_height(texture(albedo_texture, uv_x + vec2(0.0, texel_size)));
-	float h_x_r = get_pixel_height(texture(albedo_texture, uv_x + vec2(texel_size, 0.0)));
-	vec3 bump_x = vec3(0.0, h_x_u - h_x, h_x_r - h_x) * bump_strength;
-
-	// B. Sample height offsets for Y projection plane
-	float h_y = get_pixel_height(col_y);
-	float h_y_u = get_pixel_height(texture(albedo_texture, uv_y + vec2(0.0, texel_size)));
-	float h_y_r = get_pixel_height(texture(albedo_texture, uv_y + vec2(texel_size, 0.0)));
-	vec3 bump_y = vec3(h_y_r - h_y, 0.0, h_y_u - h_y) * bump_strength;
-
-	// C. Sample height offsets for Z projection plane
-	float h_z = get_pixel_height(col_z);
-	float h_z_u = get_pixel_height(texture(albedo_texture, uv_z + vec2(0.0, texel_size)));
-	float h_z_r = get_pixel_height(texture(albedo_texture, uv_z + vec2(texel_size, 0.0)));
-	vec3 bump_z = vec3(h_z_r - h_z, h_z_u - h_z, 0.0) * bump_strength;
-
-	// Blend the displacement vectors based on surface projection
-	vec3 blended_bump = (bump_x * blend_weights.x) + (bump_y * blend_weights.y) + (bump_z * blend_weights.z);
+	// 2. PROJECT ALBEDO
+	vec4 tex_x = texture(albedo_texture, uv_triplanar_pos.zy);
+	vec4 tex_y = texture(albedo_texture, uv_triplanar_pos.xz);
+	vec4 tex_z = texture(albedo_texture, uv_triplanar_pos.xy);
+	ALBEDO = (tex_x * blend_weights.x + tex_y * blend_weights.y + tex_z * blend_weights.z).rgb * block_color.rgb;
 	
-	// Add the displacement to the vertex normal and re-normalize in world space
-	vec3 world_normal_displaced = normalize(v_world_normal + blended_bump);
-
-	// Convert world-space normal to view-space normal for Godot's fragment pipeline
-	NORMAL = (VIEW_MATRIX * vec4(world_normal_displaced, 0.0)).xyz;
-
-	// High fidelity PBR settings
-	ROUGHNESS = roughness_val;
-	METALLIC = 0.0;
-	SPECULAR = 0.08; // Soft specularity for natural voxel environments
+	// 3. PROJECT AMBIENT OCCLUSION
+	if (use_ambient_map) {
+		vec4 ao_x = texture(ambient_texture, uv_triplanar_pos.zy);
+		vec4 ao_y = texture(ambient_texture, uv_triplanar_pos.xz);
+		vec4 ao_z = texture(ambient_texture, uv_triplanar_pos.xy);
+		AO = (ao_x * blend_weights.x + ao_y * blend_weights.y + ao_z * blend_weights.z).r;
+	} else {
+		AO = 1.0;
+	}
+	
+	// 4. PROJECT SPECULAR & ROUGHNESS
+	if (use_specular_map) {
+		vec4 spec_x = texture(specular_texture, uv_triplanar_pos.zy);
+		vec4 spec_y = texture(specular_texture, uv_triplanar_pos.xz);
+		vec4 spec_z = texture(specular_texture, uv_triplanar_pos.xy);
+		float spec_val = (spec_x * blend_weights.x + spec_y * blend_weights.y + spec_z * blend_weights.z).r;
+		
+		SPECULAR = spec_val;
+		ROUGHNESS = (1.0 - spec_val) * roughness_val;
+	} else {
+		SPECULAR = 0.5;
+		ROUGHNESS = roughness_val;
+	}
+	
+	// 5. PROJECT NORMAL MAP (MATHEMATICALLY CORRECTED)
+	if (use_normal_map) {
+		// Unpack [0,1] textures into proper [-1, 1] 3D Vectors
+		vec3 norm_x = texture(normal_texture, uv_triplanar_pos.zy).rgb * 2.0 - 1.0;
+		vec3 norm_y = texture(normal_texture, uv_triplanar_pos.xz).rgb * 2.0 - 1.0;
+		vec3 norm_z = texture(normal_texture, uv_triplanar_pos.xy).rgb * 2.0 - 1.0;
+		
+		// Flip axes based on the projection face so light doesn't hit upside-down
+		norm_x.x *= sign(uv_triplanar_normal.x);
+		norm_y.x *= sign(uv_triplanar_normal.y);
+		norm_z.x *= sign(uv_triplanar_normal.z);
+		
+		norm_x.y *= -1.0;
+		norm_z.y *= -1.0;
+		
+		// Blend the true 3D vectors
+		vec3 mixed_normal = normalize(norm_x * blend_weights.x + norm_y * blend_weights.y + norm_z * blend_weights.z);
+		
+		// Repack back to [0,1] format for the Godot NORMAL_MAP slot
+		NORMAL_MAP = mixed_normal * 0.5 + 0.5;
+		NORMAL_MAP_DEPTH = normal_scale;
+	}
 }

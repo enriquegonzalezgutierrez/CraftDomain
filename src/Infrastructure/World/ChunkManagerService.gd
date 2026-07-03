@@ -1,12 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure Service responsible for managing background chunk
-#              generation threads, task caching, and chunk node lifecycle.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Holds and manages both 
-#                _chunk_nodes and _chunk_entities locally.
-#              - Liskov Substitution Principle (LSP): Safely handles raw PhysicsServer3D 
-#                and thread pooling operations.
+# Description: High-Performance Infrastructure Service responsible for managing 
+#              background chunk generation threads, task caching, and direct RID physics.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Coordinates chunk lifecycle, delegating 
+#   heavy geometry and physics tree compiling to background worker threads.
+# - Liskov Substitution Principle (LSP): Safely handles raw PhysicsServer3D 
+#   and thread pooling operations.
+# BUG FIX (COLLISION VOID / GC LEAK):
+# - Added a dedicated `_collision_shapes` strong-reference dictionary to prevent 
+#   dynamic ConcavePolygonShape3D resources from being prematurely garbage-collected 
+#   when the task object goes out of scope, securing persistent physical collisions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -46,12 +50,13 @@ var _chunk_entities: Dictionary = {}
 ## Map storing raw PhysicsServer3D body RIDs for safe manual deletion
 var _physics_bodies: Dictionary = {} # Vector3i -> RID
 
+## MEMORY SECURITY FIX: Holds persistent strong references to active collision 
+## shape resources (ConcavePolygonShape3D) to prevent them from being garbage-collected.
+var _collision_shapes: Dictionary = {} # Vector3i -> ConcavePolygonShape3D
+
 # Cache System (LRU)
 var _chunk_task_cache: Dictionary = {}
 const CACHE_SIZE_LIMIT: int = 64
-
-# Shared static box shape for physics collisions
-static var _shared_physics_box_shape: BoxShape3D = null
 
 
 func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
@@ -60,20 +65,12 @@ func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
 	_queue_mutex = Mutex.new()
 
 
-## Retrieves the single persistent physical box shape, instantiating it if necessary (Flyweight).
-static func _get_or_create_shared_box() -> BoxShape3D:
-	if _shared_physics_box_shape == null:
-		_shared_physics_box_shape = BoxShape3D.new()
-		_shared_physics_box_shape.size = Vector3(1.0, 1.0, 1.0)
-	return _shared_physics_box_shape
-
-
 ## Verifies if a chunk is loaded and rendered
 func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
 	return _chunk_nodes.has(chunk_pos)
 
 
-## Public API: Returns the active chunk nodes (Used by auxiliary services)
+## Public API: Returns the active chunk nodes
 func get_active_nodes() -> Dictionary:
 	return _chunk_nodes
 
@@ -212,7 +209,7 @@ func _trigger_next_background_tasks() -> void:
 
 
 # ==============================================================================
-# THREAD OPERATIONS (Calculates raw meshes and collision arrays)
+# BACKGROUND THREAD OPERATIONS (All heavy math & compilation occurs here)
 # ==============================================================================
 
 func _background_generate_chunk_task_wrapper(chunk_pos: Vector3i) -> void:
@@ -246,9 +243,13 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 			
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state) as Dictionary
 	
-	if not is_instance_valid(controller):
-		return
-		
+	# ASYNCHRONOUS PHYSICS COMPILING: Build the Concave Collision Shape entirely on this background thread!
+	var collision_vertices: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
+	var col_shape: ConcavePolygonShape3D = null
+	if collision_vertices.size() > 0:
+		col_shape = ConcavePolygonShape3D.new()
+		col_shape.set_faces(collision_vertices) # Generates internal BVH tree on background thread
+	
 	var liquids: Dictionary = {}
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
@@ -258,7 +259,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i) -> void:
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_shape = null 
+	task_result.collision_shape = col_shape # Pre-compiled shape reference
 	task_result.liquid_meshes = liquids
 	
 	_queue_mutex.lock()
@@ -284,8 +285,12 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 		
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state) as Dictionary
 	
-	if not is_instance_valid(controller):
-		return
+	# ASYNCHRONOUS REBUILD PHYSICS COMPILING
+	var collision_vertices: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
+	var col_shape: ConcavePolygonShape3D = null
+	if collision_vertices.size() > 0:
+		col_shape = ConcavePolygonShape3D.new()
+		col_shape.set_faces(collision_vertices)
 		
 	var liquids: Dictionary = {}
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
@@ -296,7 +301,7 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 	var task_result: GeneratedChunkTask = GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_shape = null
+	task_result.collision_shape = col_shape
 	task_result.is_rebuild = true
 	task_result.liquid_meshes = liquids
 	
@@ -306,12 +311,12 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i) -> void:
 
 
 # ==============================================================================
-# MAIN THREAD MESH ASSEMBLY
+# MAIN THREAD MESH ASSEMBLY (Kept O(1) for consistent frame pacing)
 # ==============================================================================
 
 func _render_completed_chunks_from_queue() -> void:
 	var rendered_this_frame := 0
-	const MAX_CHUNKS_PER_FRAME := 4 
+	const MAX_CHUNKS_PER_FRAME := 2 
 	
 	while rendered_this_frame < MAX_CHUNKS_PER_FRAME:
 		var task: GeneratedChunkTask = null
@@ -341,41 +346,38 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	if not task.is_rebuild and is_instance_valid(world_state):
 		world_state.add_chunk(task.chunk)
 		
-	# Delete previous body if rebuilding
+	# 1. Purge previous StaticBody RID & persistent strong shape references
 	if _physics_bodies.has(chunk_pos):
 		var old_rid: RID = _physics_bodies[chunk_pos]
 		PhysicsServer3D.free_rid(old_rid)
 		_physics_bodies.erase(chunk_pos)
 		
-	var box_shape: BoxShape3D = _get_or_create_shared_box()
-	var shape_rid: RID = box_shape.get_rid()
-	
-	var body_rid: RID = PhysicsServer3D.body_create()
-	PhysicsServer3D.body_set_mode(body_rid, PhysicsServer3D.BODY_MODE_STATIC)
-	
-	PhysicsServer3D.body_set_collision_layer(body_rid, 1)
-	PhysicsServer3D.body_set_collision_mask(body_rid, 1)
-	PhysicsServer3D.body_set_space(body_rid, controller.get_world_3d().space)
-	
-	var chunk_transform := Transform3D(Basis(), Vector3(chunk_pos * Chunk.SIZE))
-	PhysicsServer3D.body_set_state(body_rid, PhysicsServer3D.BODY_STATE_TRANSFORM, chunk_transform)
-	
-	for b_type: BlockType.Type in task.multimesh_data.keys():
-		if BlockType.is_solid(b_type):
-			var bulk_array: PackedFloat32Array = task.multimesh_data[b_type] as PackedFloat32Array
-			var count: int = int(bulk_array.size() / 12.0)
-			
-			for i: int in range(count):
-				var offset := i * 12
-				var basis_x := Vector3(bulk_array[offset + 0], bulk_array[offset + 4], bulk_array[offset + 8])
-				var basis_y := Vector3(bulk_array[offset + 1], bulk_array[offset + 5], bulk_array[offset + 9])
-				var basis_z := Vector3(bulk_array[offset + 2], bulk_array[offset + 6], bulk_array[offset + 10])
-				var origin := Vector3(bulk_array[offset + 3], bulk_array[offset + 7], bulk_array[offset + 11])
-				
-				var local_transform := Transform3D(Basis(basis_x, basis_y, basis_z), origin)
-				PhysicsServer3D.body_add_shape(body_rid, shape_rid, local_transform)
-				
-	_physics_bodies[chunk_pos] = body_rid
+	if _collision_shapes.has(chunk_pos):
+		_collision_shapes.erase(chunk_pos) # Safe to let GC release the old resource
+		
+	# ==========================================================================
+	# ULTRA-FAST O(1) PHYSICS SERVER REGISTRATION (ZERO-STUTTER EXTRACTION)
+	# ==========================================================================
+	if task.collision_shape != null:
+		# MEMORY SECURITY SECURE: Keep a strong live reference to prevent GC!
+		_collision_shapes[chunk_pos] = task.collision_shape
+		
+		var body_rid: RID = PhysicsServer3D.body_create()
+		PhysicsServer3D.body_set_mode(body_rid, PhysicsServer3D.BODY_MODE_STATIC)
+		
+		PhysicsServer3D.body_set_collision_layer(body_rid, 1)
+		PhysicsServer3D.body_set_collision_mask(body_rid, 1)
+		PhysicsServer3D.body_set_space(body_rid, controller.get_world_3d().space)
+		
+		var chunk_transform := Transform3D(Basis(), Vector3(chunk_pos * Chunk.SIZE))
+		PhysicsServer3D.body_set_state(body_rid, PhysicsServer3D.BODY_STATE_TRANSFORM, chunk_transform)
+		
+		# Direct sub-microsecond Native call: Add the precompiled shape RID
+		var shape_rid: RID = task.collision_shape.get_rid()
+		PhysicsServer3D.body_add_shape(body_rid, shape_rid)
+		
+		_physics_bodies[chunk_pos] = body_rid
+	# ==========================================================================
 	
 	var chunk_node: ChunkNode = null
 	if _chunk_nodes.has(chunk_pos):
@@ -398,7 +400,7 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			controller.call("check_player_spawn_activation")
 
 
-## Dynamic Proximity Entity Spawner (Schedules both living mobs and interactive props)
+## Dynamic Proximity Entity Spawner
 func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
 	var player_block_pos := Vector3i(
 		floor(player_global_pos.x),
@@ -414,11 +416,9 @@ func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int =
 			if _chunk_nodes.has(target_chunk_pos_0):
 				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
 				
-				# Spawns entities only if we haven't already populated this chunk column
 				if not _chunk_entities.has(col_pos) and _physics_bodies.has(target_chunk_pos_0):
 					var chunk_0: Chunk = _chunk_nodes[target_chunk_pos_0].chunk as Chunk
 					
-					# CLEAN CODE / SRP: Calls spawn_entities_for_chunk to merge mobs and props smoothly
 					if controller.has_method("spawn_entities_for_chunk"):
 						var raw_array: Array = controller.call("spawn_entities_for_chunk", chunk_0) as Array
 						var typed_nodes: Array[Node] = []
@@ -459,6 +459,9 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		var rid: RID = _physics_bodies[chunk_pos]
 		PhysicsServer3D.free_rid(rid)
 		_physics_bodies.erase(chunk_pos)
+		
+	if _collision_shapes.has(chunk_pos):
+		_collision_shapes.erase(chunk_pos) # Clean up shape reference to free RAM
 
 
 ## safe shutdown handler that blocks and waits for background workers to finish
