@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dbl5mwyrjc8na"
-path="res://.godot/imported/stone_displacement.png-c9ecceef1560eac1b5b412b308a51de1.ctex"
+path.s3tc="res://.godot/imported/stone_displacement.png-c9ecceef1560eac1b5b412b308a51de1.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/stone_displacement.png"
-dest_files=["res://.godot/imported/stone_displacement.png-c9ecceef1560eac1b5b412b308a51de1.ctex"]
+dest_files=["res://.godot/imported/stone_displacement.png-c9ecceef1560eac1b5b412b308a51de1.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

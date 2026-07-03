@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c2ge1mf41gd70"
-path="res://.godot/imported/birch_log_displacement.png-0c823b8a35be22fd2a2d767a46119094.ctex"
+path.s3tc="res://.godot/imported/birch_log_displacement.png-0c823b8a35be22fd2a2d767a46119094.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/birch_log_displacement.png"
-dest_files=["res://.godot/imported/birch_log_displacement.png-0c823b8a35be22fd2a2d767a46119094.ctex"]
+dest_files=["res://.godot/imported/birch_log_displacement.png-0c823b8a35be22fd2a2d767a46119094.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

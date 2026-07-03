@@ -136,6 +136,7 @@
   "ITEM_20_DESC": "Golden, sun-ripened wheat grains harvested from your mature crop fields. Essential raw material for elite survival baking recipes.",
   "ITEM_20_USE": "Crafting Material. Open the Blueprint Workshop (C) to fabricate valuable emergency rations.",
 
+  "DIALOGUE_CONTINUE_CLOSE": "Continue",
   "DIALOGUE_MERCHANT_INTRO": "Greetings, traveler! I am the Golden Bazaar's lead vendor. My furnace runs night and day, but I am desperately out of geothermal fuel. If you bring me a bucket of hot Lava, I will trade you my premium double-crispy Fried Chicken!",
   "DIALOGUE_MERCHANT_CHOICE_TRADE": "I have lava. Let's trade!",
   "DIALOGUE_MERCHANT_CHOICE_WHO": "Who are you?",

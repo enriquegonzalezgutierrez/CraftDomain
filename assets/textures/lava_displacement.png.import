@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cpm1ws63mxr7x"
-path="res://.godot/imported/lava_displacement.png-bbb84093706f25434b1a93b9736f0d52.ctex"
+path.s3tc="res://.godot/imported/lava_displacement.png-bbb84093706f25434b1a93b9736f0d52.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/lava_displacement.png"
-dest_files=["res://.godot/imported/lava_displacement.png-bbb84093706f25434b1a93b9736f0d52.ctex"]
+dest_files=["res://.godot/imported/lava_displacement.png-bbb84093706f25434b1a93b9736f0d52.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -7,14 +7,9 @@
 #                safely overriding the movement, task routing, and visualization loops.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
-#              UX MODELING OVERHAUL (CLAY MOVIE KNIGHT):
-#              - Assembled programmatically to perfectly match the high-fidelity 
-#                clay-voxel Knight from the Minecraft Movie. Features heavy steel-plated 
-#                armor, thick physical shoulder pauldrons, an elaborate helmet with a 
-#                flowing crimson plume, a sheathed iron broadsword on its back, and 
-#                a wood-and-steel knightly heater shield.
-#              - Preserves the iconic villager facial features (unibrow, long nose) 
-#                recessed underneath the open helmet visor.
+#              BUG FIX (PROPERTY ACCESS):
+#              - Fixed `profile.id` to `profile.biome_id` in `_detect_current_biome()`
+#                to correctly match the BiomeProfile struct, preventing crashes on interaction.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GuardEntity.gd
 # ==============================================================================
@@ -312,15 +307,12 @@ func _execute_combat_strike() -> void:
 
 ## Queries coordinate biomes.
 func _detect_current_biome() -> int:
-	# FIX: Explicit static typing on world controller reference
 	var world_controller_ref: Node = get_parent() as Node
 	var default_biome_id: int = 2
 	
 	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		# FIX: Explicit static typing on world generator reference
 		var generator: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
 		if generator != null:
-			# FIX: Explicit static typing on terrain noise provider
 			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
 				var profile := BiomeService.evaluate_coordinate(
@@ -328,7 +320,8 @@ func _detect_current_biome() -> int:
 					int(round(global_position.z)), 
 					terrain_noise
 				)
-				return profile.id
+				# FIXED BUG: using .biome_id instead of .id
+				return profile.biome_id
 				
 	return default_biome_id
 
