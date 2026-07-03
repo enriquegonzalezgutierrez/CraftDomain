@@ -3,22 +3,11 @@
 # Description: Infrastructure rendering node representing a single chunk in 3D.
 #              Manages discrete MultiMeshInstance3D and MeshInstance3D nodes 
 #              per active BlockType to apply custom materials efficiently.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Handles chunk mesh assembly 
-#                and material binding, delegating shader calculations to external files.
-#              - Open-Closed Principle (OCP): Loads compiled shaders from external
-#                resources.
-#              BUG FIX (VISUAL FLICKERING):
-#              - Replaced in-place `mm.buffer` updates with a completely new 
-#                `MultiMesh.new()` instantiation. Modifying the buffer array size 
-#                on an actively rendering MultiMesh in Godot 4 causes the GPU 
-#                to drop the entire mesh for a frame, resulting in the chunk 
-#                disappearing and reappearing. This guarantees buttery smooth building.
-#              BUG FIX (OPAQUE GLASS BLACK BOXES):
-#              - Bypassed the opaque, alpha-less `glass.png` texture asset for 
-#                the `GLASS` material. It now renders with a procedural, highly 
-#                glossy and translucent blue PBR profile, allowing internal lights 
-#                to scatter and refract beautifully through the lantern domes.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Handles chunk mesh assembly 
+#   and material binding, delegating shader calculations to external files.
+# - Open-Closed Principle (OCP): Loads compiled shaders from external
+#   resources.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -66,7 +55,8 @@ const TEXTURE_MAP = {
 	BlockType.Type.ICE: "ice.png",
 	BlockType.Type.MUD: "mud.png",
 	BlockType.Type.LAVA: "lava.png",
-	BlockType.Type.BIRCH_LOG: "birch_log.png"
+	BlockType.Type.BIRCH_LOG: "birch_log.png",
+	BlockType.Type.ROAD: "road.png"
 }
 
 
@@ -148,7 +138,6 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 		if _multimeshes.has(block_type) and _multimeshes[block_type] is MultiMeshInstance3D:
 			var mm_instance: MultiMeshInstance3D = _multimeshes[block_type] as MultiMeshInstance3D
 			
-			# ---> BUG FIX: FLICKERING ON BUILD/MINE <---
 			var new_mm := MultiMesh.new()
 			new_mm.transform_format = MultiMesh.TRANSFORM_3D
 			new_mm.use_colors = false 
@@ -275,14 +264,12 @@ func _get_material_for_block(block_type: BlockType.Type) -> Material:
 		_materials_cache[block_type] = mat
 		return mat
 
-	# ---> BUG FIX: TRANSPARENT GLASS BELL <---
-	# Replaced the opaque albedo_texture assignment for GLASS. It now renders with 
-	# a high-fidelity native transparent profile. Ice remains with texture mapping.
+	# Transparent Glass bell
 	elif block_type == BlockType.Type.GLASS:
 		var mat := ORMMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.albedo_color = Color(0.85, 0.95, 1.0, 0.28) # Semi-transparent light-blue glass
-		mat.roughness = 0.05 # Highly glossy and reflective
+		mat.albedo_color = Color(0.85, 0.95, 1.0, 0.28) 
+		mat.roughness = 0.05 
 		mat.metallic = 0.1
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		_materials_cache[block_type] = mat

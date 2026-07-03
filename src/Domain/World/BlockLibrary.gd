@@ -2,13 +2,11 @@
 # Project: CraftDomain
 # Description: Domain registry holding immutable definitions, colors, and 
 #              shading parameters of all block types present in the game.
-#              SOLID/i18n COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Only manages static 
-#                registrations of block definitions.
-#              - Open-Closed Principle (OCP): Easily extensible with new blocks.
-#              TEXTURE OVERHAUL UPGRADE:
-#              - Registered BIRCH_LOG (24) block definition, localization key, 
-#                and white base colors.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Only manages static 
+#   registrations of block definitions.
+# - Open-Closed Principle (OCP): Extensible with new block registrations 
+#   without changing the core meshing or rendering engines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockLibrary.gd
 # ==============================================================================
@@ -85,8 +83,11 @@ static func _static_init() -> void:
 	# 23. Glass
 	_register(BlockType.Type.GLASS, "BLOCK_GLASS", Color(0.85, 0.95, 1.0, 0.35), Color(0.80, 0.92, 0.98, 0.35), Color(0.75, 0.88, 0.95, 0.35))
 
-	# 24. Birch Log (White-grey bark base colors)
+	# 24. Birch Log
 	_register(BlockType.Type.BIRCH_LOG, "BLOCK_BIRCH_LOG", Color(0.92, 0.92, 0.94), Color(0.88, 0.88, 0.90), Color(0.92, 0.92, 0.94))
+
+	# 25. Paved Road (Slate-grey base colors for the rustic cobble look)
+	_register(BlockType.Type.ROAD, "BLOCK_ROAD", Color(0.35, 0.35, 0.38), Color(0.28, 0.28, 0.30), Color(0.35, 0.35, 0.38))
 
 
 static func _register(type: BlockType.Type, key: String, top: Color, side: Color, bottom: Color) -> void:

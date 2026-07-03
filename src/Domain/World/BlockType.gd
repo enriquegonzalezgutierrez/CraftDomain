@@ -3,9 +3,9 @@
 # Description: Pure Domain Value Object defining all supported voxel block types.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by encapsulating only the block classification maps.
-#              TEXTURE OVERHAUL UPGRADE: 
-#              - Added BIRCH_LOG (24) block type to replace the snow placeholder 
-#                on Birch Trees.
+#              OCP EXTENSION:
+#              - Added ROAD (25) block type to represent dedicated grey paved 
+#                scenery highways, preserving BRICKS for construction walls.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockType.gd
 # ==============================================================================
@@ -40,12 +40,14 @@ enum Type {
 	COAL_ORE = 21,
 	BRICKS = 22,
 	GLASS = 23,
-	BIRCH_LOG = 24
+	BIRCH_LOG = 24,
+	
+	# Scenery Highway Blocks
+	ROAD = 25
 }
 
 
 ## Returns true if the block type occupies physical space (is solid).
-## Non-solid blocks like liquids, foliage, and crops allow player/NPC passage and culling.
 static func is_solid(type: Type) -> bool:
 	match type:
 		Type.AIR, Type.WATER, Type.LAVA, \
@@ -57,7 +59,6 @@ static func is_solid(type: Type) -> bool:
 
 
 ## Returns true if the block type is transparent or semi-transparent.
-## Transparent blocks allow light to pass through and trigger rendering face culling.
 static func is_transparent(type: Type) -> bool:
 	match type:
 		Type.AIR, Type.LEAVES, Type.WATER, Type.ICE, Type.CLOUD, Type.LAVA, \

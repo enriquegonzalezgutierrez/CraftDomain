@@ -121,9 +121,9 @@ func generate_chunk(chunk: Chunk) -> void:
 				
 				if global_y <= target_height:
 					if on_road:
-						# Road Pavement styling
+						# Road Pavement styling (Clean ROAD block integration)
 						if global_y == target_height:
-							block_type = BlockType.Type.BRICKS # Red brick paved calzada
+							block_type = BlockType.Type.ROAD   # Dedicated grey paved road block
 						elif global_y == target_height - 1:
 							block_type = BlockType.Type.STONE  # Solid sub-base
 						else:
