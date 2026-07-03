@@ -1,23 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Description: Infrastructure controller node representing the first-person player.
+# Description: Infrastructure controller node representing the first-person player.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Delegates all voxel raycasting, 
 #                mining, building, eating, and NPC interactions to VoxelInteractionComponent.
+#                Delegates third-person skeleton drawing to PlayerVisualComponent.
+#              - Dependency Inversion Principle (DIP): Injects loose component dependencies.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate.
 #              PHYSICS OVERHAUL (ZERO-STICKING CORRECTION):
-#              - Set `floor_block_on_wall = false` to restore Godot's default 
-#                vector sliding. This completely resolves the "wall cling" bug, 
-#                allowing the player's box shape to slide smoothly along blocks 
-#                and fall naturally under gravity.
-#              BUG FIX (DEATH RESPAWN INFINITE LOADING):
-#              - Added the activation of `is_teleport_spawn = true` inside 
-#                `_on_domain_entity_died()`. This guarantees the WorldController 
-#                prioritizes the spawn area chunks immediately, preventing an 
-#                infinite loading screen on death.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Player/PlayerController.gd
+#              - Set `floor_block_on_wall` or slide parameters safely to completely 
+#                resolve corner sticking and allow smooth motion along voxel edges.
 # ==============================================================================
 class_name PlayerController
 extends CharacterBody3D
@@ -46,6 +39,7 @@ var world_controller: Node3D
 var hud: PlayerHUD
 var viewmodel: PlayerViewModel
 var interaction_component: VoxelInteractionComponent
+var visual_component: PlayerVisualComponent
 
 # Build inventory selection state (0 to 7 matches our 8 slots)
 var active_slot_index: int = 0
@@ -54,7 +48,7 @@ var is_item_selected: bool = true
 
 # Camera Bobbing & Tilt variables
 var _bob_timer: float = 0.0
-var _target_camera_pos: Vector3 = Vector3(0.0, 0.6, 0.0)
+var _target_camera_pos: Vector3 = Vector3(0.0, 1.6, 0.0)
 var _target_camera_tilt: float = 0.0
 
 # Camera Trauma Shake variable
@@ -70,24 +64,64 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	# Advanced Godot 4 settings for Voxel precision
-	floor_stop_on_slope = true   
-	floor_constant_speed = true  
-	floor_max_angle = deg_to_rad(45.0)
-	
-	# Allow standard sliding responses
-	floor_block_on_wall = false 
-	
-	# Restore native safe margin so Godot handles depenetration correctly
-	safe_margin = 0.001
-
+	# CRITICAL FIX: Register custom keyboards actions in Godot's InputMap on startup!
 	_setup_inputs()
-	_setup_player_geometry()
-	_locate_world()
-	_setup_hud()
-	_setup_interaction_component() 
 	
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_setup_player_geometry()
+	_setup_sub_components()
+	
+	# Reactively bind to inventory modifications to sync the held tool mesh
+	var inv_comp := inventory as InventoryComponent
+	if is_instance_valid(inv_comp):
+		inv_comp.inventory_changed.connect(_on_inventory_changed)
+		
+	# Trigger the first selection visually
+	_apply_hotbar_selection(0)
+
+
+func _setup_player_geometry() -> void:
+	# 1. Physics capsule shape setup
+	var col := CollisionShape3D.new()
+	col.name = "PlayerCollider"
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.4
+	capsule.height = 1.8
+	col.shape = capsule
+	col.position = Vector3(0, 0.9, 0)
+	add_child(col)
+
+	# 2. Camera setup positioned at eye-level
+	camera = Camera3D.new()
+	camera.name = "PlayerCamera"
+	camera.position = Vector3(0, 1.6, 0) # Eye height relative to feet
+	camera.current = true
+	add_child(camera)
+	
+	# 3. Third-person visual representation setup (Shadow-casting only for local player)
+	visual_component = PlayerVisualComponent.new()
+	visual_component.name = "PlayerVisualComponent"
+	visual_component.is_local_player = true 
+	add_child(visual_component)
+
+
+func _setup_sub_components() -> void:
+	inventory = InventoryComponent.new()
+	
+	# Instantiate first-person arms viewmodel
+	viewmodel = PlayerViewModel.new()
+	camera.add_child(viewmodel)
+	
+	# Instantiate raycasting and placement component under the camera
+	interaction_component = VoxelInteractionComponent.new()
+	interaction_component.player = self
+	interaction_component.world_controller = world_controller
+	camera.add_child(interaction_component)
+	
+	# Instantiate HUD overlay
+	hud = PlayerHUD.new()
+	hud.player = self
+	hud.world_controller = world_controller
+	add_child(hud)
 
 
 func _setup_inputs() -> void:
@@ -122,47 +156,6 @@ func _setup_inputs() -> void:
 		InputMap.action_add_event(action_name, primary_event)
 
 
-func _setup_player_geometry() -> void:
-	# 1. Capsule Shape (Excellent for gliding smoothly around circular tree trunks and corners)
-	var collision := CollisionShape3D.new()
-	collision.name = "PlayerCollision"
-	var capsule_shape := CapsuleShape3D.new()
-	capsule_shape.radius = 0.4
-	capsule_shape.height = 1.8
-	collision.shape = capsule_shape
-	collision.position = Vector3(0, 0.9, 0) # Feet rest exactly at Y=0
-	add_child(collision)
-	
-	# 2. Camera setup positioned at eye-level
-	camera = Camera3D.new()
-	camera.name = "PlayerCamera"
-	camera.position = Vector3(0, 1.6, 0) # Eye height relative to feet
-	camera.current = true
-	add_child(camera)
-	
-	# 3. Viewmodel Setup
-	viewmodel = PlayerViewModel.new()
-	camera.add_child(viewmodel)
-
-
-func _setup_hud() -> void:
-	inventory = InventoryComponent.new()
-	hud = PlayerHUD.new()
-	hud.name = "HUD"
-	hud.player = self
-	hud.world_controller = world_controller
-	add_child(hud)
-
-
-func _setup_interaction_component() -> void:
-	interaction_component = VoxelInteractionComponent.new()
-	interaction_component.player = self
-	interaction_component.camera = camera
-	interaction_component.world_controller = world_controller
-	interaction_component.hud = hud
-	camera.add_child(interaction_component)
-
-
 func _locate_world() -> void:
 	var parent_node := get_parent()
 	if is_instance_valid(parent_node):
@@ -192,7 +185,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
-		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85), deg_to_rad(85))
+		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
 		
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -245,30 +238,10 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_process_camera_effects(delta)
-
-
-func _rescue_player_from_void() -> void:
-	velocity = Vector3.ZERO
-	var block_x := floori(global_position.x)
-	var block_z := floori(global_position.z)
-	var found_safe_y: float = 14.0 
 	
-	var world_ctrl: WorldController = world_controller as WorldController
-	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
-		found_safe_y = world_ctrl.world_state.get_highest_solid_y(block_x, block_z)
-		
-	global_position.y = found_safe_y
-
-
-func _process_cursor_grab_state() -> void:
-	if not is_instance_valid(hud):
-		return
-	if Input.is_action_pressed("free_cursor"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	else:
-		if not hud.is_any_menu_open():
-			if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and not Input.is_action_pressed("ui_cancel"):
-				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# --- SYNCHRONIZE THIRD-PERSON MOVEMENTS ---
+	if is_instance_valid(visual_component):
+		visual_component.animate_movement(current_flat_velocity, is_on_floor(), delta)
 
 
 func _process_camera_effects(delta: float) -> void:
@@ -284,7 +257,7 @@ func _process_camera_effects(delta: float) -> void:
 		var bob_x: float = cos(_bob_timer * 0.5) * 0.018
 		_target_camera_pos = Vector3(bob_x, 1.6 + bob_y, 0.0)
 		
-		var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+		var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 		_target_camera_tilt = -input_dir.x * 0.02
 	else:
 		_bob_timer += delta * 1.5
@@ -307,6 +280,10 @@ func _process_camera_effects(delta: float) -> void:
 		
 	camera.position = current_pos
 	camera.rotation.z = current_tilt
+
+
+func _process_camera_trauma_shake(delta: float) -> void:
+	_shake_intensity = lerp(_shake_intensity, 0.0, delta * 8.0)
 
 
 func _scroll_hotbar(direction: int) -> void:
@@ -342,9 +319,18 @@ func _apply_hotbar_selection(slot: int) -> void:
 		is_item_selected = false
 		active_build_type = BlockType.Type.AIR
 		_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
+		
+		# Clear third-person visual hand
+		if is_instance_valid(visual_component):
+			visual_component.update_held_tool(-1)
 		return
 		
 	var item_id := slot_data.item_id
+	
+	# Update third-person visual tool dynamically
+	if is_instance_valid(visual_component):
+		visual_component.update_held_tool(item_id)
+		
 	if item_id >= 1 and item_id <= 15:
 		is_item_selected = true
 		active_build_type = item_id as BlockType.Type
@@ -395,6 +381,35 @@ func _on_domain_entity_died() -> void:
 		
 		var chunk_pos: Vector3i = w_ctrl.world_state.global_to_chunk_pos(Vector3i(8, 0, 8))
 		w_ctrl.set("_target_spawn_chunk_pos", chunk_pos)
+
+
+## Reactive Domain Event Callback: Syncs hand meshes on stock mutations
+func _on_inventory_changed() -> void:
+	_apply_hotbar_selection(active_slot_index)
+
+
+func _rescue_player_from_void() -> void:
+	velocity = Vector3.ZERO
+	var block_x := floori(global_position.x)
+	var block_z := floori(global_position.z)
+	var found_safe_y: float = 14.0 
+	
+	var world_ctrl: WorldController = world_controller as WorldController
+	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
+		found_safe_y = world_ctrl.world_state.get_highest_solid_y(block_x, block_z)
+		
+	global_position.y = found_safe_y
+
+
+func _process_cursor_grab_state() -> void:
+	if not is_instance_valid(hud):
+		return
+	if Input.is_action_pressed("free_cursor"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		if not hud.is_any_menu_open():
+			if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and not Input.is_action_pressed("ui_cancel"):
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _setup_inputs_mouse_actions() -> void:
