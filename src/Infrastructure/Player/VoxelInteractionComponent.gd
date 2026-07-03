@@ -3,14 +3,26 @@
 # Description: Infrastructure component managing player gaze raycasting, 
 #              targeted block highlighting, voxel mining, placing, 
 #              food consumption, and seed planting.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively gaze 
-#                interaction mechanics and block modification triggers.
-#              - Open-Closed Principle (OCP): Item behaviors are decoupled into 
-#                parameterized strategies, removing hardcoded logic.
-#              - Dependency Inversion Principle (DIP): Connects strictly with 
-#                abstractions (IInventory, ItemUsageStrategy, IWorldModifier) 
-#                instead of concrete scene-tree controllers.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Handles exclusively gaze 
+#   interaction mechanics and block modification triggers.
+# - Open-Closed Principle (OCP): Item behaviors are decoupled into 
+#   parameterized strategies, removing hardcoded logic.
+# - Dependency Inversion Principle (DIP): Connects strictly with 
+#   abstractions (IInventory, ItemUsageStrategy, IWorldModifier) 
+#   instead of concrete scene-tree controllers.
+# UX RED/GREEN HOLOGRAPHIC PREVIEW:
+# - Added vertical safety padding of 5cm (`-0.05` Y offset) on `player_aabb` 
+#   bounds calculations. This guarantees that blocks placed under your feet 
+#   will be blocked and highlighted in warning RED, preventing players from 
+#   trapping themselves inside solid collision shapes.
+# SELF-HEALING VECTOR MATHEMATICS:
+# - Implemented Ray-Direction Nudging (`ray_dir * 0.05`). Target coordinates are 
+#   now calculated by pushing the collision point slightly inside the block along 
+#   the look vector, rendering calculations 100% independent of GPU winding errors.
+# - Implemented Dot Product Normal Correction (`hit_normal.dot(ray_dir) > 0.0`). 
+#   If the physics server returns an inverted normal (pointing inward), the vector 
+#   is instantly flipped in mid-air, guaranteeing perfect lateral building.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -19,6 +31,8 @@ extends Node3D
 
 ## Dynamic UI targeting reticle highlighters
 var highlight_mesh: MeshInstance3D
+var placement_highlight_mesh: MeshInstance3D # Dynamic green/red preview for Right-Click builds
+var placement_material: StandardMaterial3D # Cached preview material for dynamic color swaps
 var raycast: RayCast3D
 
 # Dependencies injected on startup (DIP compliant)
@@ -42,11 +56,15 @@ const REACH_DISTANCE: float = 5.0
 
 func _ready() -> void:
 	name = "VoxelInteractionComponent"
+	
+	# AUTO-INJECTION: Safely extract the parent camera since this node is added as a child of it
+	camera = get_parent() as Camera3D
+	
 	_setup_raycast()
-	_setup_highlight_mesh()
+	_setup_highlight_meshes()
 
 
-## Programmatically instantiates and configures the target selector RayCast3D.
+## Programmatically instantiates and configures the target detector RayCast3D.
 func _setup_raycast() -> void:
 	raycast = RayCast3D.new()
 	raycast.name = "MiningRayCast"
@@ -60,14 +78,14 @@ func _setup_raycast() -> void:
 	add_child(raycast)
 
 
-## Programmatically instantiates and configures the 3D target highlighter box.
-func _setup_highlight_mesh() -> void:
+## Programmatically instantiates the dual highlighter meshes (White for mining, Green/Red for placement)
+func _setup_highlight_meshes() -> void:
+	# 1. Setup White Mining Highlight Box
 	highlight_mesh = MeshInstance3D.new()
 	highlight_mesh.name = "TargetHighlight"
 	
 	var box_mesh := BoxMesh.new()
 	box_mesh.size = Vector3(1.02, 1.02, 1.02)
-	highlight_mesh.mesh = box_mesh
 	
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -77,9 +95,31 @@ func _setup_highlight_mesh() -> void:
 	mat.emission_energy_multiplier = 0.5
 	box_mesh.material = mat
 	
+	highlight_mesh.mesh = box_mesh
 	highlight_mesh.top_level = true
 	highlight_mesh.visible = false
 	add_child(highlight_mesh)
+
+	# 2. Setup Holographic Building Placement Preview Box
+	placement_highlight_mesh = MeshInstance3D.new()
+	placement_highlight_mesh.name = "PlacementHighlight"
+	
+	var green_box := BoxMesh.new()
+	green_box.size = Vector3(1.015, 1.015, 1.015) # Scaled to avoid clipping Z-fight with white outline
+	
+	# Instantiate and cache the dynamic material
+	placement_material = StandardMaterial3D.new()
+	placement_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	placement_material.albedo_color = Color(0.2, 0.95, 0.35, 0.18) # Default green
+	placement_material.emission_enabled = true
+	placement_material.emission = Color(0.2, 0.95, 0.35)
+	placement_material.emission_energy_multiplier = 0.6
+	green_box.material = placement_material
+	
+	placement_highlight_mesh.mesh = green_box
+	placement_highlight_mesh.top_level = true
+	placement_highlight_mesh.visible = false
+	add_child(placement_highlight_mesh)
 
 
 ## Main Loop API: Evaluates targeted colliders and processes mouse click inputs.
@@ -92,16 +132,81 @@ func process_interaction() -> void:
 		_build_or_interact()
 
 
-## Positions the 3D highlight box over the currently targeted voxel coordinates.
+## Positions the dual highlight boxes dynamically based on gaze and active item states.
 func _update_target_highlight() -> void:
-	if is_instance_valid(highlight_mesh) and is_instance_valid(raycast) and raycast.is_colliding():
-		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
-		var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
+	if not is_instance_valid(raycast) or not raycast.is_colliding() or not is_instance_valid(camera):
+		if is_instance_valid(highlight_mesh):
+			highlight_mesh.visible = false
+		if is_instance_valid(placement_highlight_mesh):
+			placement_highlight_mesh.visible = false
+		return
 		
+	var hit_normal := raycast.get_collision_normal()
+	
+	# SELF-HEALING VECTOR MATHEMATICS:
+	# Calculate look vector from camera to targeted point
+	var ray_dir := (raycast.get_collision_point() - camera.global_position).normalized()
+	
+	# 1. Autocorrect Inverted Normals (If normal points along look vector, flip it outward!)
+	if hit_normal.dot(ray_dir) > 0.0:
+		hit_normal = -hit_normal
+		
+	# 2. Ray-Direction Nudge: Move 5cm inside targeted block along the gaze vector (Independent of Normal winding)
+	var hit_pos := raycast.get_collision_point() + (ray_dir * 0.05)
+	var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
+	
+	# 1. Update Mining Target Highlight (White Box)
+	if is_instance_valid(highlight_mesh):
 		highlight_mesh.global_position = Vector3(target_coord) + Vector3(0.5, 0.5, 0.5)
 		highlight_mesh.visible = true
-	elif is_instance_valid(highlight_mesh):
-		highlight_mesh.visible = false
+		
+	# 2. Update Placement Preview (Green/Red Dynamic Box)
+	if is_instance_valid(placement_highlight_mesh) and is_instance_valid(player):
+		var is_buildable := false
+		var active_slot: int = player.get("active_slot_index") as int
+		var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+		
+		if is_instance_valid(inventory):
+			var slot_data := inventory.get_slot_data(active_slot)
+			if slot_data != null and slot_data.item_id != -1:
+				var item_id := slot_data.item_id
+				# Placeable items check: Blocks (1-5), Lava (15) and Seeds (18)
+				is_buildable = (item_id >= 1 and item_id <= 5) or item_id == 15 or item_id == 18
+				
+		if is_buildable:
+			var build_coord := target_coord + Vector3i(hit_normal)
+			var world_ctrl: WorldController = world_controller as WorldController
+			
+			if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
+				var world_state := world_ctrl.world_state
+				var target_block := world_state.get_block(build_coord)
+				
+				# Check if space is currently empty (Air or non-solid water)
+				var is_spot_free := target_block == BlockType.Type.AIR or target_block == BlockType.Type.WATER
+				
+				# CORRECTED PLAYER COLLISION BOUNDS (WITH 5CM DOWNWARD HYSTERESIS):
+				# Pad AABB downwards by 5cm (0.05) to safely detect if the player is standing 
+				# on top of the placement boundary surface, blocking the placement in warning RED.
+				var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
+				var player_aabb := AABB(
+					player.global_position - Vector3(0.35, 0.05, 0.35),
+					Vector3(0.70, 1.85, 0.70)
+				)
+				var player_collides := player_aabb.intersects(block_aabb)
+				
+				placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
+				placement_highlight_mesh.visible = true
+				
+				if is_spot_free and not player_collides:
+					# VALID SPOT: Shines in dynamic emerald green
+					placement_material.albedo_color = Color(0.2, 0.95, 0.35, 0.18)
+					placement_material.emission = Color(0.2, 0.95, 0.35)
+				else:
+					# BLOCKED SPOT: Shines in warning ruby red
+					placement_material.albedo_color = Color(0.95, 0.2, 0.2, 0.18)
+					placement_material.emission = Color(0.95, 0.2, 0.2)
+		else:
+			placement_highlight_mesh.visible = false
 
 
 ## Executes left-click actions: breaking targeted blocks or swinging the sword.
@@ -110,7 +215,7 @@ func _mine_or_attack() -> void:
 	if is_instance_valid(viewmodel):
 		viewmodel.play_swing_animation()
 	
-	if not raycast.is_colliding(): 
+	if not raycast.is_colliding() or not is_instance_valid(camera): 
 		return
 		
 	var collider: Node = raycast.get_collider() as Node
@@ -131,13 +236,37 @@ func _mine_or_attack() -> void:
 	# MINING CODE: Remove block from the grid and add it to the inventory
 	var world_ctrl: WorldController = world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(inventory):
-		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
+		var hit_normal := raycast.get_collision_normal()
+		var ray_dir := (raycast.get_collision_point() - camera.global_position).normalized()
+		
+		# Autocorrect normals on the fly
+		if hit_normal.dot(ray_dir) > 0.0:
+			hit_normal = -hit_normal
+			
+		var hit_pos: Vector3 = raycast.get_collision_point() + (ray_dir * 0.05)
 		var block_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
+		
+		# ======================================================================
+		# DIAGNOSTIC RAYCAST LOGS
+		# ======================================================================
+		var collided_name := "NULL"
+		if is_instance_valid(collider):
+			collided_name = collider.name
+			
+		print("[RaycastTelemetry] LEFT-CLICK break attempt.")
+		print("  -> Collided Node name: ", collided_name)
+		print("  -> Raw Collision Point: ", raycast.get_collision_point())
+		print("  -> Hit Normal: ", hit_normal)
+		print("  -> Evaluated Block Coord: ", block_coord)
+		# ======================================================================
 		
 		var world_state: WorldState = world_ctrl.world_state
 		if is_instance_valid(world_state):
 			var mined_type := world_state.get_block(block_coord)
+			print("  -> Logically present BlockType: ", mined_type)
+			
 			if mined_type == BlockType.Type.AIR:
+				print("  -> [FAIL] Logic blocked: Targeted block is empty (AIR).")
 				return
 				
 			# Spawn dynamic color-matched break particles
@@ -238,7 +367,7 @@ func _build_or_interact() -> void:
 	if is_instance_valid(viewmodel):
 		viewmodel.play_swing_animation()
 	
-	if not raycast.is_colliding(): 
+	if not raycast.is_colliding() or not is_instance_valid(camera): 
 		return
 		
 	var collider := raycast.get_collider()
@@ -267,21 +396,43 @@ func _build_or_interact() -> void:
 	var strategy: ItemUsageStrategy = ItemStrategyRegistry.get_strategy(item_id) as ItemUsageStrategy
 	if strategy != null:
 		var hit_normal := raycast.get_collision_normal()
-		var hit_pos := raycast.get_collision_point() - (hit_normal * 0.5)
+		var ray_dir := (raycast.get_collision_point() - camera.global_position).normalized()
+		
+		if hit_normal.dot(ray_dir) > 0.0:
+			hit_normal = -hit_normal
+			
+		var hit_pos := raycast.get_collision_point() + (ray_dir * 0.05)
 		var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
+		
+		# ======================================================================
+		# DIAGNOSTIC RAYCAST LOGS FOR BUILDING
+		# ======================================================================
+		var build_coord := target_coord + Vector3i(hit_normal)
+		var collided_name := "NULL"
+		if is_instance_valid(collider):
+			collided_name = collider.name
+			
+		print("[RaycastTelemetry] RIGHT-CLICK build attempt.")
+		print("  -> Collided Node name: ", collided_name)
+		print("  -> Raw Collision Point: ", raycast.get_collision_point())
+		print("  -> Hit Normal: ", hit_normal)
+		print("  -> Evaluated Target Coord: ", target_coord)
+		print("  -> Calculated Build Coord: ", build_coord)
+		# ======================================================================
 		
 		# Validate strategy requirements
 		if strategy.can_use(player.domain_entity, inventory, target_coord, hit_normal, world_state):
 			
 			# SPECIAL BOUNDING SHIELD: Prevent placing solid blocks inside player's body
 			if strategy is PlaceableBlockStrategy:
-				var build_coord := target_coord + Vector3i(hit_normal)
 				var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
+				# Padded player AABB downwards by 5cm (0.05) to prevent self-intersection block traps
 				var player_aabb := AABB(
-					player.global_position - Vector3(0.4, 0.9, 0.4),
-					Vector3(0.8, 1.8, 0.8)
+					player.global_position - Vector3(0.35, 0.05, 0.35),
+					Vector3(0.70, 1.85, 0.70)
 				)
 				if player_aabb.intersects(block_aabb):
+					print("  -> [FAIL] Bounding shield blocked placement: Intersects Player AABB.")
 					return # Prevent trapping the player inside a solid block!
 					
 			# Execute strategy business rules (Injected through the Domain Adapter abstraction)

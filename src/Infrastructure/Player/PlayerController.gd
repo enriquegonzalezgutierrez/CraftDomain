@@ -8,9 +8,12 @@
 #              - Dependency Inversion Principle (DIP): Injects loose component dependencies.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate.
-#              PHYSICS OVERHAUL (ZERO-STICKING CORRECTION):
-#              - Set `floor_block_on_wall` or slide parameters safely to completely 
-#                resolve corner sticking and allow smooth motion along voxel edges.
+# VOXEL SMOOTH SLIDING CORRECTION:
+#              - Configured custom Godot 4 slide and snap properties on `_ready()` 
+#                to completely resolve sticky wall corner traps on 90-degree block seams, 
+#                guaranteeing butter-smooth sliding movement.
+#              - Increased physical `safe_margin` to 1.5cm (`0.015`) to prevent 
+#                capsule-to-box seam penetration and sticky corners.
 # ==============================================================================
 class_name PlayerController
 extends CharacterBody3D
@@ -64,9 +67,18 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	# CRITICAL FIX: Register custom keyboards actions in Godot's InputMap on startup!
-	_setup_inputs()
+	# ==========================================================================
+	# VOXEL SMOOTH SLIDING CONFIGURATIONS
+	# ==========================================================================
+	floor_block_on_wall = false         # Allows sliding along block walls while standing on floors
+	floor_constant_speed = true        # Prevents micro-jitter speed changes over steps
+	floor_max_angle = deg_to_rad(45.0)   # Standard limits for walking slopes
+	floor_snap_length = 0.25           # Keeps the player glued down step edges smoothly
+	wall_min_slide_angle = 0.0         # Guarantees sliding against absolute 90-degree voxel vertical seams
+	safe_margin = 0.015                # 1.5cm safety boundary prevents capsule seam cling and corner traps
+	# ==========================================================================
 	
+	_setup_inputs()
 	_setup_player_geometry()
 	_setup_sub_components()
 	
@@ -205,7 +217,7 @@ func _physics_process(delta: float) -> void:
 
 	var world_ctrl: WorldController = world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
-		var p_chunk_pos := world_ctrl.world_state.global_to_chunk_pos(Vector3i(floori(global_position.x), 0, floori(global_position.z)))
+		var p_chunk_pos := world_ctrl.world_state.global_to_chunk_pos(Vector3i(floori(position.x), 0, floori(position.z)))
 		if not world_ctrl.chunk_manager.is_chunk_rendered(p_chunk_pos):
 			velocity = Vector3.ZERO
 			return
@@ -390,8 +402,8 @@ func _on_inventory_changed() -> void:
 
 func _rescue_player_from_void() -> void:
 	velocity = Vector3.ZERO
-	var block_x := floori(global_position.x)
-	var block_z := floori(global_position.z)
+	var block_x := floori(position.x)
+	var block_z := floori(position.z)
 	var found_safe_y: float = 14.0 
 	
 	var world_ctrl: WorldController = world_controller as WorldController

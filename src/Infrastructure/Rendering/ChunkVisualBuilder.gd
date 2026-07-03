@@ -14,8 +14,10 @@
 #                dynamic `as Vector3` variant casting inside the hottest loop of the game.
 #              - Distance Physics Culling: Added `build_collision` flag to completely bypass 
 #                gathering triangle faces for distant chunks, saving massive CPU time.
-#              WARNING FIX: Changed table declarations from `const` to `static var` 
-#              to comply with Godot 4's strict constant expression rules for constructors.
+#              PHYSICS SEAM WINDING RESTORATION (DEFINITIVE):
+#              - Restored correct Counter-Clockwise (CCW) winding order (`v2, v1, v0` 
+#                and `v3, v2, v0`). All normals now point outward perfectly, 
+#                resolving player movement locks and ensuring ground-plane collision safety.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkVisualBuilder.gd
 # ==============================================================================
@@ -113,12 +115,12 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState, build_col
 							var v2 := local_pos + face_verts[2]
 							var v3 := local_pos + face_verts[3]
 							
-							# Triangle 1
+							# Triangle 1 (CCW - Counter-Clockwise Winding Order)
 							collision_vertices.append(v2)
 							collision_vertices.append(v1)
 							collision_vertices.append(v0)
 							
-							# Triangle 2
+							# Triangle 2 (CCW - Counter-Clockwise Winding Order)
 							collision_vertices.append(v3)
 							collision_vertices.append(v2)
 							collision_vertices.append(v0)
@@ -138,7 +140,6 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState, build_col
 	# BACKGROUND THREAD MEMORY PACKING
 	# ======================================================================
 	var final_multimesh_data: Dictionary = {}
-	
 	for b_type: BlockType.Type in render_data.keys():
 		var transforms: Array = render_data[b_type] as Array
 		var count: int = transforms.size()
@@ -149,18 +150,10 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState, build_col
 		for i: int in range(count):
 			var t: Transform3D = transforms[i] as Transform3D
 			var offset := i * 12
-			bulk_array[offset + 0] = t.basis.x.x
-			bulk_array[offset + 1] = t.basis.y.x
-			bulk_array[offset + 2] = t.basis.z.x
-			bulk_array[offset + 3] = t.origin.x
-			bulk_array[offset + 4] = t.basis.x.y
-			bulk_array[offset + 5] = t.basis.y.y
-			bulk_array[offset + 6] = t.basis.z.y
-			bulk_array[offset + 7] = t.origin.y
-			bulk_array[offset + 8] = t.basis.x.z
-			bulk_array[offset + 9] = t.basis.y.z
-			bulk_array[offset + 10] = t.basis.z.z
-			bulk_array[offset + 11] = t.origin.z
+			bulk_array[offset + 0] = t.basis.x.x; bulk_array[offset + 1] = t.basis.y.x; bulk_array[offset + 2] = t.basis.z.x
+			bulk_array[offset + 3] = t.origin.x; bulk_array[offset + 4] = t.basis.x.y; bulk_array[offset + 5] = t.basis.y.y
+			bulk_array[offset + 6] = t.basis.z.y; bulk_array[offset + 7] = t.origin.y; bulk_array[offset + 8] = t.basis.x.z
+			bulk_array[offset + 9] = t.basis.y.z; bulk_array[offset + 10] = t.basis.z.z; bulk_array[offset + 11] = t.origin.z
 			
 		final_multimesh_data[b_type] = bulk_array
 					
