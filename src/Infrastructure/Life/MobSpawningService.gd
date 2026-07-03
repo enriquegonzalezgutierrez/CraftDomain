@@ -9,13 +9,9 @@
 #                population registry, removing hardcoded match maps.
 #              - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome.
 #              UPDATED:
-#              - Integrated the new 3D Streetlight Entity (ID 202) Spawning.
-#                Replaced the buggy voxel-based lamppost with robust 3D physical 
-#                entities. Spawns village lamps at caminos and organic wilderness 
-#                lamps scattered at safe ground levels in plains and forests.
-#              WARNING FIX:
-#              - Added explicit static typing `bool` to `should_spawn_organic_light` 
-#                variable to resolve the dynamic type inference warning.
+#              - Expanded organic streetlight (ID 202) spawning to ALL land-based 
+#                biomes (excluding deep ocean and sky clouds), allowing the 
+#                StreetlightEntity to dynamically theme itself dynamically.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -69,9 +65,9 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			
 	else:
 		# ---> PHYSICAL 3D ORGANIC WILDERNESS STREETLIGHT SPAWN <---
-		# If we are in civilized plains (2) or Redwood forest (5), we have a deterministic 
-		# 1/35 chance per chunk to spawn a majestic 3D lamppost exactly at safe ground levels
-		if active_biome_id == 2 or active_biome_id == 5:
+		# We spawn streetlights organically in ALL land-based biomes, skipping only 
+		# deep oceans (0) and floating sky islands (9).
+		if active_biome_id != 0 and active_biome_id != 9:
 			# WARNING FIX: Explicit static typing as bool prevents compiler warnings
 			var should_spawn_organic_light: bool = (abs(chunk_pos.x) * 11 + abs(chunk_pos.z) * 17) % 35 == 3
 			if should_spawn_organic_light:

@@ -6,6 +6,8 @@
 #                resource deduction and player healing transaction.
 #              - Open-Closed Principle (OCP): Fully generic and open to any new 
 #                food or potion items by parameterizing IDs and heal amounts.
+#              - Liskov Substitution Principle (LSP): Fully matches the signature 
+#                and contract defined by the parent ItemUsageStrategy class.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/ConsumableItemStrategy.gd
 # ==============================================================================
@@ -27,6 +29,7 @@ func can_use(player_health: VoxelEntity, inventory: IInventory, _target_coord: V
 
 
 ## Concrete implementation: Deducts food stock and restores player health.
-func use(player_health: VoxelEntity, inventory: IInventory, _target_coord: Vector3i, _normal: Vector3, _world_controller: Node3D) -> void:
+## LSP COMPLIANCE: Signature updated to match the parent class contract.
+func use(player_health: VoxelEntity, inventory: IInventory, _target_coord: Vector3i, _normal: Vector3, _world_modifier: IWorldModifier) -> void:
 	inventory.consume_item(item_id, 1)
 	player_health.health = min(3, player_health.health + heal_amount)

@@ -6,25 +6,13 @@
 #              - Single Responsibility Principle (SRP): No longer manages threads, 
 #                queues, file formatting, or visual compilations. All heavy lifting 
 #                is delegated to specialized services.
+#              - Dependency Inversion Principle (DIP): Exposes a domain-compliant 
+#                IWorldModifier adapter, decoupling domain strategies from this 
+#                concrete infrastructure coordinator.
 #              - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
 #                services without modifying core coordination loops.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate.
-#              BUG FIX (UI MENU JUMPING):
-#              - Added strict gating to `check_player_spawn_activation()` so it 
-#                only runs if `_is_startup_phase` or `is_teleport_spawn` is true. 
-#                This prevents the controller from erroneously teleporting the 
-#                player to the ground when opening UI menus (which set `is_active` to false).
-#              BUG FIX (CRASH ON EXIT):
-#              - Integrated `_exit_tree()` lifecycle hook to trigger a clean 
-#                `chunk_manager.shutdown()`, preventing background threads from 
-#                accessing the coordinator after it has been freed.
-#              WARNING FIX:
-#              - Added explicit static typing `Node` to the dynamic `celestial` 
-#                variable to resolve the `UNTYPED_DECLARATION` warning.
-#              UPDATED: Added restoration of celestial time and calendar days 
-#              from saved global metadata to load precise day/night timelines.
-#              CLEANUP: Removed temporary telemetry debug logs.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -41,6 +29,9 @@ var repository: WorldRepository
 
 ## Dependency-injected player reference
 var player: CharacterBody3D
+
+## Domain-level modifier interface exposure (Adapter Pattern)
+var world_modifier: IWorldModifier
 
 # Decoupled Private Infrastructure Helper Services (SRP Compliant)
 var chunk_manager: ChunkManagerService
@@ -61,8 +52,7 @@ var _loaded_inventory_data: Array = []
 var _is_restored_save: bool = false
 var _is_startup_phase: bool = true
 
-# BUG FIX FLAGS: Forces vertical height recalculation on fast-travel teleport spawner
-# Made public to prevent dynamic property setter lookup failures.
+# Public trigger flag for vertical height recalculations on teleport
 var is_teleport_spawn: bool = false
 
 
@@ -75,6 +65,9 @@ func _ready() -> void:
 func _initialize_systems() -> void:
 	world_state = WorldState.new()
 	loader_service = ChunkLoaderService.new()
+	
+	# Instantiate our domain modifier adapter to protect layering rules
+	world_modifier = WorldModifierAdapter.new(self)
 	
 	_mob_spawning_service = MobSpawningService.new()
 	_streetlight_service = StreetlightService.new(self, world_state)
@@ -108,7 +101,7 @@ func _initialize_systems() -> void:
 		if saved_global.has("inventory"): 
 			_loaded_inventory_data = saved_global["inventory"] as Array
 		
-		# ---> RESTORE CELESTIAL TIMELINE <---
+		# Restore celestial timeline
 		if saved_global.has("celestial_time"):
 			current_time = saved_global["celestial_time"] as float
 		if saved_global.has("calendar_day"):
@@ -123,15 +116,13 @@ func _initialize_systems() -> void:
 				QuestService.set_active_quest(saved_q_id)
 	else:
 		_is_restored_save = false
-		# Fallback to unique random seed on fresh game start
 		randomize()
 		active_seed = randi()
 		print("[WorldController] No save found. Generating new world with unique Seed: ", active_seed)
 		
 	generator = WorldGenerator.new(active_seed)
 	
-	# ---> APPLY LOADED CELESTIAL TIMELINE <---
-	# Find and safely update CelestialService fields via reflection
+	# Apply loaded celestial timeline
 	var bootstrap := get_node_or_null("/root/Bootstrap")
 	if is_instance_valid(bootstrap):
 		var celestial: Node = bootstrap.get_node_or_null("CelestialService") as Node
@@ -148,7 +139,7 @@ func _initialize_systems() -> void:
 		player.position = spawn_pos
 		player.rotation = spawn_rot
 		
-	# FORCE MINIMUM DISTANCE: Throttle view distance during initial load for instant entry
+	# Throttle view distance during initial load for instant entry
 	_is_startup_phase = true
 	ChunkLoaderService.global_view_distance = 1 
 
@@ -162,8 +153,6 @@ func _process(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 		
-	# BUG FIX (UI MENU JUMPING): We only poll the spawn activation logic if we are 
-	# actively loading the world or fast-traveling. We ignore UI-induced pauses!
 	if not player.get("is_active") and (_is_startup_phase or is_teleport_spawn):
 		check_player_spawn_activation()
 		
@@ -183,8 +172,7 @@ func _process(delta: float) -> void:
 		chunk_manager.process_frame_queues()
 
 
-## SAFE SHUTDOWN: Clears requests and blocks the main thread on exit until 
-## background thread workers have finished processing safely.
+## Clears requests and blocks the main thread on exit until background thread workers have finished processing safely
 func _exit_tree() -> void:
 	if is_instance_valid(chunk_manager):
 		chunk_manager.shutdown()
@@ -197,14 +185,9 @@ func _process_dynamic_world() -> void:
 		world_state
 	)
 	
-	# Delegate loading and unloading arrays directly to ChunkManagerService
 	if is_instance_valid(chunk_manager):
 		chunk_manager.queue_unloads(task.to_unload)
 		
-		# ---> SURGICAL PRIORITY QUEUE DISPATCH <---
-		# CRITICAL FIX: Push priority spawn protection chunks BEFORE normal passive loads.
-		# This guarantees they are queued at the front and instantly dispatched, 
-		# bypassing the massive 162-chunk scenic loading requests.
 		if is_teleport_spawn:
 			var target_spawn_chunks: Array[Vector3i] = []
 			for x: int in range(-1, 2):
@@ -214,10 +197,9 @@ func _process_dynamic_world() -> void:
 			chunk_manager.queue_prioritized_loads(target_spawn_chunks)
 		
 		# Regular scenic world loads remain passive (un-prioritized)
-		# Priority chunks already logged in _pending_loading_chunks will be efficiently skipped.
 		chunk_manager.queue_loads(task.to_load)
 		
-		# DYNAMIC PROXIMITY SPAWNING: Spawns entities only in chunks close to the player
+		# Spawns entities only in chunks close to the player
 		chunk_manager.spawn_mobs_by_proximity(player.global_position)
 
 
@@ -236,21 +218,20 @@ func _process_day_night_lighting() -> void:
 # COORDINATION DELEGATION APIS (DIP/SRP Compliant)
 # ==============================================================================
 
-## Proxy getter to satisfy external systems without violating SRP.
-## Returns active, rendered chunk nodes from the ChunkManager.
+## Proxy getter to satisfy external systems without violating SRP
 func get_active_chunk_nodes() -> Dictionary:
 	if is_instance_valid(chunk_manager):
 		return chunk_manager.get_active_nodes()
 	return {}
 
 
-## Places or breaks a block globally and delegates fast asynchronous redraw queues.
+## Places or breaks a block globally and delegates fast asynchronous redraw queues
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	if is_instance_valid(chunk_manager):
 		chunk_manager.set_block_globally(global_pos, type)
 
 
-## Triggers the global asynchronous save sequence via WorldPersistenceService.
+## Triggers the global asynchronous save sequence via WorldPersistenceService
 func save_all() -> void:
 	if is_instance_valid(persistence_service):
 		persistence_service.save_game(player, world_state)
@@ -281,7 +262,6 @@ func check_player_spawn_activation() -> void:
 		if is_instance_valid(chunk_manager):
 			var _all_rendered: bool = true
 			
-			# Validate that the entire 3x3 surrounding column region is fully compiled in RAM
 			for x: int in range(-1, 2):
 				for z: int in range(-1, 2):
 					var pos_0: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z)
@@ -299,16 +279,14 @@ func check_player_spawn_activation() -> void:
 
 ## Safely positions the player on the topmost solid block at spawn coordinates using Domain Rules
 func _activate_player_spawn() -> void:
-	# BUG FIX: Recalculate safe ground height if it is a fresh game OR a fast-travel teleport spawn!
 	if not _is_restored_save or is_teleport_spawn:
-		is_teleport_spawn = false # Reset the bug fix trigger flag
+		is_teleport_spawn = false # Reset the trigger flag
 		
 		var block_x: int = floori(player.position.x)
 		var block_z: int = floori(player.position.z)
-		var found_safe_y: float = 14.0 # Default safe fallback
+		var found_safe_y: float = 14.0 # Fallback
 		
 		if is_instance_valid(world_state):
-			# Centralized Domain Rule calculation (DDD compliant)
 			found_safe_y = world_state.get_highest_solid_y(block_x, block_z)
 			
 		player.position.y = found_safe_y
@@ -317,11 +295,9 @@ func _activate_player_spawn() -> void:
 	player.set("is_active", true)
 	player.velocity = Vector3.ZERO
 	
-	# Force initial proximity spawning immediately upon spawning, so active regions populate right away
 	if is_instance_valid(chunk_manager):
 		chunk_manager.spawn_mobs_by_proximity(player.global_position)
 		
-	# EXPAND HORIZON: After successful drop, release the throttler and load full user settings
 	if _is_startup_phase:
 		_is_startup_phase = false
 		var settings: Dictionary = SettingsRepository.load_settings() as Dictionary
@@ -329,7 +305,6 @@ func _activate_player_spawn() -> void:
 		if settings.has("render_distance"):
 			target_distance = int(settings["render_distance"])
 		
-		# Slowly and safely expand the view distance natively in the background
 		ChunkLoaderService.global_view_distance = target_distance
 
 
@@ -339,3 +314,21 @@ func _restore_player_inventory() -> void:
 		var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
 			inventory.deserialize_data(_loaded_inventory_data)
+
+
+# ==============================================================================
+# ADAPTER PATTERN: Inner class implementing the Domain IWorldModifier contract.
+#                  This decouples Domain layer strategies from the SceneTree-dependent 
+#                  WorldController class, resolving the DIP violation.
+# ==============================================================================
+class WorldModifierAdapter:
+	extends IWorldModifier
+	
+	var _controller: WorldController
+	
+	func _init(controller: WorldController) -> void:
+		_controller = controller
+		
+	func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
+		if is_instance_valid(_controller):
+			_controller.set_block_globally(global_pos, type)

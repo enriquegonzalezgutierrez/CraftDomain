@@ -9,15 +9,8 @@
 #              - Open-Closed Principle (OCP): Item behaviors are decoupled into 
 #                parameterized strategies, removing hardcoded logic.
 #              - Dependency Inversion Principle (DIP): Connects strictly with 
-#                abstractions (IInventory, ItemUsageStrategy, WorldController).
-#              OPTIMIZATION:
-#              - Implemented a rigorous 3D Axis-Aligned Bounding Box (AABB) intersection 
-#                check to prevent placing solid blocks inside the player's physical space,
-#                fully resolving the issue of getting stuck.
-#              WARNING FIX:
-#              - Replaced Variant data getters (`viewmodel`, `collider`, `inventory`, 
-#                `world_ctrl`, `strategy`) with strictly cast static typed variables 
-#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
+#                abstractions (IInventory, ItemUsageStrategy, IWorldModifier) 
+#                instead of concrete scene-tree controllers.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -113,7 +106,6 @@ func _update_target_highlight() -> void:
 
 ## Executes left-click actions: breaking targeted blocks or swinging the sword.
 func _mine_or_attack() -> void:
-	# FIX: Explicit static typing on viewmodel reference
 	var viewmodel: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 	if is_instance_valid(viewmodel):
 		viewmodel.play_swing_animation()
@@ -121,10 +113,8 @@ func _mine_or_attack() -> void:
 	if not raycast.is_colliding(): 
 		return
 		
-	# FIX: Explicit static typing on hit collider reference
 	var collider: Node = raycast.get_collider() as Node
 	var active_slot: int = player.get("active_slot_index") as int
-	# FIX: Explicit static typing on player inventory reference
 	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 	
 	# COMBAT CODE: Hit hostile or passive character bodies if holding the sword (ID 17)
@@ -139,7 +129,6 @@ func _mine_or_attack() -> void:
 				return
 
 	# MINING CODE: Remove block from the grid and add it to the inventory
-	# FIX: Explicit static typing on world controller coordinate reference
 	var world_ctrl: WorldController = world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(inventory):
 		var hit_pos: Vector3 = raycast.get_collision_point() - (raycast.get_collision_normal() * 0.5)
@@ -185,7 +174,6 @@ func _mine_or_attack() -> void:
 				var _un5 := inventory.add_item(target_id, 1)
 				
 			# DIP INVERSION: Update quest progress using the injected provider reference
-			# FIX: Explicit static typing on verified active quest variable
 			var active_q: Quest = quest_service_provider.get_active_quest() as Quest
 			if active_q != null and active_q.required_item_index == target_id:
 				active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
@@ -199,8 +187,6 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	if block_type == BlockType.Type.AIR:
 		return
 		
-	# DIP INVERSION: Look up definition using the injected provider reference
-	# FIX: Explicit static typing on block library definition
 	var def: BlockDefinition = block_library_provider.get_definition(block_type) as BlockDefinition
 	if def == null:
 		return
@@ -248,7 +234,6 @@ func _cleanup_particles(particles_node: GPUParticles3D) -> void:
 
 ## Executes right-click actions: placing blocks, planting crops, or speaking with NPCs.
 func _build_or_interact() -> void:
-	# FIX: Explicit static typing on viewmodel reference
 	var viewmodel: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 	if is_instance_valid(viewmodel):
 		viewmodel.play_swing_animation()
@@ -264,9 +249,7 @@ func _build_or_interact() -> void:
 		return
 		
 	var active_slot: int = player.get("active_slot_index") as int
-	# FIX: Explicit static typing on player inventory reference
 	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
-	# FIX: Explicit static typing on world controller coordinate reference
 	var world_ctrl: WorldController = world_controller as WorldController
 	
 	if not is_instance_valid(inventory) or not is_instance_valid(world_ctrl):
@@ -281,8 +264,6 @@ func _build_or_interact() -> void:
 	if not is_instance_valid(world_state):
 		return
 		
-	# DIP / OCP Strategy Router query
-	# FIX: Explicit static typing on evaluated item strategy
 	var strategy: ItemUsageStrategy = ItemStrategyRegistry.get_strategy(item_id) as ItemUsageStrategy
 	if strategy != null:
 		var hit_normal := raycast.get_collision_normal()
@@ -303,8 +284,8 @@ func _build_or_interact() -> void:
 				if player_aabb.intersects(block_aabb):
 					return # Prevent trapping the player inside a solid block!
 					
-			# Execute strategy business rules
-			strategy.use(player.domain_entity, inventory, target_coord, hit_normal, world_ctrl)
+			# Execute strategy business rules (Injected through the Domain Adapter abstraction)
+			strategy.use(player.domain_entity, inventory, target_coord, hit_normal, world_ctrl.world_modifier)
 			
 			# Contextual visual toast notifications (Decoupled from core strategy rules)
 			if is_instance_valid(hud):

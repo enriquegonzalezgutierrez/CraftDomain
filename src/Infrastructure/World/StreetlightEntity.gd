@@ -1,12 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure Static Entity representing a highly detailed, 
-#              3D medieval double-lantern streetlight.
+#              3D medieval, cyber, or polar double-lantern streetlight.
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Handles exclusively the 
 #                3D programmatic mesh assembly, materials, and lighting controls.
 #              - Liskov Substitution Principle (LSP): Safely extends StaticBody3D 
 #                to act as a physical collidable obstacle in the world.
+#              POLIMORFIC BIOME INTEGRATION:
+#              - Replaced static colors with a dynamic coordinate-seeded biome 
+#                customizer. The entity queries its global coordinates on ready and 
+#                automatically morphs its 3D box shapes, materials, and glow colors 
+#                to perfectly match its local biome theme (Medieval, Cyber, Ice, 
+#                Swamp, or Sandstone).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/StreetlightEntity.gd
 # ==============================================================================
@@ -21,10 +27,12 @@ var _right_glass_mat: StandardMaterial3D
 
 # State
 var _lights_active: bool = false
+var npc_seed: int = 0
 
 
 func _ready() -> void:
 	name = "Prop_STREETLIGHT"
+	npc_seed = abs(int(global_position.x * 73856093) ^ int(global_position.z * 19349663))
 	_build_procedural_3d_model()
 	_setup_collision()
 	
@@ -40,27 +48,61 @@ func _ready() -> void:
 
 
 ## Programmatically assembles the 3D lamppost out of colored box meshes.
-## No PNG textures are used, only high-performance PBR flat materials.
+## Automatically morphs colors and emissions to match the local biome theme.
 func _build_procedural_3d_model() -> void:
+	var biome_id := _detect_current_biome()
+	
+	# --- DEFAULT THEME: RUSTIC MEDIEVAL ---
 	var stone_dark := Color(0.38, 0.40, 0.42)      # Heavy chiseled stone
 	var stone_light := Color(0.55, 0.58, 0.60)     # Cobblestone wall
 	var wood_brown := Color(0.45, 0.30, 0.15)      # Oak wood posts
 	var iron_black := Color(0.12, 0.12, 0.15)      # Black wrought iron
-	var glow_yellow := Color(1.0, 0.72, 0.2)       # Incandescent lantern bulb
+	var glow_color := Color(1.0, 0.72, 0.2)        # Incandescent lantern bulb
+	var light_tint := Color(1.0, 0.72, 0.3)        # Warm yellow-orange light
 	
-	# 1. Base Pedestal (Y+1: Cobblestone)
+	# ---> BIOME PALETTE POLIMORPHISM <---
+	match biome_id:
+		4: # Frostbite Glaciers: FROST/ICE THEME
+			stone_dark = Color(0.62, 0.88, 0.95)   # Frozen ice blue
+			stone_light = Color(0.48, 0.75, 0.85)  # Frosted blue-ice
+			wood_brown = Color(0.98, 0.98, 0.98)   # Cold snow white
+			glow_color = Color(0.75, 0.85, 1.0)   # Silver-blue ice bulb
+			light_tint = Color(0.75, 0.85, 1.0)
+			
+		7: # Neon Ruins: CYBERPUNK NEON THEME
+			stone_dark = Color(0.12, 0.12, 0.15)   # Dark obsidian-steel
+			stone_light = Color(0.08, 0.08, 0.1)   # Charcoal black
+			wood_brown = Color(0.0, 0.95, 0.95)    # Glowing cyan neon
+			glow_color = Color(0.95, 0.0, 0.95)   # Glowing magenta bulb
+			light_tint = Color(0.0, 0.95, 0.95)
+			
+		8: # Swamp of Sighs: SWAMP/MOSS THEME
+			stone_dark = Color(0.22, 0.18, 0.12)   # Mud brown base
+			stone_light = Color(0.18, 0.28, 0.15)  # Mossy dark wood
+			wood_brown = Color(0.15, 0.45, 0.12)   # Foliage green
+			glow_color = Color(0.42, 0.85, 0.25)  # Glowing poison-green bulb
+			light_tint = Color(0.42, 0.85, 0.25)
+			
+		6: # Red Badlands: DESERT CANYON THEME
+			stone_dark = Color(0.55, 0.32, 0.22)   # Terracotta dark orange
+			stone_light = Color(0.75, 0.48, 0.35)  # Sandstone light orange
+			wood_brown = Color(0.28, 0.18, 0.12)   # Dry wood
+			glow_color = Color(1.0, 0.55, 0.0)    # Amber orange bulb
+			light_tint = Color(1.0, 0.55, 0.0)
+	
+	# 1. Base Pedestal (Y+1)
 	_create_box(self, Vector3(0.55, 0.45, 0.55), Vector3(0, 0.225, 0), stone_dark)
 	
-	# 2. Cobblestone Wall (Y+2: Pedestal column)
+	# 2. Main Pedestal column (Y+2)
 	_create_box(self, Vector3(0.38, 0.40, 0.38), Vector3(0, 0.65, 0), stone_light)
 	
-	# 3. Wooden Fence Shaft (Y+3: Thin vertical post)
+	# 3. Vertical post (Y+3)
 	_create_box(self, Vector3(0.18, 1.20, 0.18), Vector3(0, 1.45, 0), wood_brown)
 	
-	# 4. Stone Neck Connector (Y+4: Capital joint)
+	# 4. Capital joint (Y+4)
 	_create_box(self, Vector3(0.32, 0.35, 0.32), Vector3(0, 2.225, 0), stone_light)
 	
-	# 5. Wooden Horizontal Travesaño (Y+5: Arms extending left and right)
+	# 5. Arms extending left and right (Y+5)
 	_create_box(self, Vector3(1.42, 0.10, 0.30), Vector3(0, 2.45, 0), wood_brown)
 	
 	# ==========================================================================
@@ -71,22 +113,22 @@ func _build_procedural_3d_model() -> void:
 	# Iron Cap
 	_create_box(self, Vector3(0.24, 0.06, 0.24), Vector3(-0.55, 2.22, 0), iron_black)
 	
-	# Glass Bell (Transparent glowing yellow glass)
-	var left_glass := _create_box(self, Vector3(0.18, 0.28, 0.18), Vector3(-0.55, 2.05, 0), glow_yellow)
+	# Glass Bell (Transparent glowing glass)
+	var left_glass := _create_box(self, Vector3(0.18, 0.28, 0.18), Vector3(-0.55, 2.05, 0), glow_color)
 	_left_glass_mat = StandardMaterial3D.new()
 	_left_glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_left_glass_mat.albedo_color = Color(1.0, 0.72, 0.2, 0.35) # Translucent yellow glass
-	_left_glass_color_setup(core_mat_emission_color()) # Starts unlit
+	_left_glass_mat.albedo_color = Color(glow_color.r, glow_color.g, glow_color.b, 0.35) # Translucent glass
+	_left_glass_color_setup(glow_color) # Starts unlit
 	left_eye_fallback_check(left_glass)
 	
 	# Spawns physical OmniLight3D inside the left glass bell
-	_left_arm_light_setup()
+	_left_arm_light_setup(light_tint)
 	
 	# ==========================================================================
 	# LANTERN RIGHT (Hanging at X = +0.55 meters)
 	# ==========================================================================
 	if is_instance_valid(self):
-		_left_arm_joint_setup(iron_ring_mesh_color())
+		_left_arm_joint_setup(iron_black, glow_color, light_tint)
 
 
 ## Setup sheathed weapon positions (Unused interface helper)
@@ -158,14 +200,6 @@ func set_lights_active(is_night: bool) -> void:
 		tween.kill()
 
 
-func core_mat_emission_color() -> Color:
-	return Color(1.0, 0.72, 0.2)
-
-
-func iron_ring_mesh_color() -> Color:
-	return Color(0.12, 0.12, 0.15)
-
-
 func _left_glass_color_setup(c: Color) -> void:
 	_left_glass_mat.roughness = 0.05
 	_left_glass_mat.metallic = 0.1
@@ -178,10 +212,10 @@ func left_eye_fallback_check(left_glass: MeshInstance3D) -> void:
 	left_glass.material_override = _left_glass_mat
 
 
-func _left_arm_light_setup() -> void:
+func _left_arm_light_setup(light_tint: Color) -> void:
 	_left_light = OmniLight3D.new()
 	_left_light.name = "LeftLight"
-	_left_light.light_color = Color(1.0, 0.72, 0.3)
+	_left_light.light_color = light_tint
 	_left_light.light_energy = 0.0
 	_left_light.omni_range = 10.0
 	_left_light.shadow_enabled = true
@@ -190,31 +224,50 @@ func _left_arm_light_setup() -> void:
 	add_child(_left_light)
 
 
-func _left_arm_joint_setup(iron_black: Color) -> void:
-	var glow_yellow := Color(1.0, 0.72, 0.2)
+func _left_arm_joint_setup(iron_black: Color, glow_color: Color, light_tint: Color) -> void:
 	# Chain Link
 	_create_box(self, Vector3(0.04, 0.15, 0.04), Vector3(0.55, 2.325, 0), iron_black)
 	# Iron Cap
 	_create_box(self, Vector3(0.24, 0.06, 0.24), Vector3(0.55, 2.22, 0), iron_black)
 	
 	# Glass Bell
-	var right_glass := _create_box(self, Vector3(0.18, 0.28, 0.18), Vector3(0.55, 2.05, 0), glow_yellow)
+	var right_glass := _create_box(self, Vector3(0.18, 0.28, 0.18), Vector3(0.55, 2.05, 0), glow_color)
 	_right_glass_mat = StandardMaterial3D.new()
 	_right_glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_right_glass_mat.albedo_color = Color(1.0, 0.72, 0.2, 0.35)
+	_right_glass_mat.albedo_color = Color(glow_color.r, glow_color.g, glow_color.b, 0.35)
 	_right_glass_mat.roughness = 0.05
 	_right_glass_mat.metallic = 0.1
 	_right_glass_mat.emission_enabled = true
-	_right_glass_mat.emission = glow_yellow
+	_right_glass_mat.emission = glow_color
 	_right_glass_mat.emission_energy_multiplier = 0.0
 	right_glass.material_override = _right_glass_mat
 	
 	_right_light = OmniLight3D.new()
 	_right_light.name = "RightLight"
-	_right_light.light_color = Color(1.0, 0.72, 0.3)
+	_right_light.light_color = light_tint
 	_right_light.light_energy = 0.0
 	_right_light.omni_range = 10.0
 	_right_light.shadow_enabled = true
 	_right_light.shadow_bias = 0.05
 	_right_light.position = Vector3(0.55, 2.05, 0)
 	add_child(_right_light)
+
+
+## Queries the coordinate's biome dynamically to resolve theme IDs.
+func _detect_current_biome() -> int:
+	var world_controller_ref := get_parent()
+	var default_biome_id := 2
+	
+	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
+		var gen: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
+		if gen != null:
+			var terrain_noise: FastNoiseLite = gen.get("_terrain_noise") as FastNoiseLite
+			if terrain_noise != null:
+				var profile := BiomeService.evaluate_coordinate(
+					int(round(global_position.x)), 
+					int(round(global_position.z)), 
+					terrain_noise
+				)
+				return profile.biome_id
+				
+	return default_biome_id
