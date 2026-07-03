@@ -6,15 +6,16 @@
 # - Single Responsibility Principle (SRP): Exclusively handles the spawning and
 #   placement of inanimate/interactive world decorations, completely freeing
 #   MobSpawningService from managing non-living objects.
-# - Open-Closed Principle (OCP): Queries PropRegistry dynamically, allowing new 
-#   decorations to be placed without modifying this service's internal registration mappings.
+# - Open-Closed Principle (OCP): Queries PropRegistry and RoadGeneratorService 
+#   dynamically, allowing new scenery decorations and highway lighting to be 
+#   placed without modifying this service's internal state.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/PropSpawningService.gd
 # ==============================================================================
 class_name PropSpawningService
 extends RefCounted
 
-## Spawns village loot chests and streetlights inside a newly loaded chunk.
+## Spawns village loot chests, streetlights, and highway illumination inside a newly loaded chunk.
 func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
 	var props_list: Array[Node] = []
 	var chunk_pos := chunk.position
@@ -36,7 +37,7 @@ func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldSta
 
 	# 1. Spawning inside Village Outposts
 	if is_real_village:
-		# Loot chest spawns in all village outposts (ID 200)
+		# Loot chest spawns in all outposts (ID 200)
 		_spawn_and_register_prop(200, chunk_offset, 4.5, 8.5, world_state, world_node, props_list)
 		
 		# Streetlight spawns in all village outposts (ID 202)
@@ -49,6 +50,13 @@ func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldSta
 			var should_spawn_organic_light: bool = (abs(chunk_pos.x) * 11 + abs(chunk_pos.z) * 17) % 35 == 3
 			if should_spawn_organic_light:
 				_spawn_and_register_prop(202, chunk_offset, 8.5, 8.5, world_state, world_node, props_list)
+
+	# 3. HIGHWAY LIGHTING: Spawns streetlights along the paved roads shoulders
+	var road_lamps := RoadGeneratorService.get_roadside_lamps_for_chunk(chunk_pos)
+	for lamp_pos: Vector3 in road_lamps:
+		# Symmetrically spawn streetlight (ID 202) along the road shoulder.
+		# Using Vector3.ZERO as offset because lamp_pos already contains absolute global coordinates.
+		_spawn_and_register_prop(202, Vector3.ZERO, lamp_pos.x, lamp_pos.z, world_state, world_node, props_list)
 
 	return props_list
 
@@ -75,11 +83,12 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		var check_pos := Vector3i(global_x, y, global_z)
 		var block_type := world_state.get_block(check_pos)
 		
-		# Spawns props only on valid load-bearing blocks
+		# Spawns props only on valid load-bearing blocks, ignoring leaves and water
 		if block_type == BlockType.Type.GRASS or block_type == BlockType.Type.DIRT or \
 		   block_type == BlockType.Type.STONE or block_type == BlockType.Type.SAND or \
 		   block_type == BlockType.Type.RED_SAND or block_type == BlockType.Type.MUD or \
-		   block_type == BlockType.Type.SNOW or block_type == BlockType.Type.ICE:
+		   block_type == BlockType.Type.SNOW or block_type == BlockType.Type.ICE or \
+		   block_type == BlockType.Type.BRICKS: # Bricks is a solid road block!
 			
 			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
 			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))

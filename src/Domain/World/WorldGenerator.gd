@@ -3,8 +3,8 @@
 # Description: Domain Generator responsible for procedurally carving chunk block data.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Only handles world carving rules.
-#              MEGA-STRUCTURES UPGRADE: Added Pass 5 to overlay global handcrafted 
-#              fixed points of interest flawlessly over procedural terrain.
+#              - Dependency Inversion Principle (DIP): Integrates paved roads by 
+#                calling the RoadGeneratorService abstraction deterministically.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldGenerator.gd
 # ==============================================================================
@@ -24,6 +24,7 @@ const LANDMARK_TO_BLUEPRINT: Dictionary = {
 	6: 7  # Neon Pyramid -> Neon Pyramid
 }
 
+
 func _init(p_seed: int = 42) -> void:
 	_terrain_noise = FastNoiseLite.new()
 	_terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -41,6 +42,7 @@ func _init(p_seed: int = 42) -> void:
 	_detail_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_detail_noise.fractal_octaves = 2
 
+
 ## Generates and fills the internal voxel grid of a given Chunk.
 func generate_chunk(chunk: Chunk) -> void:
 	var chunk_offset_x: int = chunk.position.x * Chunk.SIZE
@@ -56,7 +58,7 @@ func generate_chunk(chunk: Chunk) -> void:
 	var landmark_ids: Array[int] = []
 	landmark_ids.resize(Chunk.SIZE * Chunk.SIZE)
 
-	# PASS 1: Gather raw heights
+	# PASS 1: Gather raw heights and calculate Bridge elevation offsets
 	for x in range(Chunk.SIZE):
 		var global_x: int = chunk_offset_x + x
 		for z in range(Chunk.SIZE):
@@ -67,7 +69,14 @@ func generate_chunk(chunk: Chunk) -> void:
 			var detail_val: float = _detail_noise.get_noise_2d(float(global_x), float(global_z))
 			var detail_modifier: int = int(detail_val * 2.2) 
 			
-			raw_heights[idx] = profile.base_height + detail_modifier
+			var final_height: int = profile.base_height + detail_modifier
+			
+			# BRIDGE DECKING: Elevate roads over oceans/depressions to prevent sinking
+			var on_road := RoadGeneratorService.is_on_road(float(global_x), float(global_z))
+			if on_road and final_height < 6:
+				final_height = 6 # Safe bridge height above water level 5
+				
+			raw_heights[idx] = final_height
 			biome_ids[idx] = profile.biome_id
 			landmark_ids[idx] = profile.landmark_id
 
@@ -94,7 +103,7 @@ func generate_chunk(chunk: Chunk) -> void:
 			else:
 				smoothed_heights[idx] = blur_height
 
-	# PASS 3: Sculpt blocks polymorphically
+	# PASS 3: Sculpt blocks polymorphically and pave roads with bridge pillar foundations
 	for x in range(Chunk.SIZE):
 		var global_x: int = chunk_offset_x + x
 		for z in range(Chunk.SIZE):
@@ -104,20 +113,38 @@ func generate_chunk(chunk: Chunk) -> void:
 			var biome_id: int = biome_ids[idx]
 			var biome: IBiome = BiomeService.get_biome(biome_id)
 			
+			var on_road := RoadGeneratorService.is_on_road(float(global_x), float(global_z))
+			
 			for y in range(Chunk.SIZE):
 				var global_y: int = chunk_offset_y + y
 				var block_type: BlockType.Type = BlockType.Type.AIR
 				
 				if global_y <= target_height:
-					if global_y == target_height:
-						block_type = _determine_surface_block(x, z, global_x, global_z, target_height, biome, biome_id, smoothed_heights)
+					if on_road:
+						# Road Pavement styling
+						if global_y == target_height:
+							block_type = BlockType.Type.BRICKS # Red brick paved calzada
+						elif global_y == target_height - 1:
+							block_type = BlockType.Type.STONE  # Solid sub-base
+						else:
+							# BRIDGE PILLARS: Solidify columns over water/air gaps down to solid ocean bed
+							var natural_block := biome.get_block_for_depth(global_y, target_height)
+							if natural_block == BlockType.Type.WATER or natural_block == BlockType.Type.AIR:
+								block_type = BlockType.Type.STONE # Support pillar column
+							else:
+								block_type = natural_block
 					else:
-						block_type = biome.get_block_for_depth(global_y, target_height)
+						# Natural terrain carving
+						if global_y == target_height:
+							block_type = _determine_surface_block(x, z, global_x, global_z, target_height, biome, biome_id, smoothed_heights)
+						else:
+							block_type = biome.get_block_for_depth(global_y, target_height)
 				else:
-					if biome_id == 0 and global_y <= 5:
-						block_type = BlockType.Type.WATER
-					elif biome_id == 8 and global_y <= 4:
-						block_type = BlockType.Type.WATER
+					if not on_road: # Roads rise above water level forming beautiful bridge piers
+						if biome_id == 0 and global_y <= 5:
+							block_type = BlockType.Type.WATER
+						elif biome_id == 8 and global_y <= 4:
+							block_type = BlockType.Type.WATER
 				
 				chunk.set_block(x, y, z, block_type)
 
@@ -131,6 +158,11 @@ func generate_chunk(chunk: Chunk) -> void:
 			
 			if ground_y < 2 or ground_y > 27:
 				continue
+				
+			# ROAD CLEARING: Prevent trees or landmarks from spawning in the middle of highways
+			var on_road := RoadGeneratorService.is_on_road(float(global_x), float(global_z))
+			if on_road:
+				continue # calzadas stay completely cleared and free of obstacles
 				
 			var local_ground_y: int = ground_y - chunk_offset_y
 			
@@ -147,10 +179,9 @@ func generate_chunk(chunk: Chunk) -> void:
 				var blueprint_id: int = int(LANDMARK_TO_BLUEPRINT[l_id])
 				_spawn_blueprint(chunk, x, z, local_ground_y, blueprint_id)
 
-	# =======================================================
 	# PASS 5: OVERWRITE WITH GLOBAL MEGA-STRUCTURES
-	# =======================================================
 	MegaStructureService.apply_mega_structures(chunk)
+
 
 func _determine_surface_block(
 	x: int, z: int, gx: int, gz: int, 
@@ -158,16 +189,16 @@ func _determine_surface_block(
 	biome_id: int, smoothed_heights: Array[int]
 ) -> BlockType.Type:
 	
-	var is_steep: bool = false
+	var is_space: bool = false
 	for dx in range(-1, 2):
 		for dz in range(-1, 2):
 			var nx: int = clampi(x + dx, 0, Chunk.SIZE - 1)
 			var nz: int = clampi(z + dz, 0, Chunk.SIZE - 1)
 			if abs(smoothed_heights[nx + Chunk.SIZE * nz] - target_height) > 2:
-				is_steep = true
+				is_space = true
 				break
 				
-	if is_steep and biome_id != 0 and biome_id != 9: 
+	if is_space and biome_id != 0 and biome_id != 9: 
 		return BlockType.Type.STONE
 		
 	var default_surface: BlockType.Type = biome.get_block_for_depth(target_height, target_height)
@@ -180,6 +211,7 @@ func _determine_surface_block(
 			return BlockType.Type.DIRT 
 			
 	return default_surface
+
 
 func _spawn_blueprint(chunk: Chunk, x: int, z: int, local_ground_y: int, blueprint_id: int) -> void:
 	var blueprint: IStructureBlueprint = StructureLibrary.get_blueprint(blueprint_id)
