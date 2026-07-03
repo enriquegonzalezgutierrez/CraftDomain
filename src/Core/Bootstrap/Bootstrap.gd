@@ -8,10 +8,9 @@
 #                and visual shader setups to specialized managers.
 #              - Open-Closed Principle (OCP): Closed for modifications when adding 
 #                new biomes, structures, or entities.
-#              BUG FIX (STATE LEAK):
-#              - Removed `CampaignRegistry.initialize_campaign()` from Bootstrap. 
-#                It is now correctly managed inside WorldController on every load/new game 
-#                to ensure state resets and prevent RAM static leaks.
+#              - Dependency Inversion Principle (DIP): Injects concrete 
+#                Infrastructure prop factories (ChestEntity, StreetlightEntity) 
+#                into the pure Domain PropRegistry on startup.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -38,13 +37,13 @@ func _ready() -> void:
 func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application...")
 	
-	# ---> LOAD AND APPLY PERSISTENT CONFIGURATIONS FIRST <---
+	# Load and apply user settings first
 	_load_and_apply_user_settings()
 	
 	# Registers programmatically created English & Spanish locales into Godot's TranslationServer
 	TranslationRegistry.initialize_translations()
 	
-	# ---> SOLID COMPLIANCE (PHASE 4): Delegate registry startup routines <---
+	# SOLID COMPLIANCE: Delegate registry startup routines
 	BiomeService.register_biome(BayOfSailsBiome.new())
 	BiomeService.register_biome(WarpPlateauBiome.new())
 	BiomeService.register_biome(GoldenBazaarBiome.new())
@@ -60,6 +59,9 @@ func _initialize_application() -> void:
 	MegaStructureService.initialize_megastructures()
 	MobRegistry.initialize_mobs()
 	
+	# DIP COMPLIANCE: Inject concrete infrastructure classes into the pure Domain PropRegistry
+	_setup_prop_registry()
+	
 	_setup_persistence()
 	_setup_environment()
 	
@@ -72,6 +74,25 @@ func _initialize_application() -> void:
 	_setup_celestial()
 	_setup_audio()
 	_load_main_menu()
+
+
+## Injects concrete interactive prop factories into the domain registry
+func _setup_prop_registry() -> void:
+	print("[Bootstrap] Injecting concrete scenery prop factories into PropRegistry...")
+	
+	# Interactive Loot Chest (ID 200)
+	PropRegistry.register_prop(200, func(pos: Vector3) -> Node:
+		var chest := ChestEntity.new()
+		chest.position = pos
+		return chest
+	)
+	
+	# Light-emitting Streetlight (ID 202)
+	PropRegistry.register_prop(202, func(pos: Vector3) -> Node:
+		var light := StreetlightEntity.new()
+		light.position = pos
+		return light
+	)
 
 
 ## Persistent Loader: Queries the Settings Repository and configures system parameters on boot.

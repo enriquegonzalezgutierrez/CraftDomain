@@ -2,17 +2,17 @@
 # Project: CraftDomain
 # Description: Infrastructure Coordinator orchestrating high-level world state,
 #              delegating chunk compilation, multi-threading, and persistent saving.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): No longer manages threads, 
-#                queues, file formatting, or visual compilations. All heavy lifting 
-#                is delegated to specialized services.
-#              - Dependency Inversion Principle (DIP): Exposes a domain-compliant 
-#                IWorldModifier adapter, decoupling domain strategies from this 
-#                concrete infrastructure coordinator.
-#              - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
-#                services without modifying core coordination loops.
-#              - Domain-Driven Design (DDD): Defers player spawn height calculations
-#                strictly to the WorldState Domain Aggregate.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): No longer manages threads, 
+#   queues, file formatting, or visual compilations. All heavy lifting 
+#   is delegated to specialized services.
+# - Dependency Inversion Principle (DIP): Exposes a domain-compliant 
+#   IWorldModifier adapter, decoupling domain strategies from this 
+#   concrete infrastructure coordinator.
+# - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
+#   services without modifying core coordination loops.
+# - Domain-Driven Design (DDD): Defers player spawn height calculations
+#   strictly to the WorldState Domain Aggregate.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -37,6 +37,7 @@ var world_modifier: IWorldModifier
 var chunk_manager: ChunkManagerService
 var persistence_service: WorldPersistenceService
 var _mob_spawning_service: MobSpawningService
+var _prop_spawning_service: PropSpawningService
 var _streetlight_service: StreetlightService
 var _agriculture_service: AgricultureService
 
@@ -66,10 +67,12 @@ func _initialize_systems() -> void:
 	world_state = WorldState.new()
 	loader_service = ChunkLoaderService.new()
 	
-	# Instantiate our domain modifier adapter to protect layering rules
+	# Instantiate our domain modifier adapter to protect layering rules (DIP)
 	world_modifier = WorldModifierAdapter.new(self)
 	
+	# Instantiate our specialized spawning services (SRP)
 	_mob_spawning_service = MobSpawningService.new()
+	_prop_spawning_service = PropSpawningService.new()
 	_streetlight_service = StreetlightService.new(self, world_state)
 	_agriculture_service = AgricultureService.new(self, world_state)
 	
@@ -199,8 +202,8 @@ func _process_dynamic_world() -> void:
 		# Regular scenic world loads remain passive (un-prioritized)
 		chunk_manager.queue_loads(task.to_load)
 		
-		# Spawns entities only in chunks close to the player
-		chunk_manager.spawn_mobs_by_proximity(player.global_position)
+		# DYNAMIC PROXIMITY SPAWNING: Spawns both living mobs and static props (Clean naming)
+		chunk_manager.spawn_entities_by_proximity(player.global_position)
 
 
 ## Coordinates dynamic streetlight updates on day/night transitions
@@ -237,11 +240,18 @@ func save_all() -> void:
 		persistence_service.save_game(player, world_state)
 
 
-## Proxy helper allowing ChunkManager to trigger procedural mob spawning
-func spawn_mobs_for_chunk(chunk: Chunk) -> Array[Node]:
+## Proxy helper allowing ChunkManager to trigger procedural entity spawning (mobs + props)
+## SOLID SRP COMPLIANCE: Gathers and merges both living beings and scenery decorations.
+func spawn_entities_for_chunk(chunk: Chunk) -> Array[Node]:
+	var spawned_nodes: Array[Node] = []
+	
 	if is_instance_valid(_mob_spawning_service):
-		return _mob_spawning_service.spawn_mobs_for_chunk(chunk, self, world_state)
-	return []
+		spawned_nodes.append_array(_mob_spawning_service.spawn_mobs_for_chunk(chunk, self, world_state))
+		
+	if is_instance_valid(_prop_spawning_service):
+		spawned_nodes.append_array(_prop_spawning_service.spawn_props_for_chunk(chunk, self, world_state))
+		
+	return spawned_nodes
 
 
 ## Proxy helper allowing ChunkManager to register streetlights procedurally
@@ -296,7 +306,7 @@ func _activate_player_spawn() -> void:
 	player.velocity = Vector3.ZERO
 	
 	if is_instance_valid(chunk_manager):
-		chunk_manager.spawn_mobs_by_proximity(player.global_position)
+		chunk_manager.spawn_entities_by_proximity(player.global_position)
 		
 	if _is_startup_phase:
 		_is_startup_phase = false

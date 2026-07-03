@@ -1,17 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure Service responsible for calculating and spawning
-#              NPC, Fauna, and interactive prop classes dynamically inside chunks.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Exclusively coordinates 
-#                procedural wildlife and outpost population placements.
-#              - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
-#                population registry, removing hardcoded match maps.
-#              - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome.
-#              UPDATED:
-#              - Expanded organic streetlight (ID 202) spawning to ALL land-based 
-#                biomes (excluding deep ocean and sky clouds), allowing the 
-#                StreetlightEntity to dynamically theme itself dynamically.
+#              NPC, Fauna, and hostile dynamic classes inside chunks.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates procedural 
+#   wildlife and living outpost populations, leaving inert scenery objects to 
+#   the PropSpawningService.
+# - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
+#   population registry, removing hardcoded match maps.
+# - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome strategy.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -19,7 +16,7 @@ class_name MobSpawningService
 extends RefCounted
 
 
-## Spawns procedural wildlife, themed outposts, and physical streetlights inside a newly loaded chunk.
+## Spawns procedural wildlife and themed outpost dynamic entities inside a newly loaded chunk.
 func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
 	var entities_list: Array[Node] = []
 	var chunk_pos := chunk.position
@@ -45,49 +42,38 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 		_spawn_and_register_entity(100, chunk_offset, 7.5, 5.5, world_state, world_node, entities_list, "lost_bazaar")
 		_spawn_and_register_entity(101, chunk_offset, 5.5, 7.5, world_state, world_node, entities_list, "fuel_fryer")
 		
-		# Loot chest spawns in all outposts
-		_spawn_and_register_entity(200, chunk_offset, 4.5, 8.5, world_state, world_node, entities_list, "")
-		
-		# ---> PHYSICAL 3D VILLAGE STREETLIGHT SPAWN <---
-		# Spawns 1 gorgeous, non-floating, 100% solid 3D Streetlight Entity (ID 202) at the road side
-		_spawn_and_register_entity(202, chunk_offset, 2.5, 10.5, world_state, world_node, entities_list, "")
-		
-		# DYNAMIC BIOME OUTPOST SPAWNING: Query population list from active Biome strategy
+		# Dynamic Biome Outpost Spawning: Query population list from active Biome strategy
 		var biome := BiomeService.get_biome(active_biome_id)
 		if is_instance_valid(biome):
 			var population := biome.get_outpost_population_ids()
 			if population.size() >= 2:
-				_spawn_and_register_entity(population[0], chunk_offset, 2.5, 12.5, world_state, world_node, entities_list, "")
-				_spawn_and_register_entity(population[1], chunk_offset, 10.5, 10.5, world_state, world_node, entities_list, "plains_defender")
-				
-		# Spawn a heavy, persistent Golem (107) to guard the village
-		_spawn_and_register_entity(107, chunk_offset, 12.5, 12.5, world_state, world_node, entities_list, "")
-			
+				_spawn_and_register_entity(population[0], chunk_offset, 6.5, 6.5, world_state, world_node, entities_list, "")
+				_spawn_and_register_entity(population[1], chunk_offset, 4.5, 4.5, world_state, world_node, entities_list, "")
+		
+		# Golem (107) spawns to guard the village
+		_spawn_and_register_entity(107, chunk_offset, 8.5, 3.5, world_state, world_node, entities_list, "")
 	else:
-		# ---> PHYSICAL 3D ORGANIC WILDERNESS STREETLIGHT SPAWN <---
-		# We spawn streetlights organically in ALL land-based biomes, skipping only 
-		# deep oceans (0) and floating sky islands (9).
-		if active_biome_id != 0 and active_biome_id != 9:
-			# WARNING FIX: Explicit static typing as bool prevents compiler warnings
-			var should_spawn_organic_light: bool = (abs(chunk_pos.x) * 11 + abs(chunk_pos.z) * 17) % 35 == 3
-			if should_spawn_organic_light:
-				_spawn_and_register_entity(202, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
-
-		# Fauna Spawning (Sea Turtles paddle exclusively inside ocean bays)
-		var should_spawn_animal: bool = (abs(chunk_pos.x) * 7 + abs(chunk_pos.z) * 13) % 5 < 2
-		if should_spawn_animal:
-			if active_biome_id == 0: # Bay of Sails (Spawn Ocean)
+		# 2. Spawning organically in the wilderness
+		var roll := randf()
+		if roll < 0.12: # 12% chance to spawn wildlife in wilderness chunks
+			# Determine coordinates biome
+			var is_ocean_biome := (active_biome_id == 0)
+			
+			if is_ocean_biome:
+				# Spawn unique aquatic Sea Turtles (ID 201) in water bays
 				_spawn_and_register_entity(201, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
 			else:
-				var spawn_roll: int = int(abs(chunk_pos.x + chunk_pos.z)) % 4
-				_spawn_and_register_entity(spawn_roll, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
+				# Spawn common quadrupeds (IDs 0-3: Pigs, Chickens, Sheep, Cows)
+				var target_animal_id := randi_range(0, 3)
+				_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
 
-	# 2. Global Mega-Structure spawns (Castle Guards, Harbor Merchants, etc.)
+	# 3. Global Mega-Structure spawns (Castle Guards, Harbor Merchants, etc.)
 	var mega_entities := MegaStructureService.get_entities_for_chunk(chunk_pos)
 	for edata: Dictionary in mega_entities:
 		var mob_id: int = edata["mob_id"] as int
 		var exact_pos: Vector3 = edata["pos"] as Vector3
 		
+		# Only spawn here if the registered ID represents a living entity (MobRegistry)
 		if MobRegistry.has_mob(mob_id):
 			var entity: Node = MobRegistry.create_mob(mob_id, exact_pos)
 			if entity != null:
@@ -97,42 +83,38 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 	return entities_list
 
 
-## Spawns, registers, and tracks coordinates for quests if applicable.
-func _spawn_and_register_entity(mob_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node], quest_sync_id: String) -> void:
-	if not MobRegistry.has_mob(mob_id): 
+## Instantiates, places, and anchors a registered dynamic entity on the highest solid ground.
+func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node], quest_sync_id: String) -> void:
+	if not MobRegistry.has_mob(spawn_id):
 		return
 		
 	var gy := _get_ground_surface_y(world_state, int(offset.x + lx), int(offset.z + lz))
 	if gy < 0.0:
-		return # Abort spawning if no valid ground surface is compiled yet (prevents underground spawning)
+		return # Abort if ground is not populated yet
 		
 	var pos := offset + Vector3(lx, gy, lz)
-	var entity: Node = MobRegistry.create_mob(mob_id, pos)
-	if entity != null:
-		world_node.add_child(entity)
-		list.append(entity)
+	var mob: Node = MobRegistry.create_mob(spawn_id, pos)
+	if mob != null:
+		world_node.add_child(mob)
+		list.append(mob)
+		
+		# Synchronize quest tracking target if applicable
 		if quest_sync_id != "":
-			var quest: Quest = QuestService.get_quest(quest_sync_id) as Quest
-			if quest != null:
-				quest.target_position = pos
+			var active_q := QuestService.get_active_quest()
+			if active_q != null and active_q.quest_id == quest_sync_id:
+				active_q.target_position = mob.global_position
 
 
-## Helper: Scans vertical columns downward to find the topmost solid floor-like block.
-## Skips tree foliage canopies and artificial ceilings. Returns -1.0 centinel if not ready.
+## Helper: Scans vertical columns downward to find the topmost solid block.
 func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
 	for y in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
 		var block_type := world_state.get_block(check_pos)
 		
-		# Only allow spawning on true floor-like blocks, ignoring leaves and trunks
-		if block_type == BlockType.Type.GRASS or block_type == BlockType.Type.DIRT or \
-		   block_type == BlockType.Type.STONE or block_type == BlockType.Type.SAND or \
-		   block_type == BlockType.Type.RED_SAND or block_type == BlockType.Type.MUD or \
-		   block_type == BlockType.Type.SNOW or block_type == BlockType.Type.ICE:
-			
+		if BlockType.is_solid(block_type):
 			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
 			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
 			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
-				return float(y) + 1.0 
+				return float(y) + 1.0
 				
-	return -1.0 # Sentinel value indicating terrain data is not populated yet
+	return -1.0

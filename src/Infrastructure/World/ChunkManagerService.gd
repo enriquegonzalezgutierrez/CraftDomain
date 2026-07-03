@@ -5,29 +5,8 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Holds and manages both 
 #                _chunk_nodes and _chunk_entities locally.
-#              PHYSICS OVERHAUL (LOW-LEVEL PHYSICS SERVER):
-#              - Replaced high-overhead `CollisionShape3D` node instantiation with 
-#                direct raw memory interaction via `PhysicsServer3D`.
-#              - Secured the `BoxShape3D` resource in a static class variable 
-#                to prevent Garbage Collection of physics forms mid-game.
-#              BUG FIX (LOST MODIFICATION TASKS):
-#              - Added `_queued_rebuilds` state tracking. If a player mines/builds 
-#                on a chunk that is currently rendering in the background, the request 
-#                is no longer silently discarded. Instead, it gets queued and 
-#                automatically triggers a fresh rebuild the moment the active task finishes.
-#                This guarantees 100% reliable building inputs, even while sprinting.
-#              BUG FIX (THE "GRAND" DOMAIN SYNC FIX):
-#              - Added `world_state.add_chunk(task.chunk)` inside `_render_single_completed_task()`.
-#                The newly generated chunk was never added back to the Domain aggregate,
-#                causing mining to fail (returned AIR on raycast) and chunks to disappear
-#                completely when placing any single block.
-#              BUG FIX (CRASH ON EXIT):
-#              - Implemented `_active_task_ids` thread tracker and a safe `shutdown()` 
-#                sequence to wait for background workers on exit, preventing 
-#                access violations to freed nodes.
-#              WARNING FIX:
-#              - Added explicit static typing `int` to the `id` loop iterator inside 
-#                the `shutdown()` method to eliminate `UNTYPED_DECLARATION` warnings.
+#              - Liskov Substitution Principle (LSP): Safely handles raw PhysicsServer3D 
+#                and thread pooling operations.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -44,7 +23,6 @@ var _unload_queue: Array[Vector3i] = []
 var _pending_loading_chunks: Dictionary = {}
 
 ## Dictionary mapping Vector3i -> bool tracking chunks that need a SECOND rebuild 
-## because they were modified while a background thread was already running.
 var _queued_rebuilds: Dictionary = {}
 
 ## Array of active background thread task IDs to clean up on shutdown
@@ -56,7 +34,7 @@ var _load_requests_queue: Array = []
 ## Number of currently active background WorkerThreadPool tasks
 var _active_background_tasks: int = 0
 
-## Maximum concurrent background tasks allowed (Limits CPU core saturation for smooth FPS)
+## Maximum concurrent background tasks allowed
 const MAX_CONCURRENT_BG_TASKS: int = 3
 
 ## Tracking map for active ChunkNode representations: Vector3i -> ChunkNode
@@ -72,9 +50,7 @@ var _physics_bodies: Dictionary = {} # Vector3i -> RID
 var _chunk_task_cache: Dictionary = {}
 const CACHE_SIZE_LIMIT: int = 64
 
-# ==============================================================================
-# STATIC PHYSICS FLYWEIGHT (Protects collisions from Garbage Collection)
-# ==============================================================================
+# Shared static box shape for physics collisions
 static var _shared_physics_box_shape: BoxShape3D = null
 
 
@@ -84,7 +60,7 @@ func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
 	_queue_mutex = Mutex.new()
 
 
-## Retrieves the single persistent physical box shape, instantiating it if necessary.
+## Retrieves the single persistent physical box shape, instantiating it if necessary (Flyweight).
 static func _get_or_create_shared_box() -> BoxShape3D:
 	if _shared_physics_box_shape == null:
 		_shared_physics_box_shape = BoxShape3D.new()
@@ -156,7 +132,6 @@ func process_frame_queues() -> void:
 		
 	_render_completed_chunks_from_queue()
 	
-	# Clean up completed background task IDs to prevent memory leaks
 	_queue_mutex.lock()
 	var active_temp: Array[int] = []
 	for id: int in _active_task_ids:
@@ -359,19 +334,13 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	if _pending_loading_chunks.has(chunk_pos):
 		_pending_loading_chunks.erase(chunk_pos)
 		
-	# ---> LOST TASK BUG FIX CATCHER <---
 	if _queued_rebuilds.has(chunk_pos):
 		_queued_rebuilds.erase(chunk_pos)
 		_request_chunk_rebuild(chunk_pos)
 		
-	# ---> THE "GRAND" DOMAIN SYNC FIX <---
 	if not task.is_rebuild and is_instance_valid(world_state):
 		world_state.add_chunk(task.chunk)
 		
-	# ==========================================================================
-	# HIGH-PERFORMANCE LOW-LEVEL PHYSICS SERVER (STUTTER FIX)
-	# ==========================================================================
-	
 	# Delete previous body if rebuilding
 	if _physics_bodies.has(chunk_pos):
 		var old_rid: RID = _physics_bodies[chunk_pos]
@@ -381,21 +350,16 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var box_shape: BoxShape3D = _get_or_create_shared_box()
 	var shape_rid: RID = box_shape.get_rid()
 	
-	# Create a raw Static Body in the Physics Server
 	var body_rid: RID = PhysicsServer3D.body_create()
 	PhysicsServer3D.body_set_mode(body_rid, PhysicsServer3D.BODY_MODE_STATIC)
 	
-	# Bind a collision layer mask so it correctly interacts with RayCasts!
 	PhysicsServer3D.body_set_collision_layer(body_rid, 1)
 	PhysicsServer3D.body_set_collision_mask(body_rid, 1)
-	
 	PhysicsServer3D.body_set_space(body_rid, controller.get_world_3d().space)
 	
-	# Position the invisible body exactly where the visual chunk sits
 	var chunk_transform := Transform3D(Basis(), Vector3(chunk_pos * Chunk.SIZE))
 	PhysicsServer3D.body_set_state(body_rid, PhysicsServer3D.BODY_STATE_TRANSFORM, chunk_transform)
 	
-	# Inject all valid solid transforms into this raw body
 	for b_type: BlockType.Type in task.multimesh_data.keys():
 		if BlockType.is_solid(b_type):
 			var bulk_array: PackedFloat32Array = task.multimesh_data[b_type] as PackedFloat32Array
@@ -412,7 +376,6 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 				PhysicsServer3D.body_add_shape(body_rid, shape_rid, local_transform)
 				
 	_physics_bodies[chunk_pos] = body_rid
-	# ==========================================================================
 	
 	var chunk_node: ChunkNode = null
 	if _chunk_nodes.has(chunk_pos):
@@ -435,8 +398,8 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			controller.call("check_player_spawn_activation")
 
 
-## Dynamic Proximity Mob Spawner
-func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
+## Dynamic Proximity Entity Spawner (Schedules both living mobs and interactive props)
+func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
 	var player_block_pos := Vector3i(
 		floor(player_global_pos.x),
 		floor(player_global_pos.y),
@@ -451,12 +414,13 @@ func spawn_mobs_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) 
 			if _chunk_nodes.has(target_chunk_pos_0):
 				var col_pos := Vector3i(target_chunk_pos_0.x, 0, target_chunk_pos_0.z)
 				
-				# Spawns mobs only if we haven't already populated this chunk column
+				# Spawns entities only if we haven't already populated this chunk column
 				if not _chunk_entities.has(col_pos) and _physics_bodies.has(target_chunk_pos_0):
 					var chunk_0: Chunk = _chunk_nodes[target_chunk_pos_0].chunk as Chunk
 					
-					if controller.has_method("spawn_mobs_for_chunk"):
-						var raw_array: Array = controller.call("spawn_mobs_for_chunk", chunk_0) as Array
+					# CLEAN CODE / SRP: Calls spawn_entities_for_chunk to merge mobs and props smoothly
+					if controller.has_method("spawn_entities_for_chunk"):
+						var raw_array: Array = controller.call("spawn_entities_for_chunk", chunk_0) as Array
 						var typed_nodes: Array[Node] = []
 						for n_element: Variant in raw_array:
 							if n_element is Node:
@@ -491,7 +455,6 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 	_chunk_nodes.erase(chunk_pos)
 	world_state.remove_chunk(chunk_pos)
 	
-	# Memory Cleanup: Free the hidden raw physics body manually
 	if _physics_bodies.has(chunk_pos):
 		var rid: RID = _physics_bodies[chunk_pos]
 		PhysicsServer3D.free_rid(rid)

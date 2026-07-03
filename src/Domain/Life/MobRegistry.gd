@@ -3,12 +3,12 @@
 # Description: Pure Domain Registry mapping numeric IDs to dynamic Mob factories.
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Only manages dynamic entity 
-#                factories and instantiation parameters.
+#                factories and instantiation parameters for living, AI-driven actors.
 #              - Open-Closed Principle (OCP): Encapsulates default entity registrations 
 #                internally on startup, removing registration bloat from Bootstrap.
-#              UPDATED:
-#              - Registered the new physical 3D Streetlight Entity as Prop ID `202` 
-#                to support spawning robust, non-floating, voxel-free lampposts.
+#              REFACTORING:
+#              - Removed static scenery Props (Chest ID 200, Streetlight ID 202) 
+#                to adhere strictly to SRP and domain boundaries.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Life/MobRegistry.gd
 # ==============================================================================
@@ -37,34 +37,19 @@ static func initialize_mobs() -> void:
 	register_mob(102, func(pos: Vector3) -> Node: return GuardEntity.new(pos))
 	register_mob(103, func(pos: Vector3) -> Node: return FarmerEntity.new(pos))
 	
-	# NPC VARIETY OVERHAUL: Register Druid, Miner, and Android citizens (104-106)
+	# NPC Variety (Druid, Miner, and Android citizens: 104-106)
 	register_mob(104, func(pos: Vector3) -> Node: return DruidEntity.new(pos))
 	register_mob(105, func(pos: Vector3) -> Node: return MinerEntity.new(pos))
 	register_mob(106, func(pos: Vector3) -> Node: return CyberCitizenEntity.new(pos))
 	
-	# --- MOVIE OVERHAUL: Register the Iron Golem (ID 107) ---
+	# Defending Golems (ID 107)
 	register_mob(107, func(pos: Vector3) -> Node: return GolemEntity.new(pos))
 	
 	# Hostile Mobs (ZOMBIE registered as ID 10)
 	register_mob(10, func(pos: Vector3) -> Node: return HostileEntity.new(pos))
 	
-	# Interactive Props (Loot Chests and Entities)
-	register_mob(200, func(pos: Vector3) -> Node: 
-		var chest := ChestEntity.new()
-		chest.position = pos
-		return chest
-	)
-	
-	# MARINE OVERHAUL: Register the Sea Turtle
+	# Marine Wildlife (Sea Turtle registered as ID 201)
 	register_mob(201, func(pos: Vector3) -> Node: return TurtleEntity.new(pos))
-	
-	# ---> REGISTRATION OF 3D STREETLIGHT PROP <---
-	# Registering our gorgeous 3D Streetlight Entity as Prop ID `202`
-	register_mob(202, func(pos: Vector3) -> Node: 
-		var light := StreetlightEntity.new()
-		light.position = pos
-		return light
-	)
 	
 	print("[MobRegistry] Initialization complete. Registered dynamic spawners count: ", _spawners.size())
 
