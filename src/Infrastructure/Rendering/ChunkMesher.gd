@@ -4,11 +4,13 @@
 #              for chunks using face culling with explicit static typing.
 #              LIQUID UPGRADE: Added generate_liquid_mesh with intelligent mutual
 #              face culling to create seamless, crystal-clear water and lava bodies.
-#              LOCAL CHECK FIX: Optimized neighbors lookup to check local chunk bounds
-#              first, preventing asynchronous air-read leaks and clearing inner grids.
-#              Z-FIGHTING FIX: Applied a microscopic margin inset (0.001) to the generated
-#              liquid vertices. This mathematically prevents co-planar rendering collisions
-#              between translucent liquids and solid terrain blocks, resolving the flickering bug.
+#              Z-FIGHTING RESOLUTION:
+#              - Removed the unnecessary decimal liquid inset (`LIQUID_MARGIN = 0.0`), 
+#                allowing water meshes to render at full scale (1.0).
+#              SEAM OVERLAP UPGRADE:
+#              - Scaled liquid face vertices slightly outward from their block center 
+#                by a factor of 1.002 (2 millimeters overlap). This matches our solid 
+#                blocks overlap, hermetically sealing all transparent seams on chunk boundaries!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkMesher.gd
 # ==============================================================================
@@ -25,11 +27,11 @@ const DIRECTIONS: Array[Vector3i] = [
 	Vector3i(0, 0, -1)   # BACK
 ]
 
-## Anti-Z-Fighting margin: Liquid blocks are shrunk by 1 millimeter to prevent co-planar flickering.
-const LIQUID_MARGIN: float = 0.001
-const LIQUID_INSET: float = 1.0 - LIQUID_MARGIN
+## Zero-Margin: Liquid blocks are rendered at full scale (1.0) to prevent boundary grid leaks.
+const LIQUID_MARGIN: float = 0.0
+const LIQUID_INSET: float = 1.0
 
-## Local vertex tables defining the 4 vertices per face (shrunk mathematically).
+## Local vertex tables defining the 4 vertices per face (scaled to full 1.0 boundaries).
 const LIQUID_FACE_VERTICES: Dictionary = {
 	Vector3i(0, 1, 0): [
 		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_INSET), 
@@ -132,10 +134,16 @@ static func _add_face(st: SurfaceTool, local_pos: Vector3i, direction: Vector3i,
 	# Use the Z-Fighting safe vertex array
 	var vertices: Array = LIQUID_FACE_VERTICES[direction]
 	
-	var v0: Vector3 = Vector3(local_pos) + (vertices[0] as Vector3)
-	var v1: Vector3 = Vector3(local_pos) + (vertices[1] as Vector3)
-	var v2: Vector3 = Vector3(local_pos) + (vertices[2] as Vector3)
-	var v3: Vector3 = Vector3(local_pos) + (vertices[3] as Vector3)
+	# Local block center coordinate
+	var center := Vector3(local_pos) + Vector3(0.5, 0.5, 0.5)
+	
+	# SEAM OVERLAP OPTIMIZATION:
+	# Scale face vertices slightly outward from their center by 2mm (factor 1.002) 
+	# to guarantee that adjacent liquid boundaries tightly overlap, closing all sub-pixel leaks!
+	var v0 := (Vector3(local_pos) + (vertices[0] as Vector3) - center) * 1.002 + center
+	var v1 := (Vector3(local_pos) + (vertices[1] as Vector3) - center) * 1.002 + center
+	var v2 := (Vector3(local_pos) + (vertices[2] as Vector3) - center) * 1.002 + center
+	var v3 := (Vector3(local_pos) + (vertices[3] as Vector3) - center) * 1.002 + center
 	
 	# Triangle 1
 	st.set_color(face_color)

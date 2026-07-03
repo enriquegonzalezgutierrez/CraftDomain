@@ -23,6 +23,9 @@
 # - Implemented Dot Product Normal Correction (`hit_normal.dot(ray_dir) > 0.0`). 
 #   If the physics server returns an inverted normal (pointing inward), the vector 
 #   is instantly flipped in mid-air, guaranteeing perfect lateral building.
+# CLEANUP PRODUCTION WORKFLOW:
+# - Removed all diagnostic `[RaycastTelemetry]` print statements to secure a clean 
+#   and silent production console.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -144,7 +147,6 @@ func _update_target_highlight() -> void:
 	var hit_normal := raycast.get_collision_normal()
 	
 	# SELF-HEALING VECTOR MATHEMATICS:
-	# Calculate look vector from camera to targeted point
 	var ray_dir := (raycast.get_collision_point() - camera.global_position).normalized()
 	
 	# 1. Autocorrect Inverted Normals (If normal points along look vector, flip it outward!)
@@ -185,8 +187,6 @@ func _update_target_highlight() -> void:
 				var is_spot_free := target_block == BlockType.Type.AIR or target_block == BlockType.Type.WATER
 				
 				# CORRECTED PLAYER COLLISION BOUNDS (WITH 5CM DOWNWARD HYSTERESIS):
-				# Pad AABB downwards by 5cm (0.05) to safely detect if the player is standing 
-				# on top of the placement boundary surface, blocking the placement in warning RED.
 				var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
 				var player_aabb := AABB(
 					player.global_position - Vector3(0.35, 0.05, 0.35),
@@ -246,27 +246,11 @@ func _mine_or_attack() -> void:
 		var hit_pos: Vector3 = raycast.get_collision_point() + (ray_dir * 0.05)
 		var block_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 		
-		# ======================================================================
-		# DIAGNOSTIC RAYCAST LOGS
-		# ======================================================================
-		var collided_name := "NULL"
-		if is_instance_valid(collider):
-			collided_name = collider.name
-			
-		print("[RaycastTelemetry] LEFT-CLICK break attempt.")
-		print("  -> Collided Node name: ", collided_name)
-		print("  -> Raw Collision Point: ", raycast.get_collision_point())
-		print("  -> Hit Normal: ", hit_normal)
-		print("  -> Evaluated Block Coord: ", block_coord)
-		# ======================================================================
-		
 		var world_state: WorldState = world_ctrl.world_state
 		if is_instance_valid(world_state):
 			var mined_type := world_state.get_block(block_coord)
-			print("  -> Logically present BlockType: ", mined_type)
 			
 			if mined_type == BlockType.Type.AIR:
-				print("  -> [FAIL] Logic blocked: Targeted block is empty (AIR).")
 				return
 				
 			# Spawn dynamic color-matched break particles
@@ -404,21 +388,7 @@ func _build_or_interact() -> void:
 		var hit_pos := raycast.get_collision_point() + (ray_dir * 0.05)
 		var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 		
-		# ======================================================================
-		# DIAGNOSTIC RAYCAST LOGS FOR BUILDING
-		# ======================================================================
 		var build_coord := target_coord + Vector3i(hit_normal)
-		var collided_name := "NULL"
-		if is_instance_valid(collider):
-			collided_name = collider.name
-			
-		print("[RaycastTelemetry] RIGHT-CLICK build attempt.")
-		print("  -> Collided Node name: ", collided_name)
-		print("  -> Raw Collision Point: ", raycast.get_collision_point())
-		print("  -> Hit Normal: ", hit_normal)
-		print("  -> Evaluated Target Coord: ", target_coord)
-		print("  -> Calculated Build Coord: ", build_coord)
-		# ======================================================================
 		
 		# Validate strategy requirements
 		if strategy.can_use(player.domain_entity, inventory, target_coord, hit_normal, world_state):
@@ -432,7 +402,6 @@ func _build_or_interact() -> void:
 					Vector3(0.70, 1.85, 0.70)
 				)
 				if player_aabb.intersects(block_aabb):
-					print("  -> [FAIL] Bounding shield blocked placement: Intersects Player AABB.")
 					return # Prevent trapping the player inside a solid block!
 					
 			# Execute strategy business rules (Injected through the Domain Adapter abstraction)

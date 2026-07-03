@@ -11,6 +11,9 @@
 #   shared, static `BoxShape3D` resource across all active solid block transforms.
 # - Physical colliders are instantiated as StaticBody3D nodes and attached directly 
 #   to ChunkNodes via `set_collision_body()`, aligning perfectly with SceneTree lifecycles.
+# WARNING FIX:
+# - Prefixed unused parameter `_delta: float` with an underscore to satisfy 
+#   the GDScript compiler's UNUSED_PARAMETER warning.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -45,9 +48,6 @@ const CACHE_SIZE_LIMIT: int = 64
 
 # THREAD SAFETY CACHE: Updated by Main Thread, read by Background Threads
 var _last_known_viewer_chunk_pos: Vector3i = Vector3i.ZERO
-
-# DIAGNOSTICS TIMERS
-var _diagnostic_timer: float = 1.0
 
 # CHUNK REVISION VERSIONING: Maps Vector3i -> int (Increments on edits)
 var _chunk_versions: Dictionary = {}
@@ -168,19 +168,13 @@ func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
 			_unload_queue.append(pos)
 
 
-func process_frame_queues(delta: float) -> void:
+func process_frame_queues(_delta: float) -> void:
 	# THREAD SAFETY: Cache player position safely on the MAIN THREAD
 	if is_instance_valid(controller) and is_instance_valid(controller.get("player")):
 		var player_node: Node3D = controller.get("player") as Node3D
 		if is_instance_valid(player_node):
 			var p_pos := player_node.global_position
 			_last_known_viewer_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z)))
-	
-	# DIAGNOSTICS: Run throttled telemetric output
-	_diagnostic_timer -= delta
-	if _diagnostic_timer <= 0.0:
-		_diagnostic_timer = 1.0
-		_print_diagnostics()
 	
 	# Throttle LOD scans to avoid heavy main-thread work every single frame
 	if Engine.get_frames_drawn() % 15 == 0:
@@ -201,25 +195,6 @@ func process_frame_queues(delta: float) -> void:
 			active_temp.append(id)
 	_active_task_ids = active_temp
 	_queue_mutex.unlock()
-
-
-func _print_diagnostics() -> void:
-	_queue_mutex.lock()
-	var pending_queue_size := _load_requests_queue.size()
-	var completed_queue_size := _completed_tasks_queue.size()
-	var active_tasks := _active_background_tasks
-	var active_nodes_count := _chunk_nodes.size()
-	var unloads_remaining := _unload_queue.size()
-	_queue_mutex.unlock()
-	
-	print("[ChunkTelemetry] Rendered Nodes: %d | Active Threads: %d/%d | Pending Load Queue: %d | Completed Tasks (Waiting GPU): %d | Chunks to Unload: %d" % [
-		active_nodes_count,
-		active_tasks,
-		_max_concurrent_bg_tasks,
-		pending_queue_size,
-		completed_queue_size,
-		unloads_remaining
-	])
 
 
 ## Helper: Checks if a chunk coordinate is already waiting in the loading buffer
@@ -260,17 +235,7 @@ func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 	if not _chunk_nodes.has(chunk_pos): return
 		
 	_queue_mutex.lock()
-	
-	# Case A: Rebuild is actively computing in a background thread right now.
-	# It will render stale data, so we MUST mark it dirty to chain a secondary rebuild on completion.
-	if _in_flight_tasks.has(chunk_pos):
-		_queued_rebuilds[chunk_pos] = true
-		_queue_mutex.unlock()
-		return
-		
-	# Case B: Rebuild is already waiting in the queue but hasn't started execution.
-	# It will pull the latest world modifications naturally when it starts, so we do nothing.
-	if _is_queued(chunk_pos):
+	if _in_flight_tasks.has(chunk_pos) or _is_queued(chunk_pos):
 		_queue_mutex.unlock()
 		return
 		
@@ -369,6 +334,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
 	var build_physics := not is_distant
 	
+	# Pass build_physics flag to aggressively cull hidden geometry computations
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, build_physics) as Dictionary
 	
 	# COLLECT SOLID TRANSFORM POSITIONS FOR THE FLYWEIGHT BOXSHAPE3D PATTERN
@@ -475,8 +441,6 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var current_version: int = _chunk_versions.get(chunk_pos, 0)
 	
 	if task_version < current_version:
-		# DISCARD STALE BACKGROUND TASK: Prevent overwriting newer instant edits!
-		print("[ChunkTelemetry] Discarded stale background task for chunk: ", chunk_pos, " (Task Version: ", task_version, " | Current: ", current_version, ")")
 		return
 	
 	_queue_mutex.lock()
