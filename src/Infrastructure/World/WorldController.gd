@@ -2,21 +2,22 @@
 # Project: CraftDomain
 # Description: Infrastructure Coordinator orchestrating high-level world state,
 #              delegating chunk compilation, multi-threading, and persistent saving.
-# SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): No longer manages threads, 
-#   queues, file formatting, or visual compilations. All heavy lifting 
-#   is delegated to specialized services.
-# - Dependency Inversion Principle (DIP): Exposes a domain-compliant 
-#   IWorldModifier adapter, decoupling domain strategies from this 
-#   concrete infrastructure coordinator.
-# - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
-#   services without modifying core coordination loops.
-# - Domain-Driven Design (DDD): Defers player spawn height calculations
-#   strictly to the WorldState Domain Aggregate.
-# RESOLUTION OF IDLE QUEUE FLUSH BUG:
-# - Added defensive verification (`if not task.to_load.is_empty()`) before calling 
-#   `chunk_manager.queue_loads`. This prevents empty/stable frames from wiping out 
-#   active pending generation buffers, resolving the loading screen freeze.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): No longer manages threads, 
+#                queues, file formatting, or visual compilations. All heavy lifting 
+#                is delegated to specialized services.
+#              - Dependency Inversion Principle (DIP): Exposes a domain-compliant 
+#                IWorldModifier adapter, decoupling domain strategies from this 
+#                concrete infrastructure coordinator.
+#              - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
+#                services without modifying core coordination loops.
+#              - Domain-Driven Design (DDD): Defers player spawn height calculations
+#                strictly to the WorldState Domain Aggregate.
+# RESOLUTION OF TELEPORT QUEUE FLOODING:
+#              - Replaced the repetitive 0.2s polling of spawn chunks with a 
+#                reactive setter on `_target_spawn_chunk_pos`. Priority spawn 
+#                chunks are now requested exactly once on teleport, preventing 
+#                background thread pool choke.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -50,8 +51,12 @@ var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.2
 
 # Target chunk coordinate where the player is scheduled to spawn safely
-var _target_spawn_chunk_pos: Vector3i = Vector3i(0, 0, 0)
-var _loaded_inventory_data: Array = []
+# Reactive Setter: Dispatches high-priority loading tasks exactly once upon teleportation
+var _target_spawn_chunk_pos: Vector3i = Vector3i(0, 0, 0):
+	set(val):
+		_target_spawn_chunk_pos = val
+		if is_teleport_spawn:
+			_trigger_prioritized_spawn_loads()
 
 # Save game protection flags
 var _is_restored_save: bool = false
@@ -59,6 +64,9 @@ var _is_startup_phase: bool = true
 
 # Public trigger flag for vertical height recalculations on teleport
 var is_teleport_spawn: bool = false
+
+# Cached inventory data loaded from save file, to be deserialized upon player activation
+var _loaded_inventory_data: Array = []
 
 
 func _ready() -> void:
@@ -77,10 +85,12 @@ func _initialize_systems() -> void:
 	# Instantiate our specialized spawning services (SRP)
 	_mob_spawning_service = MobSpawningService.new()
 	_prop_spawning_service = PropSpawningService.new()
+	
+	# Fixed constructor parameters: both services require references to the world controller and world state
 	_streetlight_service = StreetlightService.new(self, world_state)
 	_agriculture_service = AgricultureService.new(self, world_state)
 	
-	# Instantiate our specialized SRP Services
+	# Create and cache the primary Chunk Manager Service
 	chunk_manager = ChunkManagerService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
 	
@@ -95,7 +105,7 @@ func _initialize_systems() -> void:
 	
 	# Celestial restoration parameters
 	var current_time := 0.5
-	var calendar_days := 14 # Default Full Moon
+	var calendar_days := 14 # Start at day 14 (Full Moon) for immediate visual feedback!
 	
 	if saved_global.has("seed"):
 		_is_restored_save = true # Mark as active save to protect Y coordinates on load
@@ -107,19 +117,19 @@ func _initialize_systems() -> void:
 			spawn_rot = saved_global["player_rot"] as Vector3
 		if saved_global.has("inventory"): 
 			_loaded_inventory_data = saved_global["inventory"] as Array
-		
+			
 		# Restore celestial timeline
 		if saved_global.has("celestial_time"):
-			current_time = saved_global["celestial_time"] as float
+			current_time = float(saved_global["celestial_time"])
 		if saved_global.has("calendar_day"):
-			calendar_days = saved_global["calendar_day"] as int
-		
+			calendar_days = int(saved_global["calendar_day"])
+			
 		# Restore campaign quest progression cleanly
 		if saved_global.has("active_quest_id"):
 			var saved_q_id: String = saved_global["active_quest_id"] as String
 			if saved_q_id == "COMPLETED": 
 				QuestService.clear_active_quest()
-			elif saved_q_id != "": 
+			elif saved_q_id != "":
 				QuestService.set_active_quest(saved_q_id)
 	else:
 		_is_restored_save = false
@@ -129,31 +139,28 @@ func _initialize_systems() -> void:
 		
 	generator = WorldGenerator.new(active_seed)
 	
-	# Apply loaded celestial timeline
+	# Injects loaded parameters into global singletons
 	var bootstrap := get_node_or_null("/root/Bootstrap")
 	if is_instance_valid(bootstrap):
 		var celestial: Node = bootstrap.get_node_or_null("CelestialService") as Node
 		if is_instance_valid(celestial):
 			celestial.set("_current_time", current_time)
 			celestial.set("_calendar_days", calendar_days)
-			print("[WorldController] Successfully restored celestial time: ", current_time, " | Calendar Day: ", calendar_days)
-	
-	# Determine initial spawn position
-	var block_pos: Vector3i = Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
-	_target_spawn_chunk_calculation(block_pos)
+			
+	_target_spawn_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
 	
 	if is_instance_valid(player):
 		player.position = spawn_pos
 		player.rotation = spawn_rot
 		
-	# Throttle view distance during initial load for instant entry
+		# Deserialize player inventory safely
+		var inv := player.get("inventory") as InventoryComponent
+		if is_instance_valid(inv) and _loaded_inventory_data.size() > 0:
+			inv.deserialize_data(_loaded_inventory_data)
+			
+	# Disable real-time physics until spawn chunks are built and populated
 	_is_startup_phase = true
 	ChunkLoaderService.global_view_distance = 1 
-
-
-func _target_spawn_chunk_calculation(block_pos: Vector3i) -> void:
-	_target_spawn_chunk_pos = world_state.global_to_chunk_pos(block_pos)
-	_target_spawn_chunk_pos.y = 0
 
 
 func _process(delta: float) -> void:
@@ -187,39 +194,35 @@ func _exit_tree() -> void:
 
 ## Calculates coordinates to request chunk loads/unloads and triggers proximity spawning
 func _process_dynamic_world() -> void:
-	# Camera Direction Extraction:
-	# Fallback to player's body direction, but prefer camera global look vector for precise tracking.
 	var look_dir := -player.transform.basis.z.normalized()
 	if is_instance_valid(player):
-		var cam: Camera3D = player.get("camera") as Camera3D
-		if is_instance_valid(cam):
-			look_dir = -cam.global_transform.basis.z.normalized()
+		var camera_node: Camera3D = player.get("camera") as Camera3D
+		if is_instance_valid(camera_node):
+			look_dir = -camera_node.global_transform.basis.z.normalized()
 			
-	var task: ChunkLoaderService.ChunkUpdateTask = loader_service.check_viewer_position(
-		player.global_position, 
-		look_dir,
-		world_state
-	)
+	var task := loader_service.check_viewer_position(player.global_position, look_dir, world_state)
 	
 	if is_instance_valid(chunk_manager):
 		chunk_manager.queue_unloads(task.to_unload)
 		
-		if is_teleport_spawn:
-			var target_spawn_chunks: Array[Vector3i] = []
-			for x: int in range(-1, 2):
-				for z: int in range(-1, 2):
-					target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z))
-					target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z))
-			chunk_manager.queue_prioritized_loads(target_spawn_chunks)
-		
-		# DEFENSIVE HOT-SWAP SHIELD: 
-		# Only request updating the load queue if there are active missing chunks!
-		# This prevents empty updates on idle frames from flushing and clearing waiting buffers.
+		# Only update the horizon queue if the loader detected movement or changes
 		if not task.to_load.is_empty():
 			chunk_manager.queue_loads(task.to_load)
-		
-		# DYNAMIC PROXIMITY SPAWNING: Spawns both living mobs and static props (Clean naming)
+			
 		chunk_manager.spawn_entities_by_proximity(player.global_position)
+
+
+## Triggers high-priority spawn area loads exactly once upon teleportation
+func _trigger_prioritized_spawn_loads() -> void:
+	if is_instance_valid(chunk_manager):
+		var target_spawn_chunks: Array[Vector3i] = []
+		for x in range(-1, 2):
+			for z in range(-1, 2):
+				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z))
+				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z))
+		
+		chunk_manager.queue_prioritized_loads(target_spawn_chunks)
+		print("[WorldController] Prioritized spawn chunks queued for teleport: ", _target_spawn_chunk_pos)
 
 
 ## Coordinates dynamic streetlight updates on day/night transitions
@@ -288,10 +291,10 @@ func check_player_spawn_activation() -> void:
 		if is_instance_valid(chunk_manager):
 			var _all_rendered: bool = true
 			
-			for x: int in range(-1, 2):
-				for z: int in range(-1, 2):
-					var pos_0: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z)
-					var pos_1: Vector3i = Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z)
+			for x in range(-1, 2):
+				for z in range(-1, 2):
+					var pos_0 := Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z)
+					var pos_1 := Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z)
 					
 					if not chunk_manager.is_chunk_rendered(pos_0) or not chunk_manager.is_chunk_rendered(pos_1):
 						_all_rendered = false
