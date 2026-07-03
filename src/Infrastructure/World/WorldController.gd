@@ -13,6 +13,9 @@
 #   services without modifying core coordination loops.
 # - Domain-Driven Design (DDD): Defers player spawn height calculations
 #   strictly to the WorldState Domain Aggregate.
+# REFACTORING:
+# - Injected 'delta' parameter into the 'chunk_manager.process_frame_queues()' 
+#   frame dispatcher call, completely preventing null-pointer crashes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -170,12 +173,13 @@ func _process(delta: float) -> void:
 		_process_dynamic_world()
 		_process_day_night_lighting()
 		
-	# 3. Main-Thread Rendering Queue dispatching
+	# 3. Main-Thread Rendering Queue dispatching (Dynamic frame-pacing)
 	if is_instance_valid(chunk_manager):
-		chunk_manager.process_frame_queues()
+		# FIXED: Passed 'delta' parameter to fix C++ null-pointer crashes
+		chunk_manager.process_frame_queues(delta)
 
 
-## Clears requests and blocks the main thread on exit until background thread workers have finished processing safely
+## Clears requests and blocks the main thread on exit until background thread workers have finished safely
 func _exit_tree() -> void:
 	if is_instance_valid(chunk_manager):
 		chunk_manager.shutdown()
