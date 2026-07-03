@@ -24,6 +24,9 @@
 #                WorkerThreadPool background threads and into the Main Thread renderer queue.
 #              - Added a safety check in `_request_asynchronous_chunk_load` to discard
 #                redundant rebuild requests on chunks already in the scene tree.
+#              WARNING CORRECTION:
+#              - Cast integer division to float division inside '_render_single_completed_task'
+#                to completely eliminate GDScript parser warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -496,7 +499,8 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			static_body.collision_layer = 1
 			static_body.collision_mask = 1
 			
-			var step_count := int(solid_positions.size() / 6)
+			# CAST EXPLICITLY to avoid INTEGER_DIVISION warnings during steps
+			var step_count := int(float(solid_positions.size()) / 6.0)
 			for i: int in range(step_count):
 				var offset := i * 6
 				var sum := Vector3.ZERO
