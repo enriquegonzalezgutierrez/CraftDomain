@@ -13,9 +13,10 @@
 #   services without modifying core coordination loops.
 # - Domain-Driven Design (DDD): Defers player spawn height calculations
 #   strictly to the WorldState Domain Aggregate.
-# REFACTORING:
-# - Injected 'delta' parameter into the 'chunk_manager.process_frame_queues()' 
-#   frame dispatcher call, completely preventing null-pointer crashes.
+# RESOLUTION OF IDLE QUEUE FLUSH BUG:
+# - Added defensive verification (`if not task.to_load.is_empty()`) before calling 
+#   `chunk_manager.queue_loads`. This prevents empty/stable frames from wiping out 
+#   active pending generation buffers, resolving the loading screen freeze.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -175,7 +176,6 @@ func _process(delta: float) -> void:
 		
 	# 3. Main-Thread Rendering Queue dispatching (Dynamic frame-pacing)
 	if is_instance_valid(chunk_manager):
-		# FIXED: Passed 'delta' parameter to fix C++ null-pointer crashes
 		chunk_manager.process_frame_queues(delta)
 
 
@@ -187,8 +187,17 @@ func _exit_tree() -> void:
 
 ## Calculates coordinates to request chunk loads/unloads and triggers proximity spawning
 func _process_dynamic_world() -> void:
+	# Camera Direction Extraction:
+	# Fallback to player's body direction, but prefer camera global look vector for precise tracking.
+	var look_dir := -player.transform.basis.z.normalized()
+	if is_instance_valid(player):
+		var cam: Camera3D = player.get("camera") as Camera3D
+		if is_instance_valid(cam):
+			look_dir = -cam.global_transform.basis.z.normalized()
+			
 	var task: ChunkLoaderService.ChunkUpdateTask = loader_service.check_viewer_position(
 		player.global_position, 
+		look_dir,
 		world_state
 	)
 	
@@ -203,8 +212,11 @@ func _process_dynamic_world() -> void:
 					target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z))
 			chunk_manager.queue_prioritized_loads(target_spawn_chunks)
 		
-		# Regular scenic world loads remain passive (un-prioritized)
-		chunk_manager.queue_loads(task.to_load)
+		# DEFENSIVE HOT-SWAP SHIELD: 
+		# Only request updating the load queue if there are active missing chunks!
+		# This prevents empty updates on idle frames from flushing and clearing waiting buffers.
+		if not task.to_load.is_empty():
+			chunk_manager.queue_loads(task.to_load)
 		
 		# DYNAMIC PROXIMITY SPAWNING: Spawns both living mobs and static props (Clean naming)
 		chunk_manager.spawn_entities_by_proximity(player.global_position)
