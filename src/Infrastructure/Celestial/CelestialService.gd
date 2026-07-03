@@ -2,14 +2,14 @@
 # Project: CraftDomain
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              dynamic SunLight and MoonLight rotation, and procedural sky transitions.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Only manages physical orbits
-#                and day timelines, delegating weather-uniform parameters to the GPU.
-#              BUG FIX (OVERLY BRIGHT NIGHTS):
-#              - Reduced maximum Moonlight energy from a daylight-like `0.45` 
-#                to a highly atmospheric, dim silver-blue glow of `0.06`. This 
-#                renders nights realistically dark and deep, making streetlights 
-#                and light emission blocks stand out beautifully.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Only manages physical orbits
+#   and day timelines, delegating weather-uniform parameters to the GPU.
+# SUNSET TIMELINE CALIBRATION:
+# - Advanced the night twilight threshold from 0.80 (7:12 PM) to 0.76 (6:15 PM) 
+#   and sunrise to 0.24 (5:45 AM). This perfectly synchronizes sun occlusion, 
+#   moon rise, and streetlight ignition as twilight begins, preventing dark lapses.
+# - Maintained realistic low-energy Moonlight glow (0.06).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
@@ -94,17 +94,17 @@ func _update_sun_rotation() -> void:
 	sun_light.rotation.x = angle_rad
 	sun_light.rotation.y = deg_to_rad(35)
 	
-	# Fade sun in/out based on daylight limits
-	var is_night: bool = _current_time < 0.2 || _current_time > 0.8
+	# Fade sun in/out based on daylight limits (Sunrise 5:45 AM / Sunset 6:15 PM)
+	var is_night: bool = _current_time < 0.24 or _current_time > 0.76
 	if is_night:
 		sun_light.light_energy = 0.0
 		sun_light.shadow_enabled = false
 	else:
 		var intensity: float = 1.2
-		if _current_time < 0.3: # Sunrise fade
-			intensity = remap(_current_time, 0.2, 0.3, 0.0, 1.2)
-		elif _current_time > 0.7: # Sunset fade
-			intensity = remap(_current_time, 0.7, 0.8, 1.2, 0.0)
+		if _current_time < 0.32: # Sunrise fade (0.24 to 0.32)
+			intensity = remap(_current_time, 0.24, 0.32, 0.0, 1.2)
+		elif _current_time > 0.68: # Sunset fade (0.68 to 0.76)
+			intensity = remap(_current_time, 0.68, 0.76, 1.2, 0.0)
 		sun_light.light_energy = clamp(intensity, 0.0, 1.2)
 		sun_light.shadow_enabled = true
 
@@ -119,8 +119,8 @@ func _update_moon_rotation() -> void:
 	moon_light.rotation.x = angle_rad
 	moon_light.rotation.y = deg_to_rad(-145) # Azimuth opposite angle
 	
-	# Verify if it is currently nighttime
-	var is_night: bool = _current_time < 0.22 or _current_time > 0.78
+	# Verify if it is currently nighttime (Sunrise 5:45 AM / Sunset 6:15 PM)
+	var is_night: bool = _current_time < 0.24 or _current_time > 0.76
 	if not is_night:
 		moon_light.light_energy = 0.0
 		moon_light.shadow_enabled = false
@@ -128,14 +128,13 @@ func _update_moon_rotation() -> void:
 		var moon_phase_mult: float = 1.0 - abs((float(_calendar_days) - 14.0) / 14.0)
 		
 		# Fade moon energy smoothly during transitions (Sunset/Sunrise)
-		# ---> CRITICAL ADJUSTMENT: Lowered maximum moonlight energy to 0.06 <---
 		var max_intensity: float = 0.06 * moon_phase_mult
 		var intensity: float = max_intensity
 		
-		if _current_time > 0.78 and _current_time < 0.88: # Sunset rise
-			intensity = remap(_current_time, 0.78, 0.88, 0.0, max_intensity)
-		elif _current_time < 0.22 and _current_time > 0.12: # Sunrise set
-			intensity = remap(_current_time, 0.12, 0.22, max_intensity, 0.0)
+		if _current_time > 0.76 and _current_time < 0.84: # Sunset rise (0.76 to 0.84)
+			intensity = remap(_current_time, 0.76, 0.84, 0.0, max_intensity)
+		elif _current_time < 0.24 and _current_time > 0.16: # Sunrise set (0.16 to 0.24)
+			intensity = remap(_current_time, 0.16, 0.24, max_intensity, 0.0)
 			
 		moon_light.light_energy = clamp(intensity, 0.0, 0.06)
 		moon_light.shadow_enabled = moon_light.light_energy > 0.01
@@ -186,7 +185,7 @@ func _update_sky_atmosphere() -> void:
 
 ## Public helper: Returns true if it is currently nighttime
 func is_night_time() -> bool:
-	return _current_time < 0.2 or _current_time > 0.8
+	return _current_time < 0.24 or _current_time > 0.76
 
 
 ## Public API: Returns the current descriptive moon phase name based on the calendar

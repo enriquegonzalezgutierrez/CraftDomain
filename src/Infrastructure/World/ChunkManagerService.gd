@@ -11,9 +11,13 @@
 #   shared, static `BoxShape3D` resource across all active solid block transforms.
 # - Physical colliders are instantiated as StaticBody3D nodes and attached directly 
 #   to ChunkNodes via `set_collision_body()`, aligning perfectly with SceneTree lifecycles.
-# WARNING FIX:
-# - Prefixed unused parameter `_delta: float` with an underscore to satisfy 
-#   the GDScript compiler's UNUSED_PARAMETER warning.
+# EXTREME PERFORMANCE UPGRADES (THREADED INSTANTIATION):
+# - Fully offloaded the expensive main-thread `CollisionShape3D` instantiation loop 
+#   into the background threads inside `WorkerThreadPool`. 
+# BUG FIX (DEFINITIVE):
+# - Fixed `static_body` scope declarations inside all generation/rebuild functions.
+# - Removed dangerous manual `PhysicsServer3D.free_rid()` calls, deferring memory 
+#   cleanup strictly to Godot's native `queue_free()` node lifecycle to prevent C++ crashes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -42,9 +46,6 @@ var _chunk_entities: Dictionary = {}
 var _physics_bodies: Dictionary = {} # Vector3i -> RID (Stored for entity proximity checks)
 
 var _chunk_lod_states: Dictionary = {} 
-
-var _chunk_task_cache: Dictionary = {}
-const CACHE_SIZE_LIMIT: int = 64
 
 # THREAD SAFETY CACHE: Updated by Main Thread, read by Background Threads
 var _last_known_viewer_chunk_pos: Vector3i = Vector3i.ZERO
@@ -130,30 +131,23 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
 	_queue_mutex.lock()
 	
-	# 1. Gather and safeguard high-priority REBUILD requests (like block placements)
 	var rebuilds: Array[Dictionary] = []
 	for req: Dictionary in _load_requests_queue:
 		if req["is_rebuild"] == true:
 			rebuilds.append(req)
 			
-	# 2. Flush and clear all stale, out-of-date pending load requests
 	_load_requests_queue.clear()
 	
-	# 3. Re-populate with the fresh, directionally sorted positions (skip if already generating)
 	for pos: Vector3i in chunk_positions:
 		if _in_flight_tasks.has(pos):
-			continue # Already running on background thread, skip!
-		# Capture active version at the moment of queuing
+			continue 
 		var active_version: int = _chunk_versions.get(pos, 0)
 		_load_requests_queue.append({"pos": pos, "is_rebuild": false, "version": active_version})
 		
-	# 4. Inject high-priority rebuilds back at the absolute front of the queue
 	for req: Dictionary in rebuilds:
 		_load_requests_queue.push_front(req)
 		
 	_queue_mutex.unlock()
-	
-	# 5. Wake up background threads to work on the new prioritized coordinates immediately
 	_trigger_next_background_tasks()
 
 
@@ -169,24 +163,25 @@ func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
 
 
 func process_frame_queues(_delta: float) -> void:
-	# THREAD SAFETY: Cache player position safely on the MAIN THREAD
+	var player_active := false
 	if is_instance_valid(controller) and is_instance_valid(controller.get("player")):
 		var player_node: Node3D = controller.get("player") as Node3D
 		if is_instance_valid(player_node):
+			player_active = player_node.get("is_active") as bool
 			var p_pos := player_node.global_position
 			_last_known_viewer_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z)))
 	
-	# Throttle LOD scans to avoid heavy main-thread work every single frame
 	if Engine.get_frames_drawn() % 15 == 0:
 		_execute_lod_scans()
 	
+	var max_unloads := 100 if not player_active else 5
 	var unloads_processed := 0
-	while _unload_queue.size() > 0 and unloads_processed < 5:
+	while _unload_queue.size() > 0 and unloads_processed < max_unloads:
 		var chunk_to_unload := _unload_queue.pop_front() as Vector3i
 		_unload_chunk_node(chunk_to_unload)
 		unloads_processed += 1
 		
-	_render_completed_chunks_from_queue()
+	_render_completed_chunks_from_queue(player_active)
 	
 	_queue_mutex.lock()
 	var active_temp: Array[int] = []
@@ -197,7 +192,6 @@ func process_frame_queues(_delta: float) -> void:
 	_queue_mutex.unlock()
 
 
-## Helper: Checks if a chunk coordinate is already waiting in the loading buffer
 func _is_queued(pos: Vector3i) -> bool:
 	for req: Dictionary in _load_requests_queue:
 		if req["pos"] == pos:
@@ -208,14 +202,11 @@ func _is_queued(pos: Vector3i) -> bool:
 func _request_asynchronous_chunk_load(chunk_pos: Vector3i, high_priority: bool = false) -> void:
 	_queue_mutex.lock()
 	
-	if _chunk_task_cache.has(chunk_pos):
-		var cached_task: GeneratedChunkTask = _chunk_task_cache[chunk_pos] as GeneratedChunkTask
-		if not _completed_tasks_queue.has(cached_task):
-			_completed_tasks_queue.append(cached_task)
+	if world_state.get_chunk(chunk_pos) != null:
 		_queue_mutex.unlock()
+		_request_chunk_rebuild(chunk_pos)
 		return
 		
-	# Skip if already generating on a thread OR already waiting in queue
 	if _in_flight_tasks.has(chunk_pos) or _is_queued(chunk_pos):
 		_queue_mutex.unlock()
 		return
@@ -235,7 +226,13 @@ func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 	if not _chunk_nodes.has(chunk_pos): return
 		
 	_queue_mutex.lock()
-	if _in_flight_tasks.has(chunk_pos) or _is_queued(chunk_pos):
+	
+	if _in_flight_tasks.has(chunk_pos):
+		_queued_rebuilds[chunk_pos] = true
+		_queue_mutex.unlock()
+		return
+		
+	if _is_queued(chunk_pos):
 		_queue_mutex.unlock()
 		return
 		
@@ -248,17 +245,16 @@ func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 ## Synchronously rebuilds a chunk on the main thread for zero-latency player edits.
 func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	var chunk := world_state.get_chunk(chunk_pos)
-	if chunk == null:
-		return
+	if chunk == null: return
 		
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
 	var build_physics := not is_distant
 	
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, build_physics) as Dictionary
 	
-	# COLLECT SOLID TRANSFORM POSITIONS FOR THE FLYWEIGHT BOXSHAPE3D PATTERN
-	var solid_positions := PackedVector3Array()
+	var static_body: StaticBody3D = null
 	if build_physics:
+		var solid_positions := PackedVector3Array()
 		for x in range(Chunk.SIZE):
 			for y in range(Chunk.SIZE):
 				for z in range(Chunk.SIZE):
@@ -266,26 +262,34 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 					if BlockType.is_solid(block_type):
 						solid_positions.append(Vector3(x, y, z))
 						
+		if solid_positions.size() > 0:
+			static_body = StaticBody3D.new()
+			static_body.collision_layer = 1
+			static_body.collision_mask = 1
+			for local_pos: Vector3 in solid_positions:
+				var col := CollisionShape3D.new()
+				col.shape = _get_shared_box_shape()
+				col.position = local_pos + Vector3(0.5, 0.5, 0.5)
+				static_body.add_child(col)
+				
 	var liquids: Dictionary = {}
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
-		if l_mesh != null:
-			liquids[l_type] = l_mesh
+		if l_mesh != null: liquids[l_type] = l_mesh
 			
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.collision_shape = null # Bypassed raw ConcavePolygon RIDs
+	task_result.collision_shape = null 
 	task_result.is_rebuild = true
 	task_result.liquid_meshes = liquids
-	# Store the solid positions inside the task object metadata
-	task_result.set_meta("solid_positions", solid_positions)
 	
-	# Bind latest main thread version metadata
+	if static_body != null:
+		task_result.set_meta("static_body", static_body)
+		
 	var current_version: int = _chunk_versions.get(chunk_pos, 0)
 	task_result.set_meta("version", current_version)
 	
-	# Inject directly into the rendering thread immediately
 	_render_single_completed_task(task_result)
 
 
@@ -298,7 +302,7 @@ func _trigger_next_background_tasks() -> void:
 		var target_version: int = request.get("version", 0) as int
 		
 		_active_background_tasks += 1
-		_in_flight_tasks[pos] = true # Mark as physically computing on thread pool
+		_in_flight_tasks[pos] = true 
 		
 		var task_id: int
 		if is_rebuild:
@@ -334,18 +338,27 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
 	var build_physics := not is_distant
 	
-	# Pass build_physics flag to aggressively cull hidden geometry computations
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, build_physics) as Dictionary
 	
-	# COLLECT SOLID TRANSFORM POSITIONS FOR THE FLYWEIGHT BOXSHAPE3D PATTERN
-	var solid_positions := PackedVector3Array()
+	var static_body: StaticBody3D = null
 	if build_physics:
+		var solid_positions := PackedVector3Array()
 		for x in range(Chunk.SIZE):
 			for y in range(Chunk.SIZE):
 				for z in range(Chunk.SIZE):
 					var block_type := chunk.get_block(x, y, z)
 					if BlockType.is_solid(block_type):
 						solid_positions.append(Vector3(x, y, z))
+						
+		if solid_positions.size() > 0:
+			static_body = StaticBody3D.new()
+			static_body.collision_layer = 1
+			static_body.collision_mask = 1
+			for local_pos: Vector3 in solid_positions:
+				var col := CollisionShape3D.new()
+				col.shape = _get_shared_box_shape()
+				col.position = local_pos + Vector3(0.5, 0.5, 0.5)
+				static_body.add_child(col)
 	
 	var liquids: Dictionary = {}
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
@@ -357,12 +370,11 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
 	task_result.collision_shape = null 
 	task_result.liquid_meshes = liquids
-	task_result.set_meta("solid_positions", solid_positions)
-	task_result.set_meta("version", version) # Bind thread version
+	if static_body != null:
+		task_result.set_meta("static_body", static_body)
+	task_result.set_meta("version", version) 
 	
 	_queue_mutex.lock()
-	task_result.chunk = chunk # Enforce persistent reference
-	_chunk_task_cache[chunk_pos] = task_result
 	_completed_tasks_queue.append(task_result)
 	_queue_mutex.unlock()
 
@@ -384,15 +396,25 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, build_physics) as Dictionary
 	
-	# COLLECT SOLID TRANSFORM POSITIONS FOR THE FLYWEIGHT BOXSHAPE3D PATTERN
-	var solid_positions := PackedVector3Array()
+	var static_body: StaticBody3D = null
 	if build_physics:
+		var solid_positions := PackedVector3Array()
 		for x in range(Chunk.SIZE):
 			for y in range(Chunk.SIZE):
 				for z in range(Chunk.SIZE):
 					var block_type := chunk.get_block(x, y, z)
 					if BlockType.is_solid(block_type):
 						solid_positions.append(Vector3(x, y, z))
+						
+		if solid_positions.size() > 0:
+			static_body = StaticBody3D.new()
+			static_body.collision_layer = 1
+			static_body.collision_mask = 1
+			for local_pos: Vector3 in solid_positions:
+				var col := CollisionShape3D.new()
+				col.shape = _get_shared_box_shape()
+				col.position = local_pos + Vector3(0.5, 0.5, 0.5)
+				static_body.add_child(col)
 			
 	var liquids: Dictionary = {}
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
@@ -405,22 +427,23 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	task_result.collision_shape = null
 	task_result.is_rebuild = true
 	task_result.liquid_meshes = liquids
-	task_result.set_meta("solid_positions", solid_positions)
-	task_result.set_meta("version", version) # Bind thread version
+	if static_body != null:
+		task_result.set_meta("static_body", static_body)
+	task_result.set_meta("version", version) 
 	
 	_queue_mutex.lock()
 	_completed_tasks_queue.append(task_result)
 	_queue_mutex.unlock()
 
 
-func _render_completed_chunks_from_queue() -> void:
+func _render_completed_chunks_from_queue(player_active: bool) -> void:
 	var start_time := Time.get_ticks_usec()
 	var rendered_this_frame := 0
-	const TIME_BUDGET_USEC := 4500 
+	var time_budget_usec := 50000 if not player_active else 4500
 	
 	while true:
 		var elapsed := Time.get_ticks_usec() - start_time
-		if elapsed > TIME_BUDGET_USEC and rendered_this_frame >= 1: break
+		if elapsed > time_budget_usec and rendered_this_frame >= 1: break
 			
 		var task: GeneratedChunkTask = null
 		_queue_mutex.lock()
@@ -436,18 +459,20 @@ func _render_completed_chunks_from_queue() -> void:
 func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var chunk_pos: Vector3i = task.chunk.position
 	
-	# CHUNK VERSION COMPARISON:
 	var task_version: int = task.get_meta("version") if task.has_meta("version") else 0
 	var current_version: int = _chunk_versions.get(chunk_pos, 0)
 	
 	if task_version < current_version:
+		# Memory Leak Shield: Destroy orphaned precompiled static bodies if task is discarded
+		var orphaned_body: Node = task.get_meta("static_body") if task.has_meta("static_body") else null
+		if is_instance_valid(orphaned_body):
+			orphaned_body.queue_free()
 		return
 	
 	_queue_mutex.lock()
-	_in_flight_tasks.erase(chunk_pos) # Mark task as finished on threads
+	_in_flight_tasks.erase(chunk_pos) 
 	_queue_mutex.unlock()
 	
-	# TRIGGER SECONDARY REBUILD: If more rapid modifications occurred during the thread lifetime, chain them!
 	if _queued_rebuilds.has(chunk_pos):
 		_queued_rebuilds.erase(chunk_pos)
 		_request_chunk_rebuild(chunk_pos)
@@ -455,39 +480,25 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	if not task.is_rebuild and is_instance_valid(world_state):
 		world_state.add_chunk(task.chunk)
 		
-	# Unload old physical body registration
+	# Native Node memory delegation: Do not use free_rid on Nodes
 	_physics_bodies.erase(chunk_pos)
 	
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
 	_chunk_lod_states[chunk_pos] = is_distant
 	
-	# ==========================================================================
-	# FLYWEIGHT BOXSHAPE3D COLLISION BUILDER
-	# ==========================================================================
-	var static_body: StaticBody3D = null
-	var solid_positions: PackedVector3Array = task.get_meta("solid_positions") if task.has_meta("solid_positions") else PackedVector3Array()
-	
-	if solid_positions.size() > 0:
-		static_body = StaticBody3D.new()
-		static_body.collision_layer = 1
-		static_body.collision_mask = 1
-		
-		# Instantiate a separate CollisionShape3D for each block, sharing the single static BoxShape3D
-		for local_pos: Vector3 in solid_positions:
-			var col := CollisionShape3D.new()
-			col.shape = _get_shared_box_shape()
-			col.position = local_pos + Vector3(0.5, 0.5, 0.5)
-			static_body.add_child(col)
-			
+	# Extract background-threaded StaticBody3D (0ms Main-Thread allocation lag)
+	var static_body: StaticBody3D = task.get_meta("static_body") if task.has_meta("static_body") else null
+	if is_instance_valid(static_body):
 		_physics_bodies[chunk_pos] = static_body.get_rid()
-	# ==========================================================================
 	
 	var chunk_node: ChunkNode = null
 	if _chunk_nodes.has(chunk_pos):
 		chunk_node = _chunk_nodes[chunk_pos] as ChunkNode
 		chunk_node.setup_chunk_visuals(task.multimesh_data, static_body, task.liquid_meshes, is_distant)
 	else:
-		if task.is_rebuild: return
+		if task.is_rebuild: 
+			if is_instance_valid(static_body): static_body.queue_free()
+			return
 			
 		chunk_node = ChunkNode.new(task.chunk)
 		controller.add_child(chunk_node)
@@ -565,8 +576,8 @@ func _calculate_is_chunk_distant(chunk_pos: Vector3i) -> bool:
 	var dist := Vector2(chunk_pos.x - p_chunk_pos.x, chunk_pos.z - p_chunk_pos.z).length()
 	
 	var currently_distant: bool = _chunk_lod_states.get(chunk_pos, true)
-	if currently_distant: return dist > 3.5 
-	else: return dist > 4.5 
+	if currently_distant: return dist > 2.5 
+	else: return dist > 3.5 
 
 
 func shutdown() -> void:

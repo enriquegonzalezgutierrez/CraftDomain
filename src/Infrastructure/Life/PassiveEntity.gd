@@ -2,15 +2,17 @@
 # Project: CraftDomain
 # Description: Abstract base class representing a physics-bound passive entity (NPC/Fauna).
 #              Schedules procedural walk cycles, spatial state-machines, and variety.
-#              SOLID COMPLIANCE:
-#              - Liskov Substitution Principle (LSP): Serves as a robust base 
-#                contract with safe default virtual values for subclasses.
-#              - Single Responsibility Principle (SRP): Decoupled into specialized 
-#                components, leaving this class strictly in charge of sliding physics.
-#              WARNING FIX:
-#              - Added explicit static typing `Node` to intermediate parents 
-#                on lines 188 and 205 to completely resolve `UNTYPED_DECLARATION` 
-#                compiler warnings.
+# SOLID COMPLIANCE:
+# - Liskov Substitution Principle (LSP): Serves as a robust base 
+#   contract with safe default virtual values for subclasses.
+# - Single Responsibility Principle (SRP): Decoupled into specialized 
+#   components, leaving this class strictly in charge of sliding physics.
+# VISUAL QUEST INDICATOR UPGRADE (GOLDEN ARROW WITH X-RAY):
+# - Instantiated a programmatic 3D `FloatingQuestArrow` (PrismMesh) hovering 2.5m 
+#   above the target NPC's head.
+# - Applied strict X-Ray rendering configurations (`no_depth_test = true` and `render_priority = 10`). 
+#   The golden quest indicator now shines on top of solid castle walls, roofs, and obstacles, 
+#   guaranteeing players can locate target NPCs inside closed buildings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -35,6 +37,9 @@ var _spawn_point: Vector3
 # Dynamic floating Speech Bubble reference
 var _bubble: Node3D
 var _quest_check_timer: float = 0.5
+
+# 3D Floating Quest Indicator Arrow (Golden Prism pointing down)
+var _quest_arrow: MeshInstance3D
 
 # Deterministic unique Seed computed on coordinate hashes
 var npc_seed: int = 0
@@ -69,6 +74,7 @@ func _ready() -> void:
 	
 	_build_visual_representation()
 	_setup_floating_bubble()
+	_setup_quest_arrow() # Initialize 3D glowing arrow
 	
 	# Setup physics collision shape (Reads height scaling from visual component)
 	var col := CollisionShape3D.new()
@@ -94,6 +100,42 @@ func _get_collision_box_position() -> Vector3:
 
 func _setup_floating_bubble() -> void:
 	pass
+
+
+## Programmatically constructs and styles the 3D rotating quest arrow (PrismMesh)
+func _setup_quest_arrow() -> void:
+	_quest_arrow = MeshInstance3D.new()
+	_quest_arrow.name = "FloatingQuestArrow"
+	
+	# 3D Prism pointing downwards
+	var prism := PrismMesh.new()
+	prism.size = Vector3(0.35, 0.45, 0.22)
+	
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.85, 0.2) # Golden Yellow
+	mat.roughness = 0.1
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.85, 0.2)
+	mat.emission_energy_multiplier = 2.4 # Strong glowing halo
+	
+	# ==========================================================================
+	# PREMIUM X-RAY VISION SETTINGS
+	# Disables depth testing and forces high priority so the arrow renders 
+	# on top of solid stone castle walls and roofs!
+	# ==========================================================================
+	mat.no_depth_test = true
+	mat.render_priority = 10
+	# ==========================================================================
+	
+	prism.material = mat
+	_quest_arrow.mesh = prism
+	_quest_arrow.rotation.z = PI # Rotate 180 degrees so the prism tip points DOWN
+	
+	# Positioned 2.5 meters above head
+	_quest_arrow.position = Vector3(0.0, 2.5, 0.0)
+	_quest_arrow.visible = false # Hidden by default
+	
+	add_child(_quest_arrow)
 
 
 func interact(_player: CharacterBody3D) -> void:
@@ -147,6 +189,8 @@ func _on_domain_entity_died() -> void:
 		col.queue_free()
 	if is_instance_valid(_bubble):
 		_bubble.queue_free()
+	if is_instance_valid(_quest_arrow):
+		_quest_arrow.queue_free()
 		
 	# 2. Spawn death particles (Smoke puff)
 	_spawn_death_particles()
@@ -189,7 +233,6 @@ func _spawn_death_particles() -> void:
 	mesh.material = mat
 	particles.draw_pass_1 = mesh
 	
-	# FIX: Explicit static typing on world parent reference
 	var world_node: Node = get_parent() as Node
 	if is_instance_valid(world_node):
 		world_node.add_child(particles)
@@ -199,10 +242,9 @@ func _spawn_death_particles() -> void:
 
 
 func _try_drop_player_loot() -> void:
-	# FIX: Explicit static typing on parent reference
-	var parent: Node = get_parent() as Node
-	if is_instance_valid(parent):
-		var player_node := parent.get_node_or_null("Player") as CharacterBody3D
+	var parent_node: Node = get_parent() as Node
+	if is_instance_valid(parent_node):
+		var player_node := parent_node.get_node_or_null("Player") as CharacterBody3D
 		if is_instance_valid(player_node):
 			var inv: IInventory = player_node.get("inventory") as IInventory
 			if is_instance_valid(inv):
@@ -215,7 +257,7 @@ func _drop_loot(_inv: IInventory) -> void:
 
 
 # ==============================================================================
-# MAIN PHYSICS CALCULATIONS
+# MAIN PHYSICS CALCULATIONS & ANIMAITONS
 # ==============================================================================
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
@@ -233,26 +275,37 @@ func _physics_process(delta: float) -> void:
 		_quest_check_timer = 0.5
 		_update_quest_bubble_state()
 
+	# ANIMATE QUEST ARROW (Rotation on Y axis & float bounce up/down)
+	if is_instance_valid(_quest_arrow) and _quest_arrow.visible:
+		_quest_arrow.rotate_y(delta * 2.5) # Spin
+		var elapsed := Time.get_ticks_msec() / 1000.0
+		_quest_arrow.position.y = 2.5 + sin(elapsed * 4.0) * 0.12 # Bobbing
+
 	move_and_slide()
 
 
 func _update_quest_bubble_state() -> void:
-	if not is_instance_valid(_bubble):
-		return
-		
 	var active_q := QuestService.get_active_quest()
+	var is_target := false
+	
 	if active_q != null:
-		var is_target := false
 		if active_q.quest_id == "lost_bazaar" and name.contains("VILLAGER"):
 			is_target = true
 		elif active_q.quest_id == "fuel_fryer" and name.contains("MERCHANT"):
 			is_target = true
 		elif active_q.quest_id == "plains_defender" and name.contains("GUARD"):
 			is_target = true
+
+	# Toggle the 3D glowing arrow visibility dynamically
+	if is_instance_valid(_quest_arrow):
+		_quest_arrow.visible = is_target
+
+	if not is_instance_valid(_bubble):
+		return
 			
-		if is_target:
-			_bubble.call("set_text", "⭐ [ " + tr("BUBBLE_ACTIVE_MISSION").to_upper() + ": " + tr(active_q.title).to_upper() + " ] ⭐")
-			return
+	if is_target:
+		_bubble.call("set_text", "⭐ [ " + tr("BUBBLE_ACTIVE_MISSION").to_upper() + " ] ⭐")
+		return
 			
 	if name.contains("VILLAGER"):
 		_bubble.call("set_text", tr("BUBBLE_TALK"))

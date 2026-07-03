@@ -1,21 +1,21 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Description: Infrastructure Builder responsible for constructing and configuring
+# Description: Infrastructure Builder responsible for constructing and configuring
 #              the visual environment, lighting, post-processing profiles, and skies.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Isolates atmospheric 
-#                rendering setup, delegating shader calculations to external files.
-#              - Open-Closed Principle (OCP): Closed for code modifications when 
-#                adjusting sky visual formulas, as they reside in .gdshader resources.
-#              PORTABILITY OVERHAUL (DYNAMIC HARDWARE SCALING):
-#              - Queries `RenderingServer.get_video_adapter_type()` on startup.
-#              - Automatically strips away heavy rendering pipelines (SSAO, Glow, Bloom) 
-#                if running on an Integrated GPU or CPU-only software rasterizer, 
-#                ensuring high-performance gameplay on any machine.
-#              BUG FIX (OVERLY BRIGHT NIGHTS):
-#              - Switched `ambient_light_source` from a static COLOR to a dynamic 
-#                SKY source. This links ambient light intensity directly to the sky shader, 
-#                making nights realistically dark as the sky dome turns navy blue.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Isolates atmospheric 
+#   rendering setup, delegating shader calculations to external files.
+# - Open-Closed Principle (OCP): Closed for code modifications when 
+#   adjusting sky visual formulas, as they reside in .gdshader resources.
+# PORTABILITY OVERHAUL (DYNAMIC HARDWARE SCALING):
+# - Queries `RenderingServer.get_video_adapter_type()` on startup.
+# - Automatically strips away heavy rendering pipelines (SSAO, Glow, Bloom) 
+#   if running on an Integrated GPU or CPU-only software rasterizer.
+# DAYTIME SHADOW SOFTENING UPGRADE:
+# - Elevated Sun Light `light_indirect_energy` to 2.5 to increase physical light bounces.
+# - Increased `ambient_light_sky_contribution` to 0.85 and `ambient_light_energy` to 1.35 
+#   to fill day shadows with soft, realistic sky-blue ambient light.
+# - Softened image post-processing contrast from 1.15 to 1.12 to reduce harsh shading edges.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
 # ==============================================================================
@@ -56,7 +56,8 @@ static func build_sun() -> DirectionalLight3D:
 		sun_light.directional_shadow_max_distance = 80.0
 		
 		sun_light.light_energy = 2.8
-		sun_light.light_indirect_energy = 1.8
+		# UPGRADE: Increased indirect energy to boost realistic secondary light bounces
+		sun_light.light_indirect_energy = 2.5
 		
 	sun_light.light_color = Color(0.99, 0.96, 0.92) 
 	sun_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
@@ -90,13 +91,11 @@ static func build_environment() -> WorldEnvironment:
 	var is_low_end: bool = (adapter_type == ADAPTER_TYPE_INTEGRATED or 
 							adapter_type == ADAPTER_TYPE_CPU)
 	
-	# ---> REALISTIC AMBIENT LIGHTING FIX <---
-	# We derive ambient light from the SKY itself. When the sky shader turns
-	# dark blue/black at night, the ambient light will be near zero, creating
-	# a realistic, deep night where only the moon and lampposts provide light.
+	# UPGRADE: Sourced ambient light strictly from the SKY shader.
+	# Elevated contribution and general energy to softly fill day shadows with ambient light.
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_sky_contribution = 0.45 # A moderate amount of bounced light
-	environment.ambient_light_energy = 1.0
+	environment.ambient_light_sky_contribution = 0.85 # Strong bounce sky-light in shadows
+	environment.ambient_light_energy = 1.35 # Brighter ambient fill light
 	
 	if is_low_end:
 		# ======================================================================
@@ -139,7 +138,8 @@ static func build_environment() -> WorldEnvironment:
 		environment.fog_sky_affect = 0.72
 		
 		environment.adjustment_enabled = true
-		environment.adjustment_contrast = 1.15
+		# UPGRADE: Softened contrast slightly to make transitions less harsh
+		environment.adjustment_contrast = 1.12
 		environment.adjustment_saturation = 1.35
 		
 	environment.volumetric_fog_enabled = false

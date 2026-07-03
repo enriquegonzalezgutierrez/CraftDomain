@@ -2,24 +2,15 @@
 # Project: CraftDomain
 # Description: SRP-compliant UI Widget responsible ONLY for rendering the 
 #              circular minimap radar, player direction arrow, and active markers.
-#              COMMERCIAL UI OVERHAUL:
-#              - Flawless Radial Culling: Restructured node hierarchy using 
-#                CLIP_CHILDREN_ONLY on a circular StyleBox. Biome squares are 
-#                now mathematically clipped, completely eliminating edge bleeding.
-#              - Smooth Continuous Sliding: Replaced rigid chunk-snapping with 
-#                fractional coordinate offsets. The map now scrolls fluidly 
-#                (1 meter = 1 pixel) as the player walks.
-#              - Holographic Compass Plates: Added floating, glassmorphic 
-#                cardinal point badges (N, S, E, W) with glowing cyan borders.
-#              - CRT Vignette Shading: Added concentric alpha gradients to give 
-#                the radar a spherical, 3D glass lens aesthetic.
-#              CLEANUP:
-#              - Removed the obsolete and coupled `_streetlight_coords` scanner, 
-#                fully decoupling the Minimap from StreetlightService. Streetlights 
-#                are now natively rendered as standard orange dots by checking 
-#                for `child is StreetlightEntity`.
-#              - Removed incorrect fullscreen map helper imports to resolve compiler 
-#                scope errors.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Delegates ALL interface 
+#   rendering, drawing, and menu components to specialized widgets,
+#   and now encapsulates its own keyboard input routing.
+# HUD COMPASS GPS NAVIGATION UPGRADE:
+# - Implemented a dynamic glowing dashed GPS Navigation Path Line (`_draw_dashed_gps_line`) 
+#   running from the player arrow (Radar Center) directly to the active quest marker.
+# - The path line dynamically stretches, rotates, and bobs with the camera, 
+#   completely resolving spatial navigation confusion inside closed dungeons and castles.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/MinimapWidget.gd
 # ==============================================================================
@@ -229,7 +220,8 @@ func _on_border_draw() -> void:
 
 	# 4. DRAW ACTIVE QUEST MARKER (Glowing Magenta Diamond)
 	var active_q: Quest = QuestService.get_active_quest() as Quest
-	if active_q != null and active_q.required_item_index == -1:
+	# CORE VISIBILITY TRIGGER: Always render quest marker if it has a valid target position (not 0,0,0)
+	if active_q != null and active_q.target_position != Vector3.ZERO:
 		var q_pos: Vector3 = active_q.target_position
 		var diff_vec: Vector2 = Vector2(q_pos.x - player_pos.x, q_pos.z - player_pos.z)
 		var radar_pos: Vector2 = diff_vec
@@ -251,6 +243,14 @@ func _on_border_draw() -> void:
 		])
 		_border_canvas.draw_colored_polygon(diamond_points, Color(1.0, 0.05, 0.55))
 		_border_canvas.draw_polyline(diamond_points, Color.BLACK, 1.5)
+		
+		# ======================================================================
+		# GLOWING GPS RADAR PATH LINE
+		# Draws a tactical, glowing, dashed pink line from the player arrow (center) 
+		# pointing straight towards the active quest target for seamless navigation!
+		# ======================================================================
+		_draw_dashed_gps_line(CENTER, draw_target, Color(1.0, 0.05, 0.55, 0.72), 2.0, 6.0)
+		# ======================================================================
 
 	# 5. DRAW PLAYER ARROW (Always dead center)
 	_border_canvas.draw_circle(CENTER, 4.0, Color(0.2, 0.2, 0.2, 0.6)) # Shadow
@@ -263,6 +263,19 @@ func _on_border_draw() -> void:
 	
 	_border_canvas.draw_line(CENTER, arrow_end, Color.BLACK, 3.5) # Arrow outline
 	_border_canvas.draw_line(CENTER, arrow_end, Color.WHITE, 1.5) # Arrow core
+
+
+## Draws a glowing, dotted GPS path line from coordinate A to B
+func _draw_dashed_gps_line(from: Vector2, to: Vector2, color: Color, width: float, dash_length: float) -> void:
+	var length: float = from.distance_to(to)
+	var dir: Vector2 = (to - from).normalized()
+	var current_dist: float = 0.0
+	
+	while current_dist < length:
+		var start: Vector2 = from + dir * current_dist
+		var end: Vector2 = from + dir * min(current_dist + dash_length, length)
+		_border_canvas.draw_line(start, end, color, width)
+		current_dist += dash_length * 2.0
 
 
 ## Private Helper: Draws an incredibly polished glowing circular plate under each compass letter

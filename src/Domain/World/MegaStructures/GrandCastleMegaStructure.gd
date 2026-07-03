@@ -7,8 +7,15 @@
 #              outside the castle gates when "Plains Defender" is active!
 #              COLLISION VOID FIX: Adjusted Zombie coordinate strictly to Chunk 13 
 #              to prevent it from falling through unloaded collision bounds.
-#              BUG FIX (i18n): Replaced hardcoded name string with localized 
-#              translation keys to maintain strict multi-language support.
+#              ATMOSPHERIC CASTLE LIGHTING OVERHAUL:
+#              - Built 4 massive 9-block high glowing Neon-Cyan columns in the 4 corners 
+#                of the interior Throne Room to light up the palace.
+#              - Injected 4 real-time light-emitting Streetlight props (ID 202) symmetrically 
+#                flanking the Royal Throne and illuminating the outer merchants courtyard at night.
+#              SPAWN COORDINATES OFFSET CALIBRATION:
+#              - Shifted Villager and Merchant spawn points 2 meters forward into the open courtyard 
+#                air. This prevents them from spawning trapped inside the solid wooden market stalls, 
+#                guaranteeing they are visible and active from the very first frame.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/MegaStructures/GrandCastleMegaStructure.gd
 # ==============================================================================
@@ -40,20 +47,25 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 			var dist_z: int = abs(gz - global_center.y)
 			
 			# 1. FLATTEN THE GROUND
-			for gy in range(0, 31):
-				if gy < base_y:
-					set_global_block(chunk, offset, gx, gy, gz, BlockType.Type.STONE)
-				elif gy == base_y:
-					if dist_x <= radius and dist_z <= radius:
-						# Stone path from South Gate to the Keep
-						if abs(gx - global_center.x) <= 2 and gz >= global_center.y:
-							set_global_block(chunk, offset, gx, gy, gz, BlockType.Type.STONE)
+			for gy in range(0, 32):
+				var lx := gx - offset.x
+				var ly := gy - offset.y
+				var lz := gz - offset.z
+				
+				if chunk.is_within_bounds(lx, ly, lz):
+					if gy < base_y:
+						chunk.set_block(lx, ly, lz, BlockType.Type.STONE)
+					elif gy == base_y:
+						if dist_x <= radius and dist_z <= radius:
+							# Stone path from South Gate to the Keep
+							if abs(gx - global_center.x) <= 2 and gz >= global_center.y:
+								chunk.set_block(lx, ly, lz, BlockType.Type.STONE)
+							else:
+								chunk.set_block(lx, ly, lz, BlockType.Type.GRASS)
 						else:
-							set_global_block(chunk, offset, gx, gy, gz, BlockType.Type.GRASS)
+							chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
 					else:
-						set_global_block(chunk, offset, gx, gy, gz, BlockType.Type.AIR)
-				else:
-					set_global_block(chunk, offset, gx, gy, gz, BlockType.Type.AIR)
+						chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
 					
 			# 2. BUILD OUTER WALLS WITH A GRAND SOUTH GATE
 			var is_wall: bool = (dist_x == radius and dist_z <= radius) or (dist_z == radius and dist_x <= radius)
@@ -119,6 +131,14 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 							if wy == 2: set_global_block(chunk, offset, gx, base_y + wy, gz, BlockType.Type.WOOD)  # Seat
 							if wy == 3: set_global_block(chunk, offset, gx, base_y + wy, gz, BlockType.Type.NEON_MAGENTA) # Crown
 							
+						# ORNATE NEON-CYAN LIGHT COLUMNS:
+						# Build 4 glowing columns in the 4 corners of the interior Throne Room (height 9)
+						if abs(dist_x) == 6 and abs(dist_z) == 6:
+							if wy == 1 or wy == 9:
+								set_global_block(chunk, offset, gx, base_y + wy, gz, BlockType.Type.STONE) # Carved stone base/cap
+							elif wy < 9:
+								set_global_block(chunk, offset, gx, base_y + wy, gz, BlockType.Type.NEON_CYAN) # Glowing crystal core!
+
 			# 5. DECORATIONS: COURTYARD MARKET STALLS
 			if dist_x == 12 and (dist_z == 5 or dist_z == -5):
 				# Wooden table
@@ -130,7 +150,7 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 						set_global_block(chunk, offset, gx + sx, base_y + 3, gz + sz, BlockType.Type.LEAVES)
 
 
-## Spawns inhabitants directly into the castle's specific chunks!
+## Spawns inhabitants and physical light entities inside the castle chunks
 func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 	var entities: Array[Dictionary] = []
 	
@@ -140,16 +160,29 @@ func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 		entities.append({"mob_id": 102, "pos": Vector3(202.5, 13.5, 195.5)})
 		entities.append({"mob_id": 102, "pos": Vector3(197.5, 13.5, 195.5)})
 		
-		# Merchant at the West courtyard stall
-		entities.append({"mob_id": 101, "pos": Vector3(188.5, 13.5, 205.5)})
-		# Villager at the East courtyard stall
-		entities.append({"mob_id": 100, "pos": Vector3(212.5, 13.5, 195.5)})
+		# Merchant at the West courtyard stall (Mover 2m al Este: X=190.5 para estar despejado)
+		entities.append({"mob_id": 101, "pos": Vector3(190.5, 13.0, 205.5)})
+		
+		# Villager at the East courtyard stall (Mover 2m al Oeste: X=210.5 para estar despejado en la plaza)
+		entities.append({"mob_id": 100, "pos": Vector3(210.5, 13.0, 195.5)})
 		
 		# Farmer tending the castle courtyard garden!
 		entities.append({"mob_id": 103, "pos": Vector3(200.5, 13.5, 208.5)})
 		
 		# A special Loot Chest inside the throne room!
 		entities.append({"mob_id": 200, "pos": Vector3(196.5, 13.5, 193.5)})
+		
+		# ======================================================================
+		# CASTLE INTERNAL REAL-TIME LIGHTING EMITTERS
+		# ======================================================================
+		# 1. Symmetrical Streetlights (ID 202) flanking the Royal Throne
+		entities.append({"mob_id": 202, "pos": Vector3(196.5, 13.5, 196.5)}) # Left Throne Lamp
+		entities.append({"mob_id": 202, "pos": Vector3(203.5, 13.5, 196.5)}) # Right Throne Lamp
+		
+		# 2. Symmetrical Streetlights (ID 202) lighting up the outer Merchants Courtyard
+		entities.append({"mob_id": 202, "pos": Vector3(188.5, 13.5, 208.5)}) # West Courtyard Lamp
+		entities.append({"mob_id": 202, "pos": Vector3(212.5, 13.5, 208.5)}) # East Courtyard Lamp
+		# ======================================================================
 		
 	# South Gate is at Z=220, which falls into chunk (12, 0, 13)
 	if chunk_pos.x == 12 and chunk_pos.z == 13:
@@ -160,7 +193,6 @@ func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 		# --- MISSION 5 FORCE SPAWN: Spawn the Quest Zombie right outside the gates! ---
 		var active_q := QuestService.get_active_quest()
 		if active_q != null and active_q.quest_id == "plains_defender":
-			# FIXED: Moved safely to Z=218.5 (inside Chunk 13 collision mesh!)
 			entities.append({"mob_id": 10, "pos": Vector3(200.0, 13.5, 218.5)})
 			print("[GrandCastle] Plains Defender active! Spawning Quest Zombie safely on the bridge.")
 		
