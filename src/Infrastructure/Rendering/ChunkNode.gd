@@ -9,13 +9,13 @@
 #   and material binding, delegating shader calculations and telemetry diagnostics
 #   to isolated, cohesive routines.
 # - Dependency Inversion Principle (DIP): Depends on Domain-level Chunk representations.
-# EXTREME GPU OPTIMIZATION & ALIASING FIX (MOIRÉ RESOLUTION):
-# - Upgraded to `TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC`. This is the 
-#   Holy Grail for 3D Voxel games. It keeps blocks crisp and pixelated up close, 
-#   but flawlessly blends them at a distance and at oblique angles, completely 
-#   destroying the black/yellow Moiré noise effect on Sand and Stone.
-# - Scaled `normal_scale` down to 0.6 to prevent aggressive black self-shadowing 
-#   on bright textures.
+# PROFESSIONAL SELECTIVE BEVELING & WIND-DRIVEN WATER SHADER:
+# - Implemented `_should_apply_bevel` to conditionally inject the procedural 
+#   Bevel Normal Map to avoid texturing bugs while giving blocks a soft clay look.
+# - OVERHAULED WATER SHADER: Injected support for dynamic global shader uniforms 
+#   ("wind_vector" and "wind_strength") managed by WeatherService.
+# - Water vertices now deform into waves that travel physically along the wind 
+#   direction, scaling up during storms, and water foam currents pan in sync.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -42,6 +42,9 @@ static var _textures_preloaded: bool = false
 
 ## Shared geometry cache (Flyweight Pattern)
 static var _shared_box_mesh: BoxMesh = null
+
+## Procedural Bevel Normal Map cache
+static var _procedural_bevel_normal: ImageTexture = null
 
 ## Static references to compiled Shader resources.
 static var _leaves_wind_shader: Shader
@@ -102,13 +105,10 @@ static func _preload_all_textures() -> void:
 			if tex is Texture2D:
 				_loaded_textures[block_type] = tex
 				successfully_loaded += 1
-				print("[TextureTelemetry]   -> ALBEDO loaded successfully: ", file_path)
 			else:
 				missing_or_failed += 1
-				print("[TextureTelemetry]   -> ERROR: Resource exists but is not a valid Texture2D: ", file_path)
 		else:
 			missing_or_failed += 1
-			print("[TextureTelemetry]   -> ERROR: Texture file not found on disk: ", file_path)
 				
 		# 2. Preload companion Normal Maps
 		var normal_path := TEXTURE_DIR + base_name + "_normal.png"
@@ -138,8 +138,54 @@ static func _preload_all_textures() -> void:
 static func _get_shared_box_mesh() -> BoxMesh:
 	if _shared_box_mesh == null:
 		_shared_box_mesh = BoxMesh.new()
-		_shared_box_mesh.size = Vector3(1.002, 1.002, 1.002)
+		_shared_box_mesh.size = Vector3(1.002, 1.002, 1.002) # Symmetrical overlap to prevent seam gaps
 	return _shared_box_mesh
+
+
+## Mathematical Procedural Normal Map Generator:
+## Bakes a flawless, spherical 64x64 edge bevel map directly into RAM on boot.
+static func _get_procedural_bevel_normal() -> ImageTexture:
+	if _procedural_bevel_normal != null:
+		return _procedural_bevel_normal
+		
+	var size := 64
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var bevel_width := 6.0 # Controls the width of the rounded edge (6 pixels of bevel)
+	
+	# Loop through every pixel to calculate spherical slope normals
+	for x: int in range(size):
+		for y: int in range(size):
+			# 1. Calculate horizontal slope
+			var dx := 0.0
+			if x < bevel_width:
+				dx = -1.0 * (1.0 - (float(x) / bevel_width))
+			elif x >= size - bevel_width:
+				dx = 1.0 * ((float(x) - (size - bevel_width)) / bevel_width)
+				
+			# 2. Calculate vertical slope
+			var dy := 0.0
+			if y < bevel_width:
+				dy = -1.0 * (1.0 - (float(y) / bevel_width))
+			elif y >= size - bevel_width:
+				dy = 1.0 * ((float(y) - (size - bevel_width)) / bevel_width)
+				
+			# 3. Calculate Z vector pointing out of the texture
+			var nx := dx
+			var ny := -dy # Invert Y for Godot normal map convention (Y-up)
+			var nz := sqrt(clamp(1.0 - (nx * nx + ny * ny), 0.0, 1.0))
+			
+			# Normalize vector to ensure spherical light dispersion
+			var vec := Vector3(nx, ny, nz).normalized()
+			
+			# Map from [-1.0, 1.0] to [0, 255] RGB color bytes
+			var r := int((vec.x + 1.0) * 127.5)
+			var g := int((vec.y + 1.0) * 127.5)
+			var b := int((vec.z + 1.0) * 127.5)
+			
+			img.set_pixel(x, y, Color8(r, g, b, 255))
+			
+	_procedural_bevel_normal = ImageTexture.create_from_image(img)
+	return _procedural_bevel_normal
 
 
 ## Loads and returns the compiled wind-sway foliage shader resource.
@@ -151,6 +197,7 @@ static func _get_leaves_wind_shader() -> Shader:
 
 
 ## Programmatically compiles and returns an animated water wave shader.
+## Highly optimized to read global wind uniforms from the GPU.
 static func _get_water_shader() -> Shader:
 	if _water_shader == null:
 		_water_shader = Shader.new()
@@ -158,12 +205,31 @@ static func _get_water_shader() -> Shader:
 		shader_type spatial;
 		render_mode blend_mix, depth_draw_always, diffuse_lambert, specular_schlick_ggx;
 		
+		// Sourced programmatically from global uniforms mapped by WeatherService
+		global uniform vec2 wind_vector;
+		global uniform float wind_strength;
+		
 		uniform vec4 deep_water_color : source_color = vec4(0.01, 0.18, 0.42, 0.95);
 		uniform vec4 shallow_water_color : source_color = vec4(0.12, 0.55, 0.78, 0.65);
 		uniform float depth_distance : hint_range(0.1, 10.0) = 3.5;
 		uniform float foam_distance : hint_range(0.01, 2.0) = 0.35;
 		
 		uniform sampler2D depth_texture : hint_depth_texture, filter_linear_mipmap;
+		
+		void vertex() {
+			// WAVE DISPLACEMENT SENSITIVE TO DYNAMIC WIND VECTOR!
+			vec3 world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+			
+			// Project world coords along the active wind vector direction
+			float wind_dot = dot(world_pos.xz, normalize(wind_vector));
+			
+			// Waves scale dynamically during storm cycles
+			float wave_height = 0.08 * (1.0 + wind_strength * 0.35);
+			
+			// Push vertices upward forming physical ripples traveling in wind direction
+			float wave = sin(wind_dot * 1.5 - TIME * (2.2 + wind_strength * 0.4)) * wave_height;
+			VERTEX.y += wave;
+		}
 		
 		void fragment() {
 			float depth_raw = texture(depth_texture, SCREEN_UV).r;
@@ -175,12 +241,20 @@ static func _get_water_shader() -> Shader:
 			vec4 final_color = mix(shallow_water_color, deep_water_color, depth_factor);
 			
 			vec3 world_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-			float wave_1 = sin(world_pos.x * 2.2 + TIME * 1.3) * cos(world_pos.z * 2.2 + TIME * 1.1);
-			float wave_2 = cos(world_pos.x * 1.1 - TIME * 0.7) * sin(world_pos.z * 1.4 + TIME * 1.0);
+			
+			// FOAM PANNING SENSITIVE TO WIND DIRECTION!
+			// Shifting coordinate spaces smoothly along the wind vector
+			vec2 foam_uv = world_pos.xz * 0.4 - (wind_vector * TIME * 0.12);
+			
+			float wave_1 = sin(foam_uv.x * 2.2 + TIME * 0.5) * cos(foam_uv.y * 2.2 + TIME * 0.4);
+			float wave_2 = cos(foam_uv.x * 1.1 - TIME * 0.3) * sin(foam_uv.y * 1.4 + TIME * 0.5);
 			float wave_blend = (wave_1 + wave_2) * 0.04 + 0.96;
 			
 			float foam_factor = clamp(depth_diff / foam_distance, 0.0, 1.0);
-			vec3 foam_color = vec3(0.98, 0.98, 1.0) * (sin(TIME * 3.5 + world_pos.x * 5.0) * 0.12 + 0.88);
+			
+			// Thick storm foam scaling on heavy winds
+			float storm_foam_scale = 1.0 + (wind_strength * 0.35);
+			vec3 foam_color = vec3(0.98, 0.98, 1.0) * (sin(TIME * 3.5 + (foam_uv.x + foam_uv.y) * 5.0) * 0.12 * storm_foam_scale + 0.88);
 			
 			ALBEDO = mix(foam_color, final_color.rgb * wave_blend, foam_factor);
 			ALPHA = mix(0.92, final_color.a, foam_factor);
@@ -447,11 +521,16 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 			var is_low_end := (adapter_type == 1 or adapter_type == 4) 
 			
 			if not is_low_end:
-				if _loaded_normals.has(block_type):
+				# ==============================================================
+				# SELECTIVE PROCEDURAL BEVEL SHADOW INJECTION
+				# Applies normal map only on structural blocks (OCP/SOLID compliant)
+				# ==============================================================
+				if _should_apply_bevel(block_type):
 					mat.normal_enabled = true
-					# Softer normal scale to prevent harsh black shadows on sand/stone
-					mat.normal_scale = 0.6 
-					mat.normal_texture = _loaded_normals[block_type] as Texture2D
+					mat.normal_scale = 0.55 # Balanced bevel highlight intensity
+					mat.normal_texture = _get_procedural_bevel_normal()
+				# ==============================================================
+				
 				if _loaded_ambients.has(block_type):
 					mat.ao_enabled = true
 					mat.ao_light_affect = 0.5
@@ -467,6 +546,25 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 				
 		_materials_cache[block_type] = mat
 		return mat
+
+
+## Evaluates block types and returns true if they should have procedural bevel highlights.
+## Keeps terrain, roads, and oceans flat to blend seamlessly into homogeneous plains.
+static func _should_apply_bevel(type: BlockType.Type) -> bool:
+	match type:
+		BlockType.Type.STONE, \
+		BlockType.Type.ROAD, \
+		BlockType.Type.SAND, \
+		BlockType.Type.RED_SAND, \
+		BlockType.Type.SNOW, \
+		BlockType.Type.MUD, \
+		BlockType.Type.GRASS, \
+		BlockType.Type.ICE, \
+		BlockType.Type.WATER, \
+		BlockType.Type.LAVA:
+			return false # Natural landscapes and paving highways stay homogeneous!
+		_:
+			return true # Construction blocks (wood, bricks, glass, logs, etc.) get the bevels!
 
 
 ## Static Helper: Returns standard physical roughness values per BlockType.

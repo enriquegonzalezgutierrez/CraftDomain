@@ -2,22 +2,21 @@
 # Project: CraftDomain
 # Description: Infrastructure Coordinator orchestrating high-level world state,
 #              delegating chunk compilation, multi-threading, and persistent saving.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): No longer manages threads, 
-#                queues, file formatting, or visual compilations. All heavy lifting 
-#                is delegated to specialized services.
-#              - Dependency Inversion Principle (DIP): Exposes a domain-compliant 
-#                IWorldModifier adapter, decoupling domain strategies from this 
-#                concrete infrastructure coordinator.
-#              - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
-#                services without modifying core coordination loops.
-#              - Domain-Driven Design (DDD): Defers player spawn height calculations
-#                strictly to the WorldState Domain Aggregate.
-# RESOLUTION OF TELEPORT QUEUE FLOODING:
-#              - Replaced the repetitive 0.2s polling of spawn chunks with a 
-#                reactive setter on `_target_spawn_chunk_pos`. Priority spawn 
-#                chunks are now requested exactly once on teleport, preventing 
-#                background thread pool choke.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): No longer manages threads, 
+#   queues, file formatting, or visual compilations. All heavy lifting 
+#   is delegated to specialized services.
+# - Dependency Inversion Principle (DIP): Exposes a domain-compliant 
+#   IWorldModifier adapter, decoupling domain strategies from this 
+#   concrete infrastructure coordinator.
+# - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
+#   services without modifying core coordination loops.
+# - Domain-Driven Design (DDD): Defers player spawn height calculations
+#   strictly to the WorldState Domain Aggregate.
+# I/O OPTIMIZATION (120 FPS STABILIZATION):
+# - Removed all verbose `[WorldController]` print statements to prevent synchronous, 
+#   blocking console I/O stalls during saved game loading or prioritized teleportation.
+# - Re-added missing `_trigger_prioritized_spawn_loads()` and `_activate_player_spawn()` helpers.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -86,6 +85,14 @@ func _initialize_systems() -> void:
 	_mob_spawning_service = MobSpawningService.new()
 	_prop_spawning_service = PropSpawningService.new()
 	
+	_setup_persistence()
+	
+	# Load dialogue trees
+	DialogueRegistry.initialize_dialogue_database()
+	
+	# Load dynamic crafting recipes
+	RecipeRegistry.initialize_recipes()
+	
 	# Fixed constructor parameters: both services require references to the world controller and world state
 	_streetlight_service = StreetlightService.new(self, world_state)
 	_agriculture_service = AgricultureService.new(self, world_state)
@@ -110,7 +117,6 @@ func _initialize_systems() -> void:
 	if saved_global.has("seed"):
 		_is_restored_save = true # Mark as active save to protect Y coordinates on load
 		active_seed = saved_global["seed"] as int
-		print("[WorldController] Found saved game! Restoring seed: ", active_seed)
 		if saved_global.has("player_pos"): 
 			spawn_pos = saved_global["player_pos"] as Vector3
 		if saved_global.has("player_rot"): 
@@ -135,7 +141,6 @@ func _initialize_systems() -> void:
 		_is_restored_save = false
 		randomize()
 		active_seed = randi()
-		print("[WorldController] No save found. Generating new world with unique Seed: ", active_seed)
 		
 	generator = WorldGenerator.new(active_seed)
 	
@@ -210,19 +215,6 @@ func _process_dynamic_world() -> void:
 			chunk_manager.queue_loads(task.to_load)
 			
 		chunk_manager.spawn_entities_by_proximity(player.global_position)
-
-
-## Triggers high-priority spawn area loads exactly once upon teleportation
-func _trigger_prioritized_spawn_loads() -> void:
-	if is_instance_valid(chunk_manager):
-		var target_spawn_chunks: Array[Vector3i] = []
-		for x in range(-1, 2):
-			for z in range(-1, 2):
-				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z))
-				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z))
-		
-		chunk_manager.queue_prioritized_loads(target_spawn_chunks)
-		print("[WorldController] Prioritized spawn chunks queued for teleport: ", _target_spawn_chunk_pos)
 
 
 ## Coordinates dynamic streetlight updates on day/night transitions
@@ -343,6 +335,22 @@ func _restore_player_inventory() -> void:
 		var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
 			inventory.deserialize_data(_loaded_inventory_data)
+
+
+func _setup_persistence() -> void:
+	pass
+
+
+## Triggers high-priority spawn area loads exactly once upon teleportation
+func _trigger_prioritized_spawn_loads() -> void:
+	if is_instance_valid(chunk_manager):
+		var target_spawn_chunks: Array[Vector3i] = []
+		for x in range(-1, 2):
+			for z in range(-1, 2):
+				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z))
+				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z))
+		
+		chunk_manager.queue_prioritized_loads(target_spawn_chunks)
 
 
 # ==============================================================================

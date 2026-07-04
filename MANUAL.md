@@ -26,6 +26,7 @@ Located in the upper right-hand corner of your screen is a high-contrast **GPS N
 *   **Real-time Grid Coordinates:** Located at the top center of the HUD, showing your exact global `[ X  ·  Y  ·  Z ]` block coordinates alongside the synchronized 24-hour clock.
 *   **Active Mission Tracker:** Renders active quest descriptions, remaining distance in meters, and progress bars. The panel automatically hides itself from the screen when all campaign quests are completed.
 *   **Active Quest Marker:** Indicated by a pulsing hot-pink diamond on the minimap. When you are far from the target, the diamond clamps cleanly to the outer compass rim, guiding your gaze toward the destination. Note: For pure gathering or mining quests, the marker hides itself to prevent misleading navigation toward global origin (0,0,0).
+*   **Holographic GPS Path Line:** The minimap renders a dynamic, pulsing, dashed pink path-line connecting your character's center position directly to the active quest target coordinate. This line stretches, rotates, and sways with your camera orientation, allowing seamless pathfinding inside closed castles or deep dungeons.
 *   **Tactical Compass Pointer:** The GPS HUD features a procedural compass tracker that dynamically identifies the closest Global Mega-Structure, displaying its name, distance in meters, and cardinal direction (N, NE, E, SE, S, SW, W, NW).
 *   **Radar Colors Mapping:**
 	*   **Vibrant Tropical Blue:** Bay of Sails (Spawn Ocean).
@@ -92,8 +93,9 @@ Interacting with voxels is governed by a **5-meter Reach Distance**. A white aim
 2.  Aim at any solid block surface. The white highlighter box will outline the target.
 3.  Press **Right-Click** (or `Q`).
 4.  The block is placed adjacent to the face you were pointing at.
-5.  **Lava Placement:** Selecting your **Lava Bucket** and Right-Clicking will place a glowing, flowing orange **Lava block** in the world, consuming 1 Lava Bucket from your hotbar.
-6.  **Crop Planting:** Selecting your **Crop Seeds** and Right-Clicking on top of a Grass or Dirt block will sow a young crop sprout. Over time, crops undergo automated growth, transitioning from green sprouts into mature golden wheat ready for harvesting.
+5.  **Block-Borders Collision Prevention:** Placing blocks is protected by a 5-centimeter safe margin offset. The engine blocks placements if you are standing directly in the target coordinate, preventing you from trapping your character inside solid blocks.
+6.  **Lava Placement:** Selecting your **Lava Bucket** and Right-Clicking will place a glowing, flowing orange **Lava block** in the world, consuming 1 Lava Bucket from your hotbar.
+7.  **Crop Planting:** Selecting your **Crop Seeds** and Right-Clicking on top of a Grass or Dirt block will sow a young crop sprout. Over time, crops undergo automated growth, transitioning from green sprouts into mature golden wheat ready for harvesting.
 
 ---
 
@@ -153,11 +155,11 @@ The world features 10 completely distinct geographical regions, each populated w
 *   **Description:** Beautiful, floating islands made of fluffy white cloud voxels drifting high in the atmosphere.
 *   **Flora/Landmarks:** Spawns above height Y=12.
 
-### Dynamic GPU Overcast System
-The sky is rendered with an advanced GPU shader that reacts dynamically to weather shifts:
-*   **Sunny Weather:** Fluffy, procedurally generated white clouds float across a bright blue sky, with a crisp glowing sun disk orbiting above.
-*   **Overcast & Precipitation:** When rain or snow begins, the sky color shifts progressively to a plomizo slate-grey over 5 seconds. The clouds turn dark and dense, and the Sun and Moon disks dim by 85%, creating an immersive storm atmosphere.
-*   **Night Cycle:** The clouds turn a deep navy blue, allowing twinkling stars and a glowing, silver crescent moon to shine through.
+### Atmospheric Shading & Weather
+The sky and landscape utilize advanced PBR and atmospheric rendering:
+*   **Balanced Daylight Shading:** Shadows are filled with a soft atmospheric blue-gray ambient light, making blocks and NPCs inside tree shadows completely readable and natural.
+*   **Dynamic GPU Overcast System:** When rain or snow begins, the sky color shifts progressively to a plomizo slate-grey over 5 seconds. The clouds turn dark and dense, and the Sun and Moon disks dim by 85%, creating an immersive storm atmosphere.
+*   **Dynamic Wind & Wave System:** Water vertices physically deform and oscillate into waves that travel along the exact direction of the global wind vector, scaling up during storms, and tree leaves sway in the wind in complete synchronicity.
 
 ---
 
@@ -178,10 +180,15 @@ The procedural world is populated with active, box-composition creatures and vil
 *   All mobs feature detailed 3D eyes. Every 3 to 6 seconds, they procedurally **blink** by flattening their eyes vertically for a fraction of a second.
 *   When moving, they display smooth walk cycles using a **`_body_bob_node` step-bouncing system** that makes their entire body bounce with weight, coupled with realistic head sways and idle breathing.
 
+### Selective Bevel Voxel Rendering
+The visual codebase features a selective procedural bevel normal map:
+*   **Contiguous Terrains (No Bevel):** Natural landscapes and paving highways (Sand, Grass, Stone, Snow, Mud, and Roads) are rendered with flat borders to blend seamlessly into vast homogeneous areas without grid-like "waffle" clutter.
+*   **Construction Blocks (Beveled):** Architectural blocks (Wood logs, Bricks, and Glass) receive the procedural bevel normal map, catching beautiful specular highlights from the sun to resemble glossy, molded toy blocks.
+
 ### Specialized Community Roles & Outfit Variations
 Upon spawning, NPCs inspect their global coordinates and query the biome system, generating stylized outfits, headwear, and equipment tailored to their home biome:
 *   **Villagers:** Clothed in textured robes with belts, leather boots, and folded arms. In ocean biomes, they spawn as sailors with blue/white striped shirts; in polar biomes as Eskimos with thick fur-hood parkas; in Redwood as elven rangers.
-*   **Merchants:** Styled with purple robes, silk turbans, and layered gold aprons. In cyber ruins, they spawn with black techno-tunics and glowing cyan aprons; in the swamp as alchemists with mossy cowls.
+*   **Merchants:** Styled with purple robes, silk turbans, a procedural 3D money pouch hanging off their waist, and layered gold aprons. In cyber ruins, they spawn with black techno-tunics and glowing cyan aprons; in the swamp as alchemists with mossy cowls.
 *   **Guards:** Outfitted with steel-plated armor, bulky 3D shoulder pauldrons, helmet visors, and a sheathed iron sword and knightly wooden heater shield on their backs. They are active protectors: if a zombie comes within 10m, they draw their sword, sprint forward, and attack!
 *   **Farmers:** Rigged with muddy field boots, dungarees, and straw hats. They actively scan for crops, wander to mature wheat blocks, draw their harvesting hoes, and swing them up and down to till the soil, spawning green sprouting particles upon replanting.
 *   **Cave Miners:** Inhabit craggy peaks. Outfitted in rugged stone-grey dungarees, leather harnesses, and yellow hard-hats equipped with an active, sweeping 3D Headlamp Spotlight that casts real-time beams into cave shadows.
@@ -220,8 +227,9 @@ As night falls (the sun rotates below the horizon, monitored by the dynamic day/
  [ Consume Chicken ]
 ```
 
-### The Zombie Threat
+### The Zombie Threat & Optimized Group Tracking
 *   **Behaviors:** Zombies wander searching for flesh. If you enter their aggro range, they will chase you down, climb blocks automatically, and bite you.
+*   **Optimized Target Scanning:** Active entities (Guards, Golems, and Hostiles) now track targets using Godot's C++ native group registry `"hostiles"` and `"passives"` in constant $O(1)$ time, eliminating the performance spikes of old $O(N)$ child-scanning loops.
 *   **Damage Feedback:** Getting bit deals **1 Heart** of damage, pushes you backward with physical recoil, flashes your screen with a deep red vignette, and triggers a high-frequency decaying camera trauma shake.
 *   **Death & Respawn:** If you lose all 3 hearts, you will die, resetting your health back to full. To prevent physics bugs or ground clipping, a cinematic **Loading Screen** freezes the physics thread, safely teleporting you back to the surface of the starting spawn area.
 

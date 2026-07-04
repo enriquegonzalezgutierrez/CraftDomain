@@ -3,15 +3,13 @@
 # Description: Farmer NPC physics controller. Automatically scans, wanders to,
 #              and harvests mature golden crops to replant them, while generating
 #              specialized outfits dynamically based on its home biome.
-#              SOLID COMPLIANCE:
-#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity.
-#              - Single Responsibility Principle (SRP): Delegates rendering setups 
-#                and AI state execution to specialized sibling components.
-#              WARNING FIX:
-#              - Added explicit static typing to all retrieval and delta math variables 
-#                (including `anim_time`, `world_node`, `world_controller_ref`, `generator`, 
-#                and `terrain_noise`) to completely resolve `UNTYPED_DECLARATION` 
-#                compiler warnings.
+# SOLID COMPLIANCE:
+# - Liskov Substitution Principle (LSP): Safely extends PassiveEntity.
+# - Single Responsibility Principle (SRP): Delegates rendering setups 
+#   and AI state execution to specialized sibling components.
+# I/O OPTIMIZATION (120 FPS STABILIZATION):
+# - Removed all verbose `[FarmerAI]` print statements to prevent synchronous, 
+#   blocking console I/O stalls during real-time harvesting sweeps.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
@@ -95,7 +93,7 @@ func _build_visual_representation() -> void:
 	# Specialized Hat styles (Farmer cap vs wide-brim straw hat)
 	if biome_id == 1: # Plumber Cap for Steps biome
 		visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), denim_color)
-		visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.32, -0.22), denim_color)
+		visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.48, -0.22), denim_color)
 	else:
 		# Classic Wide-Brim Straw/Field Hat
 		visual_component.create_box(visual_component.head_node, Vector3(0.65, 0.03, 0.65), Vector3(0, 0.36, 0), hat_color) 
@@ -211,7 +209,6 @@ func _scan_for_ripe_crops(world_state: WorldState) -> void:
 					_harvest_timer = 1.8 
 					if is_instance_valid(ai_component):
 						ai_component.current_task = NPCAIComponent.TaskState.WORKING # Lock standard wandering decisions
-					print("[FarmerAI] Locked onto ripe wheat at: ", _target_crop_coord)
 					return
 
 
@@ -238,14 +235,14 @@ func _execute_crop_harvesting(world_node: WorldController, delta: float) -> void
 		if is_on_wall() and is_on_floor():
 			velocity.y = JUMP_VELOCITY
 	else:
-		# In-range: Stop moving, face the crop, and harvest!
+		# In-range: Halt and swing!
 		velocity.x = 0.0
 		velocity.z = 0.0
 		
 		if is_instance_valid(ai_component):
 			ai_component.wander_direction = diff.normalized()
 		
-		# Animate: Swing the hoe up and down to till the soil
+		# Animate: Swing the hoe up and down to mimic digging
 		_animate_harvesting_hoe(delta)
 		
 		_harvest_timer -= delta
@@ -253,7 +250,6 @@ func _execute_crop_harvesting(world_node: WorldController, delta: float) -> void
 			# Successfully harvested: Remove ripe wheat and replant seeds
 			world_node.set_block_globally(_target_crop_coord, BlockType.Type.AIR)
 			world_node.set_block_globally(_target_crop_coord, BlockType.Type.CROP_SEED)
-			print("[FarmerAI] Harvested and replanted seed at: ", _target_crop_coord)
 			
 			# Spawn a green sprout particle feedback above the crop!
 			_spawn_replant_particle(Vector3(_target_crop_coord))
@@ -277,7 +273,6 @@ func _animate_harvesting_hoe(delta: float) -> void:
 		_hoe_joint.position = _hoe_joint.position.lerp(Vector3(0.18, 0.52, -0.32), delta * 8.0)
 		
 		# Swing back and forth based on high-frequency sin waves
-		# FIX: Static type constraint on intermediate visual component variable
 		var anim_time: float = visual_component._animation_time if is_instance_valid(visual_component) else 0.0
 		var swing_offset := sin(anim_time * 12.0) * 0.45
 		_hoe_joint.rotation.x = lerp(_hoe_joint.rotation.x, deg_to_rad(45) + swing_offset, delta * 12.0)
@@ -319,7 +314,6 @@ func _spawn_replant_particle(pos: Vector3) -> void:
 	mesh.material = mat
 	particles.draw_pass_1 = mesh
 	
-	# FIX: Explicit static typing on world parent node
 	var world_node: Node = get_parent() as Node
 	if is_instance_valid(world_node):
 		world_node.add_child(particles)
@@ -334,15 +328,12 @@ func _spawn_replant_particle(pos: Vector3) -> void:
 
 ## Queries coordinate biomes.
 func _detect_current_biome() -> int:
-	# FIX: Explicit static typing on world controller node reference
 	var world_controller_ref: Node = get_parent() as Node
 	var default_biome_id: int = 2
 	
 	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		# FIX: Explicit static typing on world generator reference
 		var generator: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
 		if generator != null:
-			# FIX: Explicit static typing on terrain noise provider
 			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
 				var profile := BiomeService.evaluate_coordinate(

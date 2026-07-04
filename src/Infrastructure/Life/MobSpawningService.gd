@@ -9,21 +9,9 @@
 # - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
 #   population registry, removing hardcoded match maps.
 # - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome strategy.
-# IN-BLOCK SPAWN PREVENTION & SURFACE CALIBRATION:
-# - Restricted spawning coordinates to natural ground, paved roads, solid stone (castles/peaks), 
-#   and brick floors (cabins). NPCs are prevented from spawning on wood logs or leaves 
-#   while allowing them to spawn properly on castle courtyards and outposts.
-# - Injected high-precision console logs (`[MobTelemetry]`) to track entity spawning coordinates.
-# CAMPAIGN CHAIN SYNC RESOLUTION (PRE-SYNCHRONIZATION):
-# - Overhauled target coordinates synchronization to perform Pre-Sincronización. 
-#   Both procedural village spawns and fixed Mega-Structures spawns (like the Grand Castle 
-#   courtyard Villagers and Merchants) are now mapped and bound directly to their 
-#   campaign quests on boot, ensuring flawless path line GPS tracking.
-# SOLID BLOCK AVOIDANCE (NPC STUCK RESOLUTION):
-# - Added a safety Collision/Obbstacle Avoidance check for fixed Mega-Structure spawns. 
-#   If a procedural tree or block occupies the fixed coordinate, the spawner automatically 
-#   nudges the NPC's spawn point to the nearest empty space, preventing them from 
-#   spawning trapped inside trunks and rendering their quest arrows static.
+# I/O OPTIMIZATION (120 FPS STABILIZATION):
+# - Removed all verbose `[MobTelemetry]` print statements to prevent synchronous, 
+#   blocking console I/O stalls during real-time chunk spawning.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -94,21 +82,13 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			# Verify if the target coordinate is blocked by a procedural tree trunk or wall
 			var spawn_pos := exact_pos
 			var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
-			
 			if BlockType.is_solid(block_at_pos):
-				# Find the nearest empty ground coordinate in the column
-				var safe_y := _get_ground_surface_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
-				if safe_y > 0.0:
-					spawn_pos.y = safe_y
-				else:
-					# If the column is completely solid, nudge the NPC 2 meters horizontally into open air
-					spawn_pos += Vector3(1.5, 0.0, 1.5)
-					
-			var entity: Node = MobRegistry.create_mob(mob_id, spawn_pos)
-			if entity != null:
-				world_node.add_child(entity)
-				entities_list.append(entity)
-				print("[MobTelemetry] Spawned Mega-Structure Entity ID: ", mob_id, " at absolute coordinates: ", spawn_pos)
+				spawn_pos.y = world_state.get_highest_solid_y(floori(spawn_pos.x), floori(spawn_pos.z))
+				
+			var spawn_node := MobRegistry.create_mob(mob_id, spawn_pos)
+			if spawn_node != null:
+				world_node.add_child(spawn_node)
+				entities_list.append(spawn_node)
 				
 				# MEGA-STRUCTURE QUEST PRE-SYNCHRONIZATION:
 				# Bind custom castle/cabin residents to their respective campaign quests on boot
@@ -120,8 +100,7 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 				if sync_quest_id != "":
 					var quest: Quest = QuestService.get_quest(sync_quest_id) as Quest
 					if quest != null:
-						quest.target_position = entity.global_position # Dynamic bound!
-						print("[MobTelemetry]   -> Pre-synced mega quest '", sync_quest_id, "' target coordinates to: ", quest.target_position)
+						quest.target_position = spawn_node.global_position # Dynamic bound!
 
 	return entities_list
 
@@ -141,15 +120,11 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 		world_node.add_child(mob)
 		list.append(mob)
 		
-		# HIGH-PRECISION SPAWN LOG
-		print("[MobTelemetry] Spawned Outpost Entity ID: ", spawn_id, " at absolute coordinates: ", pos, " (Quest ID: ", quest_sync_id, ")")
-		
 		# PRE-SYNCHRONIZATION: Bind NPC world coordinates to its corresponding Quest directly in the DB
 		if quest_sync_id != "":
 			var quest: Quest = QuestService.get_quest(quest_sync_id) as Quest
 			if quest != null:
 				quest.target_position = mob.global_position
-				print("[MobTelemetry]   -> Pre-synced quest '", quest_sync_id, "' target coordinates to: ", quest.target_position)
 
 
 ## Helper: Scans vertical columns downward to find the topmost solid block.

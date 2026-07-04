@@ -10,25 +10,12 @@
 #                alongside the panning offset, mimicking a military GPS.
 #              - Fluid Texture Offset: Biome cache slides using high-performance 
 #                matrix transforms, maintaining locked 120 FPS.
-#              SOLID COMPLIANCE: Adheres strictly to SRP by isolating map drawing.
-#              BUG FIXES & SECURE TELEPORT:
-#              - Replaced weak dynamic reflection `player.set("is_active", false)` 
-#                with explicit static casting `player as PlayerController` to 
-#                guarantee compile-safe state changes and prevent Y=35 freezes.
-#              - INSTANT PRIORITY SPANNING: Directly computes and dispatches the 
-#                18 critical spawn-protection chunks with high-priority on click, 
-#                bypassing and preventing queue pollution.
-#              - Fixed variable shadowing by renaming local `is_visible` to `is_pin_visible`.
-#              - Fully strictly-typed variables to eliminate warnings.
-#              DYNAMIC HOTSPOT ROUTING ENABLMENT:
-#              - Removed the gathering restriction (required_item_index == -1) from the 
-#                drawing block. This ensures that the newly routed resource hotspots
-#                show up cleanly on the fullscreen map as well as the minimap.
-#              COMPILATION FIXES:
-#              - Added explicit float casting to pulse_radius to avoid Variant compiler errors.
-#              - Rerouted all player arrow draw calls from the nonexistent _border_canvas 
-#                to the correct _radar_canvas.
-#              - Reused p_map_pos to eliminate duplicate local variable definitions.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Isolates map drawing.
+# - Liskov Substitution Principle (LSP): Fully compatible with standard Control flows.
+# I/O OPTIMIZATION (120 FPS STABILIZATION):
+# - Removed all verbose `[MapOverlay DEBUG]` print statements to prevent synchronous, 
+#   blocking console I/O stalls during fast-travel map transitions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MapOverlay.gd
 # ==============================================================================
@@ -87,7 +74,7 @@ const RADAR_BIOME_COLORS: Dictionary = {
 
 
 func _ready() -> void:
-	# Fullscreen overlay dark transparent backdrop wash
+	# Stretch the root control node to fill the entire window viewport
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg_style: StyleBoxFlat = StyleBoxFlat.new()
 	bg_style.bg_color = Color(0.02, 0.02, 0.03, 0.85)
@@ -189,32 +176,37 @@ func _setup_map_ui() -> void:
 	_title_label = Label.new()
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ts: LabelSettings = LabelSettings.new()
-	ts.font_size = 22; ts.font_color = Color(0.2, 0.85, 0.85); ts.outline_size = 4; ts.outline_color = Color.BLACK
+	ts.font_size = 22; ts.font_color = Color.WHITE
+	ts.outline_size = 4
+	ts.outline_color = Color(0.0, 0.0, 0.0, 0.8)
 	_title_label.label_settings = ts
 	vbox.add_child(_title_label)
 	
-	# 2. Centered Radar Map Canvas (Dynamic proportional box)
-	var canvas_panel: Panel = Panel.new()
-	canvas_panel.custom_minimum_size = Vector2(_map_panel_size, _map_panel_size)
-	canvas_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var cs: StyleBoxFlat = StyleBoxFlat.new()
-	cs.bg_color = Color(0.02, 0.02, 0.03, 1.0)
-	cs.set_corner_radius_all(12)
-	cs.border_width_left = 2; cs.border_width_top = 2
-	cs.border_width_right = 2; cs.border_width_bottom = 2
-	cs.border_color = Color(0.2, 0.55, 0.85, 0.5)
-	canvas_panel.add_theme_stylebox_override("panel", cs)
+	vbox.add_child(_create_spacer(10))
 	
-	# Keep all drawings perfectly clipped inside the rounded borders
-	canvas_panel.clip_children = CanvasItem.CLIP_CHILDREN_ONLY 
-	vbox.add_child(canvas_panel)
-	
+	# 2. Main Map Canvas: Draws the moving biomes and grid (Gets clipped by parent)
 	_radar_canvas = Control.new()
 	_radar_canvas.name = "RadarCanvas"
 	_radar_canvas.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_radar_canvas.mouse_filter = Control.MOUSE_FILTER_PASS
+	
+	var mask_style := StyleBoxFlat.new()
+	mask_style.bg_color = Color(0.04, 0.04, 0.06, 1.0)
+	mask_style.set_corner_radius_all(12)
+	mask_style.border_width_left = 2; mask_style.border_width_top = 2
+	mask_style.border_width_right = 2; mask_style.border_width_bottom = 2
+	mask_style.border_color = Color(0.2, 0.55, 0.85, 0.5)
+	
+	var canvas_panel := Panel.new()
+	canvas_panel.custom_minimum_size = Vector2(_map_panel_size, _map_panel_size)
+	canvas_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	canvas_panel.add_theme_stylebox_override("panel", mask_style)
+	canvas_panel.clip_children = CanvasItem.CLIP_CHILDREN_ONLY 
+	vbox.add_child(canvas_panel)
+	
+	canvas_panel.add_child(_radar_canvas)
 	_radar_canvas.gui_input.connect(_on_canvas_input)
 	_radar_canvas.draw.connect(_on_radar_draw)
-	canvas_panel.add_child(_radar_canvas)
 	
 	# 3. Close Button
 	_close_btn = Button.new()
@@ -331,39 +323,27 @@ func _on_radar_draw() -> void:
 	
 	# Draw Z Axis grid lines (Vertical lines moving left/right)
 	for gx in range(start_grid_x, end_grid_x + 100, 100):
-		var check_pos := Vector2(float(gx), _map_center.y)
-		var map_pos := _world_to_map_space(check_pos)
-		
-		# Draw vertical grid line
-		_radar_canvas.draw_line(Vector2(map_pos.x, 0), Vector2(map_pos.x, _map_panel_size), COLOR_GRID)
-		
-		# Draw coordinate text label at the bottom of the map panel
-		_radar_canvas.draw_string(default_font, Vector2(map_pos.x + 4, _map_panel_size - 6), str(gx), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, COLOR_GRID * 2.0)
+		var shoulder_pos_2d := _world_to_map_space(Vector2(float(gx), 0.0))
+		if shoulder_pos_2d.x >= 0.0 and shoulder_pos_2d.x <= _map_panel_size:
+			_radar_canvas.draw_line(Vector2(shoulder_pos_2d.x, 0), Vector2(shoulder_pos_2d.x, _map_panel_size), COLOR_GRID)
+			_radar_canvas.draw_string(default_font, Vector2(shoulder_pos_2d.x + 4, _map_panel_size - 6), str(gx), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, COLOR_GRID * 2.0)
 	
 	# Draw X Axis grid lines (Horizontal lines moving up/down)
 	for gz in range(start_grid_z, end_grid_z + 100, 100):
-		var check_pos := Vector2(_map_center.x, float(gz))
-		var map_pos := _world_to_map_space(check_pos)
-		
-		# Draw horizontal grid line
-		_radar_canvas.draw_line(Vector2(0, map_pos.y), Vector2(_map_panel_size, map_pos.y), COLOR_GRID)
-		
-		# Draw coordinate text label at the left edge of the map panel
-		_radar_canvas.draw_string(default_font, Vector2(6, map_pos.y - 4), str(gz), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, COLOR_GRID * 2.0)
+		var shoulder_pos_2d := _world_to_map_space(Vector2(0.0, float(gz)))
+		if shoulder_pos_2d.y >= 0.0 and shoulder_pos_2d.y <= _map_panel_size:
+			_radar_canvas.draw_line(Vector2(0, shoulder_pos_2d.y), Vector2(_map_panel_size, shoulder_pos_2d.y), COLOR_GRID)
+			_radar_canvas.draw_string(default_font, Vector2(6, shoulder_pos_2d.y - 4), str(gz), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, COLOR_GRID * 2.0)
 
 	# 3. DRAW ACTIVE QUEST MARKER & TACTICAL LINE
 	var active_q: Quest = QuestService.get_active_quest() as Quest
-	# DYNAMIC HOTSPOT ROUTING COMPLIANCE:
-	# Always render the active quest marker on the full map overlay if it has valid 3D target coordinates
 	if active_q != null and active_q.target_position != Vector3.ZERO:
 		var q_pos := Vector2(active_q.target_position.x, active_q.target_position.z)
 		var draw_target := _world_to_map_space(q_pos)
 		
-		# Static Type cast on pulse_radius to satisfy strict compiler
 		var pulse_radius: float = 10.0 + abs(sin(_pulse_timer * 1.5)) * 6.0
 		_radar_canvas.draw_circle(draw_target, pulse_radius, Color(COLOR_QUEST.r, COLOR_QUEST.g, COLOR_QUEST.b, 0.22))
 		
-		# Draw diamond shape
 		var diamond_points: PackedVector2Array = PackedVector2Array([
 			draw_target + Vector2(0, -8),
 			draw_target + Vector2(8, 0),
@@ -521,8 +501,6 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	elif landmark is NetherPortalMegaStructure: target_x = -290.5; target_z = -290.5
 	elif landmark is GrandCastleMegaStructure: target_z = 208.5 
 	elif landmark is HarborCityMegaStructure: target_x = -136.5; target_z = 3.5
-	
-	print("[MapOverlay DEBUG] Pin Clicked! Fast-traveling player to target: X = ", target_x, " | Z = ", target_z)
 	
 	p_ctrl.global_position = Vector3(target_x, 35.0, target_z) 
 	p_ctrl.velocity = Vector3.ZERO

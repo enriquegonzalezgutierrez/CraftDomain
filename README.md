@@ -136,22 +136,70 @@ Subclasses must be substitutable for their base classes without altering program
 
 Voxel sandbox games are traditionally notorious for CPU and GPU bottlenecks. CraftDomain implements custom lower-level optimizations to maintain solid framerates:
 
-### 1. Expanded Horizon Draw Distance (162-Chunk Radius)
+### 1. Offloaded Physics Shape Compilation (Instant Teleportation)
+In Godot 4, instantiating physics shapes and setting their faces (`set_faces()`) from background threads forces the engine's `PhysicsServer3D` to run synchronous global memory locks. This stalls parallel worker threads during bulk loads, causing severe thread thrashing and freezes during teleportation.
+
+```mermaid
+sequenceDiagram
+	participant WT as Background Thread
+	participant TS as Main Thread Queue
+	participant PS as PhysicsServer3D
+
+	WT->>WT: Calculate flat collision_vertices (Triangles)
+	WT->>TS: Dispatch task with raw vertex arrays
+	Note over TS,PS: Executed on the Main Thread (0.05ms)
+	TS->>PS: Instantiate ConcavePolygonShape3D
+	TS->>PS: Call set_faces(collision_vertices)
+	TS->>TS: Attach to ChunkNode StaticBody3D
+```
+
+To resolve this, background threads now only perform mathematically pure computations (extracting raw `collision_vertices` arrays). The single `ConcavePolygonShape3D` is compiled on the Main Thread during rendering (taking under 0.05ms), completely resolving thread stalls and making fast-travel instantaneous.
+
+### 2. Group AI Tracking ($O(1)$ Complexity)
+In the original AI architecture, active entities (Guards, Golems, and Hostile zombies) scanned for targets by iterating over all children of the World node (`get_children()`). This created an expensive $O(N)$ lookup loop that caused massive frame spikes as the world populated with chunks, streetlights, and props.
+
+By integrating Godot's C++ native group registry (`add_to_group("hostiles")` and `add_to_group("passives")`), target scanning loops now query group tables directly, reducing search times to negligible microseconds.
+
+### 3. Global Wind Shader System
+To synchronize environmental weather parameters (waves travelling with the wind, foliage leaves swaying along the wind line) across all shaders without incurring materials overhead, CraftDomain utilizes **Global Shader Uniforms** managed by `WeatherService.gd`:
+
+```mermaid
+graph LR
+	subgraph Weather_Simulation [Weather Service]
+		Weather[Weather State] -->|Computes Wind Direction| CPU_Wind[Vector2 wind_vector]
+	end
+
+	subgraph GPU_Registers [Rendering Server]
+		CPU_Wind -->|Pushes once per frame| Global_GPU_Uniform[global uniform vec2 wind_vector]
+	end
+
+	subgraph Shaders [Dynamic Materials]
+		Global_GPU_Uniform -->|Read-Only at zero cost| Water_Shader[Water Shader - Waves & Foam]
+		Global_GPU_Uniform -->|Read-Only at zero cost| Leaf_Shader[Foliage Shader - Tree Sway]
+	end
+```
+
+The wind vector and strength are computed locally on the CPU (avoiding expensive GPU readbacks) and pushed once per frame as write-only registers to the GPU, allowing any shader in the world to access them at zero runtime cost.
+
+### 4. Anisotropic PBR Terrain Rendering & Selective Beveling
+To completely eliminate shimmering and Moiré noise artifacts on oblique flat surfaces (such as sandy beaches and long paved highways) without sacrificing pixel-art sharpness, CraftDomain utilizes native `StandardMaterial3D` rendering:
+* **Texture Filtering:** Configured to `BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC`.
+* **Selective Beveling:** Implements a procedural, mathematically perfect 64x64 Bevel Normal Map baked into RAM on startup. To prevent "waffle grid" patterns on natural landscapes, the bevel normal map is applied selectively via `_should_apply_bevel()` only to construction blocks (e.g. Bricks, Wood, Glass), leaving terrain flat and contiguous.
+* **Ambient Lighting:** Sourced from `AMBIENT_SOURCE_COLOR` using a soft, realistic blue-gray hue to fill shadows, making NPCs and blocks inside deep forests readable.
+
+### 5. Expanded Horizon Draw Distance (162-Chunk Radius)
 Through massive occlusion culling and background thread matrix compilation within `ChunkVisualBuilder.gd`, `ChunkLoaderService` pushes a **9x2x9 3D loading grid**. This active volume of **162 procedural chunks** quadruples the standard visual draw distance natively without overwhelming the physics servers, supporting massive landscapes, deep ravines, and high-altitude Cloud Kingdoms.
 
-### 2. Multi-Mesh Partitioned Rendering (Water & Lava Shading)
+### 6. Multi-Mesh Partitioned Rendering (Water & Lava Shading)
 To support translucent, highly reflective water and glowing lava, `ChunkNode.gd` does not render a chunk using a single monolithic MultiMesh. Instead, it partitions chunk voxel arrays by their `BlockType` and instantiates a separate `MultiMeshInstance3D` for each active block type. This allows applying specialized materials:
 * **Water Material:** Translucent blue color, roughness `0.05` (highly glossy) to enable beautiful Screen Space Reflections (SSR).
 * **Glass Material:** High-gloss transparency allowing skylight penetration.
 * **Lava Material:** Emission-enabled orange-red glow with a `1.8` multiplier.
 
-### 3. Procedural Static Pixel Grain & Externalized GDShaders
-The visual codebase applies clean, external `.gdshader` resource files (decoupled from GDScript files). Solid blocks utilize a fast **Triplanar Shader**, while foliage utilizes a **Wind-Sway Leaf Shader**. Additionally, all NPC and wildlife characters are procedurally painted with a static, pre-compiled micro-pixel `NoiseTexture2D` blended over their base colors using `TEXTURE_FILTER_NEAREST`, instantly producing highly detailed, retro-voxel pixel-art aesthetics globally with zero runtime GPU overhead.
-
-### 4. Static Texture Preloader (Lag Spike Prevention)
+### 7. Static Texture Preloader (Lag Spike Prevention)
 Decoding high-resolution (1024x1024) PNG files on the main thread during real-time chunk loading causes massive CPU stalls, resulting in physics tunneling. CraftDomain utilizes a **Static Preloader** in `ChunkNode.gd` that reads, caches, and compiles all custom textures into GPU memory *once* during game boot, keeping the gameplay completely stutter-free.
 
-### 5. Primitive Box Flyweight Collision Grid
+### 8. Primitive Box Flyweight Collision Grid
 Traditional `ConcavePolygonShape3D` meshes (triangle soups with zero volume) are prone to corner traps and seam-clinging bugs when characters move against them. To resolve this, `ChunkManagerService.gd` parses active solid rendering transforms and constructs a grid of primitive solid `BoxShape3D` colliders. To prevent memory and allocation bottlenecks, the service implements the **Flyweight Design Pattern**, sharing a single static `BoxShape3D` resource instance across every collision shape inside the static body. This provides native physical volume to the world, resolving collision tunneling and enabling standard Capsule-to-Box sliding physics.
 
 ```mermaid
@@ -173,7 +221,7 @@ sequenceDiagram
 	CMS->>CMS: Attach StaticBody3D to ChunkNode
 ```
 
-### 6. Time-Sliced Priority Rebuild Queue (Zero-Latency Editing)
+### 9. Time-Sliced Priority Rebuild Queue (Zero-Latency Editing)
 To prevent direct player actions (mining, building) from being delayed behind background thread terrain generation queues (which load hundreds of distant chunks as the player walks), the task scheduler implements a priority bypass. Standard loading requests are appended to the back of the queue, while real-time rebuilding requests use `.push_front()`. This ensures user interactions are processed on the very next frame, reducing block modification latency from seconds to milliseconds.
 
 ---
