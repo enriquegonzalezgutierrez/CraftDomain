@@ -3,21 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cn00rspi2t7ba"
-path.s3tc="res://.godot/imported/sakura_leaves.png-51ca7fe28b3327cf162e57b6e00ce690.s3tc.ctex"
+path="res://.godot/imported/sakura_leaves.png-51ca7fe28b3327cf162e57b6e00ce690.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/sakura_leaves.png"
-dest_files=["res://.godot/imported/sakura_leaves.png-51ca7fe28b3327cf162e57b6e00ce690.s3tc.ctex"]
+dest_files=["res://.godot/imported/sakura_leaves.png-51ca7fe28b3327cf162e57b6e00ce690.ctex"]
 
 [params]
 
-compress/mode=2
-compress/high_quality=false
+compress/mode=0
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

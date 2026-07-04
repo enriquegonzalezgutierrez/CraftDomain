@@ -3,28 +3,27 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b46g2bjq2quse"
-path.s3tc="res://.godot/imported/grass_top_specular.png-58b4d352f9f10e89f74520395d1505aa.s3tc.ctex"
+path="res://.godot/imported/grass_top_specular.png-58b4d352f9f10e89f74520395d1505aa.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/grass_top_specular.png"
-dest_files=["res://.godot/imported/grass_top_specular.png-58b4d352f9f10e89f74520395d1505aa.s3tc.ctex"]
+dest_files=["res://.godot/imported/grass_top_specular.png-58b4d352f9f10e89f74520395d1505aa.ctex"]
 
 [params]
 
-compress/mode=2
-compress/high_quality=false
+compress/mode=0
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=1
 roughness/src_normal=""

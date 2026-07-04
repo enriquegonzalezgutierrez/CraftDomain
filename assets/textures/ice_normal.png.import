@@ -3,21 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://by62mbdjabvfg"
-path.s3tc="res://.godot/imported/ice_normal.png-fbd98c585faf989a333259ce9e0ab6d7.s3tc.ctex"
+path="res://.godot/imported/ice_normal.png-fbd98c585faf989a333259ce9e0ab6d7.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/ice_normal.png"
-dest_files=["res://.godot/imported/ice_normal.png-fbd98c585faf989a333259ce9e0ab6d7.s3tc.ctex"]
+dest_files=["res://.godot/imported/ice_normal.png-fbd98c585faf989a333259ce9e0ab6d7.ctex"]
 
 [params]
 
-compress/mode=2
-compress/high_quality=false
+compress/mode=0
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

@@ -10,10 +10,9 @@
 # - Implemented double-buffering crossfade (`_player_a` and `_player_b`) to transition 
 #   soundtracks smoothly over 2.0 seconds based on biomes and day/night cycles.
 # - Dynamic programmatic looping connected directly to the native `finished` signals.
-# BUG RESOLUTION:
-# - Removed redundant disconnect/reconnect calls on manual stops. Since Godot's 
-#   `.stop()` method does not emit the `finished` signal, players can be safely halted 
-#   without triggering loop restarts or causing nonexistent connection errors.
+# EXPORT FIX:
+# - Replaced FileAccess.file_exists with ResourceLoader.exists in the audio
+#   preloader to ensure the MP3 files load correctly when packed into a binary .pck file.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Audio/AudioService.gd
 # ==============================================================================
@@ -60,24 +59,25 @@ func _ready() -> void:
 	_initialize_players()
 
 
-## Caches all audio files on boot to prevent main thread lag during transitions
+## Caches all audio files on boot to prevent main thread lag during transitions.
+## Uses ResourceLoader.exists() to guarantee safety when executing in exported binaries.
 func _preload_audio_resources() -> void:
 	print("[AudioService] Preloading all situation progressive EDM tracks...")
 	_streams_cache[TrackType.MENU] = load(MENU_MUSIC_PATH)
 	_streams_cache[TrackType.WORLD] = load(WORLD_MUSIC_PATH)
 	
 	# Load optional situational tracks with fallback safeguards if not generated yet
-	if FileAccess.file_exists(COMBAT_MUSIC_PATH):
+	if ResourceLoader.exists(COMBAT_MUSIC_PATH):
 		_streams_cache[TrackType.COMBAT] = load(COMBAT_MUSIC_PATH)
 	else:
 		_streams_cache[TrackType.COMBAT] = _streams_cache[TrackType.WORLD] # Fallback
 		
-	if FileAccess.file_exists(CYBER_MUSIC_PATH):
+	if ResourceLoader.exists(CYBER_MUSIC_PATH):
 		_streams_cache[TrackType.CYBER] = load(CYBER_MUSIC_PATH)
 	else:
 		_streams_cache[TrackType.CYBER] = _streams_cache[TrackType.WORLD]
 		
-	if FileAccess.file_exists(POLAR_MUSIC_PATH):
+	if ResourceLoader.exists(POLAR_MUSIC_PATH):
 		_streams_cache[TrackType.POLAR] = load(POLAR_MUSIC_PATH)
 	else:
 		_streams_cache[TrackType.POLAR] = _streams_cache[TrackType.WORLD]

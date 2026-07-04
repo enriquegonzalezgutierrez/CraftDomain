@@ -11,9 +11,9 @@
 #                when scrolling through items.
 #              - Polished glassmorphic panel with inner drop shadows and strict 
 #                margins for a sleek, modern sandbox aesthetic.
-#              WARNING FIX:
-#              - Enforced explicit static typing across all variables, iterators, 
-#                and dynamically casted nodes to prevent `UNTYPED_DECLARATION`.
+# EXPORT FIX:
+# - Replaced FileAccess.file_exists with ResourceLoader.exists in the texture
+#   preloader to ensure textures load correctly when packed into a binary .pck file.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd
 # ==============================================================================
@@ -343,7 +343,7 @@ func _get_item_texture(item_id: int) -> Texture2D:
 		
 	if texture_file != "":
 		var full_path := "res://assets/textures/" + texture_file
-		if FileAccess.file_exists(full_path):
+		if ResourceLoader.exists(full_path):
 			var tex: Texture2D = load(full_path) as Texture2D
 			if tex is Texture2D:
 				_textures_cache[item_id] = tex

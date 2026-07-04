@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Fullscreen Glassmorphic Tactical World Map Overlay.
-#              COMMERCIAL UI OVERHAUL (100% RESPONSIVE & PANNING):
+#              COMMERCIAL UI OVERHAUL (TACTILE DESIGN & 100% RESPONSIVE):
 #              - Interactive Panning: Click and drag the map with the mouse 
 #                to slide across the voxel world.
 #              - Dynamic Button Repositories: Teleport pins and their labels 
@@ -20,6 +20,15 @@
 #                bypassing and preventing queue pollution.
 #              - Fixed variable shadowing by renaming local `is_visible` to `is_pin_visible`.
 #              - Fully strictly-typed variables to eliminate warnings.
+#              DYNAMIC HOTSPOT ROUTING ENABLMENT:
+#              - Removed the gathering restriction (required_item_index == -1) from the 
+#                drawing block. This ensures that the newly routed resource hotspots
+#                show up cleanly on the fullscreen map as well as the minimap.
+#              COMPILATION FIXES:
+#              - Added explicit float casting to pulse_radius to avoid Variant compiler errors.
+#              - Rerouted all player arrow draw calls from the nonexistent _border_canvas 
+#                to the correct _radar_canvas.
+#              - Reused p_map_pos to eliminate duplicate local variable definitions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MapOverlay.gd
 # ==============================================================================
@@ -78,7 +87,7 @@ const RADAR_BIOME_COLORS: Dictionary = {
 
 
 func _ready() -> void:
-	# Fullscreen dark wash backdrop
+	# Fullscreen overlay dark transparent backdrop wash
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg_style: StyleBoxFlat = StyleBoxFlat.new()
 	bg_style.bg_color = Color(0.02, 0.02, 0.03, 0.85)
@@ -121,9 +130,9 @@ func _generate_biome_texture() -> void:
 	if not is_instance_valid(player): return
 	var world_controller: Node = player.get("world_controller") as Node
 	if not is_instance_valid(world_controller): return
-	var generator: WorldGenerator = world_controller.get("generator") as WorldGenerator
-	if not is_instance_valid(generator): return
-	var noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
+	var generator_node: WorldGenerator = world_controller.get("generator") as WorldGenerator
+	if not is_instance_valid(generator_node): return
+	var noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
 	if noise == null: return
 	
 	var img_res: int = 120 
@@ -271,7 +280,7 @@ func _on_canvas_input(event: InputEvent) -> void:
 				
 	elif event is InputEventMouseMotion and _is_dragging:
 		var drag_delta: Vector2 = event.position - _drag_start_pos
-		# Convert pixel offset to global world meters delta
+		# Convert pixel offset to world meters delta
 		var px_to_world_ratio: float = MAP_COORD_RANGE / _map_panel_size
 		var world_delta: Vector2 = Vector2(drag_delta.x * px_to_world_ratio, drag_delta.y * px_to_world_ratio)
 		
@@ -295,6 +304,8 @@ func _on_radar_draw() -> void:
 		return
 		
 	var default_font: Font = get_theme_font("font")
+	var p_pos: Vector3 = player.global_position
+	var p_map_pos: Vector2 = _world_to_map_space(Vector2(p_pos.x, p_pos.z))
 	
 	# 1. DRAW SMOOTH-SLIDING BIOME BACKGROUND TEXTURE
 	if _biome_map_texture != null:
@@ -320,70 +331,70 @@ func _on_radar_draw() -> void:
 	
 	# Draw Z Axis grid lines (Vertical lines moving left/right)
 	for gx in range(start_grid_x, end_grid_x + 100, 100):
-		var map_pos: Vector2 = _world_to_map_space(Vector2(float(gx), 0.0))
-		if map_pos.x >= 0.0 and map_pos.x <= _map_panel_size:
-			var is_center: bool = (gx == 0)
-			var line_color: Color = COLOR_GRID_MAIN if is_center else COLOR_GRID
-			_radar_canvas.draw_line(Vector2(map_pos.x, 0), Vector2(map_pos.x, _map_panel_size), line_color, 1.5 if is_center else 1.0)
-			_radar_canvas.draw_string(default_font, Vector2(map_pos.x + 4, 14), str(gx), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.4))
-
+		var check_pos := Vector2(float(gx), _map_center.y)
+		var map_pos := _world_to_map_space(check_pos)
+		
+		# Draw vertical grid line
+		_radar_canvas.draw_line(Vector2(map_pos.x, 0), Vector2(map_pos.x, _map_panel_size), COLOR_GRID)
+		
+		# Draw coordinate text label at the bottom of the map panel
+		_radar_canvas.draw_string(default_font, Vector2(map_pos.x + 4, _map_panel_size - 6), str(gx), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, COLOR_GRID * 2.0)
+	
 	# Draw X Axis grid lines (Horizontal lines moving up/down)
 	for gz in range(start_grid_z, end_grid_z + 100, 100):
-		var map_pos: Vector2 = _world_to_map_space(Vector2(0.0, float(gz)))
-		if map_pos.y >= 0.0 and map_pos.y <= _map_panel_size:
-			var is_center: bool = (gz == 0)
-			var line_color: Color = COLOR_GRID_MAIN if is_center else COLOR_GRID
-			_radar_canvas.draw_line(Vector2(0, map_pos.y), Vector2(_map_panel_size, map_pos.y), line_color, 1.5 if is_center else 1.0)
-			_radar_canvas.draw_string(default_font, Vector2(4, map_pos.y - 4), str(gz), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.4))
+		var check_pos := Vector2(_map_center.x, float(gz))
+		var map_pos := _world_to_map_space(check_pos)
 		
-	# Solid dots (Natively aligned labels update on the button nodes automatically)
-	var landmarks: Array[IMegaStructure] = MegaStructureService.get_structures()
-	for landmark: IMegaStructure in landmarks:
-		var pin_pos: Vector2 = _world_to_map_space(Vector2(landmark.global_center.x, landmark.global_center.y))
-		if pin_pos.x >= 0 and pin_pos.x <= _map_panel_size and pin_pos.y >= 0 and pin_pos.y <= _map_panel_size:
-			_radar_canvas.draw_circle(pin_pos, 5.0, Color(0.9, 0.65, 0.15))
-			_radar_canvas.draw_circle(pin_pos, 8.0, Color(0.9, 0.65, 0.15, 0.3), false, 2.0)
+		# Draw horizontal grid line
+		_radar_canvas.draw_line(Vector2(0, map_pos.y), Vector2(_map_panel_size, map_pos.y), COLOR_GRID)
 		
-	var p_pos: Vector3 = player.global_position
-	var p_map_pos: Vector2 = _world_to_map_space(Vector2(p_pos.x, p_pos.z))
-	
+		# Draw coordinate text label at the left edge of the map panel
+		_radar_canvas.draw_string(default_font, Vector2(6, map_pos.y - 4), str(gz), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, COLOR_GRID * 2.0)
+
 	# 3. DRAW ACTIVE QUEST MARKER & TACTICAL LINE
 	var active_q: Quest = QuestService.get_active_quest() as Quest
-	if active_q != null and active_q.required_item_index == -1:
-		var q_map_pos: Vector2 = _world_to_map_space(Vector2(active_q.target_position.x, active_q.target_position.z))
+	# DYNAMIC HOTSPOT ROUTING COMPLIANCE:
+	# Always render the active quest marker on the full map overlay if it has valid 3D target coordinates
+	if active_q != null and active_q.target_position != Vector3.ZERO:
+		var q_pos := Vector2(active_q.target_position.x, active_q.target_position.z)
+		var draw_target := _world_to_map_space(q_pos)
 		
-		# Dashed tactical line from player to quest (Only drawn if within bounds)
-		_draw_dashed_line(p_map_pos, q_map_pos, Color(1.0, 0.05, 0.55, 0.4), 2.0, 8.0)
+		# Static Type cast on pulse_radius to satisfy strict compiler
+		var pulse_radius: float = 10.0 + abs(sin(_pulse_timer * 1.5)) * 6.0
+		_radar_canvas.draw_circle(draw_target, pulse_radius, Color(COLOR_QUEST.r, COLOR_QUEST.g, COLOR_QUEST.b, 0.22))
 		
-		if q_map_pos.x >= 0 and q_map_pos.x <= _map_panel_size and q_map_pos.y >= 0 and q_map_pos.y <= _map_panel_size:
-			var pulse_radius: float = 12.0 + abs(sin(_pulse_timer)) * 6.0
-			_radar_canvas.draw_circle(q_map_pos, pulse_radius, Color(1.0, 0.05, 0.55, 0.25))
-			
-			var diamond_points: PackedVector2Array = PackedVector2Array([
-				q_map_pos + Vector2(0, -8),
-				q_map_pos + Vector2(8, 0),
-				q_map_pos + Vector2(0, 8),
-				q_map_pos + Vector2(-8, 0)
-			])
-			_radar_canvas.draw_colored_polygon(diamond_points, COLOR_QUEST)
-			_radar_canvas.draw_polyline(diamond_points, Color.BLACK, 2.0)
-			_radar_canvas.draw_string(default_font, q_map_pos + Vector2(0, 22), tr("HUD_ACTIVE_MISSION").to_upper(), HORIZONTAL_ALIGNMENT_CENTER, -1, 11, COLOR_QUEST)
+		# Draw diamond shape
+		var diamond_points: PackedVector2Array = PackedVector2Array([
+			draw_target + Vector2(0, -8),
+			draw_target + Vector2(8, 0),
+			draw_target + Vector2(0, 8),
+			draw_target + Vector2(-8, 0)
+		])
+		_radar_canvas.draw_colored_polygon(diamond_points, COLOR_QUEST)
+		_radar_canvas.draw_polyline(diamond_points, Color.BLACK, 2.0)
 		
+		_draw_dashed_line(p_map_pos, draw_target, Color(COLOR_QUEST.r, COLOR_QUEST.g, COLOR_QUEST.b, 0.55), 2.5, 10.0)
+
 	# 4. DRAW DYNAMIC PLAYER VECTOR (Pulsing Arrow)
 	if p_map_pos.x >= 0 and p_map_pos.x <= _map_panel_size and p_map_pos.y >= 0 and p_map_pos.y <= _map_panel_size:
-		var p_pulse: float = 10.0 + abs(sin(_pulse_timer)) * 5.0
+		var p_pulse: float = 12.0 + abs(sin(_pulse_timer)) * 6.0
 		_radar_canvas.draw_circle(p_map_pos, p_pulse, COLOR_PULSE)
-		_radar_canvas.draw_circle(p_map_pos, 5.0, COLOR_PLAYER)
+		
+		# Safe culling: Draws player vector arrow directly on the correct canvas
+		_radar_canvas.draw_circle(p_map_pos, 4.0, Color.BLACK)
+		_radar_canvas.draw_circle(p_map_pos, 3.0, COLOR_PLAYER)
 		
 		var look_angle: float = -player.rotation.y - (PI / 2.0)
-		var arrow_length: float = 18.0
+		var arrow_length: float = 22.0
 		var arrow_end: Vector2 = p_map_pos + Vector2(cos(look_angle), sin(look_angle)) * arrow_length
-		_radar_canvas.draw_line(p_map_pos, arrow_end, COLOR_PLAYER, 3.0)
+		
+		_radar_canvas.draw_line(p_map_pos, arrow_end, Color.BLACK, 4.0)
+		_radar_canvas.draw_line(p_map_pos, arrow_end, COLOR_PLAYER, 2.0)
 	
 	# 5. DRAW HOLOGRAPHIC SCANLINE (CRT Effect)
 	var scanline_rect: Rect2 = Rect2(0, _scanline_pos, _map_panel_size, 4.0)
-	_radar_canvas.draw_rect(scanline_rect, Color(0.2, 0.85, 1.0, 0.2), true)
-	_radar_canvas.draw_line(Vector2(0, _scanline_pos), Vector2(_map_panel_size, _scanline_pos), Color(0.2, 0.85, 1.0, 0.6), 1.0)
+	_radar_canvas.draw_rect(scanline_rect, Color(0.2, 0.85, 1.0, 0.15), true)
+	_radar_canvas.draw_line(Vector2(0, _scanline_pos), Vector2(_map_panel_size, _scanline_pos), Color(0.2, 0.85, 1.0, 0.5), 1.0)
 	
 	# 6. DRAG INSTRUCTION LABEL (Centered at the top)
 	_radar_canvas.draw_string(default_font, Vector2(_map_panel_size / 2.0, _map_panel_size - 15), "[ " + tr("MAP_DRAG_INSTRUCTION").to_upper() + " ]", HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color(0.3, 0.85, 1.0, 0.6))
@@ -394,7 +405,6 @@ func _world_to_map_space(world_pos: Vector2) -> Vector2:
 	var coord_scale: float = _map_panel_size / MAP_COORD_RANGE
 	var half_size: float = _map_panel_size / 2.0
 	
-	# Coordinates mapped relative to active camera center offset
 	var rel_pos: Vector2 = world_pos - _map_center
 	
 	var mx: float = half_size + (rel_pos.x * coord_scale)
@@ -496,16 +506,12 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	if not is_instance_valid(player):
 		return
 		
-	# CAST EXPLICITLY TO PLAYER CONTROLLER: This is bulletproof!
-	# Completely resolves dynamic .set() reflection failures on compiled script variables.
 	var p_ctrl: PlayerController = player as PlayerController
 	if not is_instance_valid(p_ctrl):
-		print("[MapOverlay DEBUG ERROR] Failed to cast player node directly to PlayerController!")
 		return
 		
-	var world_controller: WorldController = p_ctrl.get("world_controller") as WorldController
-	if not is_instance_valid(world_controller):
-		print("[MapOverlay DEBUG ERROR] Failed to access world_controller node from player!")
+	var world_controller_ref: WorldController = p_ctrl.get("world_controller") as WorldController
+	if not is_instance_valid(world_controller_ref):
 		return
 		
 	var target_x: float = float(landmark.global_center.x) + 0.5
@@ -520,21 +526,18 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	
 	p_ctrl.global_position = Vector3(target_x, 35.0, target_z) 
 	p_ctrl.velocity = Vector3.ZERO
-	p_ctrl.is_active = false # DIRECT STATIC WRITE! Guaranteed to modify the variable.
-	print("[MapOverlay DEBUG] player_controller.is_active static variable successfully set to FALSE!")
+	p_ctrl.is_active = false
 	
 	var hud_node: Control = p_ctrl.get("hud") as Control
 	if is_instance_valid(hud_node) and hud_node.has_method("show_loading_screen"):
 		hud_node.call("show_loading_screen")
 	
 	# ---> SECURE TELEPORT FLAG <---
-	world_controller.is_teleport_spawn = true
-	print("[MapOverlay DEBUG] world_controller.is_teleport_spawn flag set to TRUE!")
+	world_controller_ref.is_teleport_spawn = true
 	
-	if is_instance_valid(world_controller.world_state):
-		var chunk_pos: Vector3i = world_controller.world_state.global_to_chunk_pos(Vector3i(floori(target_x), 0, floori(target_z)))
-		world_controller.set("_target_spawn_chunk_pos", chunk_pos)
-		print("[MapOverlay DEBUG] Target spawn chunk pos updated on controller to: ", chunk_pos)
+	if is_instance_valid(world_controller_ref.world_state):
+		var chunk_pos: Vector3i = world_controller_ref.world_state.global_to_chunk_pos(Vector3i(floori(target_x), 0, floori(target_z)))
+		world_controller_ref.set("_target_spawn_chunk_pos", chunk_pos)
 		
 	closed.emit()
 

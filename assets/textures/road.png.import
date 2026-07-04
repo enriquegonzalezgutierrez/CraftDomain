@@ -3,28 +3,27 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ccacoqr6xy1m0"
-path.s3tc="res://.godot/imported/road.png-d477774f72907c6d431b3440dca2d9fc.s3tc.ctex"
+path="res://.godot/imported/road.png-d477774f72907c6d431b3440dca2d9fc.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/road.png"
-dest_files=["res://.godot/imported/road.png-d477774f72907c6d431b3440dca2d9fc.s3tc.ctex"]
+dest_files=["res://.godot/imported/road.png-d477774f72907c6d431b3440dca2d9fc.ctex"]
 
 [params]
 
-compress/mode=2
-compress/high_quality=false
+compress/mode=0
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=1
 roughness/src_normal=""

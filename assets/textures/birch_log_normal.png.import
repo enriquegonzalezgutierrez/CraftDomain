@@ -3,21 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://rw3kp816ispi"
-path.s3tc="res://.godot/imported/birch_log_normal.png-6bf2844d9ca637c139de0c0cb2a06222.s3tc.ctex"
+path="res://.godot/imported/birch_log_normal.png-6bf2844d9ca637c139de0c0cb2a06222.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/birch_log_normal.png"
-dest_files=["res://.godot/imported/birch_log_normal.png-6bf2844d9ca637c139de0c0cb2a06222.s3tc.ctex"]
+dest_files=["res://.godot/imported/birch_log_normal.png-6bf2844d9ca637c139de0c0cb2a06222.ctex"]
 
 [params]
 
-compress/mode=2
-compress/high_quality=false
+compress/mode=0
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

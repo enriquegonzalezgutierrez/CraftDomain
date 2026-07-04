@@ -3,21 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://iu4ima2056cp"
-path.s3tc="res://.godot/imported/glass_normal.png-8af34d97ff08652562d80dc7a2b7cc6b.s3tc.ctex"
+path="res://.godot/imported/glass_normal.png-8af34d97ff08652562d80dc7a2b7cc6b.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/glass_normal.png"
-dest_files=["res://.godot/imported/glass_normal.png-8af34d97ff08652562d80dc7a2b7cc6b.s3tc.ctex"]
+dest_files=["res://.godot/imported/glass_normal.png-8af34d97ff08652562d80dc7a2b7cc6b.ctex"]
 
 [params]
 
-compress/mode=2
-compress/high_quality=false
+compress/mode=0
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

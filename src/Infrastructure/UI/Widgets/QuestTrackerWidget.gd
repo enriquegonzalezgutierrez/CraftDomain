@@ -5,10 +5,10 @@
 #              SOLID COMPLIANCE: Adheres strictly to SRP by isolating quest tracking.
 #              i18n UPGRADE: Localized all UI text labels, headings, and dynamic
 #              JSON quest objectives using tr() for full OCP compliance.
-#              WARNING FIX:
-#              - Added explicit static typing `PlayerHUD` to the `parent_hud` variables 
-#                on lines 143 and 151 to completely resolve `UNTYPED_DECLARATION` 
-#                compiler warnings.
+#              UNIFIED HUD NAVIGATION UPGRADE:
+#              - Redesigned the gathering quest branch (Case B) to render BOTH
+#                inventory progress counters AND dynamic distance tracking towards
+#                natural resource hotspots, establishing complete UI cohesion.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
 # ==============================================================================
@@ -103,13 +103,16 @@ func update_widget() -> void:
 			if current_y >= 18:
 				QuestService.complete_active_quest(player)
 				
-		# --- CASE B: INVENTORY GATHERING COMPLETION ---
+		# --- CASE B: INVENTORY GATHERING COMPLETION (UNIFIED WITH DISTANCE) ---
 		elif active_quest.required_item_index >= 0 and active_quest.required_quantity > 0:
-			_objective_label.text = "%s\n%s: %d / %d" % [
+			# Render both: current stock progress AND current distance to natural resources hotspot
+			_objective_label.text = "%s\n%s: %d / %d\n%s: %dm" % [
 				tr(active_quest.objective_text), 
 				tr("QUEST_PROGRESS"),
 				active_quest.progress_counter, 
-				active_quest.required_quantity
+				active_quest.required_quantity,
+				tr("QUEST_DISTANCE_PREFIX"),
+				dist_q
 			]
 			
 			if active_quest.progress_counter >= active_quest.required_quantity:
@@ -134,6 +137,7 @@ func update_widget() -> void:
 	else:
 		visible = false
 
+
 func _process_quest_notification_dispatch(active_quest: Quest) -> void:
 	if _is_first_frame:
 		if active_quest != null:
@@ -144,7 +148,7 @@ func _process_quest_notification_dispatch(active_quest: Quest) -> void:
 		
 	# Case 1: Active quest transitioned from valid to null (Final quest of campaign complete)
 	if active_quest == null and _last_active_quest_id != "":
-		# FIX: Explicit static typing on parent HUD reference
+		# Explicit static typing on parent HUD reference
 		var parent_hud: PlayerHUD = get_parent() as PlayerHUD
 		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
 			parent_hud.call("show_quest_notification", "CAMPAIGN_COMPLETE_TOAST_HEADER", _last_active_quest_title)
@@ -153,7 +157,7 @@ func _process_quest_notification_dispatch(active_quest: Quest) -> void:
 		
 	# Case 2: Active quest transitioned to a new campaign link
 	elif active_quest != null and active_quest.quest_id != _last_active_quest_id:
-		# FIX: Explicit static typing on parent HUD reference
+		# Explicit static typing on parent HUD reference
 		var parent_hud: PlayerHUD = get_parent() as PlayerHUD
 		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
 			parent_hud.call("show_quest_notification", "QUEST_COMPLETED_TOAST_HEADER", _last_active_quest_title)
