@@ -11,11 +11,12 @@
 # - Queries `RenderingServer.get_video_adapter_type()` on startup.
 # - Automatically strips away heavy rendering pipelines (SSAO, Glow, Bloom) 
 #   if running on an Integrated GPU or CPU-only software rasterizer.
-# DAYTIME SHADOW SOFTENING UPGRADE:
-# - Elevated Sun Light `light_indirect_energy` to 2.5 to increase physical light bounces.
-# - Increased `ambient_light_sky_contribution` to 0.85 and `ambient_light_energy` to 1.35 
-#   to fill day shadows with soft, realistic sky-blue ambient light.
-# - Softened image post-processing contrast from 1.15 to 1.12 to reduce harsh shading edges.
+# SHADOW SOFTENING & VISIBILITY UPGRADE (REALISTIC CONTRAST BALANCE):
+# - Reduced Sun Light energy from 2.8 to 1.8 to prevent AgX exposure blowout.
+# - Changed ambient light source to AMBIENT_SOURCE_COLOR using a soft, realistic 
+#   atmospheric blue-gray color representation.
+# - This acts as a fill light inside tree and building shadows, ensuring that 
+#   NPCs and blocks remain fully legible and textured even in deep shadows.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
 # ==============================================================================
@@ -41,7 +42,7 @@ static func build_sun() -> DirectionalLight3D:
 	if is_low_end:
 		# Disable shadows completely on CPU or Integrated GPUs to maximize performance!
 		sun_light.shadow_enabled = false
-		sun_light.light_energy = 1.8
+		sun_light.light_energy = 1.2
 		sun_light.light_indirect_energy = 1.0
 	else:
 		# Premium High precision shadow parameters for Discrete GPUs
@@ -55,9 +56,9 @@ static func build_sun() -> DirectionalLight3D:
 		sun_light.directional_shadow_fade_start = 0.85
 		sun_light.directional_shadow_max_distance = 80.0
 		
-		sun_light.light_energy = 2.8
-		# UPGRADE: Increased indirect energy to boost realistic secondary light bounces
-		sun_light.light_indirect_energy = 2.5
+		# Balanced solar energy to prevent blowing out shadows into pitch black
+		sun_light.light_energy = 1.8
+		sun_light.light_indirect_energy = 2.0
 		
 	sun_light.light_color = Color(0.99, 0.96, 0.92) 
 	sun_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
@@ -91,11 +92,15 @@ static func build_environment() -> WorldEnvironment:
 	var is_low_end: bool = (adapter_type == ADAPTER_TYPE_INTEGRATED or 
 							adapter_type == ADAPTER_TYPE_CPU)
 	
-	# UPGRADE: Sourced ambient light strictly from the SKY shader.
-	# Elevated contribution and general energy to softly fill day shadows with ambient light.
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_sky_contribution = 0.85 # Strong bounce sky-light in shadows
-	environment.ambient_light_energy = 1.35 # Brighter ambient fill light
+	# ==========================================================================
+	# ATMOSPHERIC AMBIENT FILL LIGHT (SHADOW VISIBILITY RESOLUTION)
+	# Uses a stable custom sky-blue/gray color representing Rayleigh scattering 
+	# to fill day shadows, ensuring NPCs are fully readable inside forests.
+	# ==========================================================================
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color(0.38, 0.44, 0.55) # Atmospheric blue-gray fill
+	environment.ambient_light_energy = 1.45 # Bright, soft fill light inside shadows
+	# ==========================================================================
 	
 	if is_low_end:
 		# ======================================================================
@@ -117,12 +122,12 @@ static func build_environment() -> WorldEnvironment:
 		# ======================================================================
 		environment.ssao_enabled = true
 		environment.ssao_radius = 0.65
-		environment.ssao_intensity = 2.8
+		environment.ssao_intensity = 2.0 # Reduced slightly to prevent dark corners from overwhelming fill light
 		environment.ssao_power = 2.2
 		environment.ssao_detail = 0.65
 		
 		environment.tonemap_mode = Environment.TONE_MAPPER_AGX
-		environment.tonemap_exposure = 1.25
+		environment.tonemap_exposure = 1.15 # Adjusted slightly for balanced dynamic range
 		environment.tonemap_white = 1.05
 		
 		environment.glow_enabled = true
@@ -138,8 +143,7 @@ static func build_environment() -> WorldEnvironment:
 		environment.fog_sky_affect = 0.72
 		
 		environment.adjustment_enabled = true
-		# UPGRADE: Softened contrast slightly to make transitions less harsh
-		environment.adjustment_contrast = 1.12
+		environment.adjustment_contrast = 1.08 # Softened slightly to prevent shadows from clamping to black
 		environment.adjustment_saturation = 1.35
 		
 	environment.volumetric_fog_enabled = false
