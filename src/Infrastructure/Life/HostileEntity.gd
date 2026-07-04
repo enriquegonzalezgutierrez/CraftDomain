@@ -4,13 +4,11 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates hostile AI behaviors,
 #                chase tracking, and combat cooldowns.
-#              DEATH OVERHAUL UPGRADE:
-#              - Replaced immediate queue_free() deletion with a unified shrinking 
-#                and spinning death animation, accompanied by GPU smoke particles.
-#              WARNING FIX:
-#              - Added explicit static typing to all parameters, loop iterators 
-#                (`mat`, `child`), and intermediate variables (`bubble`, `world_node`) 
-#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
+# HIGH PERFORMANCE AI UPGRADE:
+# - Automatic group registration to `"hostiles"` on `_ready()` to allow fast $O(1)$ AI scanning
+#   by defending guards and golems.
+# - Instantly removes itself from the active combat group on death to stop other entities 
+#   from executing search calculations.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -62,6 +60,9 @@ func _init(spawn_pos: Vector3) -> void:
 
 
 func _ready() -> void:
+	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting lookups
+	add_to_group("hostiles")
+	
 	_build_visual_representation()
 	_setup_collision()
 	_locate_player()
@@ -187,6 +188,9 @@ func _reset_damage_flash() -> void:
 # ==============================================================================
 func _on_domain_entity_died() -> void:
 	print("[Zombie] Blegh... Zombie died.")
+	
+	# HIGH PERFORMANCE: Unregister instantly from group on death
+	remove_from_group("hostiles")
 	
 	# 1. Disable physics
 	set_physics_process(false)

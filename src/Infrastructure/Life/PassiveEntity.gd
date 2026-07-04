@@ -13,6 +13,9 @@
 # - Applied strict X-Ray rendering configurations (`no_depth_test = true` and `render_priority = 10`). 
 #   The golden quest indicator now shines on top of solid castle walls, roofs, and obstacles, 
 #   guaranteeing players can locate target NPCs inside closed buildings.
+# HIGH PERFORMANCE AI UPGRADE:
+# - Automatic group registration to `"passives"` on `_ready()` to allow fast $O(1)$ AI scanning.
+# - Instantly removes itself from the group on death to stop other entities from processing it.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -65,6 +68,9 @@ func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 
 
 func _ready() -> void:
+	# HIGH PERFORMANCE: Register in the passive group for O(1) targeting lookups
+	add_to_group("passives")
+	
 	# Programmatic component compositions (Decoupling God files)
 	ai_component = NPCAIComponent.new()
 	add_child(ai_component)
@@ -181,6 +187,9 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 # ==============================================================================
 func _on_domain_entity_died() -> void:
 	_try_drop_player_loot()
+	
+	# HIGH PERFORMANCE: Unregister instantly from group on death
+	remove_from_group("passives")
 	
 	# 1. Disable physics and interactions instantly
 	set_physics_process(false)
