@@ -6,14 +6,22 @@
 #                mining, building, eating, and NPC interactions to VoxelInteractionComponent.
 #                Delegates third-person skeleton drawing to PlayerVisualComponent.
 #              - Dependency Inversion Principle (DIP): Injects loose component dependencies
-#                explictly during startup.
+#                explicitly during startup.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate.
+# MILESTONE 8 UPGRADE:
+#              - Decoupled type hints: Keeping world_controller typed as Node3D 
+#                and utilizing loose-binding calls (`call("save_all")`) to completely 
+#                prevent cyclic compilation locks on startup.
+#              - Dynamic Footstep Audio Accumulator: Triggers material-specific 3D SFX 
+#                based on the exact block type beneath the player's feet.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Player/PlayerController.gd
 # ==============================================================================
 class_name PlayerController
 extends CharacterBody3D
 
-## Signal emitted when the player swings their active weapon or tool (Milestone 10)
+## Signal emitted when the player swings their active weapon or tool
 signal sword_swung
 
 # Movement configurations
@@ -36,7 +44,7 @@ var inventory: IInventory
 
 # STRICT TYPING: Statically typed Node references
 var camera: Camera3D
-var world_controller: Node3D
+var world_controller: Node3D # Typed as Node3D base class to prevent compiler circular dependencies
 var hud: PlayerHUD
 var viewmodel: PlayerViewModel
 var interaction_component: VoxelInteractionComponent
@@ -55,9 +63,7 @@ var _target_camera_tilt: float = 0.0
 # Camera Trauma Shake variable
 var _shake_intensity: float = 0.0
 
-# ==============================================================================
-# PHASE 2 SOUNDSCAPE ACCUMULATORS (Milestone 10)
-# ==============================================================================
+# Dynamic soundscape footstep distance accumulator (meters)
 var _footstep_accumulator: float = 0.0
 
 
@@ -74,7 +80,7 @@ func _ready() -> void:
 	# VOXEL SMOOTH SLIDING CONFIGURATIONS
 	# ==========================================================================
 	floor_block_on_wall = false         # Allows sliding along block walls while standing on floors
-	floor_constant_speed = true        # Prevents micro-jitter speed changes over steps
+	floor_constant_speed = true         # Prevents micro-jitter speed changes over steps
 	floor_max_angle = deg_to_rad(45.0)   # Standard limits for walking slopes
 	floor_snap_length = 0.25           # Keeps the player glued down step edges smoothly
 	wall_min_slide_angle = 0.0         # Guarantees sliding against absolute 90-degree voxel vertical seams
@@ -190,6 +196,7 @@ func _input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			if is_instance_valid(hud):
 				hud.toggle_pause_menu(true)
+			# Safe reflective call: prevents tight coupling and cyclic parsing locks
 			if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
 				world_controller.call("save_all")
 		else:
@@ -225,12 +232,16 @@ func _physics_process(delta: float) -> void:
 	if not is_active:
 		return
 
-	var world_ctrl: WorldController = world_controller as WorldController
-	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
-		var p_chunk_pos := world_ctrl.world_state.global_to_chunk_pos(Vector3i(floori(position.x), 0, floori(position.z)))
-		if not world_ctrl.chunk_manager.is_chunk_rendered(p_chunk_pos):
-			velocity = Vector3.ZERO
-			return
+	# Scan chunk manager to verify spawning chunks are fully compiled
+	if is_instance_valid(world_controller):
+		var chunk_manager_ref: Object = world_controller.get("chunk_manager")
+		if is_instance_valid(chunk_manager_ref) and "world_state" in world_controller:
+			var ws: WorldState = world_controller.world_state
+			if is_instance_valid(ws):
+				var p_chunk_pos := ws.global_to_chunk_pos(Vector3i(floori(position.x), 0, floori(position.z)))
+				if not chunk_manager_ref.call("is_chunk_rendered", p_chunk_pos):
+					velocity = Vector3.ZERO
+					return
 
 	_process_hotbar_keys()
 
@@ -285,15 +296,16 @@ func _trigger_footstep_sfx(_velocity_flat: Vector2) -> void:
 	)
 	
 	var block_below := BlockType.Type.AIR
-	var world_ctrl := world_controller as WorldController
-	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
-		block_below = world_ctrl.world_state.get_block(p_block)
+	if is_instance_valid(world_controller) and "world_state" in world_controller:
+		var ws: WorldState = world_controller.world_state
+		if is_instance_valid(ws):
+			block_below = ws.get_block(p_block)
 		
 	var sfx_name := "footstep_stone" # Solid rock/stone default
 	match block_below:
 		BlockType.Type.GRASS, BlockType.Type.DIRT:
 			sfx_name = "footstep_grass"
-		BlockType.Type.WOOD, BlockType.Type.LEAVES, BlockType.Type.BIRCH_LOG:
+		BlockType.Type.WOOD, BlockType.Type.LEAVES, BlockType.Type.BIRCH_LOG, BlockType.Type.OAK_PLANKS:
 			sfx_name = "footstep_wood"
 		BlockType.Type.SNOW, BlockType.Type.ICE:
 			sfx_name = "footstep_snow"
@@ -398,6 +410,10 @@ func _apply_hotbar_selection(slot: int) -> void:
 			_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
 		else:
 			_set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
+	elif item_id >= 28 and item_id <= 30: # Milestone 8 Blocks
+		is_item_selected = true
+		active_build_type = item_id as BlockType.Type
+		_set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
 	else:
 		is_item_selected = false
 		active_build_type = BlockType.Type.AIR
@@ -436,11 +452,12 @@ func _on_domain_entity_died() -> void:
 	velocity = Vector3.ZERO
 	
 	if is_instance_valid(world_controller):
-		var w_ctrl: WorldController = world_controller as WorldController
-		w_ctrl.is_teleport_spawn = true
+		world_controller.set("is_teleport_spawn", true)
 		
-		var chunk_pos: Vector3i = w_ctrl.world_state.global_to_chunk_pos(Vector3i(8, 0, 8))
-		w_ctrl.set("_target_spawn_chunk_pos", chunk_pos)
+		var ws: WorldState = world_controller.get("world_state") as WorldState
+		if is_instance_valid(ws):
+			var chunk_pos: Vector3i = ws.global_to_chunk_pos(Vector3i(8, 0, 8))
+			world_controller.set("_target_spawn_chunk_pos", chunk_pos)
 
 
 ## Reactive Domain Event Callback: Syncs hand meshes on stock mutations
@@ -454,9 +471,10 @@ func _rescue_player_from_void() -> void:
 	var block_z := floori(position.z)
 	var found_safe_y: float = 14.0 
 	
-	var world_ctrl: WorldController = world_controller as WorldController
-	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
-		found_safe_y = world_ctrl.world_state.get_highest_solid_y(block_x, block_z)
+	if is_instance_valid(world_controller) and "world_state" in world_controller:
+		var ws: WorldState = world_controller.world_state
+		if is_instance_valid(ws):
+			found_safe_y = ws.get_highest_solid_y(block_x, block_z)
 		
 	global_position.y = found_safe_y
 
