@@ -13,6 +13,11 @@
 #   `get_children()` loop in the target finder which scanned the entire world.
 # - DYNAMIC GROUP INDEXING: The defensive targeting system now queries Godot's 
 #   optimized C++ group table ("hostiles").
+# - ASYNCHRONOUS TACTICAL SCANNING: Threat proximity evaluations are no longer 
+#   executed every physics frame (120 FPS). They are throttled via `_tactical_scan_timer`
+#   (4 times per second), drastically reducing Main Thread CPU load in populated villages.
+# - MATH OPTIMIZATION: `distance_to` and `length` replaced with `distance_squared_to` 
+#   and `length_squared` respectively to bypass expensive CPU square root calculations.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GolemEntity.gd
 # ==============================================================================
@@ -21,12 +26,18 @@ extends PassiveEntity
 
 # Combat configurations
 const ATTACK_RANGE: float = 2.2
+const ATTACK_RANGE_SQ: float = 4.84 # 2.2 * 2.2
 const AGGRO_SIGHT_RANGE: float = 12.0
+const AGGRO_SIGHT_RANGE_SQ: float = 144.0 # 12.0 * 12.0
 const ATTACK_COOLDOWN_INTERVAL: float = 1.8 # Heavy, slow swinging cooldown
 
 # Active combat targets
 var _combat_target: CharacterBody3D = null
 var _attack_cooldown_timer: float = 0.0
+
+# Asynchronous Scan Throttling Timer
+var _tactical_scan_timer: float = 0.0
+const SCAN_INTERVAL: float = 0.25 # 4 times per second
 
 # Handheld/Visual dangling limbs node references for custom combat animations
 var _left_arm_joint: Node3D
@@ -37,6 +48,9 @@ func _init(spawn_pos: Vector3) -> void:
 	# Heavy colossus initialized with 15 Hearts of health (30 HP)
 	super(spawn_pos, 30)
 	name = "Entity_GOLEM"
+	
+	# Stagger initial scan timers to prevent multiple golems from scanning on the exact same frame
+	_tactical_scan_timer = randf_range(0.0, SCAN_INTERVAL)
 
 
 ## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
@@ -143,11 +157,20 @@ func _physics_process(delta: float) -> void:
 
 ## Scans, locks, and chases hostile zombies within the aggro visual ranges.
 func _process_defensive_aggro_intelligence(delta: float) -> void:
-	# 1. Scan for nearest threat if currently un-engaged
-	if not is_instance_valid(_combat_target) or _combat_target.get("domain_entity").is_dead:
-		_combat_target = _scan_for_active_zombie_target()
+	# ==========================================================================
+	# TACTICAL PROXIMITY SCAN (Throttled for Performance)
+	# ==========================================================================
+	_tactical_scan_timer -= delta
+	if _tactical_scan_timer <= 0.0:
+		_tactical_scan_timer = SCAN_INTERVAL
 		
-	# 2. Process active combat pursuits
+		# Scan for nearest threat if currently un-engaged
+		if not is_instance_valid(_combat_target) or _combat_target.get("domain_entity").is_dead:
+			_combat_target = _scan_for_active_zombie_target()
+			
+	# ==========================================================================
+	# ACTIVE COMBAT PURSUIT
+	# ==========================================================================
 	if is_instance_valid(_combat_target) and not _combat_target.get("domain_entity").is_dead:
 		# Lock standard wandering AI decisions
 		if is_instance_valid(ai_component):
@@ -157,9 +180,10 @@ func _process_defensive_aggro_intelligence(delta: float) -> void:
 		var diff := target_pos - global_position
 		diff.y = 0.0
 		
-		var dist := diff.length()
+		# MATH OPTIMIZATION: Compare squared length to avoid sqrt() operations
+		var dist_sq := diff.length_squared()
 		
-		if dist > ATTACK_RANGE:
+		if dist_sq > ATTACK_RANGE_SQ:
 			# Chase at slow but unstoppable colossus walking speed
 			var wander_dir := diff.normalized()
 			velocity.x = wander_dir.x * BASE_SPEED * 1.3
@@ -196,7 +220,7 @@ func _scan_for_active_zombie_target() -> CharacterBody3D:
 		return null
 		
 	var closest_zombie: CharacterBody3D = null
-	var min_dist := AGGRO_SIGHT_RANGE
+	var min_dist_sq := AGGRO_SIGHT_RANGE_SQ
 	
 	# HIGHT PERFORMANCE GROUP QUERY
 	var hostiles := get_tree().get_nodes_in_group("hostiles")
@@ -204,9 +228,9 @@ func _scan_for_active_zombie_target() -> CharacterBody3D:
 		if is_instance_valid(child):
 			var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
 			if zombie_entity != null and not zombie_entity.is_dead:
-				var dist := global_position.distance_to(child.global_position)
-				if dist < min_dist:
-					min_dist = dist
+				var dist_sq := global_position.distance_squared_to(child.global_position)
+				if dist_sq < min_dist_sq:
+					min_dist_sq = dist_sq
 					closest_zombie = child as CharacterBody3D
 					
 	return closest_zombie

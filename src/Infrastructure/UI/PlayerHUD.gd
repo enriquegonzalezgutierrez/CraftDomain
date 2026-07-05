@@ -3,17 +3,16 @@
 # Description: Infrastructure UI Controller acting as a decoupled Coordinator.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Delegates ALL interface 
-#                rendering, drawing, and menu components to specialized widgets,
-#                and now encapsulates its own keyboard input routing.
+#                rendering, drawing, and menu components to specialized widgets.
 #              - Open-Closed Principle (OCP): All text titles, labels, and toasts
 #                are fully i18n localized using tr() for future translation packs.
 #              - OBSERVER PATTERN: Connects reactively to Domain Events of both 
 #                IInventory and VoxelEntity, eliminating manual sync cascades.
-#              BUG FIX (OVERLAPPING TRANSIT OVERRIDE):
-#              - Refactored `toggle_world_map()` to query the world controller's 
-#                `is_teleport_spawn` state before re-activating the player on close.
-#                This prevents the UI from instantly overriding the physical 
-#                is_active state during fast-travel.
+# HIGH PERFORMANCE UI UPGRADE (120 FPS STABILIZATION):
+# - UI REFRESH THROTTLING: Sub-widget metric updates (GPS, coordinates, quest 
+#   distance) no longer execute every frame (120 FPS). They are now throttled to 
+#   20 times per second via `_ui_update_timer`. This prevents Main Thread CPU 
+#   spikes during fast movement while maintaining visual smoothness.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/PlayerHUD.gd
 # ==============================================================================
@@ -36,6 +35,10 @@ var _damage_widget: ColorRect
 var _hotbar_dock_widget: Control
 var _pause_widget: Panel
 var _world_map_overlay: MapOverlay # Fullscreen Tactical Map Reference
+
+# UI Refresh Throttling Timer (20 FPS refresh is enough for text metrics)
+var _ui_update_timer: float = 0.0
+const UI_UPDATE_INTERVAL: float = 0.05 
 
 # Overlays & Dialogue manager
 var dialogue_manager: DialogueManager
@@ -199,13 +202,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_world_map(_world_map_overlay == null)
 
 
-func _process(_delta: float) -> void:
-	if is_instance_valid(minimap):
-		minimap.update_widget()
-	if is_instance_valid(gps_panel):
-		gps_panel.update_widget()
-	if is_instance_valid(quest_panel):
-		quest_panel.update_widget()
+func _process(delta: float) -> void:
+	# ==========================================================================
+	# UI UPDATE THROTTLING (20 FPS Stabilization)
+	# Metrics and text do not need to refresh at 120 FPS.
+	# ==========================================================================
+	_ui_update_timer += delta
+	if _ui_update_timer >= UI_UPDATE_INTERVAL:
+		_ui_update_timer = 0.0
+		
+		if is_instance_valid(minimap):
+			minimap.update_widget()
+		if is_instance_valid(gps_panel):
+			gps_panel.update_widget()
+		if is_instance_valid(quest_panel):
+			quest_panel.update_widget()
 
 
 # ==============================================================================
@@ -248,9 +259,6 @@ func toggle_world_map(p_visible: bool) -> void:
 			_world_map_overlay = null
 		if is_instance_valid(player):
 			# ---> TELEPORT STATE LIFE-CYCLE SHIELD <---
-			# Check if the player is currently in a fast-travel spawn phase.
-			# If so, do NOT force is_active back to true. Let the WorldController 
-			# handle safe ground landing reactivation in the background!
 			var is_teleporting: bool = false
 			var world_ctrl: WorldController = world_controller as WorldController
 			if is_instance_valid(world_ctrl):
@@ -354,8 +362,6 @@ func show_quest_notification(header: String, quest_title: String) -> void:
 	header_lbl.text = "🏆 " + tr(header).to_upper()
 	var hs := LabelSettings.new()
 	hs.font_size = 11; hs.font_color = Color(1.0, 0.85, 0.2); hs.outline_size = 2; hs.outline_color = Color.BLACK
-	
-	# Crisp Font Rendering enforcement
 	hs.shadow_size = 0
 	
 	header_lbl.label_settings = hs; header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

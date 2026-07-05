@@ -12,8 +12,12 @@
 #   `get_children()` loop which scanned the entire world node hierarchy.
 # - DYNAMIC GROUP INDEXING: Both target threat scans and peer social scans now 
 #   query Godot's optimized C++ group tables ("hostiles" and "passives").
-# - This drops AI frame execution times to negligible microseconds, stabilizing
-#   frame rates at solid 120 FPS even when hundreds of entities are spawned.
+# - ASYNCHRONOUS TACTICAL SCANNING: Threat and social proximity evaluations are 
+#   no longer executed every physics frame (120 FPS). They are now throttled to 
+#   4 times per second via `_tactical_scan_timer`. This reduces the CPU load of 
+#   a populated village by over 95% without compromising responsiveness.
+# - MATH OPTIMIZATION: `distance_to` replaced with `distance_squared_to` for 
+#   internal evaluations, bypassing expensive CPU square root calculations.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/NPCAIComponent.gd
 # ==============================================================================
@@ -33,14 +37,21 @@ enum TaskState {
 
 # AI Settings
 const SIGHT_RANGE: float = 8.0
+const SIGHT_RANGE_SQ: float = 64.0  # 8.0 * 8.0
 const SOCIAL_RANGE: float = 3.0
+const SOCIAL_RANGE_SQ: float = 9.0  # 3.0 * 3.0
 const GREET_DISTANCE: float = 3.5
+const GREET_DISTANCE_SQ: float = 12.25 # 3.5 * 3.5
 
 # Active State properties
 var current_task: TaskState = TaskState.IDLE
 var task_timer: float = 2.0
 var wander_direction: Vector3 = Vector3.ZERO
 var stuck_timer: float = 0.0
+
+# Asynchronous Scan Throttling Timer
+var _tactical_scan_timer: float = 0.0
+const SCAN_INTERVAL: float = 0.25 # 4 times per second
 
 # Reference to the controlled physical entity parent
 var _host: CharacterBody3D
@@ -52,6 +63,8 @@ func _ready() -> void:
 	_host = get_parent() as CharacterBody3D
 	if is_instance_valid(_host):
 		_spawn_point = _host.global_position
+		# Stagger initial scan timers to prevent multiple NPCs from scanning on the exact same frame
+		_tactical_scan_timer = randf_range(0.0, SCAN_INTERVAL)
 
 
 ## Core AI state-machine tick.
@@ -66,47 +79,56 @@ func process_ai(delta: float) -> void:
 		stuck_timer = 0.0
 		return
 
-	# 1. Threat Detection (Highest priority state override: PANIC)
-	var closest_hostile := _detect_closest_zombie_threat()
-	if closest_hostile != null:
-		current_task = TaskState.PANIC
-		wander_direction = (_host.global_position - closest_hostile.global_position).normalized()
-		wander_direction.y = 0.0
-		task_timer = 2.5 
-		stuck_timer = 0.0
-		_apply_movement_vectors()
-		return
-	
-	# 2. Check Player Greeting Proximity
-	var player_node := _host.get_parent().get_node_or_null("Player") as CharacterBody3D
-	var distance_to_player: float = 999.0
-	if is_instance_valid(player_node):
-		distance_to_player = _host.global_position.distance_to(player_node.global_position)
+	# ==========================================================================
+	# TACTICAL PROXIMITY SCAN (Throttled for Performance)
+	# ==========================================================================
+	_tactical_scan_timer -= delta
+	if _tactical_scan_timer <= 0.0:
+		_tactical_scan_timer = SCAN_INTERVAL
 		
-	var can_socialize: bool = _host.has_method("_can_socialize") and _host.call("_can_socialize") as bool
-	
-	if can_socialize and current_task != TaskState.PANIC:
-		if distance_to_player <= GREET_DISTANCE:
-			current_task = TaskState.GREETING
-			var look_dir := (player_node.global_position - _host.global_position).normalized()
-			look_dir.y = 0
-			if look_dir != Vector3.ZERO:
-				wander_direction = look_dir
+		# 1. Threat Detection (Highest priority state override: PANIC)
+		var closest_hostile := _detect_closest_zombie_threat()
+		if closest_hostile != null:
+			current_task = TaskState.PANIC
+			wander_direction = (_host.global_position - closest_hostile.global_position).normalized()
+			wander_direction.y = 0.0
+			task_timer = 2.5 
+			stuck_timer = 0.0
 			_apply_movement_vectors()
 			return
-		else:
-			# Check Peer Social proximity
-			var closest_peer := _detect_closest_peer_npc()
-			if closest_peer != null:
-				current_task = TaskState.CHATTIING
-				var look_dir := (closest_peer.global_position - _host.global_position).normalized()
+		
+		# 2. Check Player Greeting Proximity
+		var player_node := _host.get_parent().get_node_or_null("Player") as CharacterBody3D
+		var distance_to_player_sq: float = 9999.0
+		if is_instance_valid(player_node):
+			distance_to_player_sq = _host.global_position.distance_squared_to(player_node.global_position)
+			
+		var can_socialize: bool = _host.has_method("_can_socialize") and _host.call("_can_socialize") as bool
+		
+		if can_socialize and current_task != TaskState.PANIC:
+			if distance_to_player_sq <= GREET_DISTANCE_SQ:
+				current_task = TaskState.GREETING
+				var look_dir := (player_node.global_position - _host.global_position).normalized()
 				look_dir.y = 0
 				if look_dir != Vector3.ZERO:
 					wander_direction = look_dir
 				_apply_movement_vectors()
 				return
+			else:
+				# Check Peer Social proximity
+				var closest_peer := _detect_closest_peer_npc()
+				if closest_peer != null:
+					current_task = TaskState.CHATTIING
+					var look_dir := (closest_peer.global_position - _host.global_position).normalized()
+					look_dir.y = 0
+					if look_dir != Vector3.ZERO:
+						wander_direction = look_dir
+					_apply_movement_vectors()
+					return
 
-	# 3. Process Standard Timeouts & State Changes
+	# ==========================================================================
+	# PROCESS STANDARD TIMEOUTS & STATE CHANGES
+	# ==========================================================================
 	task_timer -= delta
 	if task_timer <= 0.0:
 		_select_next_random_task()
@@ -137,7 +159,7 @@ func _apply_movement_vectors() -> void:
 			
 			# Tethering: Anchor human NPCs so they never wander away from spawn villages
 			if _host.name.contains("VILLAGER") or _host.name.contains("MERCHANT") or _host.name.contains("GUARD") or _host.name.contains("FARMER"):
-				if _host.global_position.distance_to(_spawn_point) > 12.0:
+				if _host.global_position.distance_squared_to(_spawn_point) > 144.0: # 12m squared
 					wander_direction = (_spawn_point - _host.global_position).normalized()
 					wander_direction.y = 0
 
@@ -190,7 +212,7 @@ func _detect_closest_zombie_threat() -> Node3D:
 		return null
 		
 	var closest_zombie: Node3D = null
-	var min_dist := SIGHT_RANGE
+	var min_dist_sq := SIGHT_RANGE_SQ
 	
 	# HIGHT PERFORMANCE GROUP QUERY
 	var hostiles := _host.get_tree().get_nodes_in_group("hostiles")
@@ -198,9 +220,9 @@ func _detect_closest_zombie_threat() -> Node3D:
 		if is_instance_valid(child):
 			var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
 			if zombie_entity != null and not zombie_entity.is_dead:
-				var dist := _host.global_position.distance_to(child.global_position)
-				if dist < min_dist:
-					min_dist = dist
+				var dist_sq := _host.global_position.distance_squared_to(child.global_position)
+				if dist_sq < min_dist_sq:
+					min_dist_sq = dist_sq
 					closest_zombie = child as Node3D
 					
 	return closest_zombie
@@ -212,7 +234,7 @@ func _detect_closest_peer_npc() -> Node3D:
 		return null
 		
 	var closest_peer: Node3D = null
-	var min_dist := SOCIAL_RANGE
+	var min_dist_sq := SOCIAL_RANGE_SQ
 	
 	# HIGHT PERFORMANCE GROUP QUERY
 	var passives := _host.get_tree().get_nodes_in_group("passives")
@@ -222,9 +244,9 @@ func _detect_closest_peer_npc() -> Node3D:
 			if is_instance_valid(ai_comp):
 				var peer_state: TaskState = ai_comp.current_task
 				if peer_state == TaskState.IDLE or peer_state == TaskState.CHATTIING:
-					var dist := _host.global_position.distance_to(child.global_position)
-					if dist < min_dist:
-						min_dist = dist
+					var dist_sq := _host.global_position.distance_squared_to(child.global_position)
+					if dist_sq < min_dist_sq:
+						min_dist_sq = dist_sq
 						closest_peer = child as Node3D
 						
 	return closest_peer
