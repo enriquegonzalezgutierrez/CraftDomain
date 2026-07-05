@@ -14,6 +14,11 @@
 #   for distant chunks (Water, Glass, Ice, Clouds).
 # - This completely bypasses expensive alpha blending passes on the GPU horizon,
 #   releasing massive pixel fillrate overhead and boosting FPS significantly.
+# MILESTONE 8 UPGRADE:
+#              - Mapped textures for DIAMOND_ORE (reusing coal_ore.png), 
+#                OAK_PLANKS (reusing wood.png), and GLOWSTONE (reusing sand.png).
+#              - Programmed a custom cybernetic cyan emissive glow for DIAMOND_ORE.
+#              - Programmed a highly brilliant warm gold emissive glow for GLOWSTONE.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -74,7 +79,12 @@ const TEXTURE_MAP = {
 	
 	# Slabs reuse standard Stone textures
 	BlockType.Type.STONE_SLAB_BOTTOM: "stone.png",
-	BlockType.Type.STONE_SLAB_TOP: "stone.png"
+	BlockType.Type.STONE_SLAB_TOP: "stone.png",
+	
+	# Milestone 8 blocks mapping (texture reuse with custom shaders)
+	BlockType.Type.DIAMOND_ORE: "coal_ore.png",
+	BlockType.Type.OAK_PLANKS: "wood.png",
+	BlockType.Type.GLOWSTONE: "sand.png"
 }
 
 
@@ -406,23 +416,21 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 		mat.albedo_color = def.color_top
 		mat.roughness = 1.0 
 		mat.metallic_specular = 0.0
-		# ANISOTROPIC applied even to distant meshes for flawless horizon scaling
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
 		
 		# --- OPAQUE FAR-LOD TRANSPARENCY BYPASS ---
-		# Far water, glass, and ice disable blending, saving huge pixel fillrate overhead.
 		if block_type == BlockType.Type.WATER:
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
-			mat.albedo_color = Color(0.08, 0.35, 0.65) # Opaque deep ocean blue
+			mat.albedo_color = Color(0.08, 0.35, 0.65) 
 		elif block_type == BlockType.Type.GLASS:
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
-			mat.albedo_color = Color(0.40, 0.60, 0.70) # Opaque solid cyan-gray
+			mat.albedo_color = Color(0.40, 0.60, 0.70) 
 		elif block_type == BlockType.Type.ICE:
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
-			mat.albedo_color = Color(0.45, 0.75, 0.85) # Opaque solid ice blue
+			mat.albedo_color = Color(0.45, 0.75, 0.85) 
 		elif block_type == BlockType.Type.CLOUD:
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
-			mat.albedo_color = Color(0.95, 0.95, 0.95) # Opaque clean white
+			mat.albedo_color = Color(0.95, 0.95, 0.95) 
 			
 		_distant_materials_cache[block_type] = mat
 		return mat
@@ -511,14 +519,9 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 				_materials_cache[block_type] = leaf_mat
 				return leaf_mat
 		
-		# ======================================================================
-		# CORE OPTIMIZATION: NATIVE GODOT PBR MATERIAL
-		# ======================================================================
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = def.color_top
 		mat.roughness = _roughness_val_by_block(block_type)
-		
-		# Moiré Fix: Anisotropic filtering smooths horizontal lines
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC 
 		
 		if has_custom_texture:
@@ -528,12 +531,9 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 			var is_low_end := (adapter_type == 1 or adapter_type == 4) 
 			
 			if not is_low_end:
-				# ==============================================================
-				# SELECTIVE PROCEDURAL BEVEL SHADOW INJECTION
-				# ==============================================================
 				if _should_apply_bevel(block_type):
 					mat.normal_enabled = true
-					mat.normal_scale = 0.55 # Balanced bevel highlight intensity
+					mat.normal_scale = 0.55 
 					mat.normal_texture = _get_procedural_bevel_normal()
 				
 				if _loaded_ambients.has(block_type):
@@ -546,6 +546,23 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 			mat.emission_enabled = true
 			mat.emission = def.color_top
 			mat.emission_energy_multiplier = 1.5
+			if has_custom_texture:
+				mat.emission_texture = tex
+				
+		# ======================================================================
+		# MILESTONE 8: CAVES & DESERT EXPANSION EMISSIVE SHADING
+		# ======================================================================
+		if block_type == BlockType.Type.DIAMOND_ORE:
+			mat.emission_enabled = true
+			mat.emission = Color(0.0, 0.95, 0.95) # Intense cyan glow veins
+			mat.emission_energy_multiplier = 1.6
+			if has_custom_texture:
+				mat.emission_texture = tex
+				
+		if block_type == BlockType.Type.GLOWSTONE:
+			mat.emission_enabled = true
+			mat.emission = Color(1.0, 0.88, 0.35) # High-intensity warm gold lamp
+			mat.emission_energy_multiplier = 2.4
 			if has_custom_texture:
 				mat.emission_texture = tex
 				
@@ -567,9 +584,9 @@ static func _should_apply_bevel(type: BlockType.Type) -> bool:
 		BlockType.Type.ICE, \
 		BlockType.Type.WATER, \
 		BlockType.Type.LAVA:
-			return false # Natural landscapes and paving highways stay homogeneous!
+			return false 
 		_:
-			return true # Construction blocks (wood, bricks, glass, logs, etc.) get the bevels!
+			return true 
 
 
 ## Static Helper: Returns standard physical roughness values per BlockType.

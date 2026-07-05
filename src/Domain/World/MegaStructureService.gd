@@ -7,6 +7,8 @@
 #                landmarks and their chunk-offset calculations.
 #              - Open-Closed Principle (OCP): Registers default mega-structures 
 #                internally on startup, removing registration bloat from Bootstrap.
+# MILESTONE 8 UPGRADE:
+#              - Registered the newly designed DesertOasisMegaStructure (Desert step-pyramid).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/MegaStructureService.gd
 # ==============================================================================
@@ -27,6 +29,7 @@ static func initialize_megastructures() -> void:
 	register_structure(HarborCityMegaStructure.new())
 	register_structure(NetherPortalMegaStructure.new())
 	register_structure(StevesCabinMegaStructure.new())
+	register_structure(DesertOasisMegaStructure.new()) # <--- NEW DESERT PYRAMID REGISTERED!
 	
 	print("[MegaStructureService] Initialization complete. Registered Mega-Structures count: ", _structures.size())
 

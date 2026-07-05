@@ -3,11 +3,10 @@
 # Description: Pure Domain Value Object defining all supported voxel block types.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by encapsulating only the block classification maps.
-#              OCP EXTENSION:
-#              - Added ROAD (25) block type to represent dedicated grey paved 
-#                scenery highways.
-#              - Added STONE_SLAB_BOTTOM (26) and STONE_SLAB_TOP (27) to support 
-#                half-height horizontal structures.
+#              OCP EXPANSION (MILESTONE 8 - CAVES & DUNGEONS):
+#              - Added DIAMOND_ORE (28) for rare deep-cave mining rewards.
+#              - Added OAK_PLANKS (29) as a refined wooden construction block.
+#              - Added GLOWSTONE (30) as a solid, high-intensity light-emitting block.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockType.gd
 # ==============================================================================
@@ -49,7 +48,12 @@ enum Type {
 	
 	# Slabs / Half-height Blocks
 	STONE_SLAB_BOTTOM = 26,
-	STONE_SLAB_TOP = 27
+	STONE_SLAB_TOP = 27,
+	
+	# Caves & Desert Expansion
+	DIAMOND_ORE = 28,
+	OAK_PLANKS = 29,
+	GLOWSTONE = 30
 }
 
 
@@ -61,7 +65,7 @@ static func is_solid(type: Type) -> bool:
 		Type.LEAVES, Type.CLOUD: # Leaves and Clouds are non-solid traversable blocks!
 			return false
 		_:
-			# Slabs are solid physical obstacles (return true under the default fallback)
+			# Slabs, Ores, Planks, and Glowstone are solid physical obstacles (default fallback)
 			return true
 
 

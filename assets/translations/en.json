@@ -59,6 +59,7 @@
   "STRUCTURE_HARBOR_CITY": "The Port of Sails & Galleon",
   "BIOME_NETHER_OUTPOST": "Nether Portal Outpost",
   "BIOME_STEVES_CABIN": "Steve's Log Cabin",
+  "STRUCTURE_DESERT_OASIS": "Desert Oasis Pyramid",
 
   "NPC_NAME_ANDROID": "Android",
   "NPC_NAME_DRUID": "Druid",
@@ -67,6 +68,7 @@
   "NPC_NAME_MINER": "Miner",
   "NPC_NAME_VILLAGER": "Villager",
   "NPC_NAME_MERCHANT": "Merchant",
+  "NPC_NAME_GOLEM": "Iron Golem",
 
   "BLOCK_AIR": "Air",
   "BLOCK_STONE": "Stone Block",
@@ -91,6 +93,9 @@
   "BLOCK_BRICKS": "Fortress Bricks",
   "BLOCK_GLASS": "Transparent Glass",
   "BLOCK_BIRCH_LOG": "Slender Birch Log",
+  "BLOCK_DIAMOND_ORE": "Diamond Ore Vein",
+  "BLOCK_OAK_PLANKS": "Refined Oak Planks",
+  "BLOCK_GLOWSTONE": "Luminous Glowstone",
 
   "INVENTORY_EMPTY": "Empty",
   "INVENTORY_UNKNOWN": "Unknown Item",
@@ -135,6 +140,12 @@
   "ITEM_18_USE": "Equip to Hand. Aim at the top face of a Grass or Dirt block and Right-Click (or Q) to sow. Crops grow dynamically over time!",
   "ITEM_20_DESC": "Golden, sun-ripened wheat grains harvested from your mature crop fields. Essential raw material for elite survival baking recipes.",
   "ITEM_20_USE": "Crafting Material. Open the Blueprint Workshop (C) to fabricate valuable emergency rations.",
+  "ITEM_28_DESC": "A rare gray stone vein rich with glittering diamonds. Highly valued by adventurers.",
+  "ITEM_28_USE": "Equip to Hand. Aim at a solid block and Right-Click (or Q) to place it.",
+  "ITEM_29_DESC": "Polished oak wood planks. Lightweight and perfect for rustic architectural builds.",
+  "ITEM_29_USE": "Equip to Hand. Aim at a solid block and Right-Click (or Q) to place it.",
+  "ITEM_30_DESC": "A mysterious, luminous block harvested from portals. Radiates a brilliant warm gold halo.",
+  "ITEM_30_USE": "Equip to Hand. Aim at a solid block and Right-Click (or Q) to place it.",
 
   "DIALOGUE_CONTINUE_CLOSE": "Continue",
   "DIALOGUE_MERCHANT_INTRO": "Greetings, traveler! I am the Golden Bazaar's lead vendor. My furnace runs night and day, but I am desperately out of geothermal fuel. If you bring me a bucket of hot Lava, I will trade you my premium double-crispy Fried Chicken!",
@@ -190,6 +201,8 @@
   "DIALOGUE_DRUID_PLAINS_A": "We protect the ancient Giant Redwoods. Their mossy canopies hold deep magic.",
   "DIALOGUE_DRUID_PLAINS_B": "The forest druids can brew miraculous poultices from simple leaves.",
 
+  "DIALOGUE_GOLEM_RUMBLE": "*Rumble*... PROTECTING VILLAGE ...*Clank*",
+
   "NOTIFICATION_CRAFTING_SUCCESS_HEADER": "Crafting Success",
   "NOTIFICATION_CRAFTING_SUCCESS_DESC": "Successfully fabricated",
   "NOTIFICATION_EQUIP_SUCCESS_HEADER": "Item Equipped",
@@ -242,36 +255,36 @@
   "cloud_ascent_obj": "Climb to altitude Y=18",
 
   "frozen_spire": "15. The Frozen Spire",
-  "frozen_spire_desc": "Cross the threshold of the far North Polar Glaciers and locate the majestic Frozen Ice Spire. It is a massive spired tower constructed entirely of blue ice blocks.",
-  "frozen_spire_obj": "Scale to the top of the Glacial Ice Spire",
+  "frozen_spire_desc": "Explore the majestic hollow ice spires of the far North cap.",
+  "frozen_spire_obj": "Discover the Frozen Spire landmark",
 
   "polar_forager": "16. Polar Forager",
-  "polar_forager_desc": "The freezing blizzards are brutal on your body. Hunt wild polar animals or defeat frozen zombies to stockpile food rations.",
-  "polar_forager_obj": "Amass 5x Fried Chickens in your inventory",
+  "polar_forager_desc": "Gather clean polar water blocks from the glacial shelves.",
+  "polar_forager_obj": "Gather Water blocks",
 
   "red_badlands": "17. The Red Badlands",
-  "red_badlands_desc": "Embark on a massive trek far South, leaving the polar glaciers behind. Discover the deep terracotta steps of the Red Sandstone Canyons.",
-  "red_badlands_obj": "Trek deep into the southern red canyons",
+  "red_badlands_desc": "Travel south towards the terraced steps of the Red Sandstone Canyons.",
+  "red_badlands_obj": "Reach the Red Badlands desert steps",
 
   "neon_pyramid": "18. The Obsidian Pyramid",
   "neon_pyramid_desc": "Travel West into the dark cybernetic Neon Ruins crater and locate the glowing Neon Pyramid pinnacle.",
   "neon_pyramid_obj": "Discover the glowing Neon Ruins Pyramid",
 
   "cyber_hacker": "19. Cyber Hacker",
-  "cyber_hacker_desc": "Hack the ancient network! Collect cybernetic grass blocks from the glowing obsidian soil to build a digital link.",
-  "cyber_hacker_obj": "Gather 32x Grass Blocks in the ruins",
+  "cyber_hacker_desc": "Collect soil blocks from the technological ruins paths.",
+  "cyber_hacker_obj": "Gather Dirt blocks in the ruins",
 
   "neon_shards": "20. Neon Shards",
-  "neon_shards_desc": "Secure structural obsidian components. Mine stone from the deep technological crater.",
-  "neon_shards_obj": "Mine and collect 16x Stone Blocks in the ruins",
+  "neon_shards_desc": "Mine slate stone blocks from the technological crater.",
+  "neon_shards_obj": "Gather Stone blocks",
 
   "swamp_recon": "21. Swamp Reconnaissance",
-  "swamp_recon_desc": "Trek back to the murky Swamp of Sighs. Deliver construction supplies to the deep mud research outpost.",
-  "swamp_recon_obj": "Reach the abandoned swamp outpost coordinates",
+  "swamp_recon_desc": "Navigate the murky water bays of the Swamp of Sighs.",
+  "swamp_recon_obj": "Explore the Swamp of Sighs bay",
 
   "lava_feast": "22. Lava-Fried Feast",
-  "lava_feast_desc": "Voxel construction is unlimited, but the final sky climb requires maximum energy. Prepare a grand deep-fried feast.",
-  "lava_feast_obj": "Amass 10x Fried Chickens",
+  "lava_feast_desc": "Gather swamp water blocks for purification experiments.",
+  "lava_feast_obj": "Gather Water blocks from the swamp",
 
   "cloud_scout": "24. Cloud Scouting",
   "cloud_scout_desc": "Walk among the fluffy, semi-transparent white cloud blocks and locate the highest celestial peak of the kingdom.",

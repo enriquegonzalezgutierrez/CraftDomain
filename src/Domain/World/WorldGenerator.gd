@@ -12,6 +12,13 @@
 #                the shared cache, removing edge line visual seam artifacts.
 #              - Thread Safety: Implemented a static Mutex to protect cache reads/writes
 #                across WorkerThreadPool threads.
+#              MILESTONE 8 UPGRADE (3D CAVES & ORE VEINS):
+#              - Added `_cave_noise` (Fractal Ridged 3D noise) to carve interconnected 
+#                subterranean tunnel networks (Spaghetti caves).
+#              - Programmed procedural vein distribution for DIAMOND_ORE (28) and 
+#                COAL_ORE (21) directly along deep cavern walls.
+#              - Added Deep Lava Pools: Caverns intersecting Y < 4 will automatically 
+#                fill with Lava, creating natural underground danger zones.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/WorldGenerator.gd
 # ==============================================================================
@@ -23,6 +30,7 @@ const CHUNK_MASK: int = 15
 
 var _terrain_noise: FastNoiseLite
 var _detail_noise: FastNoiseLite 
+var _cave_noise: FastNoiseLite # NEW: Fractal Ridged 3D noise for cavern generation
 
 # Maps old Biome landmark IDs to new OCP Structure Blueprint IDs
 const LANDMARK_TO_BLUEPRINT: Dictionary = {
@@ -71,6 +79,17 @@ func _init(p_seed: int = 42) -> void:
 	_detail_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_detail_noise.fractal_octaves = 2
 
+	# ==========================================================================
+	# 3D CAVE NOISE CONFIGURATION
+	# Uses FRACTAL_RIDGED to create interconnected, branching tunnel systems
+	# ==========================================================================
+	_cave_noise = FastNoiseLite.new()
+	_cave_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_cave_noise.seed = p_seed + 777
+	_cave_noise.frequency = 0.025 # Controls the thickness and sprawl of the caves
+	_cave_noise.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	_cave_noise.fractal_octaves = 2
+
 
 ## Generates and fills the internal voxel grid of a given Chunk.
 func generate_chunk(chunk: Chunk) -> void:
@@ -85,8 +104,6 @@ func generate_chunk(chunk: Chunk) -> void:
 	smoothed_heights.resize(Chunk.SIZE * Chunk.SIZE)
 
 	# PASS 2: SEAMLESS BORDER SMOOTHING
-	# We query neighboring chunk profile caches to calculate averages across borders,
-	# removing step line artifacts entirely.
 	for x in range(Chunk.SIZE):
 		for z in range(Chunk.SIZE):
 			var sum: int = 0
@@ -168,6 +185,31 @@ func generate_chunk(chunk: Chunk) -> void:
 							block_type = _determine_surface_block(x, z, global_x, global_z, target_height, biome, biome_id, smoothed_heights)
 						else:
 							block_type = biome.get_block_for_depth(global_y, target_height)
+							
+					# ==========================================================
+					# MILESTONE 8: 3D CAVE CARVING SYSTEM
+					# Carve tunnels only in solid deep stone, keeping the top 4 
+					# layers intact to prevent the surface from looking like Swiss cheese.
+					# ==========================================================
+					if block_type == BlockType.Type.STONE and global_y < target_height - 4 and global_y > 0:
+						# Evaluate 3D Noise density
+						var cave_density := _cave_noise.get_noise_3d(float(global_x), float(global_y * 1.5), float(global_z))
+						
+						# Threshold > 0.45 creates nice winding, continuous tunnels
+						if cave_density > 0.45:
+							# Feature: Deepest caverns (Y < 4) fill with natural Lava!
+							if global_y < 4:
+								block_type = BlockType.Type.LAVA
+							else:
+								block_type = BlockType.Type.AIR
+						else:
+							# If we are NOT in empty cave air, randomly distribute ore veins on solid walls
+							var ore_roll := randf()
+							if ore_roll < 0.015: # 1.5% chance to spawn Coal Ore
+								block_type = BlockType.Type.COAL_ORE
+							elif ore_roll < 0.020 and global_y < 12: # 0.5% chance to spawn glowing Diamond deep underground
+								block_type = BlockType.Type.DIAMOND_ORE
+
 				else:
 					if not on_road: # Roads rise above water level forming beautiful bridge piers
 						if biome_id == 0 and global_y <= 5:

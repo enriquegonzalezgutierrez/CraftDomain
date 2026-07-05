@@ -6,7 +6,9 @@
 # - Single Responsibility Principle (SRP): Only manages static 
 #   registrations of block definitions.
 # - Open-Closed Principle (OCP): Extensible with new block registrations and 
-#   custom geometries (like Slabs) without changing the core meshing or rendering engines.
+#   custom geometries (like Slabs) without changing the core meshing engines.
+# MILESTONE 8 UPGRADE:
+# - Registered properties for DIAMOND_ORE, OAK_PLANKS, and GLOWSTONE.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockLibrary.gd
 # ==============================================================================
@@ -86,7 +88,7 @@ static func _static_init() -> void:
 	# 24. Birch Log
 	_register(BlockType.Type.BIRCH_LOG, "BLOCK_BIRCH_LOG", Color(0.92, 0.92, 0.94), Color(0.88, 0.88, 0.90), Color(0.92, 0.92, 0.94))
 
-	# 25. Paved Road (Slate-grey base colors for the rustic cobble look)
+	# 25. Paved Road
 	_register(BlockType.Type.ROAD, "BLOCK_ROAD", Color(0.35, 0.35, 0.38), Color(0.28, 0.28, 0.30), Color(0.35, 0.35, 0.38))
 	
 	# 26. Stone Slab Bottom (Y: 0.0 - 0.5)
@@ -104,6 +106,19 @@ static func _static_init() -> void:
 		Color(0.55, 0.55, 0.55), Color(0.48, 0.48, 0.48), Color(0.42, 0.42, 0.42), 
 		TopSlabGeometry.new()
 	)
+	
+	# ==========================================================================
+	# MILESTONE 8: CAVES & DESERT EXPANSION BLOCKS
+	# ==========================================================================
+	
+	# 28. Diamond Ore
+	_register(BlockType.Type.DIAMOND_ORE, "BLOCK_DIAMOND_ORE", Color(0.35, 0.38, 0.40), Color(0.28, 0.30, 0.32), Color(0.25, 0.27, 0.28))
+
+	# 29. Oak Planks
+	_register(BlockType.Type.OAK_PLANKS, "BLOCK_OAK_PLANKS", Color(0.85, 0.65, 0.40), Color(0.75, 0.55, 0.30), Color(0.65, 0.45, 0.25))
+
+	# 30. Glowstone
+	_register(BlockType.Type.GLOWSTONE, "BLOCK_GLOWSTONE", Color(1.0, 0.92, 0.35), Color(0.95, 0.85, 0.25), Color(0.85, 0.75, 0.15))
 
 
 static func _register(type: BlockType.Type, key: String, top: Color, side: Color, bottom: Color, geometry: IVoxelGeometry = null) -> void:

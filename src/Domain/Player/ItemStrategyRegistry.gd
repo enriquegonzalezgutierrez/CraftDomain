@@ -5,8 +5,11 @@
 #              - Single Responsibility Principle (SRP): Isolates item-to-behavior 
 #                mappings.
 #              - Open-Closed Principle (OCP): Dynamically extensible. New items 
-#                and specialized building behaviors (like Slabs) can register 
-#                their custom strategy instances at runtime.
+#                and specialized building behaviors can register their custom strategy 
+#                instances at runtime without modifying the interaction handlers.
+# MILESTONE 8 UPGRADE:
+#              - Registered place strategies for DIAMOND_ORE (28), OAK_PLANKS (29),
+#                and GLOWSTONE (30) to allow players to construct them.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/ItemStrategyRegistry.gd
 # ==============================================================================
@@ -37,6 +40,13 @@ static func _static_init() -> void:
 	
 	# 5. Advanced Slab Placement and Fusion (Item ID 26: Stone Slab)
 	register_strategy(26, SlabPlacementStrategy.new(26))
+	
+	# ==========================================================================
+	# MILESTONE 8: CAVES & DESERT EXPANSION BLOCK STRATEGIES
+	# ==========================================================================
+	register_strategy(28, PlaceableBlockStrategy.new(28, BlockType.Type.DIAMOND_ORE))
+	register_strategy(29, PlaceableBlockStrategy.new(29, BlockType.Type.OAK_PLANKS))
+	register_strategy(30, PlaceableBlockStrategy.new(30, BlockType.Type.GLOWSTONE))
 
 
 ## Public Registry API: Binds a custom strategy to an item ID.
