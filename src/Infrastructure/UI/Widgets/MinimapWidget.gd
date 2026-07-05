@@ -13,6 +13,9 @@
 #   Main Thread CPU load for this widget by over 95%.
 # - Replaced `length()` with `length_squared()` in the entity pin loop to 
 #   avoid expensive square root operations on every entity.
+# MILESTONE 8 UPGRADE:
+# - Added dynamic support to render CampfireEntity (ID 203) as warm orange 
+#   glowing pins on the radar canvas.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/MinimapWidget.gd
 # ==============================================================================
@@ -149,7 +152,7 @@ func _on_radar_draw() -> void:
 		
 	var player_offset: Vector2 = Vector2(player_pos.x - chunk_center_x, player_pos.z - chunk_center_z)
 	
-	# 1. DRAW SMOOTH-SLIDING CACHED BIOME TILES
+	# 1. DRAW SMOOTH-SLIDING BIOME BACKGROUND TILES
 	for cx: int in range(-grid_radius, grid_radius + 1):
 		for cz: int in range(-grid_radius, grid_radius + 1):
 			var coord := Vector2i(cx, cz)
@@ -196,6 +199,10 @@ func _on_radar_draw() -> void:
 		elif child is StreetlightEntity:
 			child_pos = child.global_position
 			pin_color = Color(1.0, 0.55, 0.0) # Warm Orange Streetlight pin
+			is_valid_entity = true
+		elif child is CampfireEntity: # <--- NEW CAMPFIRE RADAR SCAN
+			child_pos = child.global_position
+			pin_color = Color(1.0, 0.45, 0.0) # Warm Orange Campfire pin
 			is_valid_entity = true
 			
 		if is_valid_entity:
