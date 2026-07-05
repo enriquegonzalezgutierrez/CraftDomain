@@ -15,6 +15,11 @@
 #                computations (extracting raw `collision_vertices` arrays). 
 #              - The single shape compilation is executed on the Main Thread during 
 #                rendering (taking under 0.05ms), restoring instant fast-travel.
+#              PHYSICS WINDING FIX (BACKFACE COLLISION):
+#              - Added `shape.backface_collision = true`. This forces the physics 
+#                engine to treat both sides of the voxel faces as solid, completely 
+#                eliminating floor-clipping and wall-trapping bugs regardless 
+#                of the CCW/CW vertex winding order.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -278,6 +283,7 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 			var col := CollisionShape3D.new()
 			var shape := ConcavePolygonShape3D.new()
 			shape.set_faces(solid_positions)
+			shape.backface_collision = true # <--- GUARANTEES SOLID PHYSICS FROM BOTH SIDES
 			col.shape = shape
 			static_body.add_child(col)
 				
@@ -360,7 +366,6 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	task_result.liquid_meshes = liquids
 	task_result.set_meta("version", version) 
 	
-	# THREADING FIX: Save the raw vertices instead of compiling the Concave Shape here
 	if build_physics:
 		task_result.set_meta("collision_vertices", visual_data["collision_vertices"])
 	
@@ -398,7 +403,6 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	task_result.liquid_meshes = liquids
 	task_result.set_meta("version", version) 
 	
-	# THREADING FIX: Save the raw vertices instead of compiling the Concave Shape here
 	if build_physics:
 		task_result.set_meta("collision_vertices", visual_data["collision_vertices"])
 	
@@ -461,8 +465,6 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	
 	# ==========================================================================
 	# MAIN THREAD SHAPE COMPILATION (NO THREAD LOCKS)
-	# Instantiates and bakes the Concave shape on the main thread in 0.05ms,
-	# completely preventing parallel thread-thrashing.
 	# ==========================================================================
 	if static_body == null and task.has_meta("collision_vertices"):
 		var collision_verts: PackedVector3Array = task.get_meta("collision_vertices") as PackedVector3Array
@@ -473,7 +475,8 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			
 			var col := CollisionShape3D.new()
 			var shape := ConcavePolygonShape3D.new()
-			shape.set_faces(collision_verts) # Instant compilation on main thread!
+			shape.set_faces(collision_verts)
+			shape.backface_collision = true # <--- GUARANTEES SOLID PHYSICS FROM BOTH SIDES
 			col.shape = shape
 			static_body.add_child(col)
 	# ==========================================================================

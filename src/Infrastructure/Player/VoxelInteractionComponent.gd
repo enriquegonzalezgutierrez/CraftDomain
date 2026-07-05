@@ -16,16 +16,12 @@
 #   bounds calculations. This guarantees that blocks placed under your feet 
 #   will be blocked and highlighted in warning RED, preventing players from 
 #   trapping themselves inside solid collision shapes.
-# SELF-HEALING VECTOR MATHEMATICS:
-# - Implemented Ray-Direction Nudging (`ray_dir * 0.05`). Target coordinates are 
-#   now calculated by pushing the collision point slightly inside the block along 
-#   the look vector, rendering calculations 100% independent of GPU winding errors.
-# - Implemented Dot Product Normal Correction (`hit_normal.dot(ray_dir) > 0.0`). 
-#   If the physics server returns an inverted normal (pointing inward), the vector 
-#   is instantly flipped in mid-air, guaranteeing perfect lateral building.
-# CLEANUP PRODUCTION WORKFLOW:
-# - Removed all diagnostic `[RaycastTelemetry]` print statements to secure a clean 
-#   and silent production console.
+# SELF-HEALING VECTOR MATHEMATICS (FIXED):
+# - RayCast3D now explicitly hits back-faces. This is a critical fallback 
+#   safeguard that prevents the ray from passing through inward-facing normals.
+# - Floating-point truncation error fixed: Normal axis values are now mathematically 
+#   rounded (`round()`) before casting to integers, preventing `0.9999` from 
+#   collapsing to `0` and breaking block placement logic.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -74,6 +70,9 @@ func _setup_raycast() -> void:
 	raycast.target_position = Vector3(0, 0, -REACH_DISTANCE)
 	raycast.collide_with_areas = false
 	raycast.collide_with_bodies = true
+	
+	# BACKFACE FALLBACK SAFEGUARD: Ensures raycast doesn't phase through blocks with inverted winding order
+	raycast.hit_back_faces = true 
 	
 	if is_instance_valid(player):
 		raycast.add_exception(player)
@@ -176,7 +175,8 @@ func _update_target_highlight() -> void:
 				is_buildable = (item_id >= 1 and item_id <= 5) or item_id == 15 or item_id == 18
 				
 		if is_buildable:
-			var build_coord := target_coord + Vector3i(hit_normal)
+			# TRUNCATION FIX: round() ensures 0.9999 floats don't truncate to 0 when casting to int!
+			var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
 			var world_ctrl: WorldController = world_controller as WorldController
 			
 			if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
@@ -388,7 +388,8 @@ func _build_or_interact() -> void:
 		var hit_pos := raycast.get_collision_point() + (ray_dir * 0.05)
 		var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 		
-		var build_coord := target_coord + Vector3i(hit_normal)
+		# TRUNCATION FIX: round() ensures 0.9999 floats don't truncate to 0!
+		var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
 		
 		# Validate strategy requirements
 		if strategy.can_use(player.domain_entity, inventory, target_coord, hit_normal, world_state):

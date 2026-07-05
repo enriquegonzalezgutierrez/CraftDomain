@@ -8,6 +8,11 @@
 #                agricultural crop types by parameterizing IDs and target blocks.
 #              - Dependency Inversion Principle (DIP): Operates entirely on the 
 #                IWorldModifier interface instead of concrete infrastructure classes.
+#              MATH PRECISION FIX:
+#              - Replaced strict float equality `normal.y != 1.0` with `round(normal.y) != 1`. 
+#                This fixes a Godot physics bug where the upward collision normal 
+#                was returned as `0.9999`, which previously blocked players from 
+#                planting seeds correctly.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/PlantableItemStrategy.gd
 # ==============================================================================
@@ -25,7 +30,8 @@ func _init(p_item_id: int, p_crop_block_type: BlockType.Type) -> void:
 
 ## Concrete implementation: Returns true if placed on top of fertile soil (Grass/Dirt) and we have stock.
 func can_use(_player_health: VoxelEntity, inventory: IInventory, target_coord: Vector3i, normal: Vector3, world_state: WorldState) -> bool:
-	if normal.y != 1.0: # Farming seeds can only be sown on the top face of blocks
+	# PRECISION FIX: Round the normal to prevent 0.9999 from failing the equality check
+	if round(normal.y) != 1: # Farming seeds can only be sown on the top face of blocks
 		return false
 		
 	if inventory.get_item_total_quantity(item_id) <= 0:

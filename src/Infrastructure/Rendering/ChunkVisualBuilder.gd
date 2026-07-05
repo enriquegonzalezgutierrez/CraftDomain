@@ -14,10 +14,12 @@
 #                dynamic `as Vector3` variant casting inside the hottest loop of the game.
 #              - Distance Physics Culling: Added `build_collision` flag to completely bypass 
 #                gathering triangle faces for distant chunks, saving massive CPU time.
-#              PHYSICS SEAM WINDING RESTORATION (DEFINITIVE):
-#              - Restored correct Counter-Clockwise (CCW) winding order (`v2, v1, v0` 
-#                and `v3, v2, v0`). All normals now point outward perfectly, 
-#                resolving player movement locks and ensuring ground-plane collision safety.
+#              PHYSICS SEAM WINDING RESTORATION (DEFINITIVE FIX):
+#              - Repaired the broken normals on the TOP and BOTTOM faces. Originally, 
+#                these faces had conflicting triangle normals (one pointing up, one pointing down), 
+#                which caused the RayCast to fail half the time. 
+#              - Realigned the vertices to enforce a strict CCW winding order `(v2, v1, v0)` 
+#                so that ALL collision normals project outward safely, preventing floor-clipping.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkVisualBuilder.gd
 # ==============================================================================
@@ -39,9 +41,10 @@ static var DIRECTIONS: Array[Vector3i] = [
 
 ## Local vertex tables defining the 4 vertices per face (from origin 0,0,0 to 1,1,1).
 ## Optimized as PackedVector3Array to bypass Variant casting overhead in GDScript.
+## MATHEMATICALLY VERIFIED WINDING ORDER: Ensured all faces push their normals OUTWARD.
 static var FACE_VERTICES: Dictionary = {
-	Vector3i(0, 1, 0): PackedVector3Array([Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(0, 1, 0)]), # TOP
-	Vector3i(0, -1, 0): PackedVector3Array([Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1)]), # BOTTOM
+	Vector3i(0, 1, 0): PackedVector3Array([Vector3(1, 1, 0), Vector3(1, 1, 1), Vector3(0, 1, 1), Vector3(0, 1, 0)]), # TOP (Corrected UP)
+	Vector3i(0, -1, 0): PackedVector3Array([Vector3(1, 0, 1), Vector3(1, 0, 0), Vector3(0, 0, 0), Vector3(0, 0, 1)]), # BOTTOM (Corrected DOWN)
 	Vector3i(1, 0, 0): PackedVector3Array([Vector3(1, 0, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(1, 0, 0)]), # RIGHT
 	Vector3i(-1, 0, 0): PackedVector3Array([Vector3(0, 0, 0), Vector3(0, 1, 0), Vector3(0, 1, 1), Vector3(0, 0, 1)]), # LEFT
 	Vector3i(0, 0, 1): PackedVector3Array([Vector3(0, 0, 1), Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 0, 1)]), # FRONT

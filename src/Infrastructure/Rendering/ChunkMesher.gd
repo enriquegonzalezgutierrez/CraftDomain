@@ -11,6 +11,9 @@
 #              - Scaled liquid face vertices slightly outward from their block center 
 #                by a factor of 1.002 (2 millimeters overlap). This matches our solid 
 #                blocks overlap, hermetically sealing all transparent seams on chunk boundaries!
+#              WINDING ORDER FIX:
+#              - Corrected the TOP and BOTTOM face vertices array to strict 
+#                Counter-Clockwise (CCW) order so normals point properly outwards.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkMesher.gd
 # ==============================================================================
@@ -32,18 +35,19 @@ const LIQUID_MARGIN: float = 0.0
 const LIQUID_INSET: float = 1.0
 
 ## Local vertex tables defining the 4 vertices per face (scaled to full 1.0 boundaries).
+## WINDING ORDER FIX: TOP and BOTTOM faces re-arranged to CCW order.
 const LIQUID_FACE_VERTICES: Dictionary = {
 	Vector3i(0, 1, 0): [
-		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_INSET), 
-		Vector3(LIQUID_INSET, LIQUID_INSET, LIQUID_INSET), 
+		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_MARGIN), 
 		Vector3(LIQUID_INSET, LIQUID_INSET, LIQUID_MARGIN), 
-		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_MARGIN)
+		Vector3(LIQUID_INSET, LIQUID_INSET, LIQUID_INSET), 
+		Vector3(LIQUID_MARGIN, LIQUID_INSET, LIQUID_INSET)
 	], # TOP
 	Vector3i(0, -1, 0): [
-		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_MARGIN), 
-		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_MARGIN), 
+		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_INSET), 
 		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_INSET), 
-		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_INSET)
+		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_MARGIN), 
+		Vector3(LIQUID_MARGIN, LIQUID_MARGIN, LIQUID_MARGIN)
 	], # BOTTOM
 	Vector3i(1, 0, 0): [
 		Vector3(LIQUID_INSET, LIQUID_MARGIN, LIQUID_INSET), 
