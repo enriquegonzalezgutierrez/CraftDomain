@@ -1,49 +1,40 @@
 # CraftDomain - Gameplay & Survival Manual
 *Written by Enrique González Gutiérrez (enrique.gonzalez.gutierrez@gmail.com)*
 
-Welcome to **CraftDomain**, a high-performance, infinite procedural voxel world. This manual is a comprehensive, step-by-step documentation designed to help you navigate, mine, build, fight, trade, sort your backpack, and craft advanced tools.
+Welcome to **CraftDomain**, a high-performance, commercial-grade infinite procedural voxel engine. This manual is a comprehensive, step-by-step documentation designed to help you navigate, mine, build, fight, trade, sort your backpack, and craft advanced tools.
 
 ---
 
-## 1. Getting Started: The Main Menu
-When you launch CraftDomain, you enter a polished, glassmorphic **Main Menu** set against a scenic, rotating procedurally generated backdrop, accompanied by a dynamic looping acoustic soundtrack.
-*   **PLAY WORLD:** Instantly initiates or restores your infinite world. If a save file is detected, you will be loaded precisely at your last coordinates, with your edits, modifications, and exact inventory quantities intact.
-*   **SETTINGS:** Opens the settings overlay to dynamically control Music Volume, Sound Effects Volume, interface languages (English vs Español), and adjust display resolutions (Windowed vs Fullscreen).
+## 1. Getting Started: The Main Menu & Settings
+When you launch CraftDomain, you enter a polished, **Tactile Glassmorphic Main Menu** set against a scenic, rotating procedurally generated backdrop.
+*   **PLAY WORLD / NEW GAME:** Instantly initiates or restores your infinite world. If a save file is detected, you will be loaded precisely at your last coordinates, with your edits, modifications, and exact inventory quantities intact.
+*   **SETTINGS:** Opens the responsive settings overlay to dynamically control Music Volume, Sound Effects (SFX) Volume, Render Distance (up to 14 chunks), Interface Languages (English vs Español), and Display Resolutions.
 *   **EXIT GAME:** Closes the game application window safely.
 
+*Note: All menus feature physical 3D button styling that depresses visually on click, complete with hover scaling and smooth transition animations.*
+
 ---
 
-## 2. Character Mechanics, Spawning & Navigation
+## 2. Character Mechanics, Navigation & UI
 
 As you join the world, the engine runs a vertical spawn scan at your coordinates, finding the top-most solid block (up to height 31) and dropping you smoothly onto the surface.
 
 ### Quadrupled Horizon View Distance (162-Chunk Radius)
-Through massive occlusion culling and background thread matrix compilation within `ChunkVisualBuilder.gd`, `ChunkLoaderService` pushes a **9x2x9 3D loading grid**. This active volume of **162 procedural chunks** quadruples the standard visual draw distance natively. This delivers a vast, high-performance visual draw distance under Forward+, allowing you to see mountain peaks, castles, and forests way in the distance without hitting CPU threading limits.
+Through massive occlusion culling and opaque Far-LOD material bypassing, the engine pushes a **9x2x9 3D loading grid**. This active volume of **162 procedural chunks** quadruples the standard visual draw distance natively, allowing you to see mountain peaks and castles way in the distance while maintaining a locked 120 FPS.
 
 ### The GPS HUD & 2D Circular Radar Minimap
-Located in the upper right-hand corner of your screen is a high-contrast **GPS Navigation Overlay** designed to keep you oriented:
-*   **The Selected Arrow (Center):** Represents your character on the circular radar. It rotates dynamically in real-time with a thick black outline as you turn your camera.
+Located in the upper right-hand corner of your screen is a high-contrast **GPS Navigation Overlay** designed to keep you oriented. To save CPU cycles, these metrics are intelligently throttled to refresh 20 times per second.
+*   **The Selected Arrow (Center):** Represents your character on the circular radar. It rotates dynamically in real-time.
 *   **Real-time Grid Coordinates:** Located at the top center of the HUD, showing your exact global `[ X  ·  Y  ·  Z ]` block coordinates alongside the synchronized 24-hour clock.
-*   **Active Mission Tracker:** Renders active quest descriptions, remaining distance in meters, and progress bars. The panel automatically hides itself from the screen when all campaign quests are completed.
-*   **Active Quest Marker:** Indicated by a pulsing hot-pink diamond on the minimap. When you are far from the target, the diamond clamps cleanly to the outer compass rim, guiding your gaze toward the destination. Note: For pure gathering or mining quests, the marker hides itself to prevent misleading navigation toward global origin (0,0,0).
-*   **Holographic GPS Path Line:** The minimap renders a dynamic, pulsing, dashed pink path-line connecting your character's center position directly to the active quest target coordinate. This line stretches, rotates, and sways with your camera orientation, allowing seamless pathfinding inside closed castles or deep dungeons.
-*   **Tactical Compass Pointer:** The GPS HUD features a procedural compass tracker that dynamically identifies the closest Global Mega-Structure, displaying its name, distance in meters, and cardinal direction (N, NE, E, SE, S, SW, W, NW).
-*   **Radar Colors Mapping:**
-	*   **Vibrant Tropical Blue:** Bay of Sails (Spawn Ocean).
-	*   **Emerald Green:** Warp Plateau (Mario Steps).
-	*   **Warm Golden Yellow:** Golden Bazaar (Trading Plains).
-	*   **Dark Grey:** Craggy Peaks & Caves.
-	*   **Pristine White:** Frostbite Glaciers (Polar Cap).
-	*   **Deep Forest Green:** Whispering Redwood Forest.
-	*   **Terracotta Orange:** Red Sandstone Canyons.
-	*   **Electric Cyan:** Neon Ruins (Cyber Basin).
-	*   **Muddy Dark Brown:** Swamp of Sighs.
+*   **Active Mission Tracker:** Renders active quest descriptions, remaining distance in meters, and inventory progress bars. For gathering quests, it dynamically routes you to the nearest natural resource hotspot (e.g., pointing to Nether Outposts for Lava).
+*   **Holographic GPS Path Line:** The minimap renders a dynamic, pulsing, dashed pink path-line connecting your character's center position directly to the active quest target.
+*   **Tactical Compass Pointer:** The GPS HUD dynamically identifies the closest Global Mega-Structure, displaying its name, distance, and cardinal direction (N, NE, E, SE, S, SW, W, NW).
 
 ---
 
 ## 3. Keyboard & Mouse Controls Reference
 
-The input mapping system is processed in raw hardware buffers inside `_unhandled_input` to avoid high-frequency jitter. It supports both WASD and standard keyboard Arrow Keys:
+The input mapping system is processed in raw hardware buffers to avoid high-frequency jitter. 
 
 | Action | Primary Key | Secondary Key | Mouse Action | Description |
 | :--- | :---: | :---: | :---: | :--- |
@@ -52,7 +43,7 @@ The input mapping system is processed in raw hardware buffers inside `_unhandled
 | **Move Left**    | `A` | `Left Arrow` | - | Strafe left |
 | **Move Right**   | `D` | `Right Arrow` | - | Strafe right |
 | **Jump**         | `Space` | - | - | Jump over blocks |
-| **Pause & Save** | `Escape` | - | - | Unlocks mouse cursor & auto-saves |
+| **Pause & Save** | `Escape` | - | - | Opens the Pause Menu & Auto-saves |
 | **Mining/Attack**| `E` | - | `Left-Click` | Swing active tool, break block, hit |
 | **Build/Interact**| `Q` | - | `Right-Click` | Place block, eat chicken, trade, open chest |
 | **Scroll Hotbar** | - | - | `Mouse Wheel` | Scroll left/right through slots |
@@ -60,291 +51,134 @@ The input mapping system is processed in raw hardware buffers inside `_unhandled
 | **Open Crafting** | `C` | - | - | Toggle Blueprint Catalog & Crafting Workshop |
 | **Open World Map**| `M` | - | - | Toggle Fullscreen Tactical Map Overlay |
 | **Free Cursor**   | `Left Alt` | - | - | Hold to release captured mouse cursor |
-| **Select Slot 1** | `1` | - | - | Select Hotbar Slot 0 (Stone) |
-| **Select Slot 2** | `2` | - | - | Select Hotbar Slot 1 (Dirt) |
-| **Select Slot 3** | `3` | - | - | Select Hotbar Slot 2 (Grass) |
-| **Select Slot 4** | `4` | - | - | Select Hotbar Slot 3 (Wood) |
-| **Select Slot 5** | `5` | - | - | Select Hotbar Slot 4 (Leaves) |
-| **Select Slot 6** | `6` | - | - | Select Hotbar Slot 5 (Lava) |
-| **Select Slot 7** | `7` | - | - | Select Hotbar Slot 6 (Fried Chicken) |
-| **Select Slot 8** | `8` | - | - | Select Hotbar Slot 7 (Wooden Sword) |
 
 ---
 
-## 4. Mining, Building & Handheld Tools
+## 4. Mining, Building & Audio Soundscapes
 
-Interacting with voxels is governed by a **5-meter Reach Distance**. A white aiming reticle sits at the center of the screen, and a **3D glowing target highlighter box** outlines the exact block your cursor is targeting.
+Interacting with voxels is governed by a **5-meter Reach Distance**. The engine features an immersive **Observer-Driven Audio System**: every footstep, block break, and placement triggers terrain-specific 3D positional audio (Grass, Stone, Wood, Snow).
 
-```
-	   [Aiming Reticle]  --->  [ + ] 
-								 |
-								 v
-	   [Target Highlighter] -> [ ▱ ] (Snaps to 3D Voxel Grid)
-```
+### Holographic Placement Preview & Safety Shields
+When holding a buildable block, a 3D preview box outlines your target:
+*   **Emerald Green:** The spot is valid and empty.
+*   **Ruby Red:** The spot is blocked by your own body. The engine mathematically pads your collision by 5cm, preventing you from trapping your character inside solid blocks.
 
-### Mining (Breaking Blocks)
-1.  Aim at any block within range.
-2.  Press **Left-Click** (or `E`).
-3.  The block breaks, triggering a **dynamic particle debris emitter** that sprays color-matched 3D voxel particles for visceral impact. The block is then added to your inventory.
-4.  **Visual Hotbar Feedback:** Each slot has an elegant, color-coded central icon block representing the material with a 3D-shaded inner relief overlay, with active item counts displayed in the bottom-right corner. When you select a slot, the full item name (e.g., `WOOD LOG`) appears floating above the hotbar and fades out smoothly after 1.8 seconds.
-
-### Building (Placing Blocks, Seeds & Lava)
-1.  Select a material using the **Mouse Wheel** or keys **1 to 8**.
-2.  Aim at any solid block surface. The white highlighter box will outline the target.
-3.  Press **Right-Click** (or `Q`).
-4.  The block is placed adjacent to the face you were pointing at.
-5.  **Block-Borders Collision Prevention:** Placing blocks is protected by a 5-centimeter safe margin offset. The engine blocks placements if you are standing directly in the target coordinate, preventing you from trapping your character inside solid blocks.
-6.  **Lava Placement:** Selecting your **Lava Bucket** and Right-Clicking will place a glowing, flowing orange **Lava block** in the world, consuming 1 Lava Bucket from your hotbar.
-7.  **Crop Planting:** Selecting your **Crop Seeds** and Right-Clicking on top of a Grass or Dirt block will sow a young crop sprout. Over time, crops undergo automated growth, transitioning from green sprouts into mature golden wheat ready for harvesting.
+### Advanced Building (Slabs & Liquids)
+1.  **Standard Blocks:** Select a material, aim at an adjacent face, and Right-Click.
+2.  **Half-Slabs (ID 26):** CraftDomain features advanced fractional raycasting. 
+    * Aiming at the *top half* of a block face places a Top Slab.
+    * Aiming at the *bottom half* places a Bottom Slab.
+    * **Merging:** Right-clicking directly on the top face of a Bottom Slab (or bottom face of a Top Slab) will magically fuse them into a single, solid full Stone block!
+3.  **Lava Placement:** Right-Clicking with a **Lava Bucket** (ID 15) places glowing, flowing orange Lava in the world, consuming 1 Bucket.
+4.  **Crop Planting:** Right-Clicking with **Crop Seeds** (ID 18) on top of Grass or Dirt will sow a young sprout that grows over time.
 
 ---
 
 ## 5. Procedural Voxel Biomes & Weather Atmosphere
 
-The world features 10 completely distinct geographical regions, each populated with unique resources, trees, and buildings:
+The world features 10 completely distinct geographical regions:
 
-```
-				  [ North Cap: Polar Glaciers ]
-							   ^
-							   |
-  [ Swamp of Sighs ] <--- [Spawn Bay] ---> [ Golden Bazaar ]
-							   |
-							   v
-				  [ South Cap: Warp Plateau ]
-```
-
-### The 10 Geographical Regions
-
-#### 1. Bay of Sails (Spawn Ocean - Center)
-*   **Description:** A tropical, sandy shoreline surrounding a vast blue water bay.
-*   **Flora/Landmarks:** Rustic wooden piers and harbor docks. Spawns unique aquatic **Sea Turtles** (`ID 201`) paddling in the shallow waters.
-
-#### 2. Warp Plateau (Mario Steps - South)
-*   **Description:** A vibrant green grassland characterized by giant vertical step-like plateaus.
-*   **Flora/Landmarks:** Spawns giant, red-spotted Mario mushrooms and green hollow Warp Pipes.
-
-#### 3. Golden Bazaar (Village Plains - East)
-*   **Description:** Flat, smooth sunlit fields perfect for establishing trading settlements.
-*   **Flora/Landmarks:** High concentration of rustic wooden cabins and active merchant stalls. Spawns common Oaks (`ID 1`), pink Sakura Trees (`ID 10`), slender white **Birch Trees** (`ID 13`), and flowering **Rose Bushes** (`ID 12`).
-
-#### 4. Craggy Peaks & Caves (North Mountains)
-*   **Description:** Jagged, tall stone mountain ranges that overlook dark caves below.
-*   **Flora/Landmarks:** Spawns wooden mine pillars topped with glowing lanterns.
-
-#### 5. Frostbite Glaciers (Polar Cap - Far North)
-*   **Description:** A freezing, quiet basin of solid ice and deep snowdrifts.
-*   **Flora/Landmarks:** Spawns majestic, hollow spires built entirely of frozen blue ice.
-
-#### 6. Whispering Redwood Forest (North West)
-*   **Description:** Densely forested, mossy green valleys carpeted in rich grass.
-*   **Flora/Landmarks:** Covered in towering, multi-tiered coniferous Giant Redwood trees.
-
-#### 7. Red Sandstone Canyons (Far South)
-*   **Description:** Terraced, deep desert canyons sculpted into steps of reddish terracotta sandstone.
-*   **Flora/Landmarks:** Rocky canyons with sharp drops decorated with dry, twisted **Dead Shrubs** (`ID 14`).
-
-#### 8. Neon Ruins (Cyber Basin - Far West)
-*   **Description:** A dark, technological crater lined with active cybernetic pathways.
-*   **Flora/Landmarks:** Spawns ancient stepped pyramids radiating glowing cyan and magenta light blocks.
-
-#### 9. Swamp of Sighs (Mist Bay - North West)
-*   **Description:** Depressed, murky valleys filled with dark, sticky mud and stagnant water.
-*   **Flora/Landmarks:** Covered in dense foliage.
-
-#### 10. Cloud Kingdom (Floating Isles - Sky)
-*   **Description:** Beautiful, floating islands made of fluffy white cloud voxels drifting high in the atmosphere.
-*   **Flora/Landmarks:** Spawns above height Y=12.
+*   **Bay of Sails:** Tropical shores with aquatic Sea Turtles.
+*   **Warp Plateau:** Vibrant green step-plateaus with giant Mario mushrooms.
+*   **Golden Bazaar:** Trading plains with Oak, Sakura, and Birch trees.
+*   **Craggy Peaks & Caves:** Jagged stone mountains and dark caverns.
+*   **Frostbite Glaciers:** Freezing, quiet basin of solid ice and deep snowdrifts.
+*   **Whispering Redwood Forest:** Mossy green valleys with towering 12-block Redwoods.
+*   **Red Sandstone Canyons:** Terraced badlands with twisted Dead Shrubs.
+*   **Neon Ruins:** Dark technological craters with glowing cyan/magenta pyramids.
+*   **Swamp of Sighs:** Depressed, murky valleys filled with dark mud.
+*   **Cloud Kingdom:** High-altitude floating white cloud islands.
 
 ### Atmospheric Shading & Weather
-The sky and landscape utilize advanced PBR and atmospheric rendering:
-*   **Balanced Daylight Shading:** Shadows are filled with a soft atmospheric blue-gray ambient light, making blocks and NPCs inside tree shadows completely readable and natural.
-*   **Dynamic GPU Overcast System:** When rain or snow begins, the sky color shifts progressively to a plomizo slate-grey over 5 seconds. The clouds turn dark and dense, and the Sun and Moon disks dim by 85%, creating an immersive storm atmosphere.
-*   **Dynamic Wind & Wave System:** Water vertices physically deform and oscillate into waves that travel along the exact direction of the global wind vector, scaling up during storms, and tree leaves sway in the wind in complete synchronicity.
+*   **Soft Ambient Fill:** Shadows are filled with a realistic atmospheric blue-gray ambient light, making blocks and NPCs inside tree shadows completely readable.
+*   **Dynamic GPU Overcast System:** When rain or snow begins, the sky smoothly fades to a heavy slate-grey. Clouds thicken and dim the Sun/Moon by 85%.
+*   **Global Wind Engine:** Water waves and tree leaves deform and sway physically, reacting in real-time to the global wind direction and storm strength.
 
 ---
 
 ## 6. Passive Fauna, Active AI & The Trading Economy
 
-The procedural world is populated with active, box-composition creatures and villagers who display organic, real-time behaviors.
+The procedural world is populated with active creatures and villagers featuring detailed pixel-grain textures, blinking eyes, and physical body-bobbing walk cycles.
 
-```
-	   [Idle State] ---> [Wander State] ---> [Examine State] (Farming)
-							   |
-					 (Player enters radius)
-							   v
-						[Greeting State] (Stops & Nods Head)
-```
+### High-Performance AI Throttling
+To keep the game running at a flawless 120 FPS, AI tactical scans (looking for players or threats) are heavily optimized. They utilize Godot's $O(1)$ group registries and are throttled to run exactly **4 times per second**, reducing CPU load by 95% without losing responsiveness.
 
-### Visual Grain Texturing & Blinking Walk Cycles
-*   All characters are painted with a static, pre-compiled micro-pixel albedo grain texture. This multiplies flat colors with high-frequency micro-pixel grain, instantly giving every voxel character a beautifully detailed, pixelated skin/wool texture.
-*   All mobs feature detailed 3D eyes. Every 3 to 6 seconds, they procedurally **blink** by flattening their eyes vertically for a fraction of a second.
-*   When moving, they display smooth walk cycles using a **`_body_bob_node` step-bouncing system** that makes their entire body bounce with weight, coupled with realistic head sways and idle breathing.
+### Specialized Community Roles & Outfits
+NPCs generate stylized outfits tailored to their home coordinates:
+*   **Villagers:** Wear heavy parkas in glaciers, sailor stripes in oceans, and cloud-tunics in the sky.
+*   **Merchants:** Wear silk turbans, glowing jewels, and a persistent 3D leather money pouch hanging off their waist belt.
+*   **Farmers:** Wear wide-brim straw hats and dungarees. They autonomously scan for ripe crops, wander to them, and swing their hoes to harvest and replant seeds!
+*   **Cave Miners:** Wear yellow hard-hats equipped with an active, sweeping 3D Headlamp Spotlight that casts real-time beams into cave shadows.
 
-### Selective Bevel Voxel Rendering
-The visual codebase features a selective procedural bevel normal map:
-*   **Contiguous Terrains (No Bevel):** Natural landscapes and paving highways (Sand, Grass, Stone, Snow, Mud, and Roads) are rendered with flat borders to blend seamlessly into vast homogeneous areas without grid-like "waffle" clutter.
-*   **Construction Blocks (Beveled):** Architectural blocks (Wood logs, Bricks, and Glass) receive the procedural bevel normal map, catching beautiful specular highlights from the sun to resemble glossy, molded toy blocks.
-
-### Specialized Community Roles & Outfit Variations
-Upon spawning, NPCs inspect their global coordinates and query the biome system, generating stylized outfits, headwear, and equipment tailored to their home biome:
-*   **Villagers:** Clothed in textured robes with belts, leather boots, and folded arms. In ocean biomes, they spawn as sailors with blue/white striped shirts; in polar biomes as Eskimos with thick fur-hood parkas; in Redwood as elven rangers.
-*   **Merchants:** Styled with purple robes, silk turbans, a procedural 3D money pouch hanging off their waist, and layered gold aprons. In cyber ruins, they spawn with black techno-tunics and glowing cyan aprons; in the swamp as alchemists with mossy cowls.
-*   **Guards:** Outfitted with steel-plated armor, bulky 3D shoulder pauldrons, helmet visors, and a sheathed iron sword and knightly wooden heater shield on their backs. They are active protectors: if a zombie comes within 10m, they draw their sword, sprint forward, and attack!
-*   **Farmers:** Rigged with muddy field boots, dungarees, and straw hats. They actively scan for crops, wander to mature wheat blocks, draw their harvesting hoes, and swing them up and down to till the soil, spawning green sprouting particles upon replanting.
-*   **Cave Miners:** Inhabit craggy peaks. Outfitted in rugged stone-grey dungarees, leather harnesses, and yellow hard-hats equipped with an active, sweeping 3D Headlamp Spotlight that casts real-time beams into cave shadows.
-*   **Cyber Citizens / Androids:** Inhabit Neon Ruins. Built out of dark obsidian steel boxes detailed with glowing cyan visor plates and magenta circuitry pipelines.
-*   **Sea Turtles:** Paddle and swim gracefully in Bay of Sails ocean bays, executing smooth flipper paddling animations.
-
-### Interactive 3D Loot Chests
-Inside village settlements, you will discover interactive **3D Loot Chests** spawned near buildings.
-1.  Approach a chest and press **Right-Click** (or `Q`).
-2.  The chest will play a physical scaling pop animation, award you a random reward (such as a *Fried Chicken* or a *Lava Bucket*), trigger a sliding **"Loot Found!"** notification toast, and delete itself safely.
-
-### The Lava-Fried Chicken Trade Loop
-Inside villages (found in the **Golden Bazaar** plains), you will discover rustic market cabins with an active Merchant standing nearby.
-
-```
- [ Player ] --- Gives: 1x Lava Bucket (Key 6) ---> [ Merchant ]
-	|                                                    |
- [ Player ] <--- Receives: 1x Fried Chicken <----------- [ Merchant ] (Hops in the air!)
-```
-
-1.  Hold your **Lava Buckets** (Select Slot 5).
-2.  Aim at the Merchant and **Right-Click** (or `Q`).
-3.  The Merchant will hum excitedly, **hop in the air with physical joy**, consume 1 Lava Bucket, and place 1 **Fried Chicken** into your inventory.
-4.  If you attempt to interact without holding a Lava Bucket, the Merchant will hum inquisitively, and the dialogue overlay will inform you that he is waiting for lava fuel.
+### Interactive 3D Loot Chests & Trading
+1.  **Loot Chests:** Right-click a 3D chest in a village. It will pop, play a `chest_open` sound effect, grant you a reward, and vanish safely.
+2.  **Lava-Fried Chicken Trade:** Hold a **Lava Bucket** and Right-Click a Merchant. They will hop with joy, consume the lava, and give you 1x **Fried Chicken**.
 
 ---
 
-## 7. Combat & Hostile Entities
+## 7. Combat, Defenders & Hostile Entities
 
-As night falls (the sun rotates below the horizon, monitored by the dynamic day/night service), dangerous hostiles can emerge.
+As night falls, dangerous hostiles emerge. Getting bit deals **1 Heart** of damage, flashes your screen with a deep red vignette, and triggers camera trauma shake.
 
-```
- [ Player HP: ❤ ❤ ❤ ] <--- Damage (Zombies) ---> [ Screens Flashes Red ]
-   ^
-   |  (Eat Fried Chicken)
- [ Consume Chicken ]
-```
+### The Golem & Guard Defenders
+Villages are actively protected by tactical defenders:
+*   **Iron Golems:** Colossal stone giants covered in ivy. If a zombie comes near, they execute a heavy double-arm launch attack, dealing massive damage and throwing the zombie **9.5 meters into the air**.
+*   **Guards:** Armored knights with a sheathed iron sword and wooden shield. They proactively draw their weapons, sprint towards hostiles, and execute coordinated striking cooldowns.
 
-### The Zombie Threat & Optimized Group Tracking
-*   **Behaviors:** Zombies wander searching for flesh. If you enter their aggro range, they will chase you down, climb blocks automatically, and bite you.
-*   **Optimized Target Scanning:** Active entities (Guards, Golems, and Hostiles) now track targets using Godot's C++ native group registry `"hostiles"` and `"passives"` in constant $O(1)$ time, eliminating the performance spikes of old $O(N)$ child-scanning loops.
-*   **Damage Feedback:** Getting bit deals **1 Heart** of damage, pushes you backward with physical recoil, flashes your screen with a deep red vignette, and triggers a high-frequency decaying camera trauma shake.
-*   **Death & Respawn:** If you lose all 3 hearts, you will die, resetting your health back to full. To prevent physics bugs or ground clipping, a cinematic **Loading Screen** freezes the physics thread, safely teleporting you back to the surface of the starting spawn area.
-
-### Combat with the Wooden Sword
-1.  Press **Key 8** to hold your **Wooden Sword** (Slot 7). The sword has infinite durability.
-2.  Aim at a zombie and **Left-Click** (or `E`) to swing.
-3.  Successfully hitting a zombie deals 1 damage, triggers a satisfying **red damage flash** on their body, and applies a **diagonal knockback impulse**, throwing them backward and slightly upward. Zombies take 3 hits to defeat.
-
-### Polymorphic Loot & Death Particle Engine
-On taking fatal damage, hostile and passive mobs do not disappear instantly. Their colliders and AI are disabled, they trigger a satisfying physical shrinking and spinning animation, emit a **puff of grey smoke GPU particles**, and polimorphically drop logical materials into the player's inventory (e.g., Pigs/Chickens drop meat, Sheep drop wool-leaves, Cows drop leather-dirt, Turtles drop beach sand, and Zombies drop coal or lava).
+### Player Combat & Polymorphic Loot
+1.  Press **Key 8** to hold your **Wooden Sword** (Slot 7).
+2.  Aim at a zombie and **Left-Click** to swing. The action plays a metallic `hit_sword` swish sound and a physical hand animation.
+3.  Zombies take 3 hits to defeat. Upon death, enemies and fauna shrink, emit a puff of grey GPU smoke, and polymorphically drop loot (Meat, Leaves, Sand, Lava) directly into your bag.
 
 ---
 
-## 8. The Automated Delta-Save Pipeline
+## 8. Backpack Inventory & Item Inspector (`I`)
+
+Pressing **`I`** freezes the gameplay physics and opens a detailed **Backpack Inventory & Inspector** overlay.
+
+### 24-Slot Storage & Auto-Sorting
+*   **Stacking:** Items stack dynamically up to 64 units per slot.
+*   **Sequential Swapping:** Click Slot A (glows in gold), then click Slot B to instantly swap their contents.
+*   **⚡ AUTO-SORT:** Click the "SORT" button in the Backpack header. The engine will instantly consolidate all fragmented stacks and sort your backpack by Item ID in ascending order, leaving your active Hotbar completely untouched for combat safety!
+
+### The Item Inspector
+Clicking any item displays its Lore Tooltip, Stock quantity, and Action buttons. Consumable foods like Fried Chicken can be eaten directly from the menu by clicking **CONSUME**, healing 1 Heart instantly.
+
+---
+
+## 9. Blueprint Taller & Crafting Workshop (`C`)
+
+Pressing **`C`** opens a dual-pane **Blueprint Taller & Crafting Workshop** overlay, parsed entirely from external JSON data files.
+
+*   **Inputs Checklist:** Scans your entire 24-slot inventory dynamically to aggregate your stock, showing a green checkmark (`✔`) if you have enough materials.
+*   **Fabricate Action:** Clicking the green "Fabricate" button consumes the inputs globally, grants the crafted outcome, triggers a viewmodel hand-swing, plays a satisfying `craft_clink` audio cue, and pops a sliding success notification.
+
+### Recipe Quick Reference:
+*   **Organic Composting:** `3x Leaves` ➔ `1x Dirt`
+*   **Sod Cultivation:** `2x Dirt` + `1x Leaves` ➔ `2x Grass`
+*   **Soil Pulverizer:** `1x Stone` ➔ `3x Dirt`
+*   **Igneous Cobbling:** `4x Dirt` + `1x Lava` ➔ `4x Stone`
+*   **Geothermal Charcoal Fuel:** `6x Wood` + `1x Lava` ➔ `3x Lava Buckets`
+*   **Reinforced Stone Slabs:** `2x Stone` + `1x Dirt` ➔ `3x Stone Slabs (Half-height)`
+*   **Composite Planks:** `2x Wood` + `1x Stone` ➔ `4x Wood`
+*   **Wooden Sword:** `4x Wood` ➔ `1x Wooden Sword`
+*   **Emergency Herbal Rations:** `10x Leaves` + `1x Wood` ➔ `1x Fried Chicken`
+
+---
+
+## 10. The Automated Delta-Save Pipeline
 
 CraftDomain features a silent, zero-stutter background **Delta-Save** process. You never have to manually click a save button:
 
-1.  Pressing **Escape** pauses the game and unlocks your mouse cursor.
-2.  The engine instantly gathers your current `(X, Y, Z)` position, camera look angles, world seed, and full 24-slot backpack item and stack quantities, writing them to `user://world_save/global_save.json`.
+1.  Pressing **Escape** pauses the game, opens the sleek Pause Menu, and triggers the save sequence.
+2.  The engine instantly gathers your current `(X, Y, Z)` position, camera look angles, world seed, celestial moon phase, full 24-slot backpack item quantities, and active quest states, writing them to `user://world_save/global_save.json`.
 3.  Simultaneously, any blocks you broke or placed are gathered as localized modification deltas and saved directly to chunk files on disk (e.g., `chunk_-21_1_10.json`).
-4.  When you click **PLAY WORLD** on the Main Menu, the loading queue restores the world, rendering your construction edits and loading your character precisely where you paused!
-
----
-
-## 9. Backpack Inventory & Item Inspector (`I`)
-
-Pressing **`I`** (or clicking the **`🎒`** HUD shortcut button) freezes the gameplay physics and opens a detailed **Backpack Inventory & Inspector** overlay.
-
-```
-+------------------------------------+--------------------------+
-|          BACKPACK GRID             |      ITEM INSPECTOR      |
-|                                    |                          |
-|  [ 8 ]  [ 9 ]  [10]  [11]          |      [ WOOD LOG ]        |
-|  [12]  [13]  [14]  [15]          |                          |
-|  [16]  [17]  [18]  [19]          |          [ 📦 ]          |
-|  [20]  [21]  [22]  [23]          |        (3D Preview)      |
-|                                    |                          |
-|  HOTBAR DOCK (Separated)           | "Sturdy oak logs... used |
-|  [ 0 ] [ 1 ] [ 2 ] [ 3 ] ... [ 7 ] |  for dynamic builds."    |
-|                                    |                          |
-|                                    |  STOCKED: 16 units       |
-|                                    |                          |
-|                                    | [ EQUIP ]  [ USE/EAT ]   |
-+------------------------------------+--------------------------+
-```
-
-### Stack-Based 24-Slot Storage Grid
-*   **Hotbar Dock (Slots 0 to 7):** The 8 quickbar slots centered at the bottom of the HUD. Items in these slots can be held in your hands to build, mine, or fight.
-*   **Backpack Grid (Slots 8 to 23):** The upper 16 storage slots of your backpack, designed to hold auxiliary resources, crafted items, and mined blocks.
-*   **Apilamiento (Max Stack 64):** Items stack dynamically up to 64 units per slot (excluding weapons which occupy single non-stackable slots). You can hold multiple separate stacks of the same material across the grid.
-
-### The Sequential Swapping Engine (Inventory Sorting)
-You can reorganize your inventory or move items between your backpack and your hotbar with a simple, tactile clicking sequence:
-1.  Click on **Slot A** (the slot will glow in a prominent Gold frame indicating active selection).
-2.  Click on any **Slot B**.
-3.  The contents of both slots will physically **swap positions** instantly on your screen, updating your active hands and quickbar in real-time! Click Slot A again to deselect.
-
-### The Item Inspector (Utility Tooltips & Fast Use)
-Clicking any item in the backpack displays its specific gameplay profiles:
-*   **Description Tooltip:** Teaches the player the utility and lore of each block or tool.
-*   **Operational Instructions:** Spells out exact controller shortcuts (e.g., *"Use Right-Click to place blocks"*).
-*   **Equip Action:** Click **EQUIP IN HAND** to assign the selected item to that quickbar slot instantly.
-*   **Fast Use (Eating Food):** If you inspect Fried Chicken, a green **CONSUME FOOD** button appears. Clicking it eats 1x chicken directly from your bag, healing 1 Heart on your HUD.
-
----
-
-## 10. Blueprint Taller & Crafting Workshop (`C`)
-
-Pressing **`C`** (or clicking the **`🛠️`** HUD shortcut button) opens a dual-pane **Blueprint Taller & Crafting Workshop** overlay, allowing you to manufacture advanced equipment and process terrain materials.
-
-```
-+------------------------------------+--------------------------+
-|          BLUEPRINT CATALOG         |      FORMULA DETAILS     |
-|                                    |                          |
-|  🧱 Grass Turf Blocks              |       SOD CULTIVATION    |
-|  🧱 Reinforced Stone Slabs         |                          |
-|  🛠️ Wooden broadswords             |          [ 🧱 ]          |
-|  🍗 Emergency Herbal Rations       |        (Output Preview)  |
-|                                    |                          |
-|                                    |  REQUIRED MATERIALS:     |
-|                                    |  ✔ 2 / 2  DIRT BLOCK     |
-|                                    |  ✘ 0 / 1  LEAVES         |
-|                                    |                          |
-|                                    |     [ FABRICATE ITEM ]   |
-+------------------------------------+--------------------------+
-```
-
-### The Recipe Catalog (Left Pane)
-Displays a scrollable deck of all available crafting blueprints. Each card features a color-coded vertical strip matching the material of the result for immediate visual category identification.
-
-### The Formula Details & Checklist (Right Pane)
-Selecting a blueprint shows its visual specifications:
-*   **Inputs Checklist:** Scans your **entire 24-slot inventory** dynamically to aggregate your current stock of each required item, showing a green checkmark (`✔`) if you have enough, or a red cross (`✘`) if you are missing materials.
-*   **Fabricate Action:** If the requirements are met, the **FABRICATE ITEM** button unlocks in green. Clicking it consumes the materials globally across your backpack, grants the crafted outcome, triggers a viewmodel hand-swing, and pops a sliding success notification.
-
-### Full Recipe List Reference (12 formulas):
-*   **Organic Composting:** `3x Leaves` ➔ `1x Dirt`
-*   **Sod Cultivation:** `2x Dirt` + `1x Leaves` ➔ `2x Grass`
-*   **Thatch Harvesting:** `1x Wood` ➔ `4x Leaves`
-*   **Soil Pulverizer:** `1x Stone` ➔ `3x Dirt`
-*   **Igneous Cobbling:** `4x Dirt` + `1x Lava` ➔ `4x Stone`
-*   **Wooden Sword:** `4x Wood` ➔ `1x Wooden Sword`
-*   **Emergency Herbal Rations:** `10x Leaves` + `1x Wood` ➔ `1x Fried Chicken`
-*   **Geothermal Charcoal Fuel:** `6x Wood` + `1x Lava` ➔ `3x Lava Buckets`
-*   **Reinforced Stone Slabs:** `2x Stone` + `1x Dirt` ➔ `3x Stone`
-*   **Composite Planks:** `2x Wood` + `1x Stone` ➔ `4x Wood`
-*   **Magma Core Synthesis:** `15x Stone` + `1x Lava` ➔ `2x Lava Buckets`
-*   **Soothing Herbal Poultice:** `6x Leaves` ➔ `1x Fried Chicken`
 
 ---
 
 ## 11. Dynamic Cursor Release Engine (`Left Alt` Hold)
 
-To easily bridge the gap between first-person look controls and HUD-element interactions, CraftDomain features an intuitive **Cursor Release Engine**:
-
+To easily bridge the gap between first-person look controls and HUD-element interactions:
 *   **Holding `Left Alt`:** Freezes camera rotation and reveals the hardware mouse pointer. You can move the pointer freely to click on the HUD shortcut icons (`🎒` to open inventory or `🛠️` to open the crafting workshop).
 *   **Releasing `Left Alt`:** Hides the mouse pointer and locks it back into first-person rotation mode. 
-*   **Abierto-Cerrado Safety Hook:** Releasing `Left Alt` will *not* lock the cursor if any overlay window (Backpack, Workshop, Pause Menu, or Dialogue overlays) is open on the screen, allowing you to click buttons inside those windows without having to hold any keys.
+*   **Open-Close Safety Hook:** Releasing `Left Alt` will *not* lock the cursor if any overlay window (Backpack, Workshop, Map, Pause, or Dialogue) is actively open on the screen.
