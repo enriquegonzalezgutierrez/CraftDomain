@@ -7,15 +7,13 @@
 #   contract with safe default virtual values for subclasses.
 # - Single Responsibility Principle (SRP): Decoupled into specialized 
 #   components, leaving this class strictly in charge of sliding physics.
-# VISUAL QUEST INDICATOR UPGRADE (GOLDEN ARROW WITH X-RAY):
-# - Instantiated a programmatic 3D `FloatingQuestArrow` (PrismMesh) hovering 2.5m 
-#   above the target NPC's head.
-# - Applied strict X-Ray rendering configurations (`no_depth_test = true` and `render_priority = 10`). 
-#   The golden quest indicator now shines on top of solid castle walls, roofs, and obstacles, 
-#   guaranteeing players can locate target NPCs inside closed buildings.
-# HIGH PERFORMANCE AI UPGRADE:
-# - Automatic group registration to `"passives"` on `_ready()` to allow fast $O(1)$ AI scanning.
-# - Instantly removes itself from the group on death to stop other entities from processing it.
+# - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
+#   statically through the decoupled CelestialService provider.
+# COLLISION COHESION UPGRADE:
+# - Displaces the physical collider downward by 6 cm relative to the visual origin.
+#   This creates a physical cushion that completely offsets Godot's concave seam
+#   penetration bugs, keeping the feet resting stably on top of block textures.
+# - Continuous gravity application maintains firm, jitter-free floor contact.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -86,9 +84,19 @@ func _ready() -> void:
 	var col := CollisionShape3D.new()
 	col.name = "EntityCollider"
 	var box_shape := BoxShape3D.new()
-	box_shape.size = _get_collision_box_size() * Vector3(1.0, visual_component.variant_height_scale, 1.0)
+	
+	var size_scale := Vector3(1.0, visual_component.variant_height_scale, 1.0)
+	box_shape.size = _get_collision_box_size() * size_scale
 	col.shape = box_shape
-	col.position = _get_collision_box_position() * visual_component.variant_height_scale
+	
+	# ---> COLLISION CUSHION HOOK <---
+	# Displaces the physical collider downward by 6 cm relative to the visual origin.
+	# This forces Godot to stop the NPC exactly 6 cm higher, keeping the feet (resting at Y=0)
+	# safely on top of block textures even during corner seam penetration.
+	var target_pos := _get_collision_box_position() * visual_component.variant_height_scale
+	target_pos.y -= 0.06 * visual_component.variant_height_scale
+	col.position = target_pos
+	
 	add_child(col)
 
 
@@ -272,8 +280,10 @@ func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
 		
-	if not is_on_floor():
-		velocity.y -= gravity * delta
+	# DIP Compliance: Always apply downward gravity to maintain stable floor-contact.
+	# Continuous gravity maintains a firm floor snap, preventing the collider from 
+	# floating and jittering below the block surface during move_and_slide calculations.
+	velocity.y -= gravity * delta
 
 	# Process AI component decision tree calculations
 	if is_instance_valid(ai_component):

@@ -5,6 +5,10 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates graphics and 
 #                procedural cosmetic calculations from physical and behavioral AI.
+#              GROUND CLIPPING FIXES:
+#              - Added a 2 cm baseline offset to `visual_root.position.y` to offset
+#                physics-body `safe_margin` indentation.
+#              - Shuffled the idle breathing sine wave to remain strictly non-negative.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/NPCVisualComponent.gd
 # ==============================================================================
@@ -56,6 +60,9 @@ func _setup_joints() -> void:
 	
 	# Root-scaling based on the height variant
 	visual_root.scale = Vector3(1.0, variant_height_scale, 1.0)
+	
+	# GROUND CLIPPING OFFSET: Elevate the mesh by 2cm to clear the physics safe_margin
+	visual_root.position.y = 0.02
 	
 	body_bob_node = Node3D.new()
 	body_bob_node.name = "BodyBobJoint"
@@ -209,7 +216,9 @@ func _process_procedural_animations(delta: float) -> void:
 			var bounce_height := 0.05 if _host.call("_is_avian") else 0.035
 			body_bob_node.position.y = abs(sin(_animation_time * speed_mult)) * bounce_height
 		else:
-			body_bob_node.position.y = lerp(body_bob_node.position.y, sin(_animation_time * 2.0) * 0.015, delta * 5.0)
+			# Shift the sine wave up so it oscillates between 0.0 and +1.5cm, preventing ground clipping
+			var breathe_offset: float = (sin(_animation_time * 2.0) + 1.0) * 0.0075
+			body_bob_node.position.y = lerp(body_bob_node.position.y, breathe_offset, delta * 5.0)
 			
 	# C. Specialized Joint Sways (Head & Arms)
 	if active_task == NPCAIComponent.TaskState.GREETING or active_task == NPCAIComponent.TaskState.CHATTIING or is_talking:

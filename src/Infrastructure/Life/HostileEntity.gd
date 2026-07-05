@@ -4,11 +4,8 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates hostile AI behaviors,
 #                chase tracking, and combat cooldowns.
-# HIGH PERFORMANCE AI UPGRADE:
-# - Automatic group registration to `"hostiles"` on `_ready()` to allow fast $O(1)$ AI scanning
-#   by defending guards and golems.
-# - Instantly removes itself from the active combat group on death to stop other entities 
-#   from executing search calculations.
+#              - Dependency Inversion Principle (DIP): Displaces the physical collider 
+#                downward by 6 cm, preventing feet sinking inside blocky meshes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -93,7 +90,11 @@ func _setup_collision() -> void:
 	var box_shape := BoxShape3D.new()
 	box_shape.size = Vector3(0.5, 1.4, 0.5)
 	col.shape = box_shape
-	col.position = Vector3(0, 0.7, 0)
+	
+	# ---> COLLISION CUSHION HOOK <---
+	# Displaces the physical collider downward by 6 cm (position 0.64 instead of 0.7)
+	# relative to the visual origin. Keeps feet resting stably on top of block surfaces.
+	col.position = Vector3(0, 0.64, 0)
 	add_child(col)
 
 
@@ -265,8 +266,9 @@ func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 
-	if not is_on_floor():
-		velocity.y -= gravity * delta
+	# Always apply gravity to prevent floor-jitter and maintain firm contact.
+	# Godot's move_and_slide handles snapping stop on floor blocks automatically.
+	velocity.y -= gravity * delta
 
 	if _attack_cooldown_timer > 0.0:
 		_attack_cooldown_timer -= delta
