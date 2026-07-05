@@ -226,6 +226,10 @@ func _mine_or_attack() -> void:
 	if is_instance_valid(viewmodel):
 		viewmodel.play_swing_animation()
 	
+	# --- EMIT SWING SIGNAL FOR AUDIO OBSERVERS (Milestone 10) ---
+	if is_instance_valid(player) and player.has_method("swing_sword"):
+		player.swing_sword()
+	
 	if not raycast.is_colliding() or not is_instance_valid(camera): 
 		return
 		

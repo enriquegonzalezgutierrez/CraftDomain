@@ -19,6 +19,9 @@
 class_name WorldController
 extends Node3D
 
+## Signal emitted when a block is broken (AIR) or placed globally (Milestone 10)
+signal block_modified(global_pos: Vector3i, type: BlockType.Type)
+
 ## Core World modules (Domain States)
 var world_state: WorldState
 var generator: WorldGenerator
@@ -229,10 +232,12 @@ func get_active_chunk_nodes() -> Dictionary:
 	return {}
 
 
-## Places or breaks a block globally and delegates fast asynchronous redraw queues
+## Places or breaks a block globally and delegates fast asynchronus redraw queues
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	if is_instance_valid(chunk_manager):
 		chunk_manager.set_block_globally(global_pos, type)
+		# --- EMIT MODIFICATION SIGNAL FOR AUDIO OBSERVERS (Milestone 10) ---
+		block_modified.emit(global_pos, type)
 
 
 ## Triggers the global save sequence via WorldPersistenceService

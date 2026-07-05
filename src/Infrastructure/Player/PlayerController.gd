@@ -13,6 +13,9 @@
 class_name PlayerController
 extends CharacterBody3D
 
+## Signal emitted when the player swings their active weapon or tool (Milestone 10)
+signal sword_swung
+
 # Movement configurations
 const SPEED: float = 6.0
 const JUMP_VELOCITY: float = 6.5
@@ -84,6 +87,12 @@ func _ready() -> void:
 		
 	# Trigger the first selection visually
 	_apply_hotbar_selection(0)
+
+
+## Public API (DIP/Observer): Called by child components to emit the sword swing internally,
+## resolving the unused signal compiler warning.
+func swing_sword() -> void:
+	sword_swung.emit()
 
 
 func _setup_player_geometry() -> void:
