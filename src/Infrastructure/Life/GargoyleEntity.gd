@@ -8,8 +8,8 @@
 #                and satisfies base physics and signal contracts.
 #              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
 #                statically through the decoupled CelestialService provider.
-# NOCTURNAL BEHAVIOR ENGINE:
-#              - Daytime (STONE): AI freezes, gravity drops model flat on ground level (+0.802m).
+# NOCTURNAL BEHAVIOR ENGINE (V5 Telemetry):
+#              - Daytime (STONE): AI freezes, gravity drops model flat on ground level (+0.8982m).
 #              - Nighttime (AWAKE): Awakens, hovers at +2.5m using active 
 #                procedural flight sways, and aggressively pursues the player.
 #              - Upon death, polymorphically drops 1x Stone Block (ID 1).
@@ -80,7 +80,9 @@ func _setup_collision() -> void:
 	var col := CollisionShape3D.new()
 	col.name = "GargoyleCollider"
 	var box_shape := BoxShape3D.new()
-	box_shape.size = Vector3(1.0, 1.6, 2.1)
+	
+	# Calibrated to the scaled bounding box of the GLB model (1.8m height, 2.35m width after rotation)
+	box_shape.size = Vector3(2.35, 1.80, 1.1)
 	col.shape = box_shape
 	col.position = Vector3(0, 0.8, 0)
 	add_child(col)
@@ -105,13 +107,13 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(_model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
 		# ======================================================================
-		# 1. Scale model by 2.1x to achieve a realistic height of ~1.6m
-		_model_node.scale = Vector3(2.1, 2.1, 2.1) 
+		# 1. Scale model by 2.3504x to achieve a perfect humanoid height of 1.8m
+		_model_node.scale = Vector3(2.3504, 2.3504, 2.3504) 
 		
-		# 2. Ground level offset: Raise by +0.802m to align paws with collision floor
-		_model_node.position = Vector3(0.0, 0.802, 0.0) 
+		# 2. Ground level offset: Raise by +0.8982m to align paws with collision floor
+		_model_node.position = Vector3(0.0, 0.8982, 0.0) 
 		
 		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
 		_model_node.rotation_degrees = Vector3(0, -90, 0) 
@@ -131,6 +133,7 @@ func _register_glb_materials(node: Node) -> void:
 			mat = node.mesh.surface_get_material(0) as Material
 			
 		if mat is BaseMaterial3D:
+			# Duplicate material so the red flash doesn't affect other instances
 			var new_mat := mat.duplicate() as BaseMaterial3D
 			node.material_override = new_mat
 			var original_color: Color = new_mat.albedo_color
@@ -239,7 +242,7 @@ func _process(delta: float) -> void:
 			var flat_velocity := Vector2(velocity.x, velocity.z)
 			var is_moving := flat_velocity.length_squared() > 0.1
 			
-			# 1. Thermal Hover Bobbing (Up and down floating)
+			# 1. Thermal Hover Bobbing (Smooth vertical sine wave)
 			var hover_bob := sin(_animation_time * 5.0) * 0.25
 			_model_node.position.y = 2.5 + hover_bob
 			
@@ -252,7 +255,7 @@ func _process(delta: float) -> void:
 				_model_node.rotation.x = 0.0
 		else:
 			# Daytime (STONE): Lerp back to solid ground position and 0° rotation
-			_model_node.position.y = lerp(_model_node.position.y, 0.802, delta * 5.0)
+			_model_node.position.y = lerp(_model_node.position.y, 0.8982, delta * 5.0)
 			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(-90.0), 0.0), delta * 5.0)
 
 

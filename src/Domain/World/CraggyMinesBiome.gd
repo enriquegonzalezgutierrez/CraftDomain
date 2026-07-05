@@ -6,8 +6,8 @@
 #              SOLID COMPLIANCE: 
 #              - Liskov Substitution Principle (LSP): Fully implements IBiome.
 #              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
-#                spawn livestock, deep coal veins, and nocturnal Gargoyles (12) 
-#                perched on mountain peaks.
+#                spawn livestock, deep coal veins, nocturnal Gargoyles (12), 
+#                and sneaky, rapid-trotting Goblins (13) in mountain caves.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/CraggyMinesBiome.gd
 # ==============================================================================
@@ -52,7 +52,7 @@ func get_outpost_population_ids() -> Array[int]:
 	return specialized_population
 
 
-## Concrete Override (OCP): Spawns livestock [0, 1], Coal Ore (21), and nocturnal Gargoyles (12).
+## Concrete Override (OCP): Spawns livestock [0, 1], Coal Ore (21), Gargoyles (12), and Goblins (13).
 func get_wilderness_wildlife_ids() -> Array[int]:
-	var local_wildlife: Array[int] = [0, 1, 21, 12]
+	var local_wildlife: Array[int] = [0, 1, 21, 12, 13]
 	return local_wildlife

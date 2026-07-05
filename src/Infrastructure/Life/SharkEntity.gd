@@ -8,10 +8,17 @@
 #                to the sub-component, and physics movements to the base class.
 #              - Dependency Inversion Principle (DIP): Automatically prunes 
 #                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-# PROCEDURAL SWIMMING ENGINE:
+# PROCEDURAL SWIMMING ENGINE (V5 Telemetry):
 #              - Injected real-time sinusoidal yaw oscillations (tail-wagging) 
 #                modulating dynamically based on swimming velocity.
 #              - Spawns only in water-based biomes, pursuing players within 16 meters.
+# MATHEMATICAL CALIBRATION:
+#              - Total model height is 1.125m. Scaled by 1.6006x to achieve a 
+#                realistic predator height/diameter of ~1.8m.
+#              - Model origin is centered. Raised the model Y-position by +0.8975m 
+#                to anchor the fins flat on the physical water baseline.
+#              - Corrected the sideways orientation mesh bug by setting the 
+#                Y-axis rotation offset to -90 degrees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/SharkEntity.gd
 # ==============================================================================
@@ -73,9 +80,11 @@ func _setup_collision() -> void:
 	var col := CollisionShape3D.new()
 	col.name = "SharkCollider"
 	var box_shape := BoxShape3D.new()
-	box_shape.size = Vector3(0.9, 1.2, 1.8) # Streamlined aquatic collider
+	
+	# Calibrated to the scaled bounding box of the GLB model (1.80m height, 1.10m depth, 0.85m width after rotation)
+	box_shape.size = Vector3(0.85, 1.80, 1.10) 
 	col.shape = box_shape
-	col.position = Vector3(0, 0.6, 0)
+	col.position = Vector3(0, 0.9, 0)
 	add_child(col)
 
 
@@ -98,14 +107,14 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(_model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
 		# ======================================================================
-		# 1. Scale model by 0.3x to achieve a realistic great white length of ~1.8m
-		_model_node.scale = Vector3(0.3, 0.3, 0.3) 
+		# 1. Scale model by 1.6006x to achieve a realistic great white length of ~1.8m
+		_model_node.scale = Vector3(1.6006, 1.6006, 1.6006) 
 		
-		# 2. Origin is centered. Raise it up by +0.966m on Y
+		# 2. Origin is centered. Raise it up by +0.8975m on Y
 		#    to anchor the fins flat on the water collision baseline
-		_model_node.position = Vector3(0.0, 0.966, 0.0) 
+		_model_node.position = Vector3(0.0, 0.8975, 0.0) 
 		
 		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
 		_model_node.rotation_degrees = Vector3(0, -90, 0) 
@@ -125,6 +134,7 @@ func _register_glb_materials(node: Node) -> void:
 			mat = node.mesh.surface_get_material(0) as Material
 			
 		if mat is BaseMaterial3D:
+			# Duplicate material so the red flash doesn't affect other instances
 			var new_mat := mat.duplicate() as BaseMaterial3D
 			node.material_override = new_mat
 			var original_color: Color = new_mat.albedo_color
@@ -214,7 +224,7 @@ func _spawn_death_particles() -> void:
 	var world_node := get_parent() as Node
 	if is_instance_valid(world_node):
 		world_node.add_child(particles)
-		particles.global_position = global_position + Vector3(0, 0.6, 0)
+		particles.global_position = global_position + Vector3(0, 0.9, 0)
 		particles.emitting = true
 		get_tree().create_timer(1.0).timeout.connect(particles.queue_free)
 
@@ -226,21 +236,21 @@ func _process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 		
-	if not is_instance_valid(_model_node):
-		return
+	if is_instance_valid(_model_node):
+		_animation_time += delta
 		
-	_animation_time += delta
-	var flat_velocity := Vector2(velocity.x, velocity.z)
-	
-	if flat_velocity.length() > 0.1:
-		# Fast tail wagging when swimming rapidly (Yaw oscillation on Z-axis offset)
-		var swim_speed := flat_velocity.length() * 2.5
-		_model_node.rotation.y = deg_to_rad(-90.0) + sin(_animation_time * swim_speed) * 0.22
-		_model_node.rotation.z = cos(_animation_time * swim_speed * 0.5) * 0.08 # Gentle roll body roll
-	else:
-		# Calm, idle ocean current swaying
-		_model_node.rotation.y = lerp(_model_node.rotation.y, deg_to_rad(-90.0), delta * 5.0)
-		_model_node.rotation.z = sin(_animation_time * 1.5) * 0.03
+		var flat_velocity := Vector2(velocity.x, velocity.z)
+		var is_moving := flat_velocity.length_squared() > 0.1
+		
+		if is_moving:
+			# Fast tail wagging when swimming rapidly (Yaw oscillation on Z-axis offset)
+			var swim_speed := flat_velocity.length() * 2.5
+			_model_node.rotation.y = deg_to_rad(-90.0) + sin(_animation_time * swim_speed) * 0.22
+			_model_node.rotation.z = cos(_animation_time * swim_speed * 0.5) * 0.08 
+		else:
+			# Calm, idle ocean current swaying
+			_model_node.rotation.y = lerp(_model_node.rotation.y, deg_to_rad(-90.0), delta * 5.0)
+			_model_node.rotation.z = sin(_animation_time * 1.5) * 0.03
 
 
 # ==============================================================================

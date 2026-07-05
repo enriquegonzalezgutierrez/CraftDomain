@@ -3,18 +3,20 @@
 # Description: Golem NPC physics controller. A giant stone defender of villagers 
 #              that patrols outposts, scans for zombies, and executes high-impact 
 #              vertical tossing attacks to protect the plains.
-# SOLID COMPLIANCE: 
+#              SOLID COMPLIANCE: 
 #              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity, 
 #                safely overriding movement, task routing, and visual meshes.
 #              - Single Responsibility Principle (SRP): Delegates visual rendering 
 #                to the sub-component, and physics movements to the base class.
-# MATHEMATICAL CALIBRATION:
-#              - Total model height is 14.0m. Scaled by 0.25x to achieve a 
+#              - Dependency Inversion Principle (DIP): Automatically prunes 
+#                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
+# MATHEMATICAL CALIBRATION (V5 Telemetry):
+#              - Total model height is 6.137m. Scaled by 0.5703x to achieve a 
 #                colossal giant height of ~3.5m.
-#              - Model origin is offset. Raised the model Y-position by +2.445m 
+#              - Model origin is offset. Raised the model Y-position by +1.8376m 
 #                to anchor its feet flat on the physical voxel colliders.
-#              - Corrected the sideways orientation mesh bug by setting the 
-#                Y-axis rotation offset to -90 degrees.
+#              - Corrected the Z-Asymmetry (5.640 ratio) pivot offset bug by setting the 
+#                Y-axis rotation offset to 180 degrees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GolemEntity.gd
 # ==============================================================================
@@ -52,29 +54,35 @@ func _build_visual_representation() -> void:
 		var model_scene := load(MODEL_PATH) as PackedScene
 		var model_node := model_scene.instantiate() as Node3D
 		
-		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
-		# ======================================================================
-		# 1. Scale model by 0.25x to achieve a colossal height of ~3.5m
-		model_node.scale = Vector3(0.25, 0.25, 0.25)
+		# Prune Blender's default light and camera nodes to prevent rendering conflicts
+		_prune_extraneous_nodes(model_node)
 		
-		# 2. Origin sits low at -9.78m. Raise it up by +2.445m on Y
+		# ======================================================================
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
+		# ======================================================================
+		# 1. Scale model by 0.5703x to achieve a colossal giant height of ~3.5m
+		model_node.scale = Vector3(0.5703, 0.5703, 0.5703)
+		
+		# 2. Origin is centered. Raise it up by +1.8376m on Y
 		#    to anchor the feet perfectly flat on the ground plane
-		model_node.position = Vector3(0.0, 2.445, 0.0)
+		model_node.position = Vector3(0.0, 1.8376, 0.0)
 		
-		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
-		model_node.rotation_degrees = Vector3(0, -90, 0)
+		# 3. Corrected the Z-Asymmetry pivot offset bug. Applied 180 degrees
+		#    of Y-rotation to flip the mesh forward.
+		model_node.rotation_degrees = Vector3(0, 180, 0)
 		# ======================================================================
 		
+		# Append the model to the bob joint to automatically inherit walk animations
 		visual_component.body_bob_node.add_child(model_node)
 		_register_glb_materials(model_node)
 	else:
 		push_error("[GolemEntity] GLB model not found at path: " + MODEL_PATH)
 
 
-## Recursively scans the GLB hierarchy to extract and duplicate mesh materials
+## Recursively duplicates materials to prevent material-sharing leaks
 func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D:
+		# EXPLICIT CASTING: Prevents static analyzer type inference errors
 		var mat: Material = node.get_active_material(0) as Material
 		if mat == null and node.mesh != null:
 			mat = node.mesh.surface_get_material(0) as Material
@@ -87,12 +95,22 @@ func _register_glb_materials(node: Node) -> void:
 		_register_glb_materials(child)
 
 
-## Calibrated to the scaled bounding box size (3.5m height, 1.55m width)
+## Recursively locates and frees extraneous camera and light nodes
+func _prune_extraneous_nodes(node: Node) -> void:
+	for i in range(node.get_child_count() - 1, -1, -1):
+		var child := node.get_child(i)
+		if "Camera" in child.name or "Light" in child.name:
+			child.free()
+		else:
+			_prune_extraneous_nodes(child)
+
+
+## Calibrated to the scaled bounding box size (3.5m height, 6.3m depth, 2.8m width)
 func _get_collision_box_size() -> Vector3:
-	return Vector3(1.6, 3.5, 1.2)
+	return Vector3(2.8, 3.5, 6.3)
 
 
-## Centered relative to the colossal height
+## Centered relative to the body height
 func _get_collision_box_position() -> Vector3:
 	return Vector3(0.0, 1.75, 0.0)
 

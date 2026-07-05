@@ -8,11 +8,11 @@
 #                to the sub-component, and physics movements to the base class.
 #              - Dependency Inversion Principle (DIP): Automatically prunes 
 #                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-# MATHEMATICAL CALIBRATION:
-#              - Total model height is 1.051m. Scaled by 3.0x to achieve a 
-#                towering colossal elephant height of ~3.15m.
-#              - Model origin is centered. Raised the model Y-position by +1.575m 
-#                to anchor its feet flat on the physical voxel colliders.
+# MATHEMATICAL CALIBRATION (V5 Telemetry):
+#              - Total model height is 1.051m. Scaled by 3.0012x to achieve a 
+#                colossal giant height of ~3.5m.
+#              - Model origin is centered. Raised the model Y-position by +1.7500m 
+#                to anchor its heavy feet flat on the physical voxel colliders.
 #              - Corrected the sideways orientation mesh bug by setting the 
 #                Y-axis rotation offset to -90 degrees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -40,14 +40,14 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
 		# ======================================================================
-		# 1. Scale model by 3.0x to achieve a towering height of ~3.15m
-		model_node.scale = Vector3(3.0, 3.0, 3.0)
+		# 1. Scale model by 3.0012x to achieve a towering height of ~3.5m
+		model_node.scale = Vector3(3.0012, 3.0012, 3.0012)
 		
-		# 2. Origin is centered. Raise it up by +1.575m on Y
-		#    to anchor the feet perfectly flat on the ground plane
-		model_node.position = Vector3(0.0, 1.575, 0.0)
+		# 2. Origin is centered. Raise Y by +1.7500m to anchor the feet
+		#    perfectly flat on the ground plane
+		model_node.position = Vector3(0.0, 1.7500, 0.0)
 		
 		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
 		model_node.rotation_degrees = Vector3(0, -90, 0)
@@ -86,9 +86,9 @@ func _prune_extraneous_nodes(node: Node) -> void:
 			_prune_extraneous_nodes(child)
 
 
-## Calibrated to the scaled bounding box size (3.15m height, 2.97m depth, 3.60m width)
+## Calibrated to the scaled bounding box size (3.5m height, 4.0m depth, 3.3m width after rotation)
 func _get_collision_box_size() -> Vector3:
-	return Vector3(1.80, 3.15, 2.20)
+	return Vector3(3.30, 3.50, 4.00)
 
 
 ## Centered relative to the colossal height

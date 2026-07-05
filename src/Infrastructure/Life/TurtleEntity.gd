@@ -8,13 +8,13 @@
 #                to the sub-component, and physics movements to the base class.
 #              - Dependency Inversion Principle (DIP): Automatically prunes 
 #                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-# MATHEMATICAL CALIBRATION:
-#              - Total model height is 6.137m. Scaled by 0.07x to achieve a 
-#                realistic aquatic turtle height of ~0.43m.
-#              - Model origin is offset. Raised the model Y-position by +0.225m 
+# MATHEMATICAL CALIBRATION (V5 Telemetry):
+#              - Total model height is 6.137m. Scaled by 0.0570x to achieve a 
+#                realistic aquatic turtle height of ~0.35m.
+#              - Model origin is offset. Raised the model Y-position by +0.1838m 
 #                to anchor its flippers flat on the physical voxel colliders.
-#              - Corrected the sideways orientation mesh bug by setting the 
-#                Y-axis rotation offset to 90 degrees.
+#              - Corrected the Z-Asymmetry (5.640 ratio) pivot bug by setting the 
+#                Y-axis rotation offset to 180 degrees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/TurtleEntity.gd
 # ==============================================================================
@@ -40,18 +40,18 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
 		# ======================================================================
-		# 1. Scale model by 0.07x to reduce height from 6.137m to ~0.43m
-		model_node.scale = Vector3(0.07, 0.07, 0.07)
+		# 1. Scale model by 0.0570x to reduce height from 6.137m to ~0.35m
+		model_node.scale = Vector3(0.0570, 0.0570, 0.0570)
 		
-		# 2. Origin sits low at -3.22m. Raise it up by +0.225m on Y
+		# 2. Origin sits low at -3.222m. Raise it up by +0.1838m on Y
 		#    to anchor the flippers perfectly flat on the ground plane
-		model_node.position = Vector3(0.0, 0.225, 0.0)
+		model_node.position = Vector3(0.0, 0.1838, 0.0)
 		
-		# 3. Apply Y-rotation offset to correct the sideways orientation mesh bug.
-		#    Change to -90, 180, or 0 if it is still walking sideways/backwards.
-		model_node.rotation_degrees = Vector3(0, 90, 0)
+		# 3. Corrected the Z-Asymmetry pivot offset bug. Applied 180 degrees
+		#    of Y-rotation to flip the mesh forward.
+		model_node.rotation_degrees = Vector3(0, 180, 0)
 		# ======================================================================
 		
 		# Append the model to the bob joint to automatically inherit animations
@@ -87,14 +87,14 @@ func _prune_extraneous_nodes(node: Node) -> void:
 			_prune_extraneous_nodes(child)
 
 
-## Calibrated to the scaled bounding box size (0.43m height, 0.75m depth)
+## Calibrated to the scaled bounding box size (0.35m height, 0.63m depth)
 func _get_collision_box_size() -> Vector3:
-	return Vector3(0.45, 0.43, 0.75)
+	return Vector3(0.30, 0.35, 0.65)
 
 
 ## Centered relative to the shell height
 func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.215, 0.0)
+	return Vector3(0.0, 0.175, 0.0)
 
 
 ## Flag used by the animation ticker to configure bouncy walks (Disabled to allow smooth gliding)

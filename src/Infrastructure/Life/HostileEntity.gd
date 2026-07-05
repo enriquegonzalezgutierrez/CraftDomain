@@ -8,14 +8,13 @@
 #                and satisfies base physics and signal contracts.
 #              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
 #                statically through the decoupled CelestialService provider.
-# MATHEMATICAL CALIBRATION (V3 - Low Poly Model):
-#              - Total model height is 6.04m. Scaled by 0.3x to achieve a 
-#                perfect humanoid height of ~1.81m.
-#              - Model geometry has a high positive vertical offset in Blender.
-#                Pulled the model DOWN on the Y-axis by -1.548m to anchor 
-#                its feet flat on the physical voxel colliders.
+# MATHEMATICAL CALIBRATION (V5 Telemetry):
+#              - Total model height is 0.683m. Scaled by 2.6341x to achieve a 
+#                perfect humanoid height of ~1.8m.
+#              - Model origin is centered. Raised the model Y-position by +0.8494m 
+#                to anchor its feet flat on the physical voxel colliders.
 #              - Corrected the sideways orientation mesh bug by setting the 
-#                Y-axis rotation offset to 180 degrees.
+#                Y-axis rotation offset to -90 degrees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -42,6 +41,7 @@ var player: CharacterBody3D
 
 # Dynamic visual part tracker bindings (SRP)
 var _visual_parts: Array[VisualPart] = []
+var _model_node: Node3D
 
 # AI wandering/chasing state variables
 var _wander_timer: float = 0.0
@@ -87,8 +87,8 @@ func _setup_collision() -> void:
 	col.name = "ZombieCollider"
 	var box_shape := BoxShape3D.new()
 	
-	# Calibrated to the scaled bounding box of the GLB model (1.8m height)
-	box_shape.size = Vector3(0.8, 1.8, 0.8)
+	# Calibrated to the scaled bounding box of the GLB model (1.8m height, 2.85m width after -90 Y-rot)
+	box_shape.size = Vector3(2.85, 1.80, 1.65)
 	col.shape = box_shape
 	
 	# Set collider center Y position to 0.9m to align with the ground plane
@@ -120,24 +120,26 @@ func _build_visual_representation() -> void:
 	
 	if ResourceLoader.exists(MODEL_PATH):
 		var model_scene := load(MODEL_PATH) as PackedScene
-		var model_node := model_scene.instantiate() as Node3D
+		_model_node = model_scene.instantiate() as Node3D
+		
+		_prune_extraneous_nodes(_model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
 		# ======================================================================
-		# 1. Scale model by 0.3x to achieve a perfect humanoid height of ~1.81m
-		model_node.scale = Vector3(0.3, 0.3, 0.3) 
+		# 1. Scale model by 2.6341x to achieve a perfect humanoid height of 1.8m
+		_model_node.scale = Vector3(2.6341, 2.6341, 2.6341) 
 		
-		# 2. Origin sits high at 5.16m. Pull it down by -1.548m on Y
-		#    to anchor the feet perfectly flat on the ground plane
-		model_node.position = Vector3(0.0, -1.548, 0.0) 
+		# 2. Origin is centered. Raise Y by +0.8494m to anchor the feet
+		#    perfectly flat on the ground plane
+		_model_node.position = Vector3(0.0, 0.8494, 0.0) 
 		
-		# 3. Apply 180-degree visual offset to correct the sideways orientation bug
-		model_node.rotation_degrees = Vector3(0, 180, 0) 
+		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
+		_model_node.rotation_degrees = Vector3(0, -90, 0) 
 		# ======================================================================
 		
-		visual_root.add_child(model_node)
-		_register_glb_materials(model_node)
+		visual_root.add_child(_model_node)
+		_register_glb_materials(_model_node)
 	else:
 		push_error("[HostileEntity] GLB model not found at path: " + MODEL_PATH)
 
@@ -145,7 +147,6 @@ func _build_visual_representation() -> void:
 ## Recursively scans the GLB hierarchy to extract and duplicate mesh materials
 func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D:
-		# EXPLICIT CASTING: Prevents static analyzer type inference errors
 		var mat: Material = node.get_active_material(0) as Material
 		if mat == null and node.mesh != null:
 			mat = node.mesh.surface_get_material(0) as Material
@@ -159,6 +160,16 @@ func _register_glb_materials(node: Node) -> void:
 			
 	for child: Node in node.get_children():
 		_register_glb_materials(child)
+
+
+## Recursively locates and frees extraneous camera and light nodes
+func _prune_extraneous_nodes(node: Node) -> void:
+	for i in range(node.get_child_count() - 1, -1, -1):
+		var child := node.get_child(i)
+		if "Camera" in child.name or "Light" in child.name:
+			child.free()
+		else:
+			_prune_extraneous_nodes(child)
 
 
 func take_damage(amount: int, knockback_force: Vector3) -> void:
@@ -279,7 +290,7 @@ func _process(delta: float) -> void:
 
 
 # ==============================================================================
-# MAIN PHYSICS CALCULATIONS
+# MAIN PHYSICS & SWIMMING AI CALCULATIONS
 # ==============================================================================
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
@@ -373,6 +384,6 @@ func _process_ai_intelligence(delta: float) -> void:
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var dir := (player.global_position - global_position).normalized()
-		var knockback := Vector3(dir.x * 4.5, 0.25, dir.z * 4.5)
+		var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
 		if player.has_method("take_damage"):
 			player.call("take_damage", 1, knockback)

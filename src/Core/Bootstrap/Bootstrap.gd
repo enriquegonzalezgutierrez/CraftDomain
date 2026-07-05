@@ -104,6 +104,30 @@ func _setup_prop_registry() -> void:
 		campfire.position = pos
 		return campfire
 	)
+	
+	# Interactive Wishing Well (ID 213)
+	PropRegistry.register_prop(213, func(pos: Vector3) -> Node:
+		var well := WishingWellEntity.new()
+		well.position = pos
+		return well
+	)
+	
+	# Interactive Ritual Stone (ID 214)
+	PropRegistry.register_prop(214, func(pos: Vector3) -> Node:
+		var stone := RitualStoneEntity.new()
+		stone.position = pos
+		return stone
+	)
+	
+	# ==========================================================================
+	# INTERACTIVE BREAKABLE BARREL REGISTRATION
+	# - Breakable Barrel registered under ID 215
+	# ==========================================================================
+	PropRegistry.register_prop(215, func(pos: Vector3) -> Node:
+		var barrel := BarrelEntity.new()
+		barrel.position = pos
+		return barrel
+	)
 
 
 ## Persistent Loader: Queries the Settings Repository and configures system parameters on boot.

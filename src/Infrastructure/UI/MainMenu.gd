@@ -2,32 +2,37 @@
 # Project: CraftDomain
 # Description: Infrastructure UI controller representing the main menu overlay.
 #              COMMERCIAL UI OVERHAUL (TACTILE DESIGN & 100% RESPONSIVE):
-#              - Margin Paddings: Implemented strict `content_margin` values on 
+#              - Margin Paddings: Implemented strict content_margin values on 
 #                all StyleBoxes. Text will never hug or overflow borders again.
-#              - Dynamic PanelContainers: Replaced rigid `Panel` nodes with 
-#                `PanelContainer`s. The UI now auto-expands elegantly to fit 
+#              - Dynamic PanelContainers: Replaced rigid Panel nodes with 
+#                PanelContainers. The UI now auto-expands elegantly to fit 
 #                lengthy i18n translation texts (e.g. Spanish modal warnings).
 #              - Elastic Modal Animations: Modal pop-ins now scale the card 
 #                itself from the center, rather than scaling the entire screen.
-#              SOLID COMPLIANCE: Adheres to SRP by handling only menu presentation.
-#              WARNING FIX: Fully strictly-typed variables to eliminate warnings.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Handles exclusively 
+#                main menu presentation and overlay transitions.
+#              - Open-Closed Principle (OCP): Dynamically instantiates the 
+#                Model Showcase overlay on-demand without circular locks.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MainMenu.gd
 # ==============================================================================
 class_name MainMenu
 extends Control
 
-## Emitted when the player requests to launch the world (new or loaded)
+## Emitted when the player requests to launch the world
 signal play_pressed
 
-# STRICT TYPING: Private references to settings overlays and animators
+# References to sub-overlays
 var _settings_overlay: SettingsMenu
+var _showcase_overlay: ModelShowcase
 var _title_label: Label
 var _time_passed: float = 0.0
 
 # Dynamic button references for locale refreshes
 var _play_continue_btn: Button
 var _reset_btn: Button
+var _showcase_btn: Button
 var _settings_btn: Button
 var _exit_btn: Button
 
@@ -52,7 +57,7 @@ func _ready() -> void:
 	_has_save_game = FileAccess.file_exists("user://world_save/global_save.json")
 	
 	# 1. Background texture
-	var bg: TextureRect = TextureRect.new()
+	var bg := TextureRect.new()
 	bg.name = "MenuBackground"
 	bg.texture = load("res://src/Infrastructure/UI/Assets/menu_background.png") as Texture2D
 	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -60,14 +65,14 @@ func _ready() -> void:
 	add_child(bg)
 	
 	# 2. Dark translucent wash
-	var wash: ColorRect = ColorRect.new()
+	var wash := ColorRect.new()
 	wash.name = "ColorWash"
 	wash.color = Color(0.04, 0.04, 0.06, 0.45) 
 	wash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(wash)
 	
 	# 3. 100% RESPONSIVE UNIFIED CONTAINER
-	var center_container: CenterContainer = CenterContainer.new()
+	var center_container := CenterContainer.new()
 	center_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center_container)
 	
@@ -83,7 +88,7 @@ func _ready() -> void:
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title_label.pivot_offset = Vector2(250, 45)
 	
-	var title_settings: LabelSettings = LabelSettings.new()
+	var title_settings := LabelSettings.new()
 	title_settings.font_size = 72
 	title_settings.font_color = Color(1.0, 0.95, 0.85) 
 	title_settings.outline_size = 14
@@ -98,7 +103,7 @@ func _ready() -> void:
 	_menu_card = PanelContainer.new()
 	_menu_card.custom_minimum_size = Vector2(380, 0)
 	
-	var card_style: StyleBoxFlat = StyleBoxFlat.new()
+	var card_style := StyleBoxFlat.new()
 	card_style.bg_color = Color(0.05, 0.05, 0.07, 0.92)
 	card_style.set_corner_radius_all(12)
 	card_style.border_width_left = 1; card_style.border_width_top = 1
@@ -114,45 +119,52 @@ func _ready() -> void:
 	_master_vbox.add_child(_menu_card)
 	
 	# Snug internal margins
-	var card_margin: MarginContainer = MarginContainer.new()
+	var card_margin := MarginContainer.new()
 	card_margin.add_theme_constant_override("margin_left", 24)
 	card_margin.add_theme_constant_override("margin_top", 24)
 	card_margin.add_theme_constant_override("margin_right", 24)
 	card_margin.add_theme_constant_override("margin_bottom", 24)
 	_menu_card.add_child(card_margin)
 	
-	var box: VBoxContainer = VBoxContainer.new()
+	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 14)
 	card_margin.add_child(box)
 	
 	# 6. Instantiate UI Tactile Buttons
-	var play_color: Color = Color(0.15, 0.60, 0.35, 1.0) if _has_save_game else Color(0.15, 0.55, 0.85, 1.0)
-	_play_continue_btn = _create_tactile_button(play_color, true)
+	var play_color := Color(0.15, 0.60, 0.35, 1.0) if _has_save_game else Color(0.15, 0.55, 0.85, 1.0)
+	_play_continue_btn = _create_tactile_button(play_color)
 	_play_continue_btn.pressed.connect(_on_play_pressed)
 	box.add_child(_play_continue_btn)
 	
-	var default_color: Color = Color(0.2, 0.2, 0.24, 1.0)
+	var default_color := Color(0.2, 0.2, 0.24, 1.0)
 	
 	if _has_save_game:
-		_reset_btn = _create_tactile_button(default_color, false)
+		_reset_btn = _create_tactile_button(default_color)
 		_reset_btn.pressed.connect(_on_new_game_clicked_with_save)
 		box.add_child(_reset_btn)
 		
-	_settings_btn = _create_tactile_button(default_color, false)
+	# ==========================================================================
+	# NEW: DIAGNOSTIC PIPELINE SHOWCASE SHORTCUT
+	# ==========================================================================
+	_showcase_btn = _create_tactile_button(Color(0.12, 0.55, 0.82, 1.0)) # Cyan Tonal Button
+	_showcase_btn.pressed.connect(_on_showcase_pressed)
+	box.add_child(_showcase_btn)
+		
+	_settings_btn = _create_tactile_button(default_color)
 	_settings_btn.pressed.connect(_on_settings_pressed)
 	box.add_child(_settings_btn)
 	
-	_exit_btn = _create_tactile_button(Color(0.15, 0.15, 0.18, 1.0), false)
+	_exit_btn = _create_tactile_button(Color(0.15, 0.15, 0.18, 1.0))
 	_exit_btn.pressed.connect(_on_exit_pressed)
 	box.add_child(_exit_btn)
 	
-	# 7. Commercial Branding (Version Number)
-	var version_lbl: Label = Label.new()
+	# 7. Commercial Branding
+	var version_lbl := Label.new()
 	version_lbl.text = "v1.0.0"
 	version_lbl.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	version_lbl.offset_right = -15; version_lbl.offset_bottom = -10
-	var v_settings: LabelSettings = LabelSettings.new()
+	var v_settings := LabelSettings.new()
 	v_settings.font_size = 14; v_settings.font_color = Color(0.6, 0.6, 0.65)
 	version_lbl.label_settings = v_settings
 	add_child(version_lbl)
@@ -172,7 +184,7 @@ func _play_entry_animation() -> void:
 	_menu_card.scale = Vector2(0.9, 0.9)
 	_title_label.scale = Vector2(0.9, 0.9)
 	
-	var tween: Tween = create_tween().set_parallel(true)
+	var tween := create_tween().set_parallel(true)
 	tween.tween_property(self, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.tween_property(_menu_card, "scale", Vector2(1.0, 1.0), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_property(_title_label, "scale", Vector2(1.0, 1.0), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -199,6 +211,8 @@ func _refresh_localized_text() -> void:
 		if is_instance_valid(_play_continue_btn):
 			_play_continue_btn.text = tr("MENU_PLAY_WORLD")
 			
+	if is_instance_valid(_showcase_btn):
+		_showcase_btn.text = "ASSET SHOWCASE"
 	if is_instance_valid(_settings_btn):
 		_settings_btn.text = tr("MENU_SETTINGS")
 	if is_instance_valid(_exit_btn):
@@ -216,35 +230,26 @@ func _refresh_localized_text() -> void:
 
 
 ## Factory method to programmatically construct highly polished 3D tactile buttons
-func _create_tactile_button(base_color: Color, is_primary: bool = false) -> Button:
-	var btn: Button = Button.new()
-	# Allows horizontal expansion to fit long localized texts
+func _create_tactile_button(base_color: Color) -> Button:
+	var btn := Button.new()
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	
-	var shadow_color: Color = base_color.darkened(0.4)
+	var shadow_color := base_color.darkened(0.4)
 	
-	# Normal State (3D Pop out)
-	var sn: StyleBoxFlat = StyleBoxFlat.new()
+	var sn := StyleBoxFlat.new()
 	sn.bg_color = base_color
 	sn.set_corner_radius_all(8)
 	sn.border_width_bottom = 4 
 	sn.border_color = shadow_color
-	
-	# CRITICAL FIX: Add built-in padding so text NEVER touches the borders!
 	sn.content_margin_left = 20.0
 	sn.content_margin_right = 20.0
 	sn.content_margin_top = 14.0
 	sn.content_margin_bottom = 14.0
 	
-	# Hover State
-	var sh: StyleBoxFlat = sn.duplicate() as StyleBoxFlat
+	var sh := sn.duplicate() as StyleBoxFlat
 	sh.bg_color = base_color.lightened(0.1)
-	if is_primary:
-		sh.border_width_left = 1; sh.border_width_top = 1; sh.border_width_right = 1
-		sh.border_color = Color(1.0, 0.85, 0.2, 0.8)
 	
-	# Pressed State (Sinks down physically)
-	var sp: StyleBoxFlat = sn.duplicate() as StyleBoxFlat
+	var sp := sn.duplicate() as StyleBoxFlat
 	sp.bg_color = shadow_color
 	sp.border_width_top = 4
 	sp.border_width_bottom = 0
@@ -259,17 +264,16 @@ func _create_tactile_button(base_color: Color, is_primary: bool = false) -> Butt
 	btn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.95))
 	btn.add_theme_color_override("font_hover_color", Color.WHITE)
 	
-	# Calculate pivot dynamically for center scaling
 	btn.item_rect_changed.connect(func() -> void:
 		btn.pivot_offset = btn.size / 2.0
 	)
 	
 	btn.mouse_entered.connect(func() -> void:
-		var tw: Tween = create_tween()
+		var tw := create_tween()
 		tw.tween_property(btn, "scale", Vector2(1.03, 1.03), 0.1).set_trans(Tween.TRANS_SINE)
 	)
 	btn.mouse_exited.connect(func() -> void:
-		var tw: Tween = create_tween()
+		var tw := create_tween()
 		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.1).set_trans(Tween.TRANS_SINE)
 	)
 	
@@ -282,18 +286,17 @@ func _setup_confirmation_modal() -> void:
 	_confirm_modal.name = "ConfirmationModal"
 	_confirm_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
-	var bg_style: StyleBoxFlat = StyleBoxFlat.new()
+	var bg_style := StyleBoxFlat.new()
 	bg_style.bg_color = Color(0.0, 0.0, 0.0, 0.75)
 	_confirm_modal.add_theme_stylebox_override("panel", bg_style)
 	
-	var center: CenterContainer = CenterContainer.new()
+	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_confirm_modal.add_child(center)
 	
-	# DYNAMIC RESPONSIVE MODAL CARD
 	_modal_card = PanelContainer.new()
-	_modal_card.custom_minimum_size = Vector2(560, 0) # Generous width for long warning texts
-	var cs: StyleBoxFlat = StyleBoxFlat.new()
+	_modal_card.custom_minimum_size = Vector2(560, 0) 
+	var cs := StyleBoxFlat.new()
 	cs.set_corner_radius_all(12)
 	cs.bg_color = Color(0.08, 0.08, 0.1, 0.98)
 	cs.set_border_width_all(1) 
@@ -306,17 +309,17 @@ func _setup_confirmation_modal() -> void:
 	)
 	center.add_child(_modal_card)
 	
-	var margin: MarginContainer = MarginContainer.new()
+	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 30); margin.add_theme_constant_override("margin_top", 24)
 	margin.add_theme_constant_override("margin_right", 30); margin.add_theme_constant_override("margin_bottom", 24)
 	_modal_card.add_child(margin)
 	
-	var vbox: VBoxContainer = VBoxContainer.new()
+	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	margin.add_child(vbox)
 	
 	_modal_title = Label.new()
-	var ts: LabelSettings = LabelSettings.new(); ts.font_size = 20; ts.font_color = Color(0.95, 0.25, 0.25); ts.outline_size = 4; ts.outline_color = Color.BLACK
+	var ts := LabelSettings.new(); ts.font_size = 20; ts.font_color = Color(0.95, 0.25, 0.25); ts.outline_size = 4; ts.outline_color = Color.BLACK
 	_modal_title.label_settings = ts; _modal_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_modal_title)
 	
@@ -324,24 +327,23 @@ func _setup_confirmation_modal() -> void:
 	
 	_modal_desc = Label.new()
 	_modal_desc.autowrap_mode = TextServer.AUTOWRAP_WORD; _modal_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ds: LabelSettings = LabelSettings.new(); ds.font_size = 14; ds.font_color = Color(0.85, 0.85, 0.9)
+	var ds := LabelSettings.new(); ds.font_size = 14; ds.font_color = Color(0.85, 0.85, 0.9)
 	_modal_desc.label_settings = ds
 	vbox.add_child(_modal_desc)
 	
 	vbox.add_child(_create_spacer(24))
 	
-	var hbox: HBoxContainer = HBoxContainer.new()
+	var hbox := HBoxContainer.new()
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hbox.add_theme_constant_override("separation", 20) # Good breathing room between buttons
+	hbox.add_theme_constant_override("separation", 20) 
 	vbox.add_child(hbox)
 	
-	# The X minimum size is 0. The Buttons will auto-expand to fill available width equally!
-	_modal_confirm_btn = _create_tactile_button(Color(0.75, 0.15, 0.15, 1.0), false)
+	_modal_confirm_btn = _create_tactile_button(Color(0.75, 0.15, 0.15, 1.0))
 	_modal_confirm_btn.pressed.connect(_on_overwrite_confirmed)
 	hbox.add_child(_modal_confirm_btn)
 	
-	_modal_cancel_btn = _create_tactile_button(Color(0.2, 0.2, 0.25, 1.0), false)
+	_modal_cancel_btn = _create_tactile_button(Color(0.2, 0.2, 0.25, 1.0))
 	_modal_cancel_btn.pressed.connect(_on_overwrite_cancelled)
 	hbox.add_child(_modal_cancel_btn)
 	
@@ -350,7 +352,7 @@ func _setup_confirmation_modal() -> void:
 
 
 func _create_spacer(height: int) -> Control:
-	var spacer: Control = Control.new()
+	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, height)
 	return spacer
 
@@ -364,7 +366,7 @@ func _on_new_game_clicked_with_save() -> void:
 	_confirm_modal.modulate.a = 0.0
 	_modal_card.scale = Vector2(0.9, 0.9)
 	
-	var tween: Tween = create_tween().set_parallel(true)
+	var tween := create_tween().set_parallel(true)
 	tween.tween_property(_confirm_modal, "modulate:a", 1.0, 0.2).set_trans(Tween.TRANS_SINE)
 	tween.tween_property(_modal_card, "scale", Vector2(1.0, 1.0), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
@@ -379,7 +381,7 @@ func _on_overwrite_confirmed() -> void:
 
 
 func _on_overwrite_cancelled() -> void:
-	var tween: Tween = create_tween().set_parallel(true)
+	var tween := create_tween().set_parallel(true)
 	tween.tween_property(_confirm_modal, "modulate:a", 0.0, 0.15).set_trans(Tween.TRANS_SINE)
 	tween.tween_property(_modal_card, "scale", Vector2(0.95, 0.95), 0.15).set_trans(Tween.TRANS_SINE)
 	tween.chain().tween_callback(func() -> void: _confirm_modal.visible = false)
@@ -392,7 +394,7 @@ func _delete_save_files_on_disk() -> void:
 		
 	var chunks_dir: String = "user://world_save/chunks/"
 	if DirAccess.dir_exists_absolute(chunks_dir):
-		var dir: DirAccess = DirAccess.open(chunks_dir)
+		var dir := DirAccess.open(chunks_dir)
 		if dir != null:
 			dir.list_dir_begin()
 			var file_name: String = dir.get_next()
@@ -414,6 +416,29 @@ func _on_settings_pressed() -> void:
 func _on_settings_closed() -> void:
 	if is_instance_valid(_settings_overlay):
 		_settings_overlay.queue_free()
+
+
+## Programmatically instantiates and transitions to the decoupled Model Showcase overlay on-press
+func _on_showcase_pressed() -> void:
+	if is_instance_valid(_showcase_overlay):
+		return
+		
+	_showcase_overlay = ModelShowcase.new()
+	_showcase_overlay.closed.connect(_on_showcase_closed)
+	add_child(_showcase_overlay)
+	
+	# Transition: Scale the menu card down while fading in the Showcase
+	_menu_card.visible = false
+	_title_label.visible = false
+
+
+func _on_showcase_closed() -> void:
+	if is_instance_valid(_showcase_overlay):
+		_showcase_overlay.queue_free()
+		_showcase_overlay = null
+		
+	_menu_card.visible = true
+	_title_label.visible = true
 
 
 func _on_exit_pressed() -> void:

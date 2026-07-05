@@ -13,7 +13,8 @@
 #                realistic small beach crab height of ~0.35m.
 #              - Model origin is perfectly centered at the claws (Y = -0.00018m).
 #                No vertical offset is required (position.y = 0.0).
-#              - Model is baked facing forward. No rotation offset is required.
+#              - Corrected the backwards-walk bug by setting the Y-axis rotation 
+#                offset to 180 degrees (flipping the offset pivot).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/CrabEntity.gd
 # ==============================================================================
@@ -47,9 +48,9 @@ func _build_visual_representation() -> void:
 		# 2. Origin is already perfectly at the feet. No vertical offset needed
 		model_node.position = Vector3(0.0, 0.0, 0.0)
 		
-		# 3. Model is naturally oriented. Rotation set to 0.
-		#    Uncomment and adjust the Y value if the mesh walk vector is offset.
-		model_node.rotation_degrees = Vector3(0, 0, 0)
+		# 3. Corrected the backwards-walk bug. Applied 180 degrees of Y-rotation
+		#    to flip the asymmetric mesh forward.
+		model_node.rotation_degrees = Vector3(0, 180, 0)
 		# ======================================================================
 		
 		# Append the model to the bob joint to automatically inherit walk animations
@@ -85,17 +86,17 @@ func _prune_extraneous_nodes(node: Node) -> void:
 			_prune_extraneous_nodes(child)
 
 
-## Calibrated to the scaled bounding box size (0.35m height, 0.60m width)
+## Calibrated to the scaled bounding box size (0.33m height, 0.63m depth)
 func _get_collision_box_size() -> Vector3:
-	return Vector3(0.60, 0.35, 0.38)
+	return Vector3(0.6, 0.75, 0.65)
 
 
-## Centered relative to the shell height
+## Centered relative to the livestock height
 func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.175, 0.0)
+	return Vector3(0.0, 0.375, 0.0)
 
 
-## Flag used by the animation ticker to configure bouncy walks (Disabled for quadrupeds/crabs)
+## Flag used by the animation ticker to configure bouncy walks (Disabled for quadrupeds)
 func _is_avian() -> bool:
 	return false
 
@@ -105,14 +106,14 @@ func _can_socialize() -> bool:
 
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	# Crab panic escape velocity
+	# Pig panic escape velocity
 	velocity.y = JUMP_VELOCITY
 	if is_instance_valid(ai_component):
 		ai_component.current_task = NPCAIComponent.TaskState.PANIC
 		ai_component.task_timer = randf_range(3.0, 5.0)
 
 
-## Drops 1x Sand Block on death
+## Drops 1x Fried Chicken (Meat proxy) on death
 func _drop_loot(inv: IInventory) -> void:
-	# Item ID 7: Sand Block
-	inv.add_item(7, 1)
+	# Item ID 16: Fried Chicken
+	inv.add_item(16, 1)

@@ -9,7 +9,7 @@
 #              - Dependency Inversion Principle (DIP): Automatically prunes 
 #                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
 # PROCEDURAL FLIGHT ENGINE:
-#              - Visually offsets the model upwards by +2.5m, making the bird soar 
+#              - Visually offsets the model upwards by +2.4549m, making the bird soar 
 #                high in the air while the physics collider navigates the ground safely.
 #              - Injected real-time floating sine wave bobbing to simulate thermal glide.
 #              - Injected high-frequency roll tilting to simulate active wing flapping.
@@ -42,15 +42,16 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(_model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
 		# ======================================================================
-		# 1. Scale model by 0.065x to reduce height from 12.42m to ~0.8m
-		_model_node.scale = Vector3(0.065, 0.065, 0.065)
+		# 1. Scale model by 0.0282x to reduce height from 12.42m to ~0.35m
+		_model_node.scale = Vector3(0.0282, 0.0282, 0.0282)
 		
-		# 2. Initial flight height: Offset Y upwards by +2.5 meters
-		_model_node.position = Vector3(0.0, 2.5, 0.0)
+		# 2. Initial flight height: Offset Y upwards by +2.4549 meters (including -0.0451m pivot alignment)
+		_model_node.position = Vector3(0.0, 2.4549, 0.0)
 		
-		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
+		# 3. Apply -90-degree visual offset to correct the sideways orientation bug.
+		#    Change to 90, 180, or 0 if it is still walking sideways/backwards.
 		_model_node.rotation_degrees = Vector3(0, -90, 0)
 		# ======================================================================
 		
@@ -99,9 +100,9 @@ func _process(delta: float) -> void:
 		var flat_velocity := Vector2(velocity.x, velocity.z)
 		var is_moving := flat_velocity.length_squared() > 0.1
 		
-		# 1. Thermal Hover Bobbing (Smooth vertical sine wave)
+		# 1. Thermal Hover Bobbing (Smooth vertical sine wave, slightly out-of-phase with the yellow bird!)
 		var hover_bob := sin(_animation_time * 4.0) * 0.25
-		_model_node.position.y = 2.5 + hover_bob
+		_model_node.position.y = 2.4549 + hover_bob
 		
 		# 2. Wing Flap Tilting and Forward Pitch
 		if is_moving:
@@ -116,11 +117,11 @@ func _process(delta: float) -> void:
 
 
 func _get_collision_box_size() -> Vector3:
-	return Vector3(0.46, 0.69, 0.46)
+	return Vector3(0.3, 0.35, 0.3)
 
 
 func _get_collision_box_position() -> Vector3:
-	return Vector3(0, 0.345, 0)
+	return Vector3(0, 0.175, 0)
 
 
 ## Flag used by the animation ticker to configure bouncy avian walks (Disabled to allow flying)

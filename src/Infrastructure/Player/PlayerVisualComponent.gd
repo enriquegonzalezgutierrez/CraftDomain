@@ -2,21 +2,20 @@
 # Project: CraftDomain
 # Description: Infrastructure Presentation Component managing the 3D player model.
 #              Provides third-person character representation, organic walk cycles,
-#              eye blinking, and dynamic high-fidelity voxel tool attachment.
-#              MULTIPLAYER PREPARATION:
-#              - Supports an 'is_local_player' toggle. Local player meshes are set 
-#                to SHADOWS_ONLY to prevent camera clipping while retaining 
-#                beautiful ground shadows. Other players (clients) render normally.
-#              SOLID COMPLIANCE:
+#              eye blinking, and dynamic high-fidelity voxel/GLB tool attachment.
+#              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates third-person 
 #                character geometry and animation loops from movement physics.
+# MATHEMATICAL CALIBRATION (V5 Handheld Offset Fixes):
+#              - Integrated inverse translation offsets to counteract Blender's 
+#                nested 'Empty' parent offsets, snapping the hilts/handles of both 
+#                the Pickaxe and Sword perfectly inside the player's palm joint.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerVisualComponent.gd
 # ==============================================================================
 class_name PlayerVisualComponent
 extends Node3D
 
-## Configuration: Set to true for the local client, false for multiplayer replicas.
 @export var is_local_player: bool = true
 
 # Joints for skeleton-like articulation
@@ -43,6 +42,9 @@ var _is_blinking: bool = false
 
 # Cached shared micro-grain noise texture
 static var _shared_grain_texture: NoiseTexture2D
+
+const SWORD_MODEL_PATH := "res://assets/models/weapons/sword.glb"
+const PICKAXE_MODEL_PATH := "res://assets/models/weapons/pick.glb"
 
 
 func _ready() -> void:
@@ -83,32 +85,32 @@ func _setup_skeleton_joints() -> void:
 	head_node.position = Vector3(0.0, 1.45, 0.0)
 	body_bob_node.add_child(head_node)
 	
-	# Left Arm Joint (Pivot at shoulder height)
+	# Left Arm Joint
 	left_arm_joint = Node3D.new()
 	left_arm_joint.name = "LeftArmJoint"
 	left_arm_joint.position = Vector3(-0.32, 1.30, 0.0)
 	body_bob_node.add_child(left_arm_joint)
 	
-	# Right Arm Joint (Pivot at shoulder height)
+	# Right Arm Joint
 	right_arm_joint = Node3D.new()
 	right_arm_joint.name = "RightArmJoint"
 	right_arm_joint.position = Vector3(0.32, 1.30, 0.0)
 	body_bob_node.add_child(right_arm_joint)
 	
-	# Held Tool Joint (Attached to the bottom tip of the Right Arm)
+	# Held Tool Joint (Attached to Right Hand)
 	held_tool_joint = Node3D.new()
 	held_tool_joint.name = "HeldToolJoint"
 	held_tool_joint.position = Vector3(0.0, -0.45, -0.1)
 	held_tool_joint.rotation = Vector3(deg_to_rad(-15), deg_to_rad(15), deg_to_rad(-45))
 	right_arm_joint.add_child(held_tool_joint)
 	
-	# Left Leg Joint (Pivot at hip height)
+	# Left Leg Joint
 	left_leg_joint = Node3D.new()
 	left_leg_joint.name = "LeftLegJoint"
 	left_leg_joint.position = Vector3(-0.14, 0.70, 0.0)
 	body_bob_node.add_child(left_leg_joint)
 	
-	# Right Leg Joint (Pivot at hip height)
+	# Right Leg Joint
 	right_leg_joint = Node3D.new()
 	right_leg_joint.name = "RightLegJoint"
 	right_leg_joint.position = Vector3(0.14, 0.70, 0.0)
@@ -116,36 +118,31 @@ func _setup_skeleton_joints() -> void:
 
 
 func _build_player_model() -> void:
-	var skin := Color(0.95, 0.75, 0.65)         # Peach clay skin
-	var hair := Color(0.18, 0.12, 0.08)         # Dark brown hair
-	var shirt := Color(0.15, 0.55, 0.82)        # Blue flannel shirt
-	var trousers := Color(0.20, 0.22, 0.26)     # Dark slate trousers
-	var boots := Color(0.12, 0.10, 0.08)        # Sturdy leather boots
+	var skin := Color(0.95, 0.75, 0.65)         
+	var hair := Color(0.18, 0.12, 0.08)         
+	var shirt := Color(0.15, 0.55, 0.82)        
+	var trousers := Color(0.20, 0.22, 0.26)     
+	var boots := Color(0.12, 0.10, 0.08)        
 	
-	# 1. Torso Chest Armor Block
 	_create_box(body_bob_node, Vector3(0.44, 0.75, 0.32), Vector3(0, 1.075, 0), shirt)
 	
-	# 2. Left & Right Arm Sleeves
-	_create_box(left_arm_joint, Vector3(0.16, 0.55, 0.18), Vector3(0.0, -0.225, 0.0), shirt) # Left Arm
-	_create_box(left_arm_joint, Vector3(0.14, 0.12, 0.16), Vector3(0.0, -0.51, 0.0), skin)   # Left Hand
+	_create_box(left_arm_joint, Vector3(0.16, 0.55, 0.18), Vector3(0.0, -0.225, 0.0), shirt) 
+	_create_box(left_arm_joint, Vector3(0.14, 0.12, 0.16), Vector3(0.0, -0.51, 0.0), skin)   
 	
-	_create_box(right_arm_joint, Vector3(0.16, 0.55, 0.18), Vector3(0.0, -0.225, 0.0), shirt) # Right Arm
-	_create_box(right_arm_joint, Vector3(0.14, 0.12, 0.16), Vector3(0.0, -0.51, 0.0), skin)   # Right Hand
+	_create_box(right_arm_joint, Vector3(0.16, 0.55, 0.18), Vector3(0.0, -0.225, 0.0), shirt) 
+	_create_box(right_arm_joint, Vector3(0.14, 0.12, 0.16), Vector3(0.0, -0.51, 0.0), skin)   
 	
-	# 3. Left & Right Segmented Legs
-	_create_box(left_leg_joint, Vector3(0.16, 0.55, 0.18), Vector3(0.0, -0.225, 0.0), trousers) # Left Leg
-	_create_box(left_leg_joint, Vector3(0.18, 0.12, 0.22), Vector3(0.0, -0.54, -0.02), boots)    # Left Boot
+	_create_box(left_leg_joint, Vector3(0.16, 0.55, 0.18), Vector3(0.0, -0.225, 0.0), trousers) 
+	_create_box(left_leg_joint, Vector3(0.18, 0.12, 0.22), Vector3(0.0, -0.54, -0.02), boots)    
 	
-	_create_box(right_leg_joint, Vector3(0.16, 0.55, 0.18), Vector3(0.0, -0.225, 0.0), trousers) # Right Leg
-	_create_box(right_leg_joint, Vector3(0.18, 0.12, 0.22), Vector3(0.0, -0.54, -0.02), boots)   # Right Boot
+	_create_box(right_leg_joint, Vector3(0.16, 0.55, 0.18), Vector3(0.0, -0.225, 0.0), trousers) 
+	_create_box(right_leg_joint, Vector3(0.18, 0.12, 0.22), Vector3(0.0, -0.54, -0.02), boots)   
 	
-	# 4. Head Dome & Face Features
-	_create_box(head_node, Vector3(0.36, 0.38, 0.36), Vector3(0.0, 0.19, 0.0), skin) # Face core
-	_create_box(head_node, Vector3(0.38, 0.14, 0.38), Vector3(0.0, 0.32, 0.01), hair) # Hair top cap
-	_create_box(head_node, Vector3(0.38, 0.24, 0.10), Vector3(0.0, 0.16, 0.15), hair) # Hair back plates
-	_create_box(head_node, Vector3(0.08, 0.15, 0.08), Vector3(0.0, 0.12, -0.21), skin * 0.9) # Nose
+	_create_box(head_node, Vector3(0.36, 0.38, 0.36), Vector3(0.0, 0.19, 0.0), skin) 
+	_create_box(head_node, Vector3(0.38, 0.14, 0.38), Vector3(0.0, 0.32, 0.01), hair) 
+	_create_box(head_node, Vector3(0.38, 0.24, 0.10), Vector3(0.0, 0.16, 0.15), hair) 
+	_create_box(head_node, Vector3(0.08, 0.15, 0.08), Vector3(0.0, 0.12, -0.21), skin * 0.9) 
 	
-	# Blinking Eyes (Cyan pupils)
 	left_eye = _create_box(head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.09, 0.18, -0.19), Color.WHITE)
 	_create_box(left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.18, 0.42, 0.68))
 	
@@ -153,13 +150,10 @@ func _build_player_model() -> void:
 	_create_box(right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.18, 0.42, 0.68))
 
 
-## Sets shadows/culling based on whether this visual belongs to the local player.
 func _update_cull_modes() -> void:
 	if is_local_player:
-		# Hide the mesh to prevent blocking camera, but retain shadow casting!
 		_set_cast_shadow_recursive(visual_root, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
 	else:
-		# Render normally for other players in multiplayer
 		_set_cast_shadow_recursive(visual_root, GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
 
 
@@ -170,7 +164,6 @@ func _set_cast_shadow_recursive(node: Node, setting: GeometryInstance3D.ShadowCa
 		_set_cast_shadow_recursive(child, setting)
 
 
-## Animates the walk cycle joints and body bobbing based on current velocity.
 func animate_movement(velocity_flat: Vector2, is_on_floor: bool, delta: float) -> void:
 	_animation_time += delta
 	_process_blinking_cycle(delta)
@@ -179,11 +172,9 @@ func animate_movement(velocity_flat: Vector2, is_on_floor: bool, delta: float) -
 	var is_moving := speed > 0.1 and is_on_floor
 	
 	if is_moving:
-		# 1. Bobbing Height Oscillations
 		var bob_mult := 12.0
 		body_bob_node.position.y = abs(sin(_animation_time * bob_mult)) * 0.04
 		
-		# 2. Pendulum-like arm and leg swinging (Out-of-phase matching)
 		var swing_angle := sin(_animation_time * bob_mult) * 0.45
 		
 		left_arm_joint.rotation.x = -swing_angle
@@ -192,10 +183,8 @@ func animate_movement(velocity_flat: Vector2, is_on_floor: bool, delta: float) -
 		left_leg_joint.rotation.x = swing_angle
 		right_leg_joint.rotation.x = -swing_angle
 		
-		# Lateral swaying
 		visual_root.rotation.z = sin(_animation_time * bob_mult * 0.5) * 0.02
 	else:
-		# Smoothly interpolate back to default resting pose
 		body_bob_node.position.y = lerp(body_bob_node.position.y, sin(_animation_time * 2.0) * 0.012, delta * 5.0)
 		visual_root.rotation.z = lerp(visual_root.rotation.z, 0.0, delta * 5.0)
 		
@@ -222,74 +211,113 @@ func _process_blinking_cycle(delta: float) -> void:
 			if is_instance_valid(right_eye): right_eye.scale.y = 1.0
 
 
-# ==============================================================================
-# HIGH-FIDELITY DYNAMIC TOOL ATTACHMENT (BEAUTIFUL HELD ITEMS)
-# ==============================================================================
-
-## Dynamically constructs a beautiful, 3D multi-box pixel art tool in the right hand.
+## Dynamically constructs a beautiful, 3D multi-box / GLB pixel art tool in the right hand.
 func update_held_tool(item_id: int) -> void:
-	# Clear previous tool geometry
 	for child in held_tool_joint.get_children():
 		child.queue_free()
 		
 	if item_id == -1:
-		return # Empty hands
+		return 
 		
 	var wood := Color(0.48, 0.35, 0.22)
 	var iron := Color(0.65, 0.65, 0.70)
 	var gold := Color(0.85, 0.60, 0.15)
 	
-	# Case A: Building Block equipped (Draws a mini model of the block in hand)
 	if item_id >= 1 and item_id <= 14:
 		var block_def := BlockLibrary.get_definition(item_id as BlockType.Type)
 		var block_color := block_def.color_top if block_def != null else Color.GRAY
 		_create_box_mesh(held_tool_joint, Vector3(0.18, 0.18, 0.18), Vector3(0, 0.09, 0), block_color)
 		
-	# Case B: Lava Bucket
 	elif item_id == 15:
-		_create_box_mesh(held_tool_joint, Vector3(0.14, 0.18, 0.14), Vector3(0, 0.09, 0), iron) # Bucket body
-		_create_box_mesh(held_tool_joint, Vector3(0.10, 0.04, 0.10), Vector3(0, 0.17, 0), Color(1.0, 0.45, 0.0)) # Lava top glow
+		_create_box_mesh(held_tool_joint, Vector3(0.14, 0.18, 0.14), Vector3(0, 0.09, 0), iron) 
+		_create_box_mesh(held_tool_joint, Vector3(0.10, 0.04, 0.10), Vector3(0, 0.17, 0), Color(1.0, 0.45, 0.0)) 
 		
-	# Case C: Fried Chicken
 	elif item_id == 16:
-		_create_box_mesh(held_tool_joint, Vector3(0.04, 0.18, 0.04), Vector3(0, -0.04, 0), Color(0.92, 0.88, 0.82)) # Bone
-		_create_box_mesh(held_tool_joint, Vector3(0.12, 0.16, 0.12), Vector3(0, 0.08, 0), Color(0.85, 0.35, 0.25)) # Roasted meat
+		_create_box_mesh(held_tool_joint, Vector3(0.15, 0.12, 0.22), Vector3(0, 0.06, 0), Color(0.9, 0.6, 0.3)) 
 		
-	# Case D: HIGH-FIDELITY VOXEL BROADSWORD (ID 17)
+	# ==========================================================================
+	# THIRD-PERSON GLB PICKAXE INTEGRATION (V5 Telemetry & Sockets Calibration)
+	# ==========================================================================
+	elif item_id >= 1 and item_id <= 5 or item_id == 28 or item_id == 29: 
+		if ResourceLoader.exists(PICKAXE_MODEL_PATH):
+			var model_scene := load(PICKAXE_MODEL_PATH) as PackedScene
+			var model_node := model_scene.instantiate() as Node3D
+			_prune_extraneous_nodes(model_node)
+			
+			# 1. Scale model by 12.0x (Calibrated Third-Person Size)
+			model_node.scale = Vector3(12.0, 12.0, 12.0)
+			
+			# 2. Symmetrical Offset: Pulls the wooden shaft directly into the palm's center
+			model_node.position = Vector3(0.12, 0.15, 0.0) 
+			
+			# 3. Model is naturally oriented. No rotation offset required.
+			model_node.rotation_degrees = Vector3(0, 0, 0)
+			
+			held_tool_joint.add_child(model_node)
+			_register_glb_materials(model_node)
+		else:
+			push_error("[PlayerVisualComponent] GLB pickaxe not found at path: " + PICKAXE_MODEL_PATH)
+			# Fallback boxes
+			_create_box_mesh(held_tool_joint, Vector3(0.04, 0.52, 0.04), Vector3(0.0, 0.0, 0.0), wood)
+			var pick_head_joint := Node3D.new()
+			pick_head_joint.position = Vector3(0.0, 0.22, 0.0)
+			held_tool_joint.add_child(pick_head_joint)
+			_create_box_mesh(pick_head_joint, Vector3(0.08, 0.08, 0.08), Vector3(0.0, 0.0, 0.0), Color(0.35, 0.35, 0.38))
+			_create_box_mesh(pick_head_joint, Vector3(0.36, 0.06, 0.06), Vector3(0.0, 0.02, 0.0), iron)
+			_create_box_mesh(pick_head_joint, Vector3(0.06, 0.08, 0.05), Vector3(-0.16, -0.03, 0.0), iron * 0.95)
+			_create_box_mesh(pick_head_joint, Vector3(0.06, 0.08, 0.05), Vector3(0.16, -0.03, 0.0), iron * 0.95)
+
+	# ==========================================================================
+	# THIRD-PERSON GLB SWORD INTEGRATION (V5 Telemetry & Sockets Calibration)
+	# ==========================================================================
 	elif item_id == 17:
-		# Grip handle
-		_create_box_mesh(held_tool_joint, Vector3(0.04, 0.15, 0.04), Vector3(0.0, -0.15, 0.0), Color(0.35, 0.22, 0.15))
-		_create_box_mesh(held_tool_joint, Vector3(0.06, 0.05, 0.06), Vector3(0.0, -0.225, 0.0), gold) # Pommel
-		
-		# Thick gold crossguard
-		_create_box_mesh(held_tool_joint, Vector3(0.24, 0.05, 0.06), Vector3(0.0, -0.05, 0.0), gold)
-		
-		# Steel blade built from multiple layered, tapering segments!
-		_create_box_mesh(held_tool_joint, Vector3(0.08, 0.45, 0.04), Vector3(0.0, 0.20, 0.0), iron) # Core blade
-		_create_box_mesh(held_tool_joint, Vector3(0.06, 0.12, 0.03), Vector3(0.0, 0.45, 0.0), iron * 1.1) # Tapering point tip
-		_create_box_mesh(held_tool_joint, Vector3(0.02, 0.32, 0.05), Vector3(0.0, 0.15, 0.0), Color(0.8, 0.8, 0.85)) # Central fuller ridge
-		
-	# Case E: Seeds
-	elif item_id == 18:
-		_create_box_mesh(held_tool_joint, Vector3(0.08, 0.08, 0.08), Vector3(0, 0, 0), Color(0.42, 0.85, 0.25)) # Green seed pouch
-		
-	# Case F: HIGH-FIDELITY VOXEL PICKAXE (Fallback default for building block tools)
-	else:
-		# Long wooden shaft
-		_create_box_mesh(held_tool_joint, Vector3(0.04, 0.52, 0.04), Vector3(0.0, 0.0, 0.0), wood)
-		
-		# Structural metallic pickaxe head built out of overlapping curved segments!
-		var pick_head_joint := Node3D.new()
-		pick_head_joint.position = Vector3(0.0, 0.22, 0.0)
-		held_tool_joint.add_child(pick_head_joint)
-		
-		_create_box_mesh(pick_head_joint, Vector3(0.08, 0.08, 0.08), Vector3(0.0, 0.0, 0.0), Color(0.35, 0.35, 0.38)) # Neck binding
-		_create_box_mesh(pick_head_joint, Vector3(0.36, 0.06, 0.06), Vector3(0.0, 0.02, 0.0), iron) # Horizontal iron blade
-		
-		# Left curved claw tip
-		_create_box_mesh(pick_head_joint, Vector3(0.06, 0.08, 0.05), Vector3(-0.16, -0.03, 0.0), iron * 0.95)
-		# Right curved claw tip
-		_create_box_mesh(pick_head_joint, Vector3(0.06, 0.08, 0.05), Vector3(0.16, -0.03, 0.0), iron * 0.95)
+		if ResourceLoader.exists(SWORD_MODEL_PATH):
+			var model_scene := load(SWORD_MODEL_PATH) as PackedScene
+			var model_node := model_scene.instantiate() as Node3D
+			_prune_extraneous_nodes(model_node)
+			
+			# 1. Heroic third-person scale (0.045x)
+			model_node.scale = Vector3(0.045, 0.045, 0.045)
+			
+			# 2. Symmetrical Offset: Cancels out Blender's parent offset, dragging the hilt into palm
+			model_node.position = Vector3(0.025, -0.10, 0.0) 
+			
+			# 3. Flip 180° on X to point the blade UP, and align the Z-spine forward
+			model_node.rotation_degrees = Vector3(180, 180, 0)
+			
+			held_tool_joint.add_child(model_node)
+			_register_glb_materials(model_node)
+		else:
+			push_error("[PlayerVisualComponent] GLB sword not found at path: " + SWORD_MODEL_PATH)
+			_create_box_mesh(held_tool_joint, Vector3(0.04, 0.15, 0.04), Vector3(0.0, -0.15, 0.0), Color(0.35, 0.22, 0.15))
+			_create_box_mesh(held_tool_joint, Vector3(0.15, 0.04, 0.04), Vector3(0.0, -0.04, 0.0), gold)
+			_create_box_mesh(held_tool_joint, Vector3(0.08, 0.45, 0.04), Vector3(0.0, 0.20, 0.0), iron)
+	# ==========================================================================
+
+
+## Recursively duplicates materials to prevent material-sharing leaks
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mat: Material = node.get_active_material(0) as Material
+		if mat == null and node.mesh != null:
+			mat = node.mesh.surface_get_material(0) as Material
+			
+		if mat is BaseMaterial3D:
+			var new_mat := mat.duplicate() as BaseMaterial3D
+			node.material_override = new_mat
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
+
+
+## Recursively locates and frees extraneous camera and light nodes
+func _prune_extraneous_nodes(node: Node) -> void:
+	for i in range(node.get_child_count() - 1, -1, -1):
+		var child := node.get_child(i)
+		if "Camera" in child.name or "Light" in child.name:
+			child.free()
+		else:
+			_prune_extraneous_nodes(child)
 
 
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
@@ -302,7 +330,7 @@ func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) ->
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 1.0
-	mat.metallic_specular = 0.0
+	mat.metallic_specular = 0.0 
 	
 	if _shared_grain_texture != null:
 		mat.albedo_texture = _shared_grain_texture
@@ -321,12 +349,11 @@ func _create_box_mesh(parent: Node, size: Vector3, box_pos: Vector3, color: Colo
 	mesh_instance.mesh = box_mesh
 	mesh_instance.position = box_pos
 	
-	var mat := StandardMaterial3D.new()
+	var mat := ORMMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.9
 	mesh_instance.material_override = mat
 	
-	# Apply shadows settings matching parent client layer automatically
 	if is_local_player:
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 	else:

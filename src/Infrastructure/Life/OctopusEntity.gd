@@ -8,6 +8,12 @@
 #                to the sub-component, and physics movements to the base class.
 #              - Dependency Inversion Principle (DIP): Automatically prunes 
 #                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
+# MATHEMATICAL CALIBRATION (V5 Telemetry):
+#              - Total model height is 0.405m. Scaled by 1.8525x to achieve a 
+#                realistic giant ocean size of ~0.75m.
+#              - Model origin is centered. Raised the model Y-position by +0.3156m 
+#                to anchor the tentacles perfectly flat on the ground plane.
+#              - Model is baked facing forward. No rotation offset is required.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/OctopusEntity.gd
 # ==============================================================================
@@ -18,7 +24,7 @@ const MODEL_PATH := "res://assets/models/mobs/octopus.glb"
 
 
 func _init(spawn_pos: Vector3) -> void:
-	# Octopuses spawn with 3 Hearts of health (6 HP)
+	# Octopuses spawn with 6 Hearts of health (6 HP)
 	super(spawn_pos, 6)
 	name = "Entity_OCTOPUS"
 
@@ -33,14 +39,14 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
 		# ======================================================================
-		# 1. Scale model by 3.0x to achieve a realistic giant ocean size of ~1.2m
-		model_node.scale = Vector3(3.0, 3.0, 3.0)
+		# 1. Scale model by 1.8525x to achieve a realistic giant ocean size of ~0.75m
+		model_node.scale = Vector3(1.8525, 1.8525, 1.8525)
 		
-		# 2. Origin is centered. Raise it up by +0.510m on Y
+		# 2. Origin is centered. Raise it up by +0.3156m on Y
 		#    to anchor the tentacles perfectly flat on the ground plane
-		model_node.position = Vector3(0.0, 0.510, 0.0)
+		model_node.position = Vector3(0.0, 0.3156, 0.0)
 		
 		# 3. Model is naturally oriented. Rotation set to 0.
 		#    Uncomment and adjust the Y value if the mesh walk vector is offset.
@@ -80,14 +86,14 @@ func _prune_extraneous_nodes(node: Node) -> void:
 			_prune_extraneous_nodes(child)
 
 
-## Calibrated to the scaled bounding box size (1.2m height, 1.75m depth, 1.62m width)
+## Calibrated to the scaled bounding box size (0.75m height, 1.10m depth, 1.00m width)
 func _get_collision_box_size() -> Vector3:
-	return Vector3(1.60, 1.20, 1.70)
+	return Vector3(1.0, 0.75, 1.1)
 
 
 ## Centered relative to the body height
 func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.60, 0.0)
+	return Vector3(0.0, 0.375, 0.0)
 
 
 ## Flag used by the animation ticker to configure bouncy walks (Disabled to allow smooth swimming glide)

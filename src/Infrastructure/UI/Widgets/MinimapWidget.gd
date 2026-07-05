@@ -2,11 +2,10 @@
 # Project: CraftDomain
 # Description: SRP-compliant UI Widget responsible ONLY for rendering the 
 #              circular minimap radar, player direction arrow, and active markers.
-#              UX OVERHAUL (TACTICAL SYMBOLOGY V2):
-#              - Removed all circles. Every single entity category now uses 
-#                a highly distinct geometric polygon (Hexagons, Stars, Crosses, 
-#                Triangles) so they can be identified instantly without relying 
-#                solely on color.
+#              UX OVERHAUL (3D ALTITUDE RADAR):
+#              - Implemented 3D altitude-aware depth-sensing pins. Entities on 
+#                different vertical levels (caves or cliffs) fade automatically 
+#                and display vertical chevron indicators (^ or v) on the radar.
 # EXTREME PERFORMANCE UPGRADE (120 FPS STABILIZATION):
 # - ELIMINATED MAIN-THREAD BOTTLENECK: The 13x13 radar grid is calculated 
 #   ONLY when the player physically crosses a chunk boundary.
@@ -160,7 +159,7 @@ func _on_radar_draw() -> void:
 	_radar_canvas.draw_circle(CENTER, MAX_RADIUS * 0.4, grid_color, false, 1.0)
 	_radar_canvas.draw_circle(CENTER, MAX_RADIUS * 0.75, grid_color, false, 1.0)
 
-	# 3. DRAW TACTICAL ENTITY PINS (SYMBOLOGY OVERHAUL V2)
+	# 3. DRAW TACTICAL ENTITY PINS (3D DEPTH TRACKING OVERHAUL)
 	for child: Node in world_controller.get_children():
 		if not is_instance_valid(child):
 			continue
@@ -170,7 +169,7 @@ func _on_radar_draw() -> void:
 		var is_valid_entity: bool = false
 		
 		# Classify entity for Symbology
-		if child is CampfireEntity:
+		if child is CampfireEntity or child is WishingWellEntity:
 			child_pos = child.global_position; pin_type = PinType.CAMPFIRE; is_valid_entity = true
 		elif child is ChestEntity:
 			child_pos = child.global_position; pin_type = PinType.CHEST; is_valid_entity = true
@@ -178,11 +177,11 @@ func _on_radar_draw() -> void:
 			child_pos = child.global_position; pin_type = PinType.LIGHT; is_valid_entity = true
 		elif child is GuardEntity or child is GolemEntity:
 			child_pos = child.global_position; pin_type = PinType.DEFENDER; is_valid_entity = true
-		elif child is CowEntity or child is PigEntity or child is SheepEntity or child is ChickenEntity or child is TurtleEntity:
+		elif child is CowEntity or child is PigEntity or child is SheepEntity or child is ChickenEntity or child is TurtleEntity or child is FoxEntity or child is CatEntity or child is RaccoonEntity or child is GrowlitheEntity:
 			child_pos = child.global_position; pin_type = PinType.ANIMAL; is_valid_entity = true
-		elif child is HostileEntity:
+		elif child is HostileEntity or child is SharkEntity or child is GargoyleEntity or child is GoblinEntity:
 			child_pos = child.global_position; pin_type = PinType.HOSTILE; is_valid_entity = true
-		elif child is PassiveEntity: # Fallback for Villagers, Merchants, Farmers
+		elif child is PassiveEntity: 
 			child_pos = child.global_position; pin_type = PinType.NPC; is_valid_entity = true
 			
 		if is_valid_entity:
@@ -190,46 +189,58 @@ func _on_radar_draw() -> void:
 			
 			if diff.length_squared() < MAX_RADIUS_SQ:
 				var draw_pos: Vector2 = CENTER + diff
-				_draw_tactical_symbol(draw_pos, pin_type)
+				# Calculate vertical altitude delta relative to player's current height
+				var delta_y: float = child_pos.y - player_pos.y
+				_draw_tactical_symbol(draw_pos, pin_type, delta_y)
 
 
-## Helper: Draws specific geometric shapes based on entity category
-func _draw_tactical_symbol(draw_pos: Vector2, type: PinType) -> void:
+## Helper: Draws specific geometric shapes and applies 3D depth-sensing transparencies and chevrons
+func _draw_tactical_symbol(draw_pos: Vector2, type: PinType, delta_y: float) -> void:
+	# Calculate depth scaling: Fade pins out to 45% opacity if on a different floor/cave level
+	var is_different_level: bool = abs(delta_y) > 6.0
+	var alpha: float = 0.45 if is_different_level else 1.0
+	
+	var base_color := Color.WHITE
+	
 	match type:
 		PinType.CAMPFIRE:
 			# 🔥 Orange Triangle pointing UP
+			base_color = Color(1.0, 0.45, 0.0, alpha)
 			var shape_size: float = 3.5
 			var triangle: PackedVector2Array = PackedVector2Array([
-				draw_pos + Vector2(0, -shape_size - 1.0), # Tip up
-				draw_pos + Vector2(shape_size, shape_size - 1.0), # Bottom Right
-				draw_pos + Vector2(-shape_size, shape_size - 1.0) # Bottom Left
+				draw_pos + Vector2(0, -shape_size - 1.0), 
+				draw_pos + Vector2(shape_size, shape_size - 1.0), 
+				draw_pos + Vector2(-shape_size, shape_size - 1.0) 
 			])
-			_radar_canvas.draw_colored_polygon(triangle, Color(1.0, 0.45, 0.0))
-			_radar_canvas.draw_polyline(PackedVector2Array([triangle[0], triangle[1], triangle[2], triangle[0]]), Color.BLACK, 1.0)
+			_radar_canvas.draw_colored_polygon(triangle, base_color)
+			_radar_canvas.draw_polyline(PackedVector2Array([triangle[0], triangle[1], triangle[2], triangle[0]]), Color(0,0,0, alpha), 1.0)
 			
 		PinType.ANIMAL:
-			# 🐄 Green Triangle pointing DOWN (Distinct from Campfires)
+			# 🐄 Green Triangle pointing DOWN 
+			base_color = Color(0.35, 0.85, 0.25, alpha)
 			var shape_size: float = 2.5
 			var triangle: PackedVector2Array = PackedVector2Array([
-				draw_pos + Vector2(0, shape_size + 1.0), # Tip down
-				draw_pos + Vector2(shape_size, -shape_size + 1.0), # Top Right
-				draw_pos + Vector2(-shape_size, -shape_size + 1.0) # Top Left
+				draw_pos + Vector2(0, shape_size + 1.0), 
+				draw_pos + Vector2(shape_size, -shape_size + 1.0), 
+				draw_pos + Vector2(-shape_size, -shape_size + 1.0) 
 			])
-			_radar_canvas.draw_colored_polygon(triangle, Color(0.35, 0.85, 0.25))
-			_radar_canvas.draw_polyline(PackedVector2Array([triangle[0], triangle[1], triangle[2], triangle[0]]), Color.BLACK, 1.0)
+			_radar_canvas.draw_colored_polygon(triangle, base_color)
+			_radar_canvas.draw_polyline(PackedVector2Array([triangle[0], triangle[1], triangle[2], triangle[0]]), Color(0,0,0, alpha), 1.0)
 			
 		PinType.DEFENDER:
 			# 🛡️ Blue Diamond
+			base_color = Color(0.2, 0.55, 1.0, alpha)
 			var shape_size: float = 3.2
 			var diamond: PackedVector2Array = PackedVector2Array([
 				draw_pos + Vector2(0, -shape_size), draw_pos + Vector2(shape_size, 0),
 				draw_pos + Vector2(0, shape_size), draw_pos + Vector2(-shape_size, 0)
 			])
-			_radar_canvas.draw_colored_polygon(diamond, Color(0.2, 0.55, 1.0))
-			_radar_canvas.draw_polyline(PackedVector2Array([diamond[0], diamond[1], diamond[2], diamond[3], diamond[0]]), Color.BLACK, 1.0)
+			_radar_canvas.draw_colored_polygon(diamond, base_color)
+			_radar_canvas.draw_polyline(PackedVector2Array([diamond[0], diamond[1], diamond[2], diamond[3], diamond[0]]), Color(0,0,0, alpha), 1.0)
 			
 		PinType.NPC:
-			# 🧑 Cyan Hexagon
+			# 🧑 Cyan Hexagon with inner white core (Shadowing fixed: shape_size used consistently)
+			base_color = Color(0.0, 0.85, 0.85, alpha)
 			var shape_size: float = 2.6
 			var hex: PackedVector2Array = PackedVector2Array([
 				draw_pos + Vector2(0, -shape_size),
@@ -239,27 +250,28 @@ func _draw_tactical_symbol(draw_pos: Vector2, type: PinType) -> void:
 				draw_pos + Vector2(-shape_size * 0.866, shape_size * 0.5),
 				draw_pos + Vector2(-shape_size * 0.866, -shape_size * 0.5)
 			])
-			_radar_canvas.draw_colored_polygon(hex, Color(0.0, 0.85, 0.85))
-			_radar_canvas.draw_polyline(PackedVector2Array([hex[0], hex[1], hex[2], hex[3], hex[4], hex[5], hex[0]]), Color.BLACK, 1.0)
+			_radar_canvas.draw_colored_polygon(hex, base_color)
+			_radar_canvas.draw_polyline(PackedVector2Array([hex[0], hex[1], hex[2], hex[3], hex[4], hex[5], hex[0]]), Color(0,0,0, alpha), 1.0)
 			
 		PinType.HOSTILE:
 			# 🔴 Red X (Thick crossed lines)
+			base_color = Color(0.95, 0.15, 0.15, alpha)
 			var shape_size: float = 2.5
-			# Black shadow/outline
-			_radar_canvas.draw_line(draw_pos + Vector2(-shape_size, -shape_size), draw_pos + Vector2(shape_size, shape_size), Color.BLACK, 3.5)
-			_radar_canvas.draw_line(draw_pos + Vector2(shape_size, -shape_size), draw_pos + Vector2(-shape_size, shape_size), Color.BLACK, 3.5)
-			# Red core
-			_radar_canvas.draw_line(draw_pos + Vector2(-shape_size, -shape_size), draw_pos + Vector2(shape_size, shape_size), Color(0.95, 0.15, 0.15), 1.5)
-			_radar_canvas.draw_line(draw_pos + Vector2(shape_size, -shape_size), draw_pos + Vector2(-shape_size, shape_size), Color(0.95, 0.15, 0.15), 1.5)
+			_radar_canvas.draw_line(draw_pos + Vector2(-shape_size, -shape_size), draw_pos + Vector2(shape_size, shape_size), Color(0,0,0, alpha), 3.5)
+			_radar_canvas.draw_line(draw_pos + Vector2(shape_size, -shape_size), draw_pos + Vector2(-shape_size, shape_size), Color(0,0,0, alpha), 3.5)
+			_radar_canvas.draw_line(draw_pos + Vector2(-shape_size, -shape_size), draw_pos + Vector2(shape_size, shape_size), base_color, 1.5)
+			_radar_canvas.draw_line(draw_pos + Vector2(shape_size, -shape_size), draw_pos + Vector2(-shape_size, shape_size), base_color, 1.5)
 			
 		PinType.CHEST:
 			# 🟨 Gold Square
+			base_color = Color(1.0, 0.82, 0.2, alpha)
 			var rect: Rect2 = Rect2(draw_pos - Vector2(2, 2), Vector2(4, 4))
-			_radar_canvas.draw_rect(rect, Color(1.0, 0.82, 0.2), true)
-			_radar_canvas.draw_rect(rect, Color.BLACK, false, 1.0)
+			_radar_canvas.draw_rect(rect, base_color, true)
+			_radar_canvas.draw_rect(rect, Color(0,0,0, alpha), false, 1.0)
 			
 		PinType.LIGHT:
-			# 💡 Yellow 4-Pointed Star (Glowing core without black outline)
+			# 💡 Yellow 4-Pointed Star 
+			base_color = Color(1.0, 0.9, 0.2, alpha)
 			var w: float = 0.8
 			var h: float = 2.5
 			var star: PackedVector2Array = PackedVector2Array([
@@ -268,7 +280,21 @@ func _draw_tactical_symbol(draw_pos: Vector2, type: PinType) -> void:
 				draw_pos + Vector2(0, h), draw_pos + Vector2(-w, w),
 				draw_pos + Vector2(-h, 0), draw_pos + Vector2(-w, -w)
 			])
-			_radar_canvas.draw_colored_polygon(star, Color(1.0, 0.9, 0.2))
+			_radar_canvas.draw_colored_polygon(star, base_color)
+			
+	# ==========================================================================
+	# 3D ALTITUDE INDICATOR CHEVRONS (^ or v)
+	# ==========================================================================
+	if is_different_level:
+		var arrow_color := Color(base_color.r, base_color.g, base_color.b, 0.72)
+		if delta_y < -6.0:
+			# Target is deep below us (underground cave) - draw downward pointing chevron
+			_radar_canvas.draw_line(draw_pos + Vector2(-3, 6), draw_pos + Vector2(0, 9), arrow_color, 1.5)
+			_radar_canvas.draw_line(draw_pos + Vector2(3, 6), draw_pos + Vector2(0, 9), arrow_color, 1.5)
+		elif delta_y > 6.0:
+			# Target is high above us (cliff/flying) - draw upward pointing chevron
+			_radar_canvas.draw_line(draw_pos + Vector2(-3, -6), draw_pos + Vector2(0, -9), arrow_color, 1.5)
+			_radar_canvas.draw_line(draw_pos + Vector2(3, -6), draw_pos + Vector2(0, -9), arrow_color, 1.5)
 
 
 # ==============================================================================

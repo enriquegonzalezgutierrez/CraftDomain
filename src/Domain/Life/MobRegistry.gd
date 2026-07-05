@@ -5,7 +5,7 @@
 #              - Single Responsibility Principle (SRP): Only manages dynamic entity 
 #                factories and instantiation parameters for living, AI-driven actors.
 #              - Open-Closed Principle (OCP): Encapsulates entity registrations 
-#                internally on startup, allowing new species (like Fox 204, Bird 205, Cat 206, Parrot 207, Crab 208, Elephant 209, Octopus 210, Shark 11, Raccoon 211, Growlithe 212 & Gargoyle 12) 
+#                internally on startup, allowing new species (like Fox 204, Bird 205, Cat 206, Parrot 207, Crab 208, Elephant 209, Octopus 210, Shark 11, Raccoon 211, Growlithe 212, Gargoyle 12, Goblin 13 & Monkey 213) 
 #                to be registered without breaking the boot composition root.
 #              - Liskov Substitution Principle (LSP): Instantiates any entity subclass 
 #                polymorphically under the Node contract.
@@ -64,6 +64,8 @@ static func initialize_mobs() -> void:
 	# - Forest Raccoon registered under ID 211
 	# - Fiery Growlithe registered under ID 212
 	# - Nocturnal Gargoyle registered under ID 12
+	# - Sneaky Goblin registered under ID 13
+	# - Tropical Monkey registered under ID 213
 	# ==========================================================================
 	register_mob(204, func(pos: Vector3) -> Node: return FoxEntity.new(pos))
 	register_mob(205, func(pos: Vector3) -> Node: return BirdEntity.new(pos))
@@ -76,6 +78,8 @@ static func initialize_mobs() -> void:
 	register_mob(211, func(pos: Vector3) -> Node: return RaccoonEntity.new(pos))
 	register_mob(212, func(pos: Vector3) -> Node: return GrowlitheEntity.new(pos))
 	register_mob(12, func(pos: Vector3) -> Node: return GargoyleEntity.new(pos))
+	register_mob(13, func(pos: Vector3) -> Node: return GoblinEntity.new(pos))
+	register_mob(213, func(pos: Vector3) -> Node: return MonkeyEntity.new(pos))
 	
 	print("[MobRegistry] Initialization complete. Registered dynamic spawners count: ", _spawners.size())
 

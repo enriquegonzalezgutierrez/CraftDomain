@@ -2,12 +2,10 @@
 # ==============================================================================
 # Project: CraftDomain - Asset Pipeline Tools
 # Description: Advanced forensic glTF/GLB 2.0 metadata analyzer.
-#              Extracts complete asset telemetry: extensions, skeletons, PBR,
-#              geometry budgets (triangles/vertices), and embedded image sizes.
-#              NEW IN V4:
-#              - Global Combined Bounding Box.
-#              - Suggested Godot Engine Offsets Table (Automated Scale & Position.y).
-#              - Improved Anatomical Orientation Predictor.
+#              Extracts complete asset telemetry.
+#              NEW IN V5:
+#              - Z-Axis Geometric Asymmetry Scanner (detects forward/backward 
+#                mesh flips and recommends 180° rotation offsets).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # Usage: python3 analyze_glb.py <path_to_file.glb>
 # ==============================================================================
@@ -152,7 +150,7 @@ def analyze_glb(file_path):
             print("  (All nodes are at default 1x1x1 scale, origin 0,0,0, and 0° rotation)")
 
         # ----------------------------------------------------------------------
-        # 5. DETAILED MESH & GEOMETRY METRICS (POLYGON BUDGETS)
+        # 5. DETAILED MESH & GEOMETRY METRICS (Asymmetry Scanner)
         # ----------------------------------------------------------------------
         print("\n📐 MESH & GEOMETRY METRICS (POLYGON BUDGETS):")
         print("-" * 40)
@@ -197,6 +195,16 @@ def analyze_glb(file_path):
                         print(f"      -> Min Vertex: {min_vals}")
                         print(f"      -> Max Vertex: {max_vals}")
                         print(f"      -> Dimensions: Width={width:.3f} | Height={height:.3f} | Depth={depth:.3f}")
+                        
+                        # Predictive Orientation Heuristic
+                        if width > 0 and depth > 0:
+                            ratio = width / depth
+                            if ratio < 0.85:
+                                print("    ⚠️  [ORIENTATION WARNING] Depth (Z) is significantly larger than Width (X).")
+                                print("                              For standard humanoid models facing forward, Width (shoulders) should be larger.")
+                                print("                              -> This model is likely baked facing SIDEWAYS (Left or Right).")
+                                print("                              -> Recommended Fix: Set model_node.rotation_degrees.y = -90 (or 90) in Godot.")
+                                print("                              -> If this is a QUADRUPED (Cat, Dog, Raccoon): This is normal, do NOT rotate sideways!")
 
                     mode = primitive.get("mode", 4)
                     
@@ -217,7 +225,7 @@ def analyze_glb(file_path):
             print("  (No static mesh data defined)")
 
         # ----------------------------------------------------------------------
-        # 6. GLOBAL BOUNDS & ENG COMPENSATIONS (DDD / SRP)
+        # 6. GLOBAL BOUNDS & ENG COMPENSATIONS (Asymmetry Scanner)
         # ----------------------------------------------------------------------
         print("\n📦 GLOBAL BOUNDING BOX & DYNAMIC ENGINE CALIBRATION:")
         print("-" * 40)
@@ -230,17 +238,29 @@ def analyze_glb(file_path):
             print(f"  Absolute Combined Max Vertex: [{glob_max_x:0.3f}, {glob_max_y:0.3f}, {glob_max_z:0.3f}]")
             print(f"  Absolute Combined Size:       Width={glob_width:0.3f} | Height={glob_height:0.3f} | Depth={glob_depth:0.3f}")
             
-            # Predictive Orientation Heuristic
+            # 1. Predictive Orientation Heuristic
             if glob_width > 0 and glob_depth > 0:
                 ratio = glob_width / glob_depth
-                # Humanoids/Zombies are wider (shoulders) than deep (chest). Z-alignment indicates sideways.
-                # Quadrupeds (cats, raccoons) are longer (Z-axis). This ratio applies to humanoids.
                 print(f"  Aspect Ratio (Width/Depth):   {ratio:0.3f}")
                 if ratio < 0.85:
                     print("  ⚠️  [ORIENTATION WARNING] Depth (Z) is significantly larger than Width (X).")
                     print("                            -> If this is a HUMANOID/ZOMBIE: Mesh is likely baked facing SIDEWAYS.")
                     print("                            -> Fix: Set model_node.rotation_degrees.y = -90 (or 90) in Godot.")
                     print("                            -> If this is a QUADRUPED (Cat, Dog, Raccoon): This is normal, do NOT rotate sideways!")
+            
+            # ==================================================================
+            # 2. Z-AXIS GEOMETRIC ASYMMETRY SCANNER (NEW V5)
+            # ==================================================================
+            abs_min_z = abs(glob_min_z)
+            abs_max_z = abs(glob_max_z)
+            if abs_min_z > 0.01 and abs_max_z > 0.01:
+                asymmetry_z = abs_min_z / abs_max_z
+                if asymmetry_z > 2.0 or asymmetry_z < 0.5:
+                    print(f"  ⚠️  [Z-AXIS ASYMMETRY ALERT] Shift ratio: {asymmetry_z:0.3f} (Min-Z: {glob_min_z:0.3f} | Max-Z: {glob_max_z:0.3f})")
+                    print("                               -> The pivot is heavily offset toward one end on the Z-axis.")
+                    print("                               -> If this model moves BACKWARDS while chasing in-game:")
+                    print("                                  Fix: Set model_node.rotation_degrees.y = 180 in Godot.")
+            # ==================================================================
             
             # AUTOMATED SUGESTED OFFSET TABLE
             print("\n  📐 SUGGESTED GODOT OFFSETS FOR TARGET HEIGHTS:")
@@ -254,7 +274,6 @@ def analyze_glb(file_path):
             for label, target_h in targets.items():
                 scale_factor = target_h / glob_height
                 scaled_min_y = glob_min_y * scale_factor
-                # Position Y needed to offset feet to Y=0
                 pos_y_offset = -scaled_min_y
                 
                 print(f"    * {label}:")
