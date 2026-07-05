@@ -4,11 +4,11 @@
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Only manages dynamic entity 
 #                factories and instantiation parameters for living, AI-driven actors.
-#              - Open-Closed Principle (OCP): Encapsulates default entity registrations 
-#                internally on startup, removing registration bloat from Bootstrap.
-#              REFACTORING:
-#              - Removed static scenery Props (Chest ID 200, Streetlight ID 202) 
-#                to adhere strictly to SRP and domain boundaries.
+#              - Open-Closed Principle (OCP): Encapsulates entity registrations 
+#                internally on startup, allowing new species (like Fox 204, Bird 205, Cat 206, Parrot 207, Crab 208, Elephant 209, Octopus 210, Shark 11, Raccoon 211, Growlithe 212 & Gargoyle 12) 
+#                to be registered without breaking the boot composition root.
+#              - Liskov Substitution Principle (LSP): Instantiates any entity subclass 
+#                polymorphically under the Node contract.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Life/MobRegistry.gd
 # ==============================================================================
@@ -25,7 +25,7 @@ static func initialize_mobs() -> void:
 	print("[MobRegistry] Initializing and registering dynamic entity spawning factories...")
 	_spawners.clear()
 	
-	# Wildlife Spawn Mappings (0-3)
+	# Wilderness Spawn Mappings (0-3)
 	register_mob(0, func(pos: Vector3) -> Node: return PigEntity.new(pos))
 	register_mob(1, func(pos: Vector3) -> Node: return ChickenEntity.new(pos))
 	register_mob(2, func(pos: Vector3) -> Node: return SheepEntity.new(pos))
@@ -50,6 +50,32 @@ static func initialize_mobs() -> void:
 	
 	# Marine Wildlife (Sea Turtle registered as ID 201)
 	register_mob(201, func(pos: Vector3) -> Node: return TurtleEntity.new(pos))
+	
+	# ==========================================================================
+	# FOREST, DOMESTIC, TROPICAL, MARINE, DESERT, SAVANNAH & HOSTILE WILDLIFE ADDITIONS
+	# - Fox registered under ID 204
+	# - Flying Bird registered under ID 205
+	# - Domestic Cat registered under ID 206
+	# - Tropical Parrot registered under ID 207
+	# - Beach Crab registered under ID 208
+	# - Colossal Elephant registered under ID 209
+	# - Deep-water Octopus registered under ID 210
+	# - Great White Shark registered under ID 11
+	# - Forest Raccoon registered under ID 211
+	# - Fiery Growlithe registered under ID 212
+	# - Nocturnal Gargoyle registered under ID 12
+	# ==========================================================================
+	register_mob(204, func(pos: Vector3) -> Node: return FoxEntity.new(pos))
+	register_mob(205, func(pos: Vector3) -> Node: return BirdEntity.new(pos))
+	register_mob(206, func(pos: Vector3) -> Node: return CatEntity.new(pos))
+	register_mob(207, func(pos: Vector3) -> Node: return ParrotEntity.new(pos))
+	register_mob(208, func(pos: Vector3) -> Node: return CrabEntity.new(pos))
+	register_mob(209, func(pos: Vector3) -> Node: return ElephantEntity.new(pos))
+	register_mob(210, func(pos: Vector3) -> Node: return OctopusEntity.new(pos))
+	register_mob(11, func(pos: Vector3) -> Node: return SharkEntity.new(pos))
+	register_mob(211, func(pos: Vector3) -> Node: return RaccoonEntity.new(pos))
+	register_mob(212, func(pos: Vector3) -> Node: return GrowlitheEntity.new(pos))
+	register_mob(12, func(pos: Vector3) -> Node: return GargoyleEntity.new(pos))
 	
 	print("[MobRegistry] Initialization complete. Registered dynamic spawners count: ", _spawners.size())
 

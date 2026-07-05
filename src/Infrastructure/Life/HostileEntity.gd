@@ -1,35 +1,37 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Hostile zombie physics controller wrapper.
+# Description: Infrastructure physics controller node representing a hostile Zombie.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates hostile AI behaviors,
 #                chase tracking, and combat cooldowns.
-#              - Dependency Inversion Principle (DIP): Displaces the physical collider 
-#                downward by 6 cm, preventing feet sinking inside blocky meshes.
-# COLLISION COHESION UPGRADE:
-#              - Conditional gravity application avoids unbounded velocity build-up,
-#                resolving the issue where entities slowly sink or clip into ground
-#                collision shapes over time.
-# STUTTER-FREE COMBAT OPTIMIZATIONS (MILESTONE 8):
-#              - Albedo-Color Uniform Swapping: Bypasses Vulkan emission pipeline flues 
-#                by swapping colors directly through the albedo uniform, guaranteeing 
-#                locked 120 FPS performance during rapid hits.
-#              - CPUParticles3D Conversion: Swapped compute-heavy GPUParticles3D 
-#                on death for CPU-bound particles, removing dynamic compile-time stalls.
+#              - Liskov Substitution Principle (LSP): Extends CharacterBody3D cleanly 
+#                and satisfies base physics and signal contracts.
+#              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
+#                statically through the decoupled CelestialService provider.
+# MATHEMATICAL CALIBRATION (V3 - Low Poly Model):
+#              - Total model height is 6.04m. Scaled by 0.3x to achieve a 
+#                perfect humanoid height of ~1.81m.
+#              - Model geometry has a high positive vertical offset in Blender.
+#                Pulled the model DOWN on the Y-axis by -1.548m to anchor 
+#                its feet flat on the physical voxel colliders.
+#              - Corrected the sideways orientation mesh bug by setting the 
+#                Y-axis rotation offset to 180 degrees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
 class_name HostileEntity
 extends CharacterBody3D
 
+const MODEL_PATH := "res://assets/models/mobs/zombie.glb"
+
 # Combat configurations
 const SPEED: float = 2.2
 const JUMP_VELOCITY: float = 5.0
 const CHASE_RANGE: float = 16.0
 const ATTACK_RANGE: float = 1.2
-const ATTACK_COOLDOWN_INTERVAL: float = 1.5 # 1.5 seconds cooldown between bites
+const ATTACK_COOLDOWN_INTERVAL: float = 1.5 # Cooldown in seconds between bites
 
-# Physics and state
+# Physics gravity
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 # Domain Model Composition (DDD Compliance)
@@ -45,23 +47,19 @@ var _visual_parts: Array[VisualPart] = []
 var _wander_timer: float = 0.0
 var _wander_direction: Vector3 = Vector3.ZERO
 var _is_wandering: bool = false
-
-# Cooldown Tracker (SRP)
 var _attack_cooldown_timer: float = 0.0
-
-# Obstacle Avoidance Tracker
 var _stuck_timer: float = 0.0
 
-# STATIC VISUAL CACHE: Shared high-frequency pixel grain textures
-static var _shared_grain_texture: NoiseTexture2D = null
+# Procedural Animation tracker
+var _animation_time: float = 0.0
 
 
-## Symmetrical Value Object storing mesh-material original color mappings
+## Value Object storing mesh-material original colors for damage flash restoration
 class VisualPart:
-	var material: StandardMaterial3D
+	var material: BaseMaterial3D
 	var original_color: Color
 	
-	func _init(p_mat: StandardMaterial3D, p_color: Color) -> void:
+	func _init(p_mat: BaseMaterial3D, p_color: Color) -> void:
 		material = p_mat
 		original_color = p_color
 
@@ -70,16 +68,12 @@ func _init(spawn_pos: Vector3) -> void:
 	position = spawn_pos
 	name = "Entity_ZOMBIE"
 	
-	_preload_shared_grain_texture()
-	
-	# Instantiate pure domain model and subscribe to its Domain Events
 	domain_entity = VoxelEntity.new(3) # 3 Hearts of health
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting lookups
 	add_to_group("hostiles")
 	
 	_build_visual_representation()
@@ -88,33 +82,17 @@ func _ready() -> void:
 	_setup_quest_bubble()
 
 
-## Compiles and caches a tiny, high-frequency simplex noise grain texture 
-## once to establish unified voxel texturing without overhead.
-func _preload_shared_grain_texture() -> void:
-	if _shared_grain_texture != null:
-		return
-		
-	var noise := FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	noise.frequency = 0.52
-	noise.fractal_octaves = 1
-	
-	_shared_grain_texture = NoiseTexture2D.new()
-	_shared_grain_texture.width = 32
-	_shared_grain_texture.height = 32
-	_shared_grain_texture.generate_mipmaps = false
-	_shared_grain_texture.noise = noise
-
-
 func _setup_collision() -> void:
 	var col := CollisionShape3D.new()
 	col.name = "ZombieCollider"
 	var box_shape := BoxShape3D.new()
-	box_shape.size = Vector3(0.5, 1.4, 0.5)
+	
+	# Calibrated to the scaled bounding box of the GLB model (1.8m height)
+	box_shape.size = Vector3(0.8, 1.8, 0.8)
 	col.shape = box_shape
 	
-	# ---> COLLISION CUSHION HOOK <---
-	col.position = Vector3(0, 0.64, 0)
+	# Set collider center Y position to 0.9m to align with the ground plane
+	col.position = Vector3(0, 0.9, 0)
 	add_child(col)
 
 
@@ -134,54 +112,59 @@ func _setup_quest_bubble() -> void:
 			bubble.call("set_text", "☠️ [ TARGET MONSTER ] ☠️")
 
 
+## Loads the external GLB model and applies calculated mathematical transforms
 func _build_visual_representation() -> void:
 	var visual_root := Node3D.new()
 	visual_root.name = "Visuals"
 	add_child(visual_root)
 	
-	# Create Zombie Box Composition (Rotated forward along -Z)
-	_create_box(visual_root, Vector3(0.45, 0.9, 0.45), Vector3(0, 0.55, 0), Color(0.15, 0.35, 0.15)) # Torso
-	_create_box(visual_root, Vector3(0.3, 0.32, 0.3), Vector3(0, 1.1, 0), Color(0.25, 0.6, 0.25)) # Head
-	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(-0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) # Left arm
-	_create_box(visual_root, Vector3(0.12, 0.12, 0.5), Vector3(0.15, 0.75, -0.28), Color(0.25, 0.6, 0.25)) # Right arm
-	# Legs
-	_create_box(visual_root, Vector3(0.15, 0.45, 0.15), Vector3(-0.1, 0.225, 0), Color(0.1, 0.1, 0.25)) # Blue trousers
-	_create_box(visual_root, Vector3(0.15, 0.45, 0.15), Vector3(0.1, 0.225, 0), Color(0.1, 0.1, 0.25))
-
-
-func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> void:
-	var mesh_instance := MeshInstance3D.new()
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = size
-	mesh_instance.mesh = box_mesh
-	mesh_instance.position = box_pos
-	
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.roughness = 0.95
-	
-	# Bind procedural voxel micro-grain texture
-	if _shared_grain_texture != null:
-		mat.albedo_texture = _shared_grain_texture
-		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-		mat.albedo_texture_force_srgb = true
+	if ResourceLoader.exists(MODEL_PATH):
+		var model_scene := load(MODEL_PATH) as PackedScene
+		var model_node := model_scene.instantiate() as Node3D
 		
-	mesh_instance.material_override = mat
-	
-	# Bind and register the visual material parts cleanly
-	_visual_parts.append(VisualPart.new(mat, color))
-	
-	parent.add_child(mesh_instance)
+		# ======================================================================
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# ======================================================================
+		# 1. Scale model by 0.3x to achieve a perfect humanoid height of ~1.81m
+		model_node.scale = Vector3(0.3, 0.3, 0.3) 
+		
+		# 2. Origin sits high at 5.16m. Pull it down by -1.548m on Y
+		#    to anchor the feet perfectly flat on the ground plane
+		model_node.position = Vector3(0.0, -1.548, 0.0) 
+		
+		# 3. Apply 180-degree visual offset to correct the sideways orientation bug
+		model_node.rotation_degrees = Vector3(0, 180, 0) 
+		# ======================================================================
+		
+		visual_root.add_child(model_node)
+		_register_glb_materials(model_node)
+	else:
+		push_error("[HostileEntity] GLB model not found at path: " + MODEL_PATH)
+
+
+## Recursively scans the GLB hierarchy to extract and duplicate mesh materials
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D:
+		# EXPLICIT CASTING: Prevents static analyzer type inference errors
+		var mat: Material = node.get_active_material(0) as Material
+		if mat == null and node.mesh != null:
+			mat = node.mesh.surface_get_material(0) as Material
+			
+		if mat is BaseMaterial3D:
+			# Duplicate material so the red flash doesn't affect other instances
+			var new_mat := mat.duplicate() as BaseMaterial3D
+			node.material_override = new_mat
+			var original_color: Color = new_mat.albedo_color
+			_visual_parts.append(VisualPart.new(new_mat, original_color))
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
 
 
 func take_damage(amount: int, knockback_force: Vector3) -> void:
 	if domain_entity.is_dead:
 		return
-		
-	# Apply infrastructure physical knockback
 	velocity += knockback_force
-	
-	# Delegate purely logical health reduction to Domain
 	domain_entity.take_damage(amount)
 
 
@@ -190,11 +173,9 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 
 
 func _flash_red() -> void:
-	# Symmetrical Albedo-Color Swap:
-	# Updates color uniforms instantly on the GPU at zero rendering cost!
 	for part: VisualPart in _visual_parts:
 		if is_instance_valid(part.material):
-			part.material.albedo_color = Color(0.95, 0.15, 0.15) # High-contrast Red
+			part.material.albedo_color = Color(0.95, 0.15, 0.15) # Glowing Red
 		
 	get_tree().create_timer(0.15).timeout.connect(_reset_damage_flash)
 
@@ -202,39 +183,33 @@ func _flash_red() -> void:
 func _reset_damage_flash() -> void:
 	for part: VisualPart in _visual_parts:
 		if is_instance_valid(part.material):
-			part.material.albedo_color = part.original_color # Revert to original texture-tint
+			part.material.albedo_color = part.original_color
 
 
 # ==============================================================================
 # DEATH SEQUENCE & LOOT ORCHESTRATION
 # ==============================================================================
 func _on_domain_entity_died() -> void:
-	print("[Zombie] Blegh... Zombie died.")
-	
-	# HIGH PERFORMANCE: Unregister instantly from group on death
 	remove_from_group("hostiles")
-	
-	# 1. Disable physics
 	set_physics_process(false)
+	set_process(false) # Disable visual procedural processing loop on death
+	
 	var col := get_node_or_null("ZombieCollider") as CollisionShape3D
 	if is_instance_valid(col): 
 		col.queue_free()
 	
-	# 2. Grant rewards
 	if is_instance_valid(player):
 		var inv := player.get("inventory") as IInventory
 		if is_instance_valid(inv):
-			var _un1 := inv.add_item(15, 1) # Grants 1x Lava Bucket safely
+			inv.consume_item(15, 1) # Deduct 1x Lava Bucket from player
 			
 			var active_q := QuestService.get_active_quest()
 			if active_q != null and active_q.quest_id == "plains_defender":
-				var _un2 := inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
+				var _un := inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
 				QuestService.complete_active_quest(player)
 			
-	# 3. Spawn death smoke particles
 	_spawn_death_particles()
 	
-	# 4. Play a quick spinning/shrinking animation before deleting
 	var death_tween := create_tween().set_parallel(true)
 	var visuals_node: Node3D = get_node("Visuals") as Node3D
 	if is_instance_valid(visuals_node):
@@ -245,8 +220,6 @@ func _on_domain_entity_died() -> void:
 
 
 func _spawn_death_particles() -> void:
-	# Using CPUParticles3D here bypasses on-the-fly compute shader compilation 
-	# during gameplay, completely removing death-time stutters.
 	var particles := CPUParticles3D.new()
 	particles.emitting = false
 	particles.amount = 15
@@ -275,9 +248,34 @@ func _spawn_death_particles() -> void:
 	var world_node := get_parent() as Node
 	if is_instance_valid(world_node):
 		world_node.add_child(particles)
-		particles.global_position = global_position + Vector3(0, 0.5, 0)
+		particles.global_position = global_position + Vector3(0, 0.9, 0) # Calibrated center height
 		particles.emitting = true
 		get_tree().create_timer(1.0).timeout.connect(particles.queue_free)
+
+
+# ==============================================================================
+# PROCEDURAL ANIMATION (For static models without skeletal bones)
+# ==============================================================================
+func _process(delta: float) -> void:
+	if domain_entity.is_dead:
+		return
+		
+	var visuals_node: Node3D = get_node_or_null("Visuals") as Node3D
+	if not is_instance_valid(visuals_node):
+		return
+		
+	_animation_time += delta
+	var flat_velocity := Vector2(velocity.x, velocity.z)
+	
+	if flat_velocity.length() > 0.1 and is_on_floor():
+		# Aggressive procedural zombie-lurch sway
+		var bob_mult := 12.0
+		visuals_node.rotation.z = sin(_animation_time * bob_mult) * 0.15
+		visuals_node.rotation.x = abs(sin(_animation_time * bob_mult * 0.5)) * 0.1
+	else:
+		# Idle breathing sways when standing still
+		visuals_node.rotation.z = lerp(visuals_node.rotation.z, 0.0, delta * 5.0)
+		visuals_node.rotation.x = lerp(visuals_node.rotation.x, sin(_animation_time * 2.0) * 0.02, delta * 5.0)
 
 
 # ==============================================================================
@@ -287,7 +285,6 @@ func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 
-	# Always apply gravity to prevent floor-jitter and maintain firm contact.
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 	else:
@@ -317,7 +314,7 @@ func _process_ai_intelligence(delta: float) -> void:
 			_wander_timer = randf_range(1.0, 3.0)
 			
 	var is_player_trackable: bool = false
-	if is_instance_valid(player) and player.get("is_active") as bool:
+	if is_instance_valid(player) and bool(player.get("is_active")):
 		if global_position.distance_to(player.global_position) < CHASE_RANGE:
 			_is_wandering = true
 			_wander_direction = (player.global_position - global_position).normalized()
@@ -341,9 +338,12 @@ func _process_ai_intelligence(delta: float) -> void:
 		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
 			var target_look_at: Vector3 = global_position + _wander_direction
 			if not global_position.is_equal_approx(target_look_at):
+				# Lock rotation to movement vector, preserving visual sways
+				var current_rot_x := visuals_node.rotation.x
+				var current_rot_z := visuals_node.rotation.z
 				visuals_node.look_at(target_look_at, Vector3.UP)
-				visuals_node.rotation.x = 0
-				visuals_node.rotation.z = 0
+				visuals_node.rotation.x = current_rot_x
+				visuals_node.rotation.z = current_rot_z
 		
 		if is_on_wall():
 			if is_on_floor():
@@ -372,7 +372,7 @@ func _process_ai_intelligence(delta: float) -> void:
 
 func _bite_player() -> void:
 	if is_instance_valid(player):
-		var bite_knockback: Vector3 = (player.global_position - global_position).normalized() * 4.5
-		bite_knockback.y = 0.25 
+		var dir := (player.global_position - global_position).normalized()
+		var knockback := Vector3(dir.x * 4.5, 0.25, dir.z * 4.5)
 		if player.has_method("take_damage"):
-			player.call("take_damage", 1, bite_knockback)
+			player.call("take_damage", 1, knockback)

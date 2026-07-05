@@ -3,12 +3,12 @@
 # Description: Pure Domain Interface defining the strategic contract for any
 #              procedural biome. Decouples physical, visual, and landmark
 #              rules into independent, extensible classes.
-#              SOLID COMPLIANCE: 
+# SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates biome specifications.
 #              - Liskov Substitution Principle (LSP): Sub-classes fully satisfy 
-#                the contract, implementing custom outpost populations.
-#              - Open-Closed Principle (OCP): Outpost spawns are now data-driven,
-#                removing hardcoded mappings from spawner services.
+#                the contract, implementing custom outpost populations and wildlife.
+#              - Open-Closed Principle (OCP): Outpost and wilderness spawns are now 
+#                completely data-driven, removing hardcoded mappings from spawner services.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/IBiome.gd
 # ==============================================================================
@@ -20,8 +20,7 @@ func get_biome_id() -> int:
 	assert(false, "[IBiome] get_biome_id() must be implemented by concrete subclass.")
 	return 0
 
-## Abstract contract: Returns the dynamically localized name of the biome (OCP compliant).
-## Subclasses must implement this using Godot's built-in tr() TranslationServer.
+## Abstract contract: Returns the dynamically localized name of the biome.
 func get_biome_name() -> String:
 	assert(false, "[IBiome] get_biome_name() must be implemented by concrete subclass.")
 	return ""
@@ -47,13 +46,16 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 	return 0
 
 ## Virtual Contract: Returns a random structure blueprint ID to spawn based on hash, or 0 if none.
-## Overridden by subclasses to distribute trees/mushrooms organically without editing the core generator.
 func get_scatter_blueprint_id(_scatter_hash: int) -> int:
 	return 0
 
-
 ## Virtual Contract: Returns the list of specialized Mob/NPC IDs that populate outposts in this biome.
-## Defaults to standard Farmer (103) and Guard (102). Specialized biomes will override this.
 func get_outpost_population_ids() -> Array[int]:
 	var default_population: Array[int] = [103, 102]
 	return default_population
+
+## Virtual Contract (OCP): Returns the list of wildlife Mob IDs that spawn organically 
+## in the wilderness of this biome. Defaults to common farm animals [0, 1, 2, 3].
+func get_wilderness_wildlife_ids() -> Array[int]:
+	var default_wildlife: Array[int] = [0, 1, 2, 3]
+	return default_wildlife

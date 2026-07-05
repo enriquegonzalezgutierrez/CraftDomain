@@ -4,14 +4,8 @@
 #              and vegetation scatter rules for the Golden Bazaar plains.
 #              SOLID COMPLIANCE:
 #              - Liskov Substitution Principle (LSP): Fully implements IBiome.
-#              - Single Responsibility Principle (SRP): Only manages plains topography, 
-#                soil blocks, and local plant scattering rules.
-#              LANDSCAPE OVERHAUL:
-#              - Integrated organic scattering selectors for Birch Trees (ID 13),
-#                flowering Rose Bushes (ID 12).
-#              CLEANUP:
-#              - Removed the obsolete voxel-based StreetlightBlueprint scatter trigger (ID 15)
-#                to avoid visual void glitches.
+#              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
+#                spawn livestock, domestic house Cats (206), and scavenging Raccoons (211).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/GoldenBazaarBiome.gd
 # ==============================================================================
@@ -43,7 +37,6 @@ func get_block_for_depth(y: int, base_height: int) -> BlockType.Type:
 
 
 func get_landmark_type(spawn_hash: int, _base_height: int) -> int:
-	# Village cabin is represented by ID 3 (matches LandmarkType.VILLAGE_CABIN)
 	if spawn_hash % 180 == 15:
 		return 3
 	return 0
@@ -51,20 +44,18 @@ func get_landmark_type(spawn_hash: int, _base_height: int) -> int:
 
 ## Concrete Override: Organically scatters Oaks, Sakuras, Birches, and Rose Bushes.
 func get_scatter_blueprint_id(scatter_hash: int) -> int:
-	# Small shrubs (Rose Bushes) can spawn slightly more frequently
 	if scatter_hash % 45 == 3:
-		return 12 # Rose Bush (ID 12)
-		
-	# Common Oak Trees (60% of all trees)
+		return 12 
 	elif scatter_hash % 70 == 5:
-		return 1 # Oak Tree (ID 1)
-		
-	# Slender Birch Trees (30% of all trees)
+		return 1 
 	elif scatter_hash % 90 == 8:
-		return 13 # Birch Tree (ID 13)
-		
-	# Cherry Blossom Sakura Trees (10% of all trees)
+		return 13 
 	elif scatter_hash % 150 == 12:
-		return 10 # Sakura Tree (ID 10)
-		
+		return 10 
 	return 0
+
+
+## Concrete Override (OCP): Spawns livestock [0, 1, 2, 3], domestic Cats (206), and Raccoons (211) in the plains.
+func get_wilderness_wildlife_ids() -> Array[int]:
+	var local_wildlife: Array[int] = [0, 1, 2, 3, 206, 211]
+	return local_wildlife

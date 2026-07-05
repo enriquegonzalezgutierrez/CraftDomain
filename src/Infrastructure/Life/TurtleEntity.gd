@@ -1,22 +1,27 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a passive 
-#              aquatic Sea Turtle. Floats, wanders, and glides across ocean bays.
+# Description: Infrastructure physics controller node representing an aquatic Sea Turtle.
 #              SOLID COMPLIANCE: 
-#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity.
-#              - Single Responsibility Principle (SRP): Delegates rendering setups 
-#                and AI state execution to specialized sibling components.
+#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity, 
+#                matching the base collision, gravity, and lifecycle contracts.
+#              - Single Responsibility Principle (SRP): Delegates visual rendering 
+#                to the sub-component, and physics movements to the base class.
+#              - Dependency Inversion Principle (DIP): Automatically prunes 
+#                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
+# MATHEMATICAL CALIBRATION:
+#              - Total model height is 6.137m. Scaled by 0.07x to achieve a 
+#                realistic aquatic turtle height of ~0.43m.
+#              - Model origin is offset. Raised the model Y-position by +0.225m 
+#                to anchor its flippers flat on the physical voxel colliders.
+#              - Corrected the sideways orientation mesh bug by setting the 
+#                Y-axis rotation offset to 90 degrees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/TurtleEntity.gd
 # ==============================================================================
 class_name TurtleEntity
 extends PassiveEntity
 
-# Paddle flipper joints for swimming animation
-var _front_left_flipper: Node3D
-var _front_right_flipper: Node3D
-var _rear_left_flipper: Node3D
-var _rear_right_flipper: Node3D
+const MODEL_PATH := "res://assets/models/mobs/turtle.glb"
 
 
 func _init(spawn_pos: Vector3) -> void:
@@ -25,98 +30,91 @@ func _init(spawn_pos: Vector3) -> void:
 	name = "Entity_TURTLE"
 
 
-## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
-## to the visual component joints.
+## Loads the external GLB model and hooks it into the procedural bobbing skeleton
 func _build_visual_representation() -> void:
-	var shell_color := Color(0.25, 0.18, 0.12)       # Dark brown shell core
-	var shell_rim_color := Color(0.42, 0.65, 0.18)   # Forest green shell rim
-	var skin_color := Color(0.35, 0.58, 0.22)        # Moss green skin
-	var beak_yellow := Color(0.85, 0.72, 0.15)       # Yellow-green beak
-	
-	# 1. Main Shell Body (Attached to the bobbing joint of visual component)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.68, 0.22, 0.84), Vector3(0, 0.18, 0), shell_color) # Shell base
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.72, 0.06, 0.88), Vector3(0, 0.12, 0), shell_rim_color) # Rim
-	
-	# 2. Head Joint Setup
-	visual_component.head_node = Node3D.new()
-	visual_component.head_node.name = "TurtleHead"
-	visual_component.head_node.position = Vector3(0, 0.18, -0.48)
-	visual_component.body_bob_node.add_child(visual_component.head_node)
-	
-	visual_component.create_box(visual_component.head_node, Vector3(0.22, 0.18, 0.28), Vector3(0, 0, 0), skin_color) # Head core
-	visual_component.create_box(visual_component.head_node, Vector3(0.18, 0.08, 0.10), Vector3(0, -0.05, -0.16), beak_yellow) # Beak
-	
-	# Small black eyes (Assigned to visual component tracking)
-	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.04, 0.04, 0.02), Vector3(-0.12, 0.04, -0.10), Color(0.12, 0.12, 0.15))
-	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.04, 0.04, 0.02), Vector3(0.12, 0.04, -0.10), Color(0.12, 0.12, 0.15))
-	
-	# 3. Front Flapping Flippers (Aletas, bobbing with the body)
-	_front_left_flipper = Node3D.new()
-	_front_left_flipper.name = "FrontLeftFlipper"
-	_front_left_flipper.position = Vector3(-0.35, 0.12, -0.28)
-	visual_component.body_bob_node.add_child(_front_left_flipper)
-	visual_component.create_box(_front_left_flipper, Vector3(0.38, 0.04, 0.18), Vector3(-0.16, 0, 0), skin_color)
-	
-	_front_right_flipper = Node3D.new()
-	_front_right_flipper.name = "FrontRightFlipper"
-	_front_right_flipper.position = Vector3(0.35, 0.12, -0.28)
-	visual_component.body_bob_node.add_child(_front_right_flipper)
-	visual_component.create_box(_front_right_flipper, Vector3(0.38, 0.04, 0.18), Vector3(0.16, 0, 0), skin_color)
-	
-	# 4. Rear Steering Flippers
-	_rear_left_flipper = Node3D.new()
-	_rear_left_flipper.name = "RearLeftFlipper"
-	_rear_left_flipper.position = Vector3(-0.30, 0.12, 0.35)
-	visual_component.body_bob_node.add_child(_rear_left_flipper)
-	visual_component.create_box(_rear_left_flipper, Vector3(0.22, 0.04, 0.15), Vector3(-0.08, 0, 0), skin_color)
-	
-	_rear_right_flipper = Node3D.new()
-	_rear_right_flipper.name = "RearRightFlipper"
-	_rear_right_flipper.position = Vector3(0.30, 0.12, 0.35)
-	visual_component.body_bob_node.add_child(_rear_right_flipper)
-	visual_component.create_box(_rear_right_flipper, Vector3(0.22, 0.04, 0.15), Vector3(0.08, 0, 0), skin_color)
-
-
-## Overrides standard animations to execute a high-frequency flapping paddle loop when swimming.
-func _process_procedural_animations(_delta: float) -> void:
-	if not is_instance_valid(ai_component) or not is_instance_valid(visual_component):
-		return
+	if ResourceLoader.exists(MODEL_PATH):
+		var model_scene := load(MODEL_PATH) as PackedScene
+		var model_node := model_scene.instantiate() as Node3D
 		
-	var active_task := ai_component.current_task
-	var is_moving := (active_task == NPCAIComponent.TaskState.WANDERING or 
-						active_task == NPCAIComponent.TaskState.PANIC)
-	
-	# Front Flipper paddling animations (Using out-of-phase sine waves)
-	if is_instance_valid(_front_left_flipper) and is_instance_valid(_front_right_flipper):
-		if is_moving:
-			var speed_mult := 8.0 if active_task == NPCAIComponent.TaskState.PANIC else 4.0
-			_front_left_flipper.rotation.z = sin(visual_component._animation_time * speed_mult) * 0.45
-			_front_right_flipper.rotation.z = -sin(visual_component._animation_time * speed_mult) * 0.45
+		# Prune Blender's default light and camera nodes to prevent rendering conflicts
+		_prune_extraneous_nodes(model_node)
+		
+		# ======================================================================
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# ======================================================================
+		# 1. Scale model by 0.07x to reduce height from 6.137m to ~0.43m
+		model_node.scale = Vector3(0.07, 0.07, 0.07)
+		
+		# 2. Origin sits low at -3.22m. Raise it up by +0.225m on Y
+		#    to anchor the flippers perfectly flat on the ground plane
+		model_node.position = Vector3(0.0, 0.225, 0.0)
+		
+		# 3. Apply Y-rotation offset to correct the sideways orientation mesh bug.
+		#    Change to -90, 180, or 0 if it is still walking sideways/backwards.
+		model_node.rotation_degrees = Vector3(0, 90, 0)
+		# ======================================================================
+		
+		# Append the model to the bob joint to automatically inherit animations
+		visual_component.body_bob_node.add_child(model_node)
+		_register_glb_materials(model_node)
+	else:
+		push_error("[TurtleEntity] GLB model not found at path: " + MODEL_PATH)
+
+
+## Recursively duplicates materials to prevent material-sharing leaks
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D:
+		# EXPLICIT CASTING: Prevents static analyzer type inference errors
+		var mat: Material = node.get_active_material(0) as Material
+		if mat == null and node.mesh != null:
+			mat = node.mesh.surface_get_material(0) as Material
 			
-			_rear_left_flipper.rotation.y = cos(visual_component._animation_time * speed_mult) * 0.25
-			_rear_right_flipper.rotation.y = -cos(visual_component._animation_time * speed_mult) * 0.25
+		if mat is BaseMaterial3D:
+			var new_mat := mat.duplicate() as BaseMaterial3D
+			node.material_override = new_mat
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
+
+
+## Recursively locates and frees extraneous camera and light nodes
+func _prune_extraneous_nodes(node: Node) -> void:
+	for i in range(node.get_child_count() - 1, -1, -1):
+		var child := node.get_child(i)
+		if "Camera" in child.name or "Light" in child.name:
+			child.free()
 		else:
-			# Slow idling water currents
-			_front_left_flipper.rotation.z = sin(visual_component._animation_time * 1.5) * 0.08
-			_front_right_flipper.rotation.z = -sin(visual_component._animation_time * 1.5) * 0.08
-			
-			_rear_left_flipper.rotation.y = 0
-			_rear_right_flipper.rotation.y = 0
+			_prune_extraneous_nodes(child)
 
 
+## Calibrated to the scaled bounding box size (0.43m height, 0.75m depth)
 func _get_collision_box_size() -> Vector3:
-	return Vector3(0.8, 0.4, 1.0)
+	return Vector3(0.45, 0.43, 0.75)
 
 
+## Centered relative to the shell height
 func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.2, 0.0)
+	return Vector3(0.0, 0.215, 0.0)
 
 
+## Flag used by the animation ticker to configure bouncy walks (Disabled to allow smooth gliding)
 func _is_avian() -> bool:
-	# Skip standard bipedal body bobbing calculations
 	return true
 
 
-## Override (LSP): Drops 1x Sand on death (Representing ocean beach sand).
+func _can_socialize() -> bool:
+	return true
+
+
+func _on_domain_entity_took_damage(_amount: int) -> void:
+	# Turtle panic escape velocity
+	velocity.y = JUMP_VELOCITY
+	if is_instance_valid(ai_component):
+		ai_component.current_task = NPCAIComponent.TaskState.PANIC
+		ai_component.task_timer = randf_range(3.0, 5.0)
+
+
+## Drops 1x Sand Block on death
 func _drop_loot(inv: IInventory) -> void:
-	inv.add_item(7, 1) # Item ID 7: Sand Block
+	# Item ID 7: Sand Block
+	inv.add_item(7, 1)

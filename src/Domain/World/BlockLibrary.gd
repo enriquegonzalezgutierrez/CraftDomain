@@ -7,8 +7,9 @@
 #   registrations of block definitions.
 # - Open-Closed Principle (OCP): Extensible with new block registrations and 
 #   custom geometries (like Slabs) without changing the core meshing engines.
-# MILESTONE 8 UPGRADE:
-# - Registered properties for DIAMOND_ORE, OAK_PLANKS, and GLOWSTONE.
+# DESIGN UPGRADE (TECH-NOIR COLOR PALETTE):
+# - Redesigned NEON_CYAN to be a moody, deep Tech-Noir Teal.
+# - Redesigned NEON_MAGENTA to be a deep, elegant Cyberpunk Grape/Violet.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockLibrary.gd
 # ==============================================================================
@@ -55,11 +56,11 @@ static func _static_init() -> void:
 	# 11. Mud
 	_register(BlockType.Type.MUD, "BLOCK_MUD", Color(0.32, 0.25, 0.18), Color(0.28, 0.22, 0.15), Color(0.22, 0.18, 0.12))
 	
-	# 12. Neon Cyan
-	_register(BlockType.Type.NEON_CYAN, "BLOCK_NEON_CYAN", Color(0.0, 0.95, 0.95), Color(0.0, 0.8, 0.8), Color(0.0, 0.6, 0.6))
+	# 12. Neon Cyan (Tech-Noir Teal)
+	_register(BlockType.Type.NEON_CYAN, "BLOCK_NEON_CYAN", Color(0.06, 0.38, 0.45), Color(0.04, 0.28, 0.35), Color(0.02, 0.18, 0.25))
 	
-	# 13. Neon Magenta
-	_register(BlockType.Type.NEON_MAGENTA, "BLOCK_NEON_MAGENTA", Color(0.95, 0.0, 0.95), Color(0.8, 0.0, 0.8), Color(0.6, 0.0, 0.6))
+	# 13. Neon Magenta (Deep Cyberpunk Grape/Violet)
+	_register(BlockType.Type.NEON_MAGENTA, "BLOCK_NEON_MAGENTA", Color(0.24, 0.04, 0.32), Color(0.18, 0.02, 0.24), Color(0.12, 0.01, 0.16))
 	
 	# 14. Cloud
 	_register(BlockType.Type.CLOUD, "BLOCK_CLOUD", Color(1.0, 1.0, 1.0, 0.65), Color(0.95, 0.95, 0.95, 0.65), Color(0.9, 0.9, 0.9, 0.65))
@@ -77,7 +78,7 @@ static func _static_init() -> void:
 	_register(BlockType.Type.CROP_RIPE, "BLOCK_CROP_RIPE", Color(0.95, 0.78, 0.18), Color(0.88, 0.72, 0.15), Color(0.82, 0.65, 0.12))
 
 	# 21. Coal Ore
-	_register(BlockType.Type.COAL_ORE, "BLOCK_COAL_ORE", Color(0.35, 0.35, 0.38), Color(0.28, 0.28, 0.30), Color(0.25, 0.25, 0.27))
+	_register(BlockType.Type.COAL_ORE, "BLOCK_COAL_ORE", Color(0.12, 0.12, 0.14), Color(0.08, 0.08, 0.10), Color(0.05, 0.05, 0.06))
 
 	# 22. Red Bricks
 	_register(BlockType.Type.BRICKS, "BLOCK_BRICKS", Color(0.65, 0.28, 0.22), Color(0.58, 0.22, 0.18), Color(0.52, 0.18, 0.15))
@@ -89,7 +90,7 @@ static func _static_init() -> void:
 	_register(BlockType.Type.BIRCH_LOG, "BLOCK_BIRCH_LOG", Color(0.92, 0.92, 0.94), Color(0.88, 0.88, 0.90), Color(0.92, 0.92, 0.94))
 
 	# 25. Paved Road
-	_register(BlockType.Type.ROAD, "BLOCK_ROAD", Color(0.35, 0.35, 0.38), Color(0.28, 0.28, 0.30), Color(0.35, 0.35, 0.38))
+	_register(BlockType.Type.ROAD, "BLOCK_ROAD", Color(0.24, 0.24, 0.28), Color(0.18, 0.18, 0.22), Color(0.24, 0.24, 0.28))
 	
 	# 26. Stone Slab Bottom (Y: 0.0 - 0.5)
 	_register(
@@ -106,10 +107,6 @@ static func _static_init() -> void:
 		Color(0.55, 0.55, 0.55), Color(0.48, 0.48, 0.48), Color(0.42, 0.42, 0.42), 
 		TopSlabGeometry.new()
 	)
-	
-	# ==========================================================================
-	# MILESTONE 8: CAVES & DESERT EXPANSION BLOCKS
-	# ==========================================================================
 	
 	# 28. Diamond Ore
 	_register(BlockType.Type.DIAMOND_ORE, "BLOCK_DIAMOND_ORE", Color(0.35, 0.38, 0.40), Color(0.28, 0.30, 0.32), Color(0.25, 0.27, 0.28))

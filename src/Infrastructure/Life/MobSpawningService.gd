@@ -4,16 +4,10 @@
 #              NPC, Fauna, and hostile dynamic classes inside chunks.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates procedural 
-#   wildlife and living outpost populations, leaving inert scenery objects to 
-#   the PropSpawningService.
+#   wildlife and living outpost populations.
 # - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
-#   population registry, removing hardcoded match maps.
+#   population and wilderness wildlife registries, removing all hardcoded match maps.
 # - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome strategy.
-# I/O OPTIMIZATION (120 FPS STABILIZATION):
-# - Removed all verbose `[MobTelemetry]` print statements to prevent synchronous, 
-#   blocking console I/O stalls during real-time chunk spawning.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
 class_name MobSpawningService
 extends RefCounted
@@ -39,6 +33,8 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			is_real_village = (profile.landmark_id == 3)
 			active_biome_id = profile.biome_id
 
+	var biome := BiomeService.get_biome(active_biome_id)
+
 	# 1. Procedural Biome-Themed Village Outpost Spawning (OCP / LSP compliant)
 	if is_real_village:
 		# Villager (100) and Merchant (101) spawn in all outposts
@@ -46,7 +42,6 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 		_spawn_and_register_entity(101, chunk_offset, 5.5, 7.5, world_state, world_node, entities_list, "fuel_fryer")
 		
 		# Dynamic Biome Outpost Spawning: Query population list from active Biome strategy
-		var biome := BiomeService.get_biome(active_biome_id)
 		if is_instance_valid(biome):
 			var population := biome.get_outpost_population_ids()
 			if population.size() >= 2:
@@ -56,19 +51,16 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 		# Golem (107) spawns to guard the village
 		_spawn_and_register_entity(107, chunk_offset, 8.5, 3.5, world_state, world_node, entities_list, "")
 	else:
-		# 2. Spawning organically in the wilderness
+		# 2. Spawning organically in the wilderness (OCP/LSP compliant, zero hardcoding)
 		var roll := randf()
 		if roll < 0.12: # 12% chance to spawn wildlife in wilderness chunks
-			# Determine coordinates biome
-			var is_ocean_biome := (active_biome_id == 0)
-			
-			if is_ocean_biome:
-				# Spawn unique aquatic Sea Turtles (ID 201) in water bays
-				_spawn_and_register_entity(201, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
-			else:
-				# Spawn common quadrupeds (IDs 0-3: Pigs, Chickens, Sheep, Cows)
-				var target_animal_id := randi_range(0, 3)
-				_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
+			if is_instance_valid(biome):
+				var wildlife_ids := biome.get_wilderness_wildlife_ids()
+				if wildlife_ids.size() > 0:
+					# Safely select a random animal ID registered for this specific biome
+					var rand_idx := randi() % wildlife_ids.size()
+					var target_animal_id := wildlife_ids[rand_idx]
+					_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
 
 	# 3. Global Mega-Structure spawns (Castle Guards, Harbor Merchants, etc.)
 	var mega_entities := MegaStructureService.get_entities_for_chunk(chunk_pos)
@@ -76,10 +68,7 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 		var mob_id: int = edata["mob_id"] as int
 		var exact_pos: Vector3 = edata["pos"] as Vector3
 		
-		# Only spawn here if the registered ID represents a living entity (MobRegistry)
 		if MobRegistry.has_mob(mob_id):
-			# OBSTACLE AVOIDANCE SYSTEM:
-			# Verify if the target coordinate is blocked by a procedural tree trunk or wall
 			var spawn_pos := exact_pos
 			var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
 			if BlockType.is_solid(block_at_pos):
@@ -90,8 +79,6 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 				world_node.add_child(spawn_node)
 				entities_list.append(spawn_node)
 				
-				# MEGA-STRUCTURE QUEST PRE-SYNCHRONIZATION:
-				# Bind custom castle/cabin residents to their respective campaign quests on boot
 				var sync_quest_id := ""
 				if mob_id == 100: sync_quest_id = "lost_bazaar"
 				elif mob_id == 101: sync_quest_id = "fuel_fryer"
@@ -100,7 +87,7 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 				if sync_quest_id != "":
 					var quest: Quest = QuestService.get_quest(sync_quest_id) as Quest
 					if quest != null:
-						quest.target_position = spawn_node.global_position # Dynamic bound!
+						quest.target_position = spawn_node.global_position
 
 	return entities_list
 
@@ -112,7 +99,7 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 		
 	var gy := _get_ground_surface_y(world_state, int(offset.x + lx), int(offset.z + lz))
 	if gy < 0.0:
-		return # Abort if ground is not populated yet
+		return
 		
 	var pos := offset + Vector3(lx, gy, lz)
 	var mob: Node = MobRegistry.create_mob(spawn_id, pos)
@@ -120,7 +107,6 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 		world_node.add_child(mob)
 		list.append(mob)
 		
-		# PRE-SYNCHRONIZATION: Bind NPC world coordinates to its corresponding Quest directly in the DB
 		if quest_sync_id != "":
 			var quest: Quest = QuestService.get_quest(quest_sync_id) as Quest
 			if quest != null:
@@ -133,7 +119,6 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		var check_pos := Vector3i(global_x, y, global_z)
 		var block_type := world_state.get_block(check_pos)
 		
-		# Spawns entities only on valid, load-bearing terrain or paved roads
 		var is_valid_surface := (
 			block_type == BlockType.Type.GRASS or 
 			block_type == BlockType.Type.DIRT or 
@@ -143,8 +128,8 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 			block_type == BlockType.Type.ICE or 
 			block_type == BlockType.Type.MUD or 
 			block_type == BlockType.Type.ROAD or
-			block_type == BlockType.Type.STONE or   # CRITICAL FIX: Allow stone floor spawning (Castle courtyards / mountains)
-			block_type == BlockType.Type.BRICKS     # CRITICAL FIX: Allow brick floor spawning (Outposts / cabins)
+			block_type == BlockType.Type.STONE or   
+			block_type == BlockType.Type.BRICKS     
 		)
 		
 		if is_valid_surface:

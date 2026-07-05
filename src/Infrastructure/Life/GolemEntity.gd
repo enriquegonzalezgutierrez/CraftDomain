@@ -3,26 +3,25 @@
 # Description: Golem NPC physics controller. A giant stone defender of villagers 
 #              that patrols outposts, scans for zombies, and executes high-impact 
 #              vertical tossing attacks to protect the plains.
-# SOLID COMPLIANCE:
-# - Liskov Substitution Principle (LSP): Subclasses PassiveEntity, 
-#   safely overriding movement, task routing, and visualization loops.
-# - Single Responsibility Principle (SRP): Delegates rendering setups 
-#   and AI state execution to specialized sibling components.
-# HIGH PERFORMANCE AI UPGRADE (120 FPS STABILIZATION):
-# - DEPRECATED O(N^2) CHILD ITERATIONS: Replaced the slow, high-frequency 
-#   `get_children()` loop in the target finder which scanned the entire world.
-# - DYNAMIC GROUP INDEXING: The defensive targeting system now queries Godot's 
-#   optimized C++ group table ("hostiles").
-# - ASYNCHRONOUS TACTICAL SCANNING: Threat proximity evaluations are no longer 
-#   executed every physics frame (120 FPS). They are throttled via `_tactical_scan_timer`
-#   (4 times per second), drastically reducing Main Thread CPU load in populated villages.
-# - MATH OPTIMIZATION: `distance_to` and `length` replaced with `distance_squared_to` 
-#   and `length_squared` respectively to bypass expensive CPU square root calculations.
+# SOLID COMPLIANCE: 
+#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity, 
+#                safely overriding movement, task routing, and visual meshes.
+#              - Single Responsibility Principle (SRP): Delegates visual rendering 
+#                to the sub-component, and physics movements to the base class.
+# MATHEMATICAL CALIBRATION:
+#              - Total model height is 14.0m. Scaled by 0.25x to achieve a 
+#                colossal giant height of ~3.5m.
+#              - Model origin is offset. Raised the model Y-position by +2.445m 
+#                to anchor its feet flat on the physical voxel colliders.
+#              - Corrected the sideways orientation mesh bug by setting the 
+#                Y-axis rotation offset to -90 degrees.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GolemEntity.gd
 # ==============================================================================
 class_name GolemEntity
 extends PassiveEntity
+
+const MODEL_PATH := "res://assets/models/mobs/golem.glb"
 
 # Combat configurations
 const ATTACK_RANGE: float = 2.2
@@ -39,89 +38,63 @@ var _attack_cooldown_timer: float = 0.0
 var _tactical_scan_timer: float = 0.0
 const SCAN_INTERVAL: float = 0.25 # 4 times per second
 
-# Handheld/Visual dangling limbs node references for custom combat animations
-var _left_arm_joint: Node3D
-var _right_arm_joint: Node3D
-
 
 func _init(spawn_pos: Vector3) -> void:
 	# Heavy colossus initialized with 15 Hearts of health (30 HP)
 	super(spawn_pos, 30)
 	name = "Entity_GOLEM"
-	
-	# Stagger initial scan timers to prevent multiple golems from scanning on the exact same frame
 	_tactical_scan_timer = randf_range(0.0, SCAN_INTERVAL)
 
 
-## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
-## to the visual component joints.
+## Loads the external GLB model and applies calculated mathematical transforms
 func _build_visual_representation() -> void:
-	var stone_color := Color(0.38, 0.40, 0.42)      # Heavy iron-slate stone
-	var ivy_green := Color(0.18, 0.45, 0.15)        # Mossy creeping ivy green
-	var flower_gold := Color(1.0, 0.85, 0.2)        # Golden flower buds
-	var glow_red := Color(0.95, 0.15, 0.15)         # Glowing red visor eyes
-	
-	# 1. Base Legs (Segmented thick stone blocks, attached to the bouncing body bob joint)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.22, 0.45, 0.22), Vector3(-0.18, 0.225, 0.0), stone_color * 0.8) # Left leg
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.22, 0.45, 0.22), Vector3(0.18, 0.225, 0.0), stone_color * 0.8)  # Right leg
-	
-	# 2. Torso Massive Stone Chest (Thick and wide slate structure)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.85, 0.85, 0.52), Vector3(0, 0.875, 0), stone_color)
-	
-	# Creeping Ivy Vines on shoulders (Voxel green leaves overlaying chest corners)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.22, 0.24, 0.56), Vector3(-0.35, 1.10, 0.01), ivy_green) # Left shoulder ivy
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.22, 0.24, 0.56), Vector3(0.35, 1.10, 0.01), ivy_green)  # Right shoulder ivy
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.12, 0.38, 0.08), Vector3(-0.25, 0.75, -0.27), ivy_green) # Vines creeping down chest
-	
-	# Small flower buds dotting the ivy
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.06, 0.06, 0.06), Vector3(-0.35, 1.23, 0.08), flower_gold) # Gold flower left
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.06, 0.06, 0.06), Vector3(0.28, 0.83, 0.05), flower_gold)  # Gold flower right
-	
-	# 3. Head Joint Setup
-	visual_component.head_node = Node3D.new()
-	visual_component.head_node.name = "GolemHead"
-	visual_component.head_node.position = Vector3(0.0, 1.30, -0.10)
-	visual_component.body_bob_node.add_child(visual_component.head_node)
-	
-	visual_component.create_box(visual_component.head_node, Vector3(0.32, 0.38, 0.32), Vector3(0, 0.19, 0), stone_color) # Main head block
-	visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.18, 0.08), Vector3(0, 0.08, -0.18), Color(0.45, 0.30, 0.15)) # Wooden nose
-	
-	# Deep-set Glowing Red Eyes (Assigned to visual component tracking)
-	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.06, 0.02), Vector3(-0.08, 0.22, -0.17), Color.WHITE)
-	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.06, 0.06, 0.02), Vector3(0.08, 0.22, -0.17), Color.WHITE)
-	
-	var em_mat := ORMMaterial3D.new()
-	em_mat.albedo_color = glow_red
-	em_mat.emission_enabled = true
-	em_mat.emission = Color(1.0, 0.1, 0.1)
-	em_mat.emission_energy_multiplier = 2.5
-	visual_component.left_eye.material_override = em_mat
-	visual_component.right_eye.material_override = em_mat
-	
-	# 4. GIGANTIC DANGLING COMBAT ARMS
-	# Left dangling arm joint
-	_left_arm_joint = Node3D.new()
-	_left_arm_joint.name = "LeftArmHarness"
-	_left_arm_joint.position = Vector3(-0.48, 1.20, 0.0)
-	visual_component.body_bob_node.add_child(_left_arm_joint)
-	visual_component.create_box(_left_arm_joint, Vector3(0.18, 1.15, 0.18), Vector3(0.0, -0.50, 0.0), stone_color) # Left stone forearm
-	visual_component.create_box(_left_arm_joint, Vector3(0.20, 0.15, 0.20), Vector3(0.0, -0.20, 0.0), ivy_green)   # Shoulder ivy pad
-	
-	# Right dangling arm joint
-	_right_arm_joint = Node3D.new()
-	_right_arm_joint.name = "RightArmHarness"
-	_right_arm_joint.position = Vector3(0.48, 1.20, 0.0)
-	visual_component.body_bob_node.add_child(_right_arm_joint)
-	visual_component.create_box(_right_arm_joint, Vector3(0.18, 1.15, 0.18), Vector3(0.0, -0.50, 0.0), stone_color)
-	visual_component.create_box(_right_arm_joint, Vector3(0.20, 0.15, 0.20), Vector3(0.0, -0.20, 0.0), ivy_green)
+	if ResourceLoader.exists(MODEL_PATH):
+		var model_scene := load(MODEL_PATH) as PackedScene
+		var model_node := model_scene.instantiate() as Node3D
+		
+		# ======================================================================
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
+		# ======================================================================
+		# 1. Scale model by 0.25x to achieve a colossal height of ~3.5m
+		model_node.scale = Vector3(0.25, 0.25, 0.25)
+		
+		# 2. Origin sits low at -9.78m. Raise it up by +2.445m on Y
+		#    to anchor the feet perfectly flat on the ground plane
+		model_node.position = Vector3(0.0, 2.445, 0.0)
+		
+		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
+		model_node.rotation_degrees = Vector3(0, -90, 0)
+		# ======================================================================
+		
+		visual_component.body_bob_node.add_child(model_node)
+		_register_glb_materials(model_node)
+	else:
+		push_error("[GolemEntity] GLB model not found at path: " + MODEL_PATH)
 
 
+## Recursively scans the GLB hierarchy to extract and duplicate mesh materials
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mat: Material = node.get_active_material(0) as Material
+		if mat == null and node.mesh != null:
+			mat = node.mesh.surface_get_material(0) as Material
+			
+		if mat is BaseMaterial3D:
+			var new_mat := mat.duplicate() as BaseMaterial3D
+			node.material_override = new_mat
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
+
+
+## Calibrated to the scaled bounding box size (3.5m height, 1.55m width)
 func _get_collision_box_size() -> Vector3:
-	return Vector3(0.95, 1.75, 0.65)
+	return Vector3(1.6, 3.5, 1.2)
 
 
+## Centered relative to the colossal height
 func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.875, 0.0)
+	return Vector3(0.0, 1.75, 0.0)
 
 
 func _setup_floating_bubble() -> void:
@@ -157,9 +130,6 @@ func _physics_process(delta: float) -> void:
 
 ## Scans, locks, and chases hostile zombies within the aggro visual ranges.
 func _process_defensive_aggro_intelligence(delta: float) -> void:
-	# ==========================================================================
-	# TACTICAL PROXIMITY SCAN (Throttled for Performance)
-	# ==========================================================================
 	_tactical_scan_timer -= delta
 	if _tactical_scan_timer <= 0.0:
 		_tactical_scan_timer = SCAN_INTERVAL
@@ -168,11 +138,7 @@ func _process_defensive_aggro_intelligence(delta: float) -> void:
 		if not is_instance_valid(_combat_target) or _combat_target.get("domain_entity").is_dead:
 			_combat_target = _scan_for_active_zombie_target()
 			
-	# ==========================================================================
-	# ACTIVE COMBAT PURSUIT
-	# ==========================================================================
 	if is_instance_valid(_combat_target) and not _combat_target.get("domain_entity").is_dead:
-		# Lock standard wandering AI decisions
 		if is_instance_valid(ai_component):
 			ai_component.current_task = NPCAIComponent.TaskState.WORKING
 			
@@ -180,7 +146,6 @@ func _process_defensive_aggro_intelligence(delta: float) -> void:
 		var diff := target_pos - global_position
 		diff.y = 0.0
 		
-		# MATH OPTIMIZATION: Compare squared length to avoid sqrt() operations
 		var dist_sq := diff.length_squared()
 		
 		if dist_sq > ATTACK_RANGE_SQ:
@@ -206,15 +171,12 @@ func _process_defensive_aggro_intelligence(delta: float) -> void:
 			if _attack_cooldown_timer <= 0.0:
 				_execute_heavy_combat_strike()
 	else:
-		# Return back to idle positions
-		_idle_arm_sway_recoil(delta)
 		if is_instance_valid(ai_component) and ai_component.current_task == NPCAIComponent.TaskState.WORKING:
 			ai_component.current_task = NPCAIComponent.TaskState.IDLE
 			ai_component.task_timer = 1.0
 
 
 ## Trigonometric Scan: Locates the closest active zombie within combat range.
-## HIGH PERFORMANCE: Uses Godot's native O(1) group lookup instead of full SceneTree loop.
 func _scan_for_active_zombie_target() -> CharacterBody3D:
 	if not is_inside_tree():
 		return null
@@ -222,7 +184,6 @@ func _scan_for_active_zombie_target() -> CharacterBody3D:
 	var closest_zombie: CharacterBody3D = null
 	var min_dist_sq := AGGRO_SIGHT_RANGE_SQ
 	
-	# HIGHT PERFORMANCE GROUP QUERY
 	var hostiles := get_tree().get_nodes_in_group("hostiles")
 	for child: Node in hostiles:
 		if is_instance_valid(child):
@@ -236,14 +197,6 @@ func _scan_for_active_zombie_target() -> CharacterBody3D:
 	return closest_zombie
 
 
-## Animate: Smoothly restores arms back to dangling resting transforms
-func _idle_arm_sway_recoil(delta: float) -> void:
-	if is_instance_valid(_left_arm_joint) and is_instance_valid(_right_arm_joint):
-		var sway: float = sin(visual_component._animation_time * 2.0) * 0.05
-		_left_arm_joint.rotation.x = lerp(_left_arm_joint.rotation.x, sway, delta * 4.0)
-		_right_arm_joint.rotation.x = lerp(_right_arm_joint.rotation.x, -sway, delta * 4.0)
-
-
 ## Executes Golem's iconic heavy double-arm launch attack (Throws Zombies up!)
 func _execute_heavy_combat_strike() -> void:
 	if not is_instance_valid(_combat_target) or _combat_target.get("domain_entity").is_dead:
@@ -251,29 +204,16 @@ func _execute_heavy_combat_strike() -> void:
 		
 	_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL
 	
-	# Calculate target horizontal directional vectors
 	var target_dir := _combat_target.global_position - global_position
 	target_dir.y = 0.0
 	target_dir = target_dir.normalized()
 	
-	# ICONIC VERTICAL LAUNCH INERTIA: Throws the Zombie 9.5 meters up!
+	# Launch force scaled to throw the zombie 9.5 meters up!
 	var throw_force := target_dir * 3.5 + Vector3(0.0, 9.5, 0.0)
 	
-	# Deals heavy 2 Hearts damage (Kills zombies in 2 hits instead of 3!)
+	# Deals heavy 2 Hearts damage
 	if _combat_target.has_method("take_damage"):
 		_combat_target.call("take_damage", 2, throw_force)
-		
-	# Play dynamic physical arm swing animation (Upward launching sways!)
-	var swing_tween := create_tween().set_parallel(true)
-	if is_instance_valid(_left_arm_joint) and is_instance_valid(_right_arm_joint):
-		# Rapidly pivot both arms forward and up (Launch step!)
-		swing_tween.tween_property(_left_arm_joint, "rotation:x", deg_to_rad(-110), 0.12).set_trans(Tween.TRANS_SINE)
-		swing_tween.tween_property(_right_arm_joint, "rotation:x", deg_to_rad(-110), 0.12).set_trans(Tween.TRANS_SINE)
-		
-		# Gradually swing arms back down (Recovery step!)
-		swing_tween.chain().set_parallel(true)
-		swing_tween.tween_property(_left_arm_joint, "rotation:x", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
-		swing_tween.tween_property(_right_arm_joint, "rotation:x", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
 
 
 func _can_socialize() -> bool:

@@ -6,8 +6,8 @@
 #              - Liskov Substitution Principle (LSP): Fully implements IBiome.
 #              - Single Responsibility Principle (SRP): Only manages desert canyons 
 #                topography, sandstone blocks, and local plant scattering rules.
-#              LANDSCAPE OVERHAUL:
-#              - Integrated organic scattering selectors for Dead Shrubs (ID 14).
+#              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
+#                spawn livestock and colossal Elephants (209) in the canyons.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/RedBadlandsBiome.gd
 # ==============================================================================
@@ -32,7 +32,7 @@ func get_minimap_color() -> Color:
 ## Concrete Implementation: Terraced badlands canyons using step-function mathematics.
 func get_base_height(noise_value: float) -> int:
 	var raw_b := 4.0 + (noise_value + 1.0) * 8.0
-	return int(round(raw_b / 3.0) * 3.0) # Snap heights to 3-block steps
+	return int(round(raw_b / 3.0) * 3.0) 
 
 
 ## Concrete Implementation: Maps layers of red sand and stone cores underground.
@@ -50,5 +50,11 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 ## Concrete Override: Organically scatters dry, twisted Dead Shrubs (ID 14) across the sand steps.
 func get_scatter_blueprint_id(scatter_hash: int) -> int:
 	if scatter_hash % 50 == 4:
-		return 14 # Dead Shrub (ID 14)
+		return 14 
 	return 0
+
+
+## Concrete Override (OCP): Spawns livestock and colossal Elephants (209) in the canyons.
+func get_wilderness_wildlife_ids() -> Array[int]:
+	var local_wildlife: Array[int] = [0, 1, 3, 209]
+	return local_wildlife
