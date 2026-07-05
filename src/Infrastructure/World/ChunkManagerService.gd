@@ -2,32 +2,22 @@
 # Project: CraftDomain
 # Description: High-Performance Infrastructure Service responsible for managing 
 #              background chunk generation threads, task caching, and direct RID physics.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Coordinates chunk lifecycle, 
-#                delegating heavy geometry and physics tree compiling to background worker threads.
-#              EXTREME PERFORMANCE UPGRADE (INSTANT TELEPORTATION):
-#              - THREAD-LOCK PREVENTION: Completely removed `ConcavePolygonShape3D` 
-#                and `set_faces()` instantiation from the background threads. 
-#              - Creating and modifying physics resources in background threads forces 
-#                Godot's single-threaded PhysicsServer3D to continuously lock and synchronize, 
-#                stalling parallel thread pools (stuttering on teleport).
-#              - The background threads now only perform mathematically pure 
-#                computations (extracting raw `collision_vertices` arrays). 
-#              - The single shape compilation is executed on the Main Thread during 
-#                rendering (taking under 0.05ms), restoring instant fast-travel.
-#              PHYSICS WINDING FIX (BACKFACE COLLISION):
-#              - Added `shape.backface_collision = true`. This forces the physics 
-#                engine to treat both sides of the voxel faces as solid, completely 
-#                eliminating floor-clipping and wall-trapping bugs regardless 
-#                of the CCW/CW vertex winding order.
-#              OCP CUSTOM GEOMETRY INTEGRATION:
-#              - Expanded task builders to asynchronously compile non-cubic solid blocks 
-#                (like Slabs) alongside standard liquids using ChunkMesher.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Coordinates chunk lifecycle, 
+#   delegating heavy geometry and physics tree compiling to background worker threads.
+# - Open-Closed Principle (OCP): Integrates custom solid and liquid geometries.
+# OBJECT POOLING OPTIMIZATION:
+# - Implemented `_chunk_node_pool` to recycle instantiated `ChunkNode` nodes.
+#   Instead of deleting nodes with `queue_free()`, nodes are hidden, cleared, 
+#   and pushed into a reusable pool array, eliminating allocation stuttering.
+# - Winding order for physics bodies restored to ensure complete safety.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
 class_name ChunkManagerService
 extends RefCounted
+
+const CHUNK_MASK: int = 15 # Chunk.SIZE (16) - 1. Used for speed bitwise wrapping.
 
 var controller: Node3D 
 var world_state: WorldState
@@ -57,6 +47,12 @@ var _last_known_viewer_chunk_pos: Vector3i = Vector3i.ZERO
 
 # CHUNK REVISION VERSIONING: Maps Vector3i -> int (Increments on edits)
 var _chunk_versions: Dictionary = {}
+
+# ==============================================================================
+# PHASE 2 OPTIMIZATION: OBJECT POOL FOR CHUNKNODES
+# ==============================================================================
+## In-memory pool keeping track of inactive, pre-allocated chunk rendering nodes
+var _chunk_node_pool: Array[ChunkNode] = []
 
 
 func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
@@ -244,7 +240,7 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i, high_priority: bool =
 	_trigger_next_background_tasks()
 
 
-## Schedules a background task to rebuild the visual representation of an active chunk
+## Shadows a background task to rebuild the visual representation of an active chunk
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 	if not _chunk_nodes.has(chunk_pos): return
 		
@@ -520,8 +516,17 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 			if is_instance_valid(static_body): static_body.queue_free()
 			return
 			
-		chunk_node = ChunkNode.new(task.chunk)
-		controller.add_child(chunk_node)
+		# --- RECYCLING MECHANISM: Reuse or create new ChunkNode ---
+		if _chunk_node_pool.size() > 0:
+			chunk_node = _chunk_node_pool.pop_back() as ChunkNode
+			chunk_node.chunk = task.chunk # Assign the new logical reference
+			chunk_node.name = "Chunk_%d_%d_%d" % [chunk_pos.x, chunk_pos.y, chunk_pos.z]
+			chunk_node.position = Vector3(chunk_pos * Chunk.SIZE)
+			chunk_node.visible = true
+		else:
+			chunk_node = ChunkNode.new(task.chunk)
+			controller.add_child(chunk_node)
+			
 		chunk_node.setup_chunk_visuals(task.multimesh_data, static_body, task.liquid_meshes, is_distant)
 		_chunk_nodes[chunk_pos] = chunk_node
 		
@@ -555,7 +560,8 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 		var node: ChunkNode = _chunk_nodes[chunk_pos] as ChunkNode
 		_chunk_nodes.erase(chunk_pos)
 		if is_instance_valid(node):
-			node.queue_free()
+			# Recycle instead of deleting to minimize Garbage Collection pauses
+			_recycle_chunk_node(node)
 			
 	if _chunk_lod_states.has(chunk_pos):
 		_chunk_lod_states.erase(chunk_pos)
@@ -571,6 +577,17 @@ func _unload_chunk_node(chunk_pos: Vector3i) -> void:
 				
 	_physics_bodies.erase(chunk_pos)
 	world_state.remove_chunk(chunk_pos)
+
+
+## Recycles an unloaded ChunkNode, resetting its properties and storing it in the pool.
+func _recycle_chunk_node(node: ChunkNode) -> void:
+	if is_instance_valid(node):
+		node.visible = false
+		# Clear physics to avoid collision interference while in pool
+		node.set_collision_body(null)
+		# Reset all GPU buffers and meshes inside the node
+		node.setup_chunk_visuals({}, null, {})
+		_chunk_node_pool.append(node)
 
 
 func _execute_lod_scans() -> void:
