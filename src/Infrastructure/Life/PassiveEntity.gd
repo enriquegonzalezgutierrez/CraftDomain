@@ -13,7 +13,8 @@
 # - Displaces the physical collider downward by 6 cm relative to the visual origin.
 #   This creates a physical cushion that completely offsets Godot's concave seam
 #   penetration bugs, keeping the feet resting stably on top of block textures.
-# - Continuous gravity application maintains firm, jitter-free floor contact.
+# - Conditional gravity application avoids unbounded velocity build-up, resolving
+#   the issue where entities slowly sink or clip into ground collision shapes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -280,10 +281,13 @@ func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
 		
-	# DIP Compliance: Always apply downward gravity to maintain stable floor-contact.
-	# Continuous gravity maintains a firm floor snap, preventing the collider from 
-	# floating and jittering below the block surface during move_and_slide calculations.
-	velocity.y -= gravity * delta
+	# DIP Compliance: Apply downward gravity conditionally to maintain stable floor-contact.
+	# We prevent infinite velocity accumulation while on the ground to solve corner clipping.
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+	else:
+		# Maintain a tiny constant downward force to keep floor snap stable
+		velocity.y = -0.1
 
 	# Process AI component decision tree calculations
 	if is_instance_valid(ai_component):

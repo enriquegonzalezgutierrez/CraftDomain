@@ -1,21 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Concrete MegaStructure. A massive 40x40 Stone Castle at X=200, Z=200.
-#              DETAILED UPGRADE: Added entrance gates, an ornate throne room,
-#              courtyard market stalls, glowing neon lanterns, and NPC populations!
-#              MISSION 5 SPAWN: Forces the spawn of a quest Zombie (ID 10) directly 
-#              outside the castle gates when "Plains Defender" is active!
-#              COLLISION VOID FIX: Adjusted Zombie coordinate strictly to Chunk 13 
-#              to prevent it from falling through unloaded collision bounds.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Sculpting and POI bounds.
+#              - Liskov Substitution Principle (LSP): Implements IMegaStructure.
+#              COLLISION VOID RESOLUTION:
+#              - Distributed entity spawning to match exact chunk boundaries.
+#                This prevents entities from spawning over unloaded chunks, resolving
+#                the bug where NPCs would fall through the void and disappear.
 #              ATMOSPHERIC CASTLE LIGHTING OVERHAUL:
 #              - Built 4 massive 9-block high glowing Neon-Cyan columns in the 4 corners 
 #                of the interior Throne Room to light up the palace.
 #              - Injected 4 real-time light-emitting Streetlight props (ID 202) symmetrically 
 #                flanking the Royal Throne and illuminating the outer merchants courtyard at night.
-#              SPAWN COORDINATES OFFSET CALIBRATION:
-#              - Shifted Villager and Merchant spawn points 2 meters forward into the open courtyard 
-#                air. This prevents them from spawning trapped inside the solid wooden market stalls, 
-#                guaranteeing they are visible and active from the very first frame.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/MegaStructures/GrandCastleMegaStructure.gd
 # ==============================================================================
@@ -154,46 +151,61 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 	var entities: Array[Dictionary] = []
 	
-	# Castle Center is 200, 200. This falls into chunk (12, 0, 12).
+	# Castle Center is 200, 200. We distribute entity coordinates strictly inside their matching chunks
+	# to avoid physical spawn interpenetration / void-falling bugs on chunk edges.
+	
+	# --- CHUNK (12, 0, 12) ---
+	# Bounds: X [192, 207], Z [192, 207]
 	if chunk_pos.x == 12 and chunk_pos.z == 12:
-		# Guard next to the throne
+		# Guards next to the throne
 		entities.append({"mob_id": 102, "pos": Vector3(202.5, 13.5, 195.5)})
 		entities.append({"mob_id": 102, "pos": Vector3(197.5, 13.5, 195.5)})
-		
-		# Merchant at the West courtyard stall (Mover 2m al Este: X=190.5 para estar despejado)
-		entities.append({"mob_id": 101, "pos": Vector3(190.5, 13.0, 205.5)})
-		
-		# Villager at the East courtyard stall (Mover 2m al Oeste: X=210.5 para estar despejado en la plaza)
-		entities.append({"mob_id": 100, "pos": Vector3(210.5, 13.0, 195.5)})
-		
-		# Farmer tending the castle courtyard garden!
-		entities.append({"mob_id": 103, "pos": Vector3(200.5, 13.5, 208.5)})
 		
 		# A special Loot Chest inside the throne room!
 		entities.append({"mob_id": 200, "pos": Vector3(196.5, 13.5, 193.5)})
 		
-		# ======================================================================
-		# CASTLE INTERNAL REAL-TIME LIGHTING EMITTERS
-		# ======================================================================
-		# 1. Symmetrical Streetlights (ID 202) flanking the Royal Throne
+		# Symmetrical Streetlights flanking the Royal Throne
 		entities.append({"mob_id": 202, "pos": Vector3(196.5, 13.5, 196.5)}) # Left Throne Lamp
 		entities.append({"mob_id": 202, "pos": Vector3(203.5, 13.5, 196.5)}) # Right Throne Lamp
 		
-		# 2. Symmetrical Streetlights (ID 202) lighting up the outer Merchants Courtyard
-		entities.append({"mob_id": 202, "pos": Vector3(188.5, 13.5, 208.5)}) # West Courtyard Lamp
-		entities.append({"mob_id": 202, "pos": Vector3(212.5, 13.5, 208.5)}) # East Courtyard Lamp
-		# ======================================================================
+	# --- CHUNK (11, 0, 12) ---
+	# Bounds: X [176, 191], Z [192, 207]
+	elif chunk_pos.x == 11 and chunk_pos.z == 12:
+		# Merchant at the West courtyard stall (In bounds: X=190.5)
+		entities.append({"mob_id": 101, "pos": Vector3(190.5, 13.0, 205.5)})
 		
-	# South Gate is at Z=220, which falls into chunk (12, 0, 13)
-	if chunk_pos.x == 12 and chunk_pos.z == 13:
-		# Two guards standing exactly outside the massive gate
+	# --- CHUNK (13, 0, 12) ---
+	# Bounds: X [208, 223], Z [192, 207]
+	elif chunk_pos.x == 13 and chunk_pos.z == 12:
+		# Villager at the East courtyard stall (First Quest Target: X=210.5)
+		entities.append({"mob_id": 100, "pos": Vector3(210.5, 13.0, 195.5)})
+		
+	# --- CHUNK (12, 0, 13) ---
+	# Bounds: X [192, 207], Z [208, 223]
+	elif chunk_pos.x == 12 and chunk_pos.z == 13:
+		# Two guards standing exactly outside the massive South Gate
 		entities.append({"mob_id": 102, "pos": Vector3(197.5, 13.5, 222.5)})
 		entities.append({"mob_id": 102, "pos": Vector3(202.5, 13.5, 222.5)})
+		
+		# Farmer tending the castle courtyard garden (In bounds: Z=208.5)
+		entities.append({"mob_id": 103, "pos": Vector3(200.5, 13.5, 208.5)})
 		
 		# --- MISSION 5 FORCE SPAWN: Spawn the Quest Zombie right outside the gates! ---
 		var active_q := QuestService.get_active_quest()
 		if active_q != null and active_q.quest_id == "plains_defender":
 			entities.append({"mob_id": 10, "pos": Vector3(200.0, 13.5, 218.5)})
 			print("[GrandCastle] Plains Defender active! Spawning Quest Zombie safely on the bridge.")
+			
+	# --- CHUNK (11, 0, 13) ---
+	# Bounds: X [176, 191], Z [208, 223]
+	elif chunk_pos.x == 11 and chunk_pos.z == 13:
+		# West Courtyard Lamp (In bounds: X=188.5, Z=208.5)
+		entities.append({"mob_id": 202, "pos": Vector3(188.5, 13.5, 208.5)})
+		
+	# --- CHUNK (13, 0, 13) ---
+	# Bounds: X [208, 223], Z [208, 223]
+	elif chunk_pos.x == 13 and chunk_pos.z == 13:
+		# East Courtyard Lamp (In bounds: X=212.5, Z=208.5)
+		entities.append({"mob_id": 202, "pos": Vector3(212.5, 13.5, 208.5)})
 		
 	return entities

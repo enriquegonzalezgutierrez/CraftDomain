@@ -6,6 +6,10 @@
 #                chase tracking, and combat cooldowns.
 #              - Dependency Inversion Principle (DIP): Displaces the physical collider 
 #                downward by 6 cm, preventing feet sinking inside blocky meshes.
+# COLLISION COHESION UPGRADE:
+#              - Conditional gravity application avoids unbounded velocity build-up,
+#                resolving the issue where entities slowly sink or clip into ground
+#                collision shapes over time.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -267,8 +271,11 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Always apply gravity to prevent floor-jitter and maintain firm contact.
-	# Godot's move_and_slide handles snapping stop on floor blocks automatically.
-	velocity.y -= gravity * delta
+	# We prevent infinite downward velocity accumulation while standing on solid ground.
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+	else:
+		velocity.y = -0.1
 
 	if _attack_cooldown_timer > 0.0:
 		_attack_cooldown_timer -= delta
