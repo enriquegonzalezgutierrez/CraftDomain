@@ -6,11 +6,12 @@
 # - Single Responsibility Principle (SRP): Coordinates chunk lifecycle, 
 #   delegating heavy geometry and physics tree compiling to background worker threads.
 # - Open-Closed Principle (OCP): Integrates custom solid and liquid geometries.
-# OBJECT POOLING OPTIMIZATION:
+# OBJECT POOLING & TIME-SLICED PHYSICS OPTIMIZATIONS (Milestone 10):
 # - Implemented `_chunk_node_pool` to recycle instantiated `ChunkNode` nodes.
-#   Instead of deleting nodes with `queue_free()`, nodes are hidden, cleared, 
-#   and pushed into a reusable pool array, eliminating allocation stuttering.
-# - Winding order for physics bodies restored to ensure complete safety.
+# - Added dynamic thread throttling: caps background threads strictly to 2 
+#   during teleports or startup, leaving CPU cores free for Vulkan shader compiles.
+# - Added Time-Sliced Physics Budgeting: compiles a maximum of 1-2 heavy concave
+#   collision bodies per frame, spreading physics registration overhead evenly.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -314,10 +315,21 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	_render_single_completed_task(task_result)
 
 
-## Thread dispatcher: Assigns queued positions to background threads under CPU limits
+## Thread dispatcher: Assigns queued positions to background threads under CPU limits.
+## DYNAMIC THROTTLING: Restricts concurrent hilos to 2 during teleportation/loading to avoid main-thread starvation.
 func _trigger_next_background_tasks() -> void:
 	_queue_mutex.lock()
-	while _active_background_tasks < _max_concurrent_bg_tasks and _load_requests_queue.size() > 0:
+	
+	# Evaluate if player is active (restoring full thread pool if active, throttling to 2 if loading/teleporting)
+	var is_loading_teleport := true
+	if is_instance_valid(controller) and is_instance_valid(controller.get("player")):
+		var player_node: Node3D = controller.get("player") as Node3D
+		if is_instance_valid(player_node):
+			is_loading_teleport = not (player_node.get("is_active") as bool)
+			
+	var active_threads_limit := 2 if is_loading_teleport else _max_concurrent_bg_tasks
+	
+	while _active_background_tasks < active_threads_limit and _load_requests_queue.size() > 0:
 		var request: Dictionary = _load_requests_queue.pop_front() as Dictionary
 		var pos: Vector3i = request["pos"] as Vector3i
 		var is_rebuild: bool = request["is_rebuild"] as bool
@@ -434,15 +446,25 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	_queue_mutex.unlock()
 
 
+## Renders completed task bundles. 
+## TIME-SLICED COMPILATION: Restricts heavy concave shape generations strictly to prevent main-thread stuttering.
 func _render_completed_chunks_from_queue(player_active: bool) -> void:
 	var start_time := Time.get_ticks_usec()
 	var rendered_this_frame := 0
-	# Extremely tight time budgets to guarantee 120 FPS
-	var time_budget_usec := 50000 if not player_active else 3000
+	var physics_compiled_this_frame := 0
+	
+	# Flexible time budget to avoid locking frames (wider window during non-active load screens)
+	var time_budget_usec := 40000 if not player_active else 3000
+	
+	# Strict budget: compile a maximum of 1 shape per frame during play, or 2 during teleports
+	var max_physics_compiles := 2 if not player_active else 1
+	
+	var deferred_tasks: Array[GeneratedChunkTask] = []
 	
 	while true:
 		var elapsed := Time.get_ticks_usec() - start_time
-		if elapsed > time_budget_usec and rendered_this_frame >= 1: break
+		if elapsed > time_budget_usec and rendered_this_frame >= 1: 
+			break
 			
 		var task: GeneratedChunkTask = null
 		_queue_mutex.lock()
@@ -450,9 +472,33 @@ func _render_completed_chunks_from_queue(player_active: bool) -> void:
 			task = _completed_tasks_queue.pop_front() as GeneratedChunkTask
 		_queue_mutex.unlock()
 		
-		if task == null: break 
+		if task == null: 
+			break 
+			
+		# Assess if this chunk needs heavy main-thread physics body compilation
+		var needs_physics_compile := (
+			not task.is_rebuild and 
+			task.has_meta("collision_vertices") and 
+			not task.has_meta("static_body")
+		)
+		
+		if needs_physics_compile and physics_compiled_this_frame >= max_physics_compiles:
+			# Defer this rendering packet to the next frame to safeguard FPS!
+			deferred_tasks.append(task)
+			continue
+			
 		_render_single_completed_task(task)
 		rendered_this_frame += 1
+		
+		if needs_physics_compile:
+			physics_compiled_this_frame += 1
+			
+	# Re-queue postponed tasks back at the front of the queue for the next frame
+	if deferred_tasks.size() > 0:
+		_queue_mutex.lock()
+		for i in range(deferred_tasks.size() - 1, -1, -1):
+			_completed_tasks_queue.push_front(deferred_tasks[i])
+		_queue_mutex.unlock()
 
 
 func _render_single_completed_task(task: GeneratedChunkTask) -> void:

@@ -6,19 +6,14 @@
 #              Includes detailed texture telemetry logging to diagnose load failures.
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Handles chunk mesh assembly 
-#   and material binding, delegating shader calculations and telemetry diagnostics
-#   to isolated, cohesive routines.
+#   and material binding.
 # - Dependency Inversion Principle (DIP): Depends on Domain-level Chunk representations.
-# - Open-Closed Principle (OCP): Generalizes liquid and solid custom geometries 
-#   under a single `p_custom_meshes` dictionary. Adding new shapes (stairs, slabs) 
-#   does not require modifying this renderer node.
-# PROFESSIONAL SELECTIVE BEVELING & WIND-DRIVEN WATER SHADER:
-# - Implemented `_should_apply_bevel` to conditionally inject the procedural 
-#   Bevel Normal Map to avoid texturing bugs while giving blocks a soft clay look.
-# - OVERHAULED WATER SHADER: Injected support for dynamic global shader uniforms 
-#   ("wind_vector" and "wind_strength") managed by WeatherService.
-# - Water vertices now deform into waves that travel physically along the wind 
-#   direction, scaling up during storms, and water foam currents pan in sync.
+# - Open-Closed Principle (OCP): Generalizes liquid and solid custom geometries.
+# OPAQUE FAR-LOD CULLING OPTIMIZATION (Milestone 10):
+# - Modified `_get_material_for_block` to disable transparency (`TRANSPARENCY_DISABLED`)
+#   for distant chunks (Water, Glass, Ice, Clouds).
+# - This completely bypasses expensive alpha blending passes on the GPU horizon,
+#   releasing massive pixel fillrate overhead and boosting FPS significantly.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -91,7 +86,6 @@ func _init(p_chunk: Chunk) -> void:
 
 
 ## Static texture caching to prevent CPU execution stalls during real-time generation.
-## Complies with Godot export pipeline by querying ResourceLoader instead of FileAccess.
 static func _preload_all_textures() -> void:
 	if _textures_preloaded:
 		return
@@ -204,7 +198,6 @@ static func _get_leaves_wind_shader() -> Shader:
 
 
 ## Programmatically compiles and returns an animated water wave shader.
-## Highly optimized to read global wind uniforms from the GPU.
 static func _get_water_shader() -> Shader:
 	if _water_shader == null:
 		_water_shader = Shader.new()
@@ -290,7 +283,6 @@ func set_collision_body(p_collision_body: StaticBody3D) -> void:
 
 
 ## Configures the segmented MultiMeshes and registers the physics collision body.
-## OCP COMPLIANCE: Unifies all non-cubic ArrayMesh shapes under p_custom_meshes.
 func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D, p_custom_meshes: Dictionary = {}, p_is_distant: bool = false) -> void:
 	var active_types: Dictionary = {}
 	
@@ -339,7 +331,7 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 			add_child(mm_instance)
 			_multimeshes[block_type] = mm_instance
 
-	# 2. Update/Recycle Solid Custom Mesh and Liquid instances (Unified OCP logic)
+	# 2. Update/Recycle Solid Custom Mesh and Liquid instances
 	for block_type: BlockType.Type in p_custom_meshes.keys():
 		var mesh: ArrayMesh = p_custom_meshes[block_type] as ArrayMesh
 		if mesh == null:
@@ -401,6 +393,7 @@ func update_lod_materials(p_is_distant: bool) -> void:
 
 
 ## Generates or retrieves a cached material with customized PBR features.
+## LOD CULLING: Far chunks disable alpha transparency completely on Water, Glass, and Ice.
 func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Material:
 	var def := BlockLibrary.get_definition(block_type)
 	
@@ -416,12 +409,20 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 		# ANISOTROPIC applied even to distant meshes for flawless horizon scaling
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
 		
+		# --- OPAQUE FAR-LOD TRANSPARENCY BYPASS ---
+		# Far water, glass, and ice disable blending, saving huge pixel fillrate overhead.
 		if block_type == BlockType.Type.WATER:
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			mat.albedo_color = Color(0.12, 0.45, 0.82, 0.55) 
-		elif block_type == BlockType.Type.GLASS or block_type == BlockType.Type.ICE or block_type == BlockType.Type.CLOUD:
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			mat.albedo_color = Color(def.color_top.r, def.color_top.g, def.color_top.b, 0.4)
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+			mat.albedo_color = Color(0.08, 0.35, 0.65) # Opaque deep ocean blue
+		elif block_type == BlockType.Type.GLASS:
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+			mat.albedo_color = Color(0.40, 0.60, 0.70) # Opaque solid cyan-gray
+		elif block_type == BlockType.Type.ICE:
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+			mat.albedo_color = Color(0.45, 0.75, 0.85) # Opaque solid ice blue
+		elif block_type == BlockType.Type.CLOUD:
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+			mat.albedo_color = Color(0.95, 0.95, 0.95) # Opaque clean white
 			
 		_distant_materials_cache[block_type] = mat
 		return mat
@@ -517,7 +518,7 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 		mat.albedo_color = def.color_top
 		mat.roughness = _roughness_val_by_block(block_type)
 		
-		# Moiré Fix: Anisotropic filtering smooths horizontal lines flawlessly
+		# Moiré Fix: Anisotropic filtering smooths horizontal lines
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC 
 		
 		if has_custom_texture:
