@@ -80,6 +80,10 @@ func interact(player_node: CharacterBody3D) -> void:
 		# Symmetrically fetch the correct translation description key (i18n compliance)
 		var desc_key := "NOTIFICATION_LOOT_FOUND_DESC_CHICKEN" if reward_item_id == 16 else "NOTIFICATION_LOOT_FOUND_DESC_LAVA"
 		
+		# --- PLAY SPATIAL CHEST OPEN & HUD PICKUP SFX (Milestone 10) ---
+		AudioService.play_sfx_static("chest_open", global_position)
+		AudioService.play_sfx_static("loot_pickup")
+		
 		# Grant the physical reward using the clean DIP interface method
 		inventory.add_item(reward_item_id, 1)
 		

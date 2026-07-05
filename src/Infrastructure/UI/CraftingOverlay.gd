@@ -1,6 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Description: Infrastructure UI controller representing an interactive, 
+# Description: Infrastructure UI controller representing an interactive, 
 #              glassmorphic dual-pane Crafting and Blueprint Workshop overlay.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by managing only the layout representation and 
@@ -10,6 +10,8 @@
 #                strictly-cast typed variables and strongly typed loop iterators 
 #                (including `recipe` and `slot_index`) to completely resolve 
 #                `UNTYPED_DECLARATION` compiler warnings.
+#              - Unified all detail panel variables to use '_detail_panel' with 
+#                the correct class-member scope underscore prefix.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/CraftingOverlay.gd
 # ==============================================================================
@@ -230,7 +232,7 @@ func _populate_recipes_list() -> void:
 		
 		var sh := sn.duplicate() as StyleBoxFlat
 		sh.bg_color = Color(0.18, 0.18, 0.22, 0.7)
-		sh.border_color = Color(1.0, 0.85, 0.2) # Gold hover border
+		sh.border_color = Color(1.0, 0.85, 0.2, 0.9) # Gold hover border
 		
 		btn.add_theme_stylebox_override("normal", sn)
 		btn.add_theme_stylebox_override("hover", sh)
@@ -329,6 +331,9 @@ func _on_craft_pressed() -> void:
 		var viewmodel: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 		if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
 			viewmodel.call("play_swing_animation")
+			
+		# --- PLAY CRAFTING CLINK SFX OBSERVER (Milestone 10) ---
+		AudioService.play_sfx_static("craft_clink")
 			
 		# Toast notification on HUD
 		# FIX: Explicit static typing on player HUD reference

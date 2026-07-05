@@ -8,9 +8,8 @@
 #              - Open-Closed Principle (OCP) & i18n: Uses Godot's tr() lookup 
 #                on all name labels, speech text, and option texts to support 
 #                seamless multi-language localization.
-#              WARNING FIX:
-#              - Added explicit static typing `Resource` to the `choice` loop iterator 
-#                on line 133 to completely resolve `UNTYPED_DECLARATION` compiler warnings.
+#              - Observer SFX (Milestone 10): Triggers a retro crystal chirp sound 
+#                statically when any dialogue node transitions in.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/DialogueOverlay.gd
 # ==============================================================================
@@ -121,6 +120,9 @@ func _setup_dialogue_ui() -> void:
 func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 	if not is_instance_valid(node):
 		return
+		
+	# --- PLAY DIALOGUE CHIRP SFX OBSERVER (Milestone 10) ---
+	AudioService.play_sfx_static("npc_chat")
 		
 	# Update text fields (running speaker and text through tr() lookup)
 	_name_label.text = tr(speaker_name).to_upper()

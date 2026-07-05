@@ -55,6 +55,11 @@ var _target_camera_tilt: float = 0.0
 # Camera Trauma Shake variable
 var _shake_intensity: float = 0.0
 
+# ==============================================================================
+# PHASE 2 SOUNDSCAPE ACCUMULATORS (Milestone 10)
+# ==============================================================================
+var _footstep_accumulator: float = 0.0
+
 
 func _init() -> void:
 	_setup_inputs_mouse_actions()
@@ -256,9 +261,47 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	_process_camera_effects(delta)
 	
+	# --- SEAMLESS FOOTSTEP TRIGGER ENGINE (Milestone 10) ---
+	if is_on_floor() and current_flat_velocity.length_squared() > 0.25:
+		_footstep_accumulator += delta * current_flat_velocity.length()
+		if _footstep_accumulator >= 2.2: # Trigger footstep sound every 2.2 meters walked
+			_footstep_accumulator = 0.0
+			_trigger_footstep_sfx(current_flat_velocity)
+	else:
+		_footstep_accumulator = lerp(_footstep_accumulator, 0.0, delta * 3.0)
+
 	# --- SYNCHRONIZE THIRD-PERSON MOVEMENTS ---
 	if is_instance_valid(visual_component):
 		visual_component.animate_movement(current_flat_velocity, is_on_floor(), delta)
+
+
+## Resolves block types under the player's feet and plays the matching OGG footstep pos.
+func _trigger_footstep_sfx(_velocity_flat: Vector2) -> void:
+	# Block directly beneath the player's feet (0.1m offset downward)
+	var p_block := Vector3i(
+		floori(global_position.x),
+		floori(global_position.y - 0.1),
+		floori(global_position.z)
+	)
+	
+	var block_below := BlockType.Type.AIR
+	var world_ctrl := world_controller as WorldController
+	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
+		block_below = world_ctrl.world_state.get_block(p_block)
+		
+	var sfx_name := "footstep_stone" # Solid rock/stone default
+	match block_below:
+		BlockType.Type.GRASS, BlockType.Type.DIRT:
+			sfx_name = "footstep_grass"
+		BlockType.Type.WOOD, BlockType.Type.LEAVES, BlockType.Type.BIRCH_LOG:
+			sfx_name = "footstep_wood"
+		BlockType.Type.SNOW, BlockType.Type.ICE:
+			sfx_name = "footstep_snow"
+		BlockType.Type.AIR, BlockType.Type.WATER:
+			return # Discard sounds in empty air or swimming
+			
+	# Trigger the preloaded sound statically at the player's current location
+	AudioService.play_sfx_static(sfx_name, global_position)
 
 
 func _process_camera_effects(delta: float) -> void:

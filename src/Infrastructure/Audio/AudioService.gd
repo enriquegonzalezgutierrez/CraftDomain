@@ -6,17 +6,18 @@
 # - Single Responsibility Principle (SRP): Handles exclusively audio buffers,
 #   soundtrack crossfading, and dynamic spatial SFX instantiation.
 # - Dependency Inversion Principle (DIP): Injected dependencies are used to 
-#   subscribe to Domain/Infrastructure events reactively, preventing sound logic
-#   from leaking into generation or interaction components.
-# OBSERVER PATTERN SOUNDSCAPE:
-# - Connects to `world_controller.block_modified` to spawn 3D soundscapes at 
-#   exact block coordinates on break or placement.
-# - Connects to `player_controller.took_damage` to trigger damage grunts.
+#   subscribe to Domain/Infrastructure events reactively.
+# SERVICE LOCATOR PATTERN (Milestone 10):
+# - Implemented static 'instance' locator allowing any node, UI overlay, 
+#   or entity to trigger sounds cleanly using: AudioService.play_sfx_static()
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Audio/AudioService.gd
 # ==============================================================================
 class_name AudioService
 extends Node
+
+# Static instance provider for global access (Service Locator Pattern)
+static var instance: AudioService = null
 
 # Situational Track Enum
 enum TrackType {
@@ -36,12 +37,22 @@ const CYBER_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/cyber_music.mp3"
 const POLAR_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/polar_music.mp3"
 
 # ==============================================================================
-# OBSERVER SFX PATHS (Milestone 10) - Updated to OGG
+# OBSERVER SFX PATHS (Milestone 10) - OGG format
 # ==============================================================================
 const SFX_BLOCK_BREAK_PATH := "res://assets/audio/block_break.ogg"
 const SFX_BLOCK_PLACE_PATH := "res://assets/audio/block_place.ogg"
 const SFX_HIT_SWORD_PATH := "res://assets/audio/hit_sword.ogg"
 const SFX_PLAYER_HIT_PATH := "res://assets/audio/player_hit.ogg"
+
+# New Expanded SFX paths
+const SFX_FOOTSTEP_GRASS := "res://assets/audio/footstep_grass.ogg"
+const SFX_FOOTSTEP_WOOD := "res://assets/audio/footstep_wood.ogg"
+const SFX_FOOTSTEP_STONE := "res://assets/audio/footstep_stone.ogg"
+const SFX_FOOTSTEP_SNOW := "res://assets/audio/footstep_snow.ogg"
+const SFX_CRAFT_CLINK := "res://assets/audio/craft_clink.ogg"
+const SFX_CHEST_OPEN := "res://assets/audio/chest_open.ogg"
+const SFX_LOOT_PICKUP := "res://assets/audio/loot_pickup.ogg"
+const SFX_NPC_CHAT := "res://assets/audio/npc_chat.ogg"
 
 # --- INJECTED DEPENDENCIES (DIP COMPLIANT) ---
 var player: CharacterBody3D:
@@ -73,6 +84,15 @@ var _crossfade_tween: Tween
 var _check_timer: float = 1.0
 
 
+func _enter_tree() -> void:
+	instance = self
+
+
+func _exit_tree() -> void:
+	if instance == self:
+		instance = null
+
+
 func _ready() -> void:
 	_preload_audio_resources()
 	_preload_sfx_resources()
@@ -101,17 +121,26 @@ func _preload_audio_resources() -> void:
 		_streams_cache[TrackType.POLAR] = _streams_cache[TrackType.WORLD]
 
 
-## Preloads the positional SFX files into memory to avoid I/O stutters when playing sounds.
+## Preloads all directional/stereo SFX files into RAM (Lag Spike Prevention)
 func _preload_sfx_resources() -> void:
 	print("[AudioService] Preloading gameplay sound effect resources...")
-	if ResourceLoader.exists(SFX_BLOCK_BREAK_PATH):
-		_sfx_cache["block_break"] = load(SFX_BLOCK_BREAK_PATH)
-	if ResourceLoader.exists(SFX_BLOCK_PLACE_PATH):
-		_sfx_cache["block_place"] = load(SFX_BLOCK_PLACE_PATH)
-	if ResourceLoader.exists(SFX_HIT_SWORD_PATH):
-		_sfx_cache["hit_sword"] = load(SFX_HIT_SWORD_PATH)
-	if ResourceLoader.exists(SFX_PLAYER_HIT_PATH):
-		_sfx_cache["player_hit"] = load(SFX_PLAYER_HIT_PATH)
+	# Base SFX
+	if ResourceLoader.exists(SFX_BLOCK_BREAK_PATH): _sfx_cache["block_break"] = load(SFX_BLOCK_BREAK_PATH)
+	if ResourceLoader.exists(SFX_BLOCK_PLACE_PATH): _sfx_cache["block_place"] = load(SFX_BLOCK_PLACE_PATH)
+	if ResourceLoader.exists(SFX_HIT_SWORD_PATH): _sfx_cache["hit_sword"] = load(SFX_HIT_SWORD_PATH)
+	if ResourceLoader.exists(SFX_PLAYER_HIT_PATH): _sfx_cache["player_hit"] = load(SFX_PLAYER_HIT_PATH)
+	
+	# New Footsteps SFX
+	if ResourceLoader.exists(SFX_FOOTSTEP_GRASS): _sfx_cache["footstep_grass"] = load(SFX_FOOTSTEP_GRASS)
+	if ResourceLoader.exists(SFX_FOOTSTEP_WOOD): _sfx_cache["footstep_wood"] = load(SFX_FOOTSTEP_WOOD)
+	if ResourceLoader.exists(SFX_FOOTSTEP_STONE): _sfx_cache["footstep_stone"] = load(SFX_FOOTSTEP_STONE)
+	if ResourceLoader.exists(SFX_FOOTSTEP_SNOW): _sfx_cache["footstep_snow"] = load(SFX_FOOTSTEP_SNOW)
+	
+	# New Mechanic/UI/Entity SFX
+	if ResourceLoader.exists(SFX_CRAFT_CLINK): _sfx_cache["craft_clink"] = load(SFX_CRAFT_CLINK)
+	if ResourceLoader.exists(SFX_CHEST_OPEN): _sfx_cache["chest_open"] = load(SFX_CHEST_OPEN)
+	if ResourceLoader.exists(SFX_LOOT_PICKUP): _sfx_cache["loot_pickup"] = load(SFX_LOOT_PICKUP)
+	if ResourceLoader.exists(SFX_NPC_CHAT): _sfx_cache["npc_chat"] = load(SFX_NPC_CHAT)
 
 
 func _initialize_players() -> void:
@@ -272,8 +301,34 @@ func _on_player_took_damage(_amount: int) -> void:
 
 
 # ==============================================================================
-# SPATIAL SFX LIFECYCLE INSTANTIATOR (Low-Level Memory Safe)
+# SPATIAL SFX LIFECYCLE INSTANTIATOR & SERVICE LOCATOR UTILITIES (Milestone 10)
 # ==============================================================================
+
+## Static Service Locator API: Allows any scene node, Entity, or UI element
+## to execute spatial or flat sounds with a single global line.
+static func play_sfx_static(sfx_name: String, global_pos: Vector3 = Vector3.ZERO) -> void:
+	if is_instance_valid(instance):
+		instance.play_sfx_local(sfx_name, global_pos)
+
+
+## Local router executing flat stereo players (for UI/Chat) or spatial players (for World).
+func play_sfx_local(sfx_name: String, global_pos: Vector3 = Vector3.ZERO) -> void:
+	var stream: AudioStream = _sfx_cache.get(sfx_name) as AudioStream
+	if stream == null:
+		return
+		
+	# If global_pos is Vector3.ZERO or we are in the main menu, output as flat stereo
+	if global_pos == Vector3.ZERO:
+		var player_2d := AudioStreamPlayer.new()
+		player_2d.stream = stream
+		player_2d.volume_db = -3.0
+		player_2d.bus = "SFX"
+		add_child(player_2d)
+		player_2d.play()
+		player_2d.finished.connect(player_2d.queue_free)
+	else:
+		play_sound_3d(stream, global_pos, -2.0)
+
 
 ## Instantiates and plays a 3D positional sound in the world, auto-freeing itself 
 ## once playback has completed to prevent memory leaks.
@@ -284,8 +339,8 @@ func play_sound_3d(stream: AudioStream, global_pos: Vector3, db_volume: float = 
 	player_3d.bus = "SFX" # Outputs to the standard SFX bus for volume control
 	player_3d.max_distance = 18.0 # Culls sound outside range to save CPU
 	
-	add_child(player_3d) # <-- FIRST: Add to tree
-	player_3d.global_position = global_pos # <-- SECOND: Set global position (Safe!)
+	add_child(player_3d) # <-- FIRST: Add to tree (Safe!)
+	player_3d.global_position = global_pos # <-- SECOND: Set global position
 	player_3d.play() # <-- THIRD: Play
 	
 	# Safe auto-destruction connection once the audio ends
