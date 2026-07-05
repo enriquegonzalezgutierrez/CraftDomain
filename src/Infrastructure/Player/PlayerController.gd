@@ -5,15 +5,10 @@
 #              - Single Responsibility Principle (SRP): Delegates all voxel raycasting, 
 #                mining, building, eating, and NPC interactions to VoxelInteractionComponent.
 #                Delegates third-person skeleton drawing to PlayerVisualComponent.
-#              - Dependency Inversion Principle (DIP): Injects loose component dependencies.
+#              - Dependency Inversion Principle (DIP): Injects loose component dependencies
+#                explictly during startup.
 #              - Domain-Driven Design (DDD): Defers player spawn height calculations
 #                strictly to the WorldState Domain Aggregate.
-# VOXEL SMOOTH SLIDING CORRECTION:
-#              - Configured custom Godot 4 slide and snap properties on `_ready()` 
-#                to completely resolve sticky wall corner traps on 90-degree block seams, 
-#                guaranteeing butter-smooth sliding movement.
-#              - Increased physical `safe_margin` to 1.5cm (`0.015`) to prevent 
-#                capsule-to-box seam penetration and sticky corners.
 # ==============================================================================
 class_name PlayerController
 extends CharacterBody3D
@@ -121,6 +116,7 @@ func _setup_sub_components() -> void:
 	
 	# Instantiate first-person arms viewmodel
 	viewmodel = PlayerViewModel.new()
+	viewmodel.player = self  # <--- DIP COMPLIANT: Explicit dependency injection
 	camera.add_child(viewmodel)
 	
 	# Instantiate raycasting and placement component under the camera

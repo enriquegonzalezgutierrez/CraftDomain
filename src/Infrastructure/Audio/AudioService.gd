@@ -5,14 +5,9 @@
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Handles exclusively audio buffers and 
 #   fade transactions.
-# DYNAMIC EDM SOUNDTRACK UPGRADE:
-# - Preloads 5 situational progressive EDM tracks (Menu, World, Combat, Cyber, Polar).
-# - Implemented double-buffering crossfade (`_player_a` and `_player_b`) to transition 
-#   soundtracks smoothly over 2.0 seconds based on biomes and day/night cycles.
-# - Dynamic programmatic looping connected directly to the native `finished` signals.
-# EXPORT FIX:
-# - Replaced FileAccess.file_exists with ResourceLoader.exists in the audio
-#   preloader to ensure the MP3 files load correctly when packed into a binary .pck file.
+# - Dependency Inversion Principle (DIP): Receives player and world dependencies 
+#   explicitly via injection instead of parent SceneTree queries, and evaluates 
+#   time statically through CelestialService.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Audio/AudioService.gd
 # ==============================================================================
@@ -35,6 +30,10 @@ const WORLD_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/world_music.mp3"
 const COMBAT_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/combat_music.mp3"
 const CYBER_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/cyber_music.mp3"
 const POLAR_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/polar_music.mp3"
+
+# --- INJECTED DEPENDENCIES (DIP COMPLIANT) ---
+var player: CharacterBody3D
+var world_controller: WorldController
 
 # Double-buffered players to allow seamless crossfading
 var _player_a: AudioStreamPlayer
@@ -117,17 +116,12 @@ func _process(delta: float) -> void:
 
 ## Scans player coordinates and celestial orbits to dispatch the appropriate EDM track
 func _evaluate_situational_soundtrack() -> void:
-	var player_node := get_parent().get_node_or_null("Player") as CharacterBody3D
-	var world_node := get_parent().get_node_or_null("World") as Node3D
-	
-	if not is_instance_valid(player_node) or not is_instance_valid(world_node) or not player_node.get("is_active"):
+	if not is_instance_valid(player) or not is_instance_valid(world_controller) or not player.get("is_active"):
 		return
 		
 	# 1. Check Night state (Triggers high-energy Combat Big Room)
-	var celestial := get_node_or_null("/root/Bootstrap/CelestialService")
-	var is_night := false
-	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
-		is_night = celestial.call("is_night_time") as bool
+	# DIP Compliance: Evaluates night state statically
+	var is_night: bool = CelestialService.is_night_time_static()
 		
 	if is_night:
 		_crossfade_to_track(TrackType.COMBAT)
@@ -135,11 +129,11 @@ func _evaluate_situational_soundtrack() -> void:
 		
 	# 2. Check Biome State
 	var biome_id := 2 # Plains default
-	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator
+	var generator: WorldGenerator = world_controller.get("generator") as WorldGenerator
 	if is_instance_valid(generator):
 		var noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if noise != null:
-			var p_pos := player_node.global_position
+			var p_pos := player.global_position
 			var profile := BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), noise) as BiomeService.BiomeProfile
 			biome_id = profile.biome_id
 			

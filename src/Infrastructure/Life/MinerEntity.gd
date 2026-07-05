@@ -7,12 +7,8 @@
 #              - Liskov Substitution Principle (LSP): Inherits PassiveEntity.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
-#              BUG FIX (i18n): Replaced hardcoded name string with localized 
-#              translation keys to maintain strict multi-language support.
-#              UX MODELING OVERHAUL (CLAY MINER):
-#              - Upgraded visual boxes: added a detailed high-contrast yellow construction 
-#                hardhat, an active SpotLight3D casting real-time volumetric-like cones, 
-#                and an iron pickaxe mounted on his leather shoulder harness.
+#              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
+#                statically through the decoupled CelestialService provider.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MinerEntity.gd
 # ==============================================================================
@@ -141,10 +137,8 @@ func interact(player_node: CharacterBody3D) -> void:
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
 func _select_procedural_greeting_key() -> String:
-	var celestial := get_node_or_null("/root/Bootstrap/CelestialService")
-	var is_night := false
-	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
-		is_night = celestial.call("is_night_time") as bool
+	# DIP Compliance: Safely retrieve time statically
+	var is_night: bool = CelestialService.is_night_time_static()
 		
 	if is_night:
 		return "DIALOGUE_MINER_NIGHT"

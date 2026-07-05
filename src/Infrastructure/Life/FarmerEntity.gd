@@ -7,6 +7,8 @@
 # - Liskov Substitution Principle (LSP): Safely extends PassiveEntity.
 # - Single Responsibility Principle (SRP): Delegates rendering setups 
 #   and AI state execution to specialized sibling components.
+# - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
+#   statically through the decoupled CelestialService provider.
 # I/O OPTIMIZATION (120 FPS STABILIZATION):
 # - Removed all verbose `[FarmerAI]` print statements to prevent synchronous, 
 #   blocking console I/O stalls during real-time harvesting sweeps.
@@ -67,12 +69,10 @@ func _build_visual_representation() -> void:
 	
 	# 2. Clothed Torso Shirt & Overalls
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), shirt_color)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.45, 0.47), Vector3(0, 0.375, 0), denim_color) # Overalls
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.32, 0.18, 0.05), Vector3(0, 0.60, -0.21), denim_color) # Front bib flap
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.42, 0.47), Vector3(0, 0.36, 0), denim_color) # Overalls
 	
-	# Suspender straps
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.06, 0.22, 0.49), Vector3(-0.13, 0.74, 0), strap_color) 
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.06, 0.22, 0.49), Vector3(0.13, 0.74, 0), strap_color)  
+	# Leather harness straps (Wrapped diagonally across the chest)
+	visual_component.create_box(visual_component.body_bob_node, Vector3(0.08, 0.77, 0.12), Vector3(-0.13, 0.525, -0.19), strap_color)
 	
 	# 3. Head Joint Setup
 	visual_component.head_node = Node3D.new()
@@ -147,10 +147,8 @@ func interact(player_node: CharacterBody3D) -> void:
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
 func _select_procedural_greeting_key() -> String:
-	var celestial := get_node_or_null("/root/Bootstrap/CelestialService")
-	var is_night := false
-	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
-		is_night = celestial.call("is_night_time") as bool
+	# DIP Compliance: Safely retrieve time statically
+	var is_night: bool = CelestialService.is_night_time_static()
 		
 	if is_night:
 		return "DIALOGUE_FARMER_NIGHT"
@@ -159,6 +157,8 @@ func _select_procedural_greeting_key() -> String:
 	match biome_id:
 		4: return "DIALOGUE_FARMER_GLACIERS"   
 		7: return "DIALOGUE_FARMER_NEON"       
+		8: return "DIALOGUE_FARMER_SWAMP"       
+		9: return "DIALOGUE_FARMER_CLOUD"       
 		_:
 			var variety_index := npc_seed % 2
 			match variety_index:
@@ -166,7 +166,7 @@ func _select_procedural_greeting_key() -> String:
 				_: return "DIALOGUE_FARMER_PLAINS_B"
 
 
-## Main Loop ticker.
+## Overrides standard physics ticker to weave defensive aggro scanning loops.
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
@@ -180,7 +180,7 @@ func _physics_process(delta: float) -> void:
 	super(delta)
 
 
-## Scans, wanders to, and actively till/harvests ripe golden crops.
+## Scans, wanders to, and actively tilled/harvests ripe golden crops.
 func _process_farming_ai_intelligence(delta: float) -> void:
 	var world_node := get_parent() as WorldController
 	if not is_instance_valid(world_node) or world_node.world_state == null: 

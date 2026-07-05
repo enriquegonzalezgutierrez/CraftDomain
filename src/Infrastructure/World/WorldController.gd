@@ -93,7 +93,7 @@ func _initialize_systems() -> void:
 	_streetlight_service = StreetlightService.new(self, world_state)
 	_agriculture_service = AgricultureService.new(self, world_state)
 	
-	# Create and cache the primary Chunk Manager Service
+	# Create the RefCounted Chunk Manager Service (Not a Node, do not call add_child)
 	chunk_manager = ChunkManagerService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
 	
@@ -141,12 +141,10 @@ func _initialize_systems() -> void:
 	generator = WorldGenerator.new(active_seed)
 	
 	# Injects loaded parameters into global singletons
-	var bootstrap := get_node_or_null("/root/Bootstrap")
-	if is_instance_valid(bootstrap):
-		var celestial: Node = bootstrap.get_node_or_null("CelestialService") as Node
-		if is_instance_valid(celestial):
-			celestial.set("_current_time", current_time)
-			celestial.set("_calendar_days", calendar_days)
+	var celestial := CelestialService.instance
+	if is_instance_valid(celestial):
+		celestial.set("_current_time", current_time)
+		celestial.set("_calendar_days", calendar_days)
 			
 	_target_spawn_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
 	
@@ -215,11 +213,7 @@ func _process_dynamic_world() -> void:
 
 ## Coordinates dynamic streetlight updates on day/night transitions
 func _process_day_night_lighting() -> void:
-	var celestial: Node = get_parent().get_node_or_null("CelestialService") as Node
-	if not is_instance_valid(celestial) or not celestial.has_method("is_night_time"):
-		return
-		
-	var is_night: bool = celestial.call("is_night_time") as bool
+	var is_night: bool = CelestialService.is_night_time_static()
 	if is_instance_valid(_streetlight_service):
 		_streetlight_service.update_streetlights_state(is_night)
 
@@ -241,7 +235,7 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		chunk_manager.set_block_globally(global_pos, type)
 
 
-## Triggers the global asynchronous save sequence via WorldPersistenceService
+## Triggers the global save sequence via WorldPersistenceService
 func save_all() -> void:
 	if is_instance_valid(persistence_service):
 		persistence_service.save_game(player, world_state)
@@ -367,10 +361,12 @@ class WorldModifierAdapter:
 		if is_instance_valid(_controller):
 			_controller.set_block_globally(global_pos, type)
 
+
 	func get_block_globally(global_pos: Vector3i) -> BlockType.Type:
 		if is_instance_valid(_controller) and is_instance_valid(_controller.world_state):
 			return _controller.world_state.get_block(global_pos)
 		return BlockType.Type.AIR
+
 
 	func get_last_hit_fractional_y() -> float:
 		return last_hit_fractional_y

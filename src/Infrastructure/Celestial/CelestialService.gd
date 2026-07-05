@@ -5,16 +5,16 @@
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Only manages physical orbits
 #   and day timelines, delegating weather-uniform parameters to the GPU.
-# SUNSET TIMELINE CALIBRATION:
-# - Advanced the night twilight threshold from 0.80 (7:12 PM) to 0.76 (6:15 PM) 
-#   and sunrise to 0.24 (5:45 AM). This perfectly synchronizes sun occlusion, 
-#   moon rise, and streetlight ignition as twilight begins, preventing dark lapses.
-# - Maintained realistic low-energy Moonlight glow (0.06).
+# - Dependency Inversion Principle (DIP): Exposes a static provider interface 
+#   to decouple consumers from SceneTree hierarchy paths.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
 class_name CelestialService
 extends Node
+
+## Static instance provider for global access without SceneTree traversal
+static var instance: CelestialService = null
 
 ## Speed of time progression (96.0 multiplier makes a full day last exactly 15 minutes)
 var time_speed: float = 96.0
@@ -35,6 +35,15 @@ var _calendar_days: int = 14 # Start at day 14 (Full Moon) for immediate visual 
 
 # Weather-Storm parameters
 var _current_storm_weight: float = 0.0
+
+
+func _enter_tree() -> void:
+	instance = self
+
+
+func _exit_tree() -> void:
+	if instance == self:
+		instance = null
 
 
 func _ready() -> void:
@@ -214,3 +223,21 @@ func get_formatted_time() -> String:
 	var hours := int(float(total_minutes) / 60.0)
 	var minutes := int(total_minutes % 60)
 	return "%02d:%02d" % [hours, minutes]
+
+
+# ==============================================================================
+# STATIC SERVICE LOCATOR INTERFACES (DIP COMPLIANT)
+# ==============================================================================
+
+## Static helper to query nighttime state safely from any script context
+static func is_night_time_static() -> bool:
+	if is_instance_valid(instance):
+		return instance.is_night_time()
+	return false
+
+
+## Static helper to query clock formatting safely from any script context
+static func get_formatted_time_static() -> String:
+	if is_instance_valid(instance):
+		return instance.get_formatted_time()
+	return "12:00"

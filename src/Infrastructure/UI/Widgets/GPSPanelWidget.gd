@@ -3,13 +3,12 @@
 # Description: Infrastructure UI Widget responsible ONLY for rendering the 
 #              top coordinates, celestial clock, active biome, and closest
 #              fixed Point of Interest (POI) with distance and cardinal compass direction.
-#              SOLID COMPLIANCE: Adheres strictly to SRP by isolating navigation.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Isolates navigation metrics representation.
+#              - Dependency Inversion Principle (DIP): Retrieves time metrics statically 
+#                via the decoupled CelestialService provider.
 #              i18n UPGRADE: Uses standardized translation keys for biomes, structures,
 #              and dynamic cardinal directions (N, NE, E, SE, S, SW, W, NW).
-#              WARNING FIX:
-#              - Added explicit static typing `WorldGenerator` to the `generator` 
-#                variable and `IMegaStructure` to the `landmark` loop iterator 
-#                to completely resolve `UNTYPED_DECLARATION` compiler warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/GPSPanelWidget.gd
 # ==============================================================================
@@ -38,9 +37,11 @@ const BIOME_NAMES = {
 	9: "BIOME_CLOUD_KINGDOM"
 }
 
+
 func _ready() -> void:
 	name = "GPSPanel"
 	_setup_gps_layout()
+
 
 func _setup_gps_layout() -> void:
 	# Clean floating design (Expanded to height 72 to fit 3 lines elegantly)
@@ -80,6 +81,7 @@ func _setup_gps_layout() -> void:
 	_poi_label.label_settings = ls_poi
 	vbox.add_child(_poi_label)
 
+
 ## Real-time metric updater: Decoupled navigation loop
 func update_widget() -> void:
 	if not is_instance_valid(player) or not is_instance_valid(world_controller):
@@ -88,10 +90,8 @@ func update_widget() -> void:
 	var p_pos := player.global_position
 	
 	# 1. Update Clock
-	var time_str: String = "12:00"
-	var celestial := get_node_or_null("/root/Bootstrap/CelestialService")
-	if is_instance_valid(celestial) and celestial.has_method("get_formatted_time"):
-		time_str = celestial.call("get_formatted_time") as String
+	# DIP Compliance: Safely retrieve formatted time statically
+	var time_str: String = CelestialService.get_formatted_time_static()
 		
 	# 2. Render Coordinates
 	_coords_label.text = "[ X: %d  Y: %d  Z: %d ]   ·   %s" % [
@@ -102,7 +102,6 @@ func update_widget() -> void:
 	]
 	
 	# 3. Render Localized Biome
-	# FIX: Explicit static typing on intermediate generator reference
 	var generator: WorldGenerator = world_controller.get("generator") as WorldGenerator
 	if is_instance_valid(generator) and "_terrain_noise" in generator:
 		var noise := generator.get("_terrain_noise") as FastNoiseLite
@@ -123,7 +122,6 @@ func _update_closest_landmark(p_pos: Vector3) -> void:
 	var closest_landmark: IMegaStructure = null
 	var min_dist := 99999.0
 	
-	# FIX: Explicit static typing on structures loop iterator
 	for landmark: IMegaStructure in landmarks:
 		var l_center := Vector2(landmark.global_center.x, landmark.global_center.y)
 		var p_flat := Vector2(p_pos.x, p_pos.z)

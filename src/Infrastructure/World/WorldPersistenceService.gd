@@ -2,13 +2,11 @@
 # Project: CraftDomain
 # Description: Infrastructure Service responsible for formatting and serializing
 #              save metadata to the injected WorldRepository.
-#              SOLID COMPLIANCE: SRP compliant by isolating I/O serialization
-#              from SceneTree physics or game loop frames.
-#              UPDATED: Added extraction of celestial clock parameters from 
-#              CelestialService at runtime to preserve time of day and moon phases.
-#              WARNING FIX:
-#              - Added explicit static typing `Node` to the dynamic `celestial` 
-#                variable to resolve the `UNTYPED_DECLARATION` warning.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Isolates I/O serialization
+#                from SceneTree physics or game loop frames.
+#              - Dependency Inversion Principle (DIP): Resolves time-of-day parameters 
+#                statically through the decoupled CelestialService provider.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldPersistenceService.gd
 # ==============================================================================
@@ -59,16 +57,14 @@ func save_game(player: CharacterBody3D, world_state: WorldState) -> void:
 					seed_val = noise.get("seed") as int
 		
 		# ---> CELESTIAL TIMELINE EXTRACTION <---
-		# Query CelestialService via the player's parent Bootstrap node (safe fallback)
+		# Query CelestialService statically (DIP/Locator compliant)
 		var celestial_time := 0.5
 		var calendar_day := 14 # Default Full Moon
 		
-		var bootstrap := player.get_parent()
-		if is_instance_valid(bootstrap):
-			var celestial: Node = bootstrap.get_node_or_null("CelestialService") as Node
-			if is_instance_valid(celestial):
-				celestial_time = celestial.get("_current_time") as float
-				calendar_day = celestial.get("_calendar_days") as int
+		var celestial := CelestialService.instance
+		if is_instance_valid(celestial):
+			celestial_time = celestial.get("_current_time") as float
+			calendar_day = celestial.get("_calendar_days") as int
 				
 		repository.save_global_state(
 			player.global_position, 

@@ -7,12 +7,8 @@
 #                3D programmatic mesh assembly, materials, and lighting controls.
 #              - Liskov Substitution Principle (LSP): Safely extends StaticBody3D 
 #                to act as a physical collidable obstacle in the world.
-#              POLIMORFIC BIOME INTEGRATION:
-#              - Replaced static colors with a dynamic coordinate-seeded biome 
-#                customizer. The entity queries its global coordinates on ready and 
-#                automatically morphs its 3D box shapes, materials, and glow colors 
-#                to perfectly match its local biome theme (Medieval, Cyber, Ice, 
-#                Swamp, or Sandstone).
+#              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
+#                statically through the decoupled CelestialService provider.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/StreetlightEntity.gd
 # ==============================================================================
@@ -37,14 +33,10 @@ func _ready() -> void:
 	_setup_collision()
 	
 	# ---> AUTONOMOUS SPATIAL SOWING <---
-	# Queries the global celestial timeline once fully built to auto-ignite 
+	# Queries the global celestial timeline statically once fully built to auto-ignite 
 	# if spawned during nighttime, completely resolving any race conditions.
-	var bootstrap := get_node_or_null("/root/Bootstrap")
-	if is_instance_valid(bootstrap):
-		var celestial: Node = bootstrap.get_node_or_null("CelestialService") as Node
-		if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
-			var is_night: bool = celestial.call("is_night_time") as bool
-			set_lights_active(is_night)
+	var is_night: bool = CelestialService.is_night_time_static()
+	set_lights_active(is_night)
 
 
 ## Programmatically assembles the 3D lamppost out of colored box meshes.

@@ -7,16 +7,8 @@
 #   safely overriding the movement, task routing, and visualization loops.
 # - Single Responsibility Principle (SRP): Delegates rendering setups 
 #   and AI state execution to specialized sibling components.
-# HIGH PERFORMANCE AI UPGRADE (120 FPS STABILIZATION):
-# - DEPRECATED O(N^2) CHILD ITERATIONS: Replaced the slow, high-frequency 
-#   `get_children()` loop in the target finder which scanned the entire world.
-# - DYNAMIC GROUP INDEXING: The defensive targeting system now queries Godot's 
-#   optimized C++ group table ("hostiles").
-# - ASYNCHRONOUS TACTICAL SCANNING: Threat proximity evaluations are no longer 
-#   executed every physics frame (120 FPS). They are throttled via `_tactical_scan_timer`
-#   (4 times per second), drastically reducing Main Thread CPU load in populated villages.
-# - MATH OPTIMIZATION: `distance_to` and `length` replaced with `distance_squared_to` 
-#   and `length_squared` respectively to bypass expensive CPU square root calculations.
+# - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
+#   statically through the decoupled CelestialService provider.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GuardEntity.gd
 # ==============================================================================
@@ -172,10 +164,8 @@ func interact(player_node: CharacterBody3D) -> void:
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
 func _select_procedural_greeting_key() -> String:
-	var celestial := get_node_or_null("/root/Bootstrap/CelestialService")
-	var is_night := false
-	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
-		is_night = celestial.call("is_night_time") as bool
+	# DIP Compliance: Safely retrieve time statically
+	var is_night: bool = CelestialService.is_night_time_static()
 		
 	if is_night:
 		return "DIALOGUE_GUARD_NIGHT"

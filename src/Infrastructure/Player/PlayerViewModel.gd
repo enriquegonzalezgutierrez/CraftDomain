@@ -2,12 +2,11 @@
 # Project: CraftDomain
 # Description: Infrastructure Presentation service that programmatically constructs
 #              3D handheld tool models out of colored boxes.
-#              UX IMPROVED: Added dynamic idle breathing and movement-based bobbing
-#              to make the first-person perspective feel highly immersive and alive.
-#              WARNING FIX:
-#              - Added explicit static typing `PlayerController` to the `player` 
-#                variable on line 52 to completely resolve the 
-#                `UNTYPED_DECLARATION` compiler warning.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Isolates first-person 
+#                viewmodel assembly and animations from physics or HUD coordination.
+#              - Dependency Inversion Principle (DIP): Accepts player reference 
+#                dependency explicitly instead of traversing SceneTree parent chains.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/PlayerViewModel.gd
 # ==============================================================================
@@ -21,6 +20,9 @@ enum ToolType {
 	PICKAXE,    # Shown when selecting Stone, Dirt, or Grass (mining)
 	SWORD       # Shown when selecting the Sword slot (combat)
 }
+
+## Injectable reference to the active Player Controller
+var player: PlayerController
 
 var active_tool: ToolType = ToolType.NONE
 var _is_swinging: bool = false
@@ -36,6 +38,7 @@ var _idle_time: float = 0.0
 const BASELINE_POSITION := Vector3(0.32, -0.38, -0.52)
 const BASELINE_ROTATION := Vector3(deg_to_rad(10), deg_to_rad(20), deg_to_rad(-5))
 
+
 func _ready() -> void:
 	name = "PlayerViewModel"
 	position = BASELINE_POSITION
@@ -48,21 +51,19 @@ func _ready() -> void:
 	# Start with Scroll by default
 	switch_to_tool(ToolType.SCROLL)
 
+
 func _process(delta: float) -> void:
 	if _is_swinging:
 		return # Do not apply bobbing math while a swing animation tween is active
 		
-	# 1. Obtain the player controller dynamically (Camera3D -> CharacterBody3D)
-	# FIX: Added explicit static typing `PlayerController` to prevent variant warning
-	var player: PlayerController = get_parent().get_parent() as PlayerController
-	
+	# DIP Compliance: Evaluates player properties via explicit reference property
 	if is_instance_valid(player):
 		# Calculate lateral movement speed (ignore vertical falling/jumping velocity)
 		var flat_velocity := Vector2(player.velocity.x, player.velocity.z)
 		var speed: float = flat_velocity.length()
 		var is_moving: bool = speed > 0.5 and player.is_on_floor()
 		
-		# 2. Dynamic Bobbing Math
+		# Dynamic Bobbing Math
 		var target_pos := BASELINE_POSITION
 		
 		if is_moving:
@@ -86,8 +87,9 @@ func _process(delta: float) -> void:
 			# Gradually reset the walking bob phase to prevent snapping
 			_bob_time = lerp(_bob_time, 0.0, delta * 5.0)
 
-		# 3. Smoothly interpolate position for buttery smooth rendering
+		# Smoothly interpolate position for buttery smooth rendering
 		position = position.lerp(target_pos, delta * 12.0)
+
 
 ## Programmatically swaps active handheld visual meshes instantly.
 func switch_to_tool(new_tool: ToolType) -> void:
@@ -104,6 +106,7 @@ func switch_to_tool(new_tool: ToolType) -> void:
 			_build_pickaxe()
 		ToolType.SWORD:
 			_build_sword()
+
 
 ## Executes a highly satisfying 3D swinging animation (0.15s) using Godot's Tween engine.
 func play_swing_animation() -> void:
@@ -132,9 +135,11 @@ func play_swing_animation() -> void:
 		_is_swinging = false
 	)
 
+
 func _clear_tool_mesh() -> void:
 	for child in _tool_root.get_children():
 		child.queue_free()
+
 
 func _build_scroll() -> void:
 	# Represent a rolled blueprint scroll (White paper core with oak handles)
@@ -143,6 +148,7 @@ func _build_scroll() -> void:
 	
 	_create_box_mesh(_tool_root, Vector3(0.08, 0.32, 0.08), Vector3(0, 0, 0), paper_color) # Scroll tube
 	_create_box_mesh(_tool_root, Vector3(0.02, 0.38, 0.02), Vector3(0, 0, 0), wood_color)  # Handle rod
+
 
 func _build_pickaxe() -> void:
 	# Represent a rugged Stone Pickaxe (Oak shaft with horizontal stone crosspiece)
@@ -153,6 +159,7 @@ func _build_pickaxe() -> void:
 	_create_box_mesh(_tool_root, Vector3(0.32, 0.06, 0.06), Vector3(0, 0.18, 0.01), stone_color) # Stone Pick-Head
 	_create_box_mesh(_tool_root, Vector3(0.06, 0.08, 0.08), Vector3(0, 0.18, 0), Color(0.3, 0.3, 0.3)) # Dark central binding bind
 
+
 func _build_sword() -> void:
 	# Represent a classic Wooden Sword (Oak grip, gold crossguard, steel-like blade)
 	var blade_color := Color(0.85, 0.85, 0.85)
@@ -162,6 +169,7 @@ func _build_sword() -> void:
 	_create_box_mesh(_tool_root, Vector3(0.06, 0.52, 0.02), Vector3(0, 0.18, 0), blade_color) # Sword Blade
 	_create_box_mesh(_tool_root, Vector3(0.18, 0.04, 0.05), Vector3(0, -0.08, 0), guard_color) # Crossguard
 	_create_box_mesh(_tool_root, Vector3(0.04, 0.14, 0.04), Vector3(0, -0.16, 0), hilt_color)  # Grip Handle
+
 
 func _create_box_mesh(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> void:
 	var mesh_instance: MeshInstance3D = MeshInstance3D.new()

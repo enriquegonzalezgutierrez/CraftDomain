@@ -10,7 +10,8 @@
 #                new biomes, structures, or entities.
 #              - Dependency Inversion Principle (DIP): Injects concrete 
 #                Infrastructure prop factories (ChestEntity, StreetlightEntity) 
-#                into the pure Domain PropRegistry on startup.
+#                into the pure Domain PropRegistry on startup, and sets up 
+#                weather & audio dependency injection paths.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -262,12 +263,10 @@ func _create_unload_loading_screen() -> Panel:
 
 func _bootstrap_world() -> void:
 	world_controller = WorldController.new()
-	world_controller.name = "World"
 
 
 func _bootstrap_player() -> void:
 	player_controller = PlayerController.new()
-	player_controller.name = "Player"
 
 
 func _inject_dependencies() -> void:
@@ -278,3 +277,8 @@ func _inject_dependencies() -> void:
 		
 		if is_instance_valid(weather_service):
 			weather_service.player = player_controller
+			weather_service.world_controller = world_controller
+			
+		if is_instance_valid(audio_service):
+			audio_service.player = player_controller
+			audio_service.world_controller = world_controller # <--- DIP COMPLIANCE: Injects audio dependencies

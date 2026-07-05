@@ -7,13 +7,8 @@
 #                fully satisfies all base physics and signals.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
-#              UX MODELING OVERHAUL (CLAY MOVIE VILLAGER):
-#              - Assembled programmatically to perfectly match the high-fidelity 
-#                clay-voxel Villager from the Minecraft Movie. Features an elongated 
-#                bald head, prominent unibrow, extra long protruding nose, 
-#                emerald green eyes, and the iconic folded-arms pose.
-#              - Preserved the procedural biome clothing system (Sailors, Eskimos, 
-#                Cybertech, Alchemists) while applying these cinematic facial features globally.
+#              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
+#                statically through the decoupled CelestialService provider.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
@@ -181,10 +176,8 @@ func interact(player_node: CharacterBody3D) -> void:
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
 func _select_procedural_greeting_key() -> String:
-	var celestial := get_node_or_null("/root/Bootstrap/CelestialService")
-	var is_night := false
-	if is_instance_valid(celestial) and celestial.has_method("is_night_time"):
-		is_night = celestial.call("is_night_time") as bool
+	# DIP Compliance: Safely retrieve time statically
+	var is_night: bool = CelestialService.is_night_time_static()
 		
 	if is_night:
 		return "DIALOGUE_VILLAGER_NIGHT"
@@ -214,15 +207,12 @@ func _setup_floating_bubble() -> void:
 
 ## Queries coordinate biomes.
 func _detect_current_biome() -> int:
-	# FIX: Explicit static typing on world controller node reference
 	var world_controller_ref: Node = get_parent() as Node
 	var default_biome_id: int = 2
 	
 	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		# FIX: Explicit static typing on world generator reference
 		var generator: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
 		if generator != null:
-			# FIX: Explicit static typing on terrain noise provider
 			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
 				var profile := BiomeService.evaluate_coordinate(

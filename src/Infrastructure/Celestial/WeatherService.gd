@@ -1,16 +1,11 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure Weather Service managing dynamic meteorological cycles.
-#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by isolating particle setups and climate routines.
-# DYNAMIC WIND ENGINE (120 FPS STABILIZATION):
-# - Programmatically registers Global Shader Uniforms ("wind_vector" and "wind_strength") 
-#   in Godot's RenderingServer to share wind parameters with all materials at zero cost.
-# - Simulates a slow rotating breeze during sunny weather, and a violent, directed 
-#   blizzard/storm wind vector during rainy or snowy weather cycles.
-# - RUNTIME PERFORMANCE OPTIMIZATION: Removed all slow GPU-to-CPU read operations 
-#   (get/get_list reflection) to prevent rendering thread stalls and crashes in F5 runs.
-# - Utilizes a static initialization flag and CPU-side state interpolation.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Isolates particle setups 
+#                and climate routines.
+#              - Dependency Inversion Principle (DIP): Receives player and world 
+#                references explicitly via dependency injection instead of SceneTree lookups.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/WeatherService.gd
 # ==============================================================================
@@ -24,7 +19,10 @@ enum WeatherType {
 }
 
 var current_weather: WeatherType = WeatherType.SUNNY
+
+# --- INJECTED DEPENDENCIES (DIP COMPLIANT) ---
 var player: CharacterBody3D
+var world_controller: WorldController
 
 # Internal timer to cycle weather (every 90 seconds)
 var _weather_timer: float = 90.0
@@ -52,7 +50,6 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(player):
-		_locate_player()
 		return
 		
 	# Follow player head exactly (floats 12 meters above) to maintain extreme performance
@@ -107,13 +104,6 @@ func _process_dynamic_wind_simulation(delta: float) -> void:
 	RenderingServer.global_shader_parameter_set("wind_vector", _current_wind_vector)
 
 
-## Locates the sibling player controller node dynamically
-func _locate_player() -> void:
-	var parent: Node = get_parent()
-	if is_instance_valid(parent):
-		player = parent.get_node_or_null("Player") as CharacterBody3D
-
-
 ## Programmatically builds and registers the GPUParticles3D emitter
 func _setup_particles_system() -> void:
 	_particles = GPUParticles3D.new()
@@ -149,18 +139,13 @@ func _cycle_weather() -> void:
 	
 	# 1. Determine region to customize local climate
 	var is_polar_region := false
-	if is_instance_valid(player) and is_instance_valid(get_node_or_null("../World")):
+	if is_instance_valid(player) and is_instance_valid(world_controller):
 		var p_pos := player.global_position
-		
-		# FIX: Explicit static typing on intermediate getter variables
-		var world_node: Node = get_node("../World") as Node
-		var generator: WorldGenerator = world_node.get("generator") as WorldGenerator
+		var generator: WorldGenerator = world_controller.get("generator") as WorldGenerator
 		
 		if is_instance_valid(generator):
-			# FIX: Explicit static typing on terrain noise provider
 			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
-				# FIX: Explicit static typing on evaluated biome profile
 				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), terrain_noise) as BiomeService.BiomeProfile
 				# Biome 4 is Frostbite Glaciers (North Cap), Biome 9 is Cloud Kingdom
 				is_polar_region = (profile.biome_id == 4 or profile.biome_id == 9)
