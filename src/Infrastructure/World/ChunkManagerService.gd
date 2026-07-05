@@ -20,6 +20,9 @@
 #                engine to treat both sides of the voxel faces as solid, completely 
 #                eliminating floor-clipping and wall-trapping bugs regardless 
 #                of the CCW/CW vertex winding order.
+#              OCP CUSTOM GEOMETRY INTEGRATION:
+#              - Expanded task builders to asynchronously compile non-cubic solid blocks 
+#                (like Slabs) alongside standard liquids using ChunkMesher.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -287,16 +290,24 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 			col.shape = shape
 			static_body.add_child(col)
 				
-	var liquids: Dictionary = {}
+	# UNIFIED GEOMETRY COMPILE PIPELINE (OCP compliant)
+	var custom_meshes: Dictionary = {}
+	
+	# Compile Liquids
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
-		if l_mesh != null: liquids[l_type] = l_mesh
+		if l_mesh != null: custom_meshes[l_type] = l_mesh
+		
+	# Compile Custom Solids (Slabs)
+	for s_type: BlockType.Type in [BlockType.Type.STONE_SLAB_BOTTOM, BlockType.Type.STONE_SLAB_TOP]:
+		var s_mesh := ChunkMesher.generate_custom_geometry_mesh(chunk, world_state, s_type) as ArrayMesh
+		if s_mesh != null: custom_meshes[s_type] = s_mesh
 			
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
 	task_result.is_rebuild = true
-	task_result.liquid_meshes = liquids
+	task_result.liquid_meshes = custom_meshes # Dynamic payload transfer
 	
 	if static_body != null:
 		task_result.set_meta("static_body", static_body)
@@ -355,15 +366,23 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, build_physics) as Dictionary
 	
-	var liquids: Dictionary = {}
+	# UNIFIED ASYNCHRONOUS GEOMETRY COMPILE PIPELINE (OCP compliant)
+	var custom_meshes: Dictionary = {}
+	
+	# Compile Liquids
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
-		if l_mesh != null: liquids[l_type] = l_mesh
+		if l_mesh != null: custom_meshes[l_type] = l_mesh
+		
+	# Compile Custom Solids (Slabs)
+	for s_type: BlockType.Type in [BlockType.Type.STONE_SLAB_BOTTOM, BlockType.Type.STONE_SLAB_TOP]:
+		var s_mesh := ChunkMesher.generate_custom_geometry_mesh(chunk, world_state, s_type) as ArrayMesh
+		if s_mesh != null: custom_meshes[s_type] = s_mesh
 	
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.liquid_meshes = liquids
+	task_result.liquid_meshes = custom_meshes
 	task_result.set_meta("version", version) 
 	
 	if build_physics:
@@ -391,16 +410,24 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, build_physics) as Dictionary
 	
-	var liquids: Dictionary = {}
+	# UNIFIED ASYNCHRONOUS GEOMETRY COMPILE PIPELINE (OCP compliant)
+	var custom_meshes: Dictionary = {}
+	
+	# Compile Liquids
 	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
 		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
-		if l_mesh != null: liquids[l_type] = l_mesh
+		if l_mesh != null: custom_meshes[l_type] = l_mesh
+		
+	# Compile Custom Solids (Slabs)
+	for s_type: BlockType.Type in [BlockType.Type.STONE_SLAB_BOTTOM, BlockType.Type.STONE_SLAB_TOP]:
+		var s_mesh := ChunkMesher.generate_custom_geometry_mesh(chunk, world_state, s_type) as ArrayMesh
+		if s_mesh != null: custom_meshes[s_type] = s_mesh
 			
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
 	task_result.is_rebuild = true
-	task_result.liquid_meshes = liquids
+	task_result.liquid_meshes = custom_meshes
 	task_result.set_meta("version", version) 
 	
 	if build_physics:

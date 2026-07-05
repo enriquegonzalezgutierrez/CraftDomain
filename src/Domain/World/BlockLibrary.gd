@@ -1,12 +1,12 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Domain registry holding immutable definitions, colors, and 
-#              shading parameters of all block types present in the game.
+# Description: Domain registry holding immutable definitions, colors, geometries, 
+#              and shading parameters of all block types present in the game.
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Only manages static 
 #   registrations of block definitions.
-# - Open-Closed Principle (OCP): Extensible with new block registrations 
-#   without changing the core meshing or rendering engines.
+# - Open-Closed Principle (OCP): Extensible with new block registrations and 
+#   custom geometries (like Slabs) without changing the core meshing or rendering engines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockLibrary.gd
 # ==============================================================================
@@ -88,10 +88,26 @@ static func _static_init() -> void:
 
 	# 25. Paved Road (Slate-grey base colors for the rustic cobble look)
 	_register(BlockType.Type.ROAD, "BLOCK_ROAD", Color(0.35, 0.35, 0.38), Color(0.28, 0.28, 0.30), Color(0.35, 0.35, 0.38))
+	
+	# 26. Stone Slab Bottom (Y: 0.0 - 0.5)
+	_register(
+		BlockType.Type.STONE_SLAB_BOTTOM, 
+		"BLOCK_STONE_SLAB_BOTTOM", 
+		Color(0.55, 0.55, 0.55), Color(0.48, 0.48, 0.48), Color(0.42, 0.42, 0.42), 
+		BottomSlabGeometry.new()
+	)
+	
+	# 27. Stone Slab Top (Y: 0.5 - 1.0)
+	_register(
+		BlockType.Type.STONE_SLAB_TOP, 
+		"BLOCK_STONE_SLAB_TOP", 
+		Color(0.55, 0.55, 0.55), Color(0.48, 0.48, 0.48), Color(0.42, 0.42, 0.42), 
+		TopSlabGeometry.new()
+	)
 
 
-static func _register(type: BlockType.Type, key: String, top: Color, side: Color, bottom: Color) -> void:
-	_definitions[type] = BlockDefinition.new(type, key, top, side, bottom)
+static func _register(type: BlockType.Type, key: String, top: Color, side: Color, bottom: Color, geometry: IVoxelGeometry = null) -> void:
+	_definitions[type] = BlockDefinition.new(type, key, top, side, bottom, geometry)
 
 
 static func get_definition(type: BlockType.Type) -> BlockDefinition:

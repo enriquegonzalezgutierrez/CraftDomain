@@ -9,6 +9,9 @@
 #   and material binding, delegating shader calculations and telemetry diagnostics
 #   to isolated, cohesive routines.
 # - Dependency Inversion Principle (DIP): Depends on Domain-level Chunk representations.
+# - Open-Closed Principle (OCP): Generalizes liquid and solid custom geometries 
+#   under a single `p_custom_meshes` dictionary. Adding new shapes (stairs, slabs) 
+#   does not require modifying this renderer node.
 # PROFESSIONAL SELECTIVE BEVELING & WIND-DRIVEN WATER SHADER:
 # - Implemented `_should_apply_bevel` to conditionally inject the procedural 
 #   Bevel Normal Map to avoid texturing bugs while giving blocks a soft clay look.
@@ -72,7 +75,11 @@ const TEXTURE_MAP = {
 	BlockType.Type.MUD: "mud.png",
 	BlockType.Type.LAVA: "lava.png",
 	BlockType.Type.BIRCH_LOG: "birch_log.png",
-	BlockType.Type.ROAD: "road.png"
+	BlockType.Type.ROAD: "road.png",
+	
+	# Slabs reuse standard Stone textures
+	BlockType.Type.STONE_SLAB_BOTTOM: "stone.png",
+	BlockType.Type.STONE_SLAB_TOP: "stone.png"
 }
 
 
@@ -283,10 +290,11 @@ func set_collision_body(p_collision_body: StaticBody3D) -> void:
 
 
 ## Configures the segmented MultiMeshes and registers the physics collision body.
-func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D, p_liquid_meshes: Dictionary = {}, p_is_distant: bool = false) -> void:
+## OCP COMPLIANCE: Unifies all non-cubic ArrayMesh shapes under p_custom_meshes.
+func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D, p_custom_meshes: Dictionary = {}, p_is_distant: bool = false) -> void:
 	var active_types: Dictionary = {}
 	
-	# 1. Update/Recycle Solid block MultiMeshes
+	# 1. Update/Recycle Solid block MultiMeshes (Standard full cubes)
 	for block_type: BlockType.Type in p_multimesh_data.keys():
 		var bulk_array: PackedFloat32Array = p_multimesh_data[block_type]
 		var instance_count: int = int(bulk_array.size() / 12.0)
@@ -331,9 +339,9 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 			add_child(mm_instance)
 			_multimeshes[block_type] = mm_instance
 
-	# 2. Update/Recycle Liquid block MeshInstances
-	for block_type: BlockType.Type in p_liquid_meshes.keys():
-		var mesh: ArrayMesh = p_liquid_meshes[block_type] as ArrayMesh
+	# 2. Update/Recycle Solid Custom Mesh and Liquid instances (Unified OCP logic)
+	for block_type: BlockType.Type in p_custom_meshes.keys():
+		var mesh: ArrayMesh = p_custom_meshes[block_type] as ArrayMesh
 		if mesh == null:
 			continue
 			
@@ -351,7 +359,7 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 					old_node.queue_free()
 					
 			var mi := MeshInstance3D.new()
-			mi.name = "Liquid_" + str(block_type)
+			mi.name = "CustomMesh_" + str(block_type)
 			mi.mesh = mesh
 			mi.material_override = _get_material_for_block(block_type, p_is_distant)
 			
@@ -504,8 +512,6 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 		
 		# ======================================================================
 		# CORE OPTIMIZATION: NATIVE GODOT PBR MATERIAL
-		# Uses the BoxMesh's perfect default 0-to-1 UV coordinates instead of a 
-		# heavy Triplanar shader. This instantly restores textures and boosts FPS.
 		# ======================================================================
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = def.color_top
@@ -523,13 +529,11 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 			if not is_low_end:
 				# ==============================================================
 				# SELECTIVE PROCEDURAL BEVEL SHADOW INJECTION
-				# Applies normal map only on structural blocks (OCP/SOLID compliant)
 				# ==============================================================
 				if _should_apply_bevel(block_type):
 					mat.normal_enabled = true
 					mat.normal_scale = 0.55 # Balanced bevel highlight intensity
 					mat.normal_texture = _get_procedural_bevel_normal()
-				# ==============================================================
 				
 				if _loaded_ambients.has(block_type):
 					mat.ao_enabled = true

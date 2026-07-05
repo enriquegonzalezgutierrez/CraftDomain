@@ -10,14 +10,13 @@
 #                to a block library provider.
 #              - OBSERVER PATTERN: Emits the interface `inventory_changed` signal 
 #                on state mutations to cleanly notify presentation layers.
-#              UX FEATURE OVERHAUL:
+# UX FEATURE OVERHAUL:
 #              - Added `consolidate_and_sort_backpack()` to merge identical item stack 
 #                fragments and sort them by ID, cleanly organizing the backpack 
 #                while leaving the player's active Hotbar dock completely untouched.
-#              WARNING FIX:
-#              - Added explicit static typing to all loop iterators (including `slot`, 
-#                `item_id`, etc.) and variable declarations (`def`) to completely 
-#                resolve `UNTYPED_DECLARATION` compiler warnings.
+#              MATH PRECISION EXTENSION:
+#              - Added Item ID 26 (Stone Slab) to the starting inventory and registered 
+#                its localized name binding.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/InventoryComponent.gd
 # ==============================================================================
@@ -66,8 +65,11 @@ func _setup_starting_survival_inventory() -> void:
 	# Slot 8: Starting farming seeds
 	_slots[8] = SlotData.new(18, 16)  # 16x Crop Seeds (ID 18)
 	
-	# Slots 9 to 23: Backpack Storage (Empty)
-	for i in range(9, 24):
+	# Slot 9: 64x Starting Stone Slabs (ID 26) - Drag to hotbar to test!
+	_slots[9] = SlotData.new(26, 64)
+	
+	# Slots 10 to 23: Backpack Storage (Empty)
+	for i in range(10, 24):
 		_slots[i] = SlotData.new(-1, 0)
 
 
@@ -219,6 +221,7 @@ func get_slot_item_name(index: int) -> String:
 	match slot.item_id:
 		16: return tr("ITEM_FRIED_CHICKEN")
 		17: return tr("ITEM_WOODEN_SWORD")
+		26: return tr("ITEM_STONE_SLAB") # Dynamic binding for Stone Slabs (ID 26)
 		_: return tr("INVENTORY_UNKNOWN")
 
 

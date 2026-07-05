@@ -16,12 +16,15 @@
 #   bounds calculations. This guarantees that blocks placed under your feet 
 #   will be blocked and highlighted in warning RED, preventing players from 
 #   trapping themselves inside solid collision shapes.
-# SELF-HEALING VECTOR MATHEMATICS (FIXED):
+# SELF-HEALING VECTOR MATHEMATICS:
 # - RayCast3D now explicitly hits back-faces. This is a critical fallback 
 #   safeguard that prevents the ray from passing through inward-facing normals.
 # - Floating-point truncation error fixed: Normal axis values are now mathematically 
 #   rounded (`round()`) before casting to integers, preventing `0.9999` from 
 #   collapsing to `0` and breaking block placement logic.
+# WARNING / ERROR RESOLUTION:
+# - Explicitly typed `is_mergeable_bottom` and `is_mergeable_top` variables to `: bool` 
+#   to resolve type inference errors in the static analyzer.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
@@ -80,7 +83,7 @@ func _setup_raycast() -> void:
 	add_child(raycast)
 
 
-## Programmatically instantiates the dual highlighter meshes (White for mining, Green/Red for placement)
+## Programmatically instantiates the dual highlight meshes (White for mining, Green/Red for placement)
 func _setup_highlight_meshes() -> void:
 	# 1. Setup White Mining Highlight Box
 	highlight_mesh = MeshInstance3D.new()
@@ -171,8 +174,8 @@ func _update_target_highlight() -> void:
 			var slot_data := inventory.get_slot_data(active_slot)
 			if slot_data != null and slot_data.item_id != -1:
 				var item_id := slot_data.item_id
-				# Placeable items check: Blocks (1-5), Lava (15) and Seeds (18)
-				is_buildable = (item_id >= 1 and item_id <= 5) or item_id == 15 or item_id == 18
+				# Placeable items check: Blocks (1-5), Lava (15), Seeds (18) and Slabs (26)
+				is_buildable = (item_id >= 1 and item_id <= 5) or item_id == 15 or item_id == 18 or item_id == 26
 				
 		if is_buildable:
 			# TRUNCATION FIX: round() ensures 0.9999 floats don't truncate to 0 when casting to int!
@@ -186,6 +189,13 @@ func _update_target_highlight() -> void:
 				# Check if space is currently empty (Air or non-solid water)
 				var is_spot_free := target_block == BlockType.Type.AIR or target_block == BlockType.Type.WATER
 				
+				# Check if we are aiming at an existing slab to merge it (Fusing target)
+				var aimed_block := world_state.get_block(target_coord)
+				
+				# ERROR RESOLUTION: Explicitly typed as bool to satisfy the compiler
+				var is_mergeable_bottom: bool = aimed_block == BlockType.Type.STONE_SLAB_BOTTOM and int(round(hit_normal.y)) == 1
+				var is_mergeable_top: bool = aimed_block == BlockType.Type.STONE_SLAB_TOP and int(round(hit_normal.y)) == -1
+				
 				# CORRECTED PLAYER COLLISION BOUNDS (WITH 5CM DOWNWARD HYSTERESIS):
 				var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
 				var player_aabb := AABB(
@@ -197,7 +207,8 @@ func _update_target_highlight() -> void:
 				placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
 				placement_highlight_mesh.visible = true
 				
-				if is_spot_free and not player_collides:
+				# Spotlight highlights green if placing in empty air or merging existing slabs safely!
+				if (is_spot_free and not player_collides) or is_mergeable_bottom or is_mergeable_top:
 					# VALID SPOT: Shines in dynamic emerald green
 					placement_material.albedo_color = Color(0.2, 0.95, 0.35, 0.18)
 					placement_material.emission = Color(0.2, 0.95, 0.35)
@@ -283,6 +294,8 @@ func _mine_or_attack() -> void:
 						target_id = 5 # Leaves ID
 						if randf() < 0.25:
 							var _un4 := inventory.add_item(18, 1) # Bonus seed drop
+					BlockType.Type.STONE_SLAB_BOTTOM, BlockType.Type.STONE_SLAB_TOP:
+						target_id = 26 # Reclaim as standard Stone Slab Item (ID 26) on mining!
 				
 				var _un5 := inventory.add_item(target_id, 1)
 				
@@ -390,6 +403,15 @@ func _build_or_interact() -> void:
 		
 		# TRUNCATION FIX: round() ensures 0.9999 floats don't truncate to 0!
 		var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
+		
+		# --- DYNAMIC FRACTIONAL Y INJECTION (DDD COMPLIANT) ---
+		# Calculates the exact vertical fraction [0.0 to 1.0] where the cursor is aiming.
+		# Feeds it to the world adapter so the Slab placement strategy can resolve alignments.
+		var fractional_y := hit_pos.y - floori(hit_pos.y)
+		var modifier := world_ctrl.world_modifier
+		if modifier != null:
+			modifier.set("last_hit_fractional_y", fractional_y)
+		# -----------------------------------------------------
 		
 		# Validate strategy requirements
 		if strategy.can_use(player.domain_entity, inventory, target_coord, hit_normal, world_state):

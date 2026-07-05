@@ -5,7 +5,8 @@
 #              - Single Responsibility Principle (SRP): Isolates item-to-behavior 
 #                mappings.
 #              - Open-Closed Principle (OCP): Dynamically extensible. New items 
-#                can register their custom strategy instances at runtime.
+#                and specialized building behaviors (like Slabs) can register 
+#                their custom strategy instances at runtime.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/ItemStrategyRegistry.gd
 # ==============================================================================
@@ -33,6 +34,9 @@ static func _static_init() -> void:
 	
 	# 4. Agricultural crop planting (Seeds)
 	register_strategy(18, PlantableItemStrategy.new(18, BlockType.Type.CROP_SEED))
+	
+	# 5. Advanced Slab Placement and Fusion (Item ID 26: Stone Slab)
+	register_strategy(26, SlabPlacementStrategy.new(26))
 
 
 ## Public Registry API: Binds a custom strategy to an item ID.

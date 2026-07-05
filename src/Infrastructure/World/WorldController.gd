@@ -13,10 +13,6 @@
 #   services without modifying core coordination loops.
 # - Domain-Driven Design (DDD): Defers player spawn height calculations
 #   strictly to the WorldState Domain Aggregate.
-# I/O OPTIMIZATION (120 FPS STABILIZATION):
-# - Removed all verbose `[WorldController]` print statements to prevent synchronous, 
-#   blocking console I/O stalls during saved game loading or prioritized teleportation.
-# - Re-added missing `_trigger_prioritized_spawn_loads()` and `_activate_player_spawn()` helpers.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -362,6 +358,7 @@ class WorldModifierAdapter:
 	extends IWorldModifier
 	
 	var _controller: WorldController
+	var last_hit_fractional_y: float = 0.5
 	
 	func _init(controller: WorldController) -> void:
 		_controller = controller
@@ -369,3 +366,11 @@ class WorldModifierAdapter:
 	func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		if is_instance_valid(_controller):
 			_controller.set_block_globally(global_pos, type)
+
+	func get_block_globally(global_pos: Vector3i) -> BlockType.Type:
+		if is_instance_valid(_controller) and is_instance_valid(_controller.world_state):
+			return _controller.world_state.get_block(global_pos)
+		return BlockType.Type.AIR
+
+	func get_last_hit_fractional_y() -> float:
+		return last_hit_fractional_y

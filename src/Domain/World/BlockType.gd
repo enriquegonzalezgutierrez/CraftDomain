@@ -5,7 +5,9 @@
 #              Principle (SRP) by encapsulating only the block classification maps.
 #              OCP EXTENSION:
 #              - Added ROAD (25) block type to represent dedicated grey paved 
-#                scenery highways, preserving BRICKS for construction walls.
+#                scenery highways.
+#              - Added STONE_SLAB_BOTTOM (26) and STONE_SLAB_TOP (27) to support 
+#                half-height horizontal structures.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockType.gd
 # ==============================================================================
@@ -43,7 +45,11 @@ enum Type {
 	BIRCH_LOG = 24,
 	
 	# Scenery Highway Blocks
-	ROAD = 25
+	ROAD = 25,
+	
+	# Slabs / Half-height Blocks
+	STONE_SLAB_BOTTOM = 26,
+	STONE_SLAB_TOP = 27
 }
 
 
@@ -55,15 +61,19 @@ static func is_solid(type: Type) -> bool:
 		Type.LEAVES, Type.CLOUD: # Leaves and Clouds are non-solid traversable blocks!
 			return false
 		_:
+			# Slabs are solid physical obstacles (return true under the default fallback)
 			return true
 
 
 ## Returns true if the block type is transparent or semi-transparent.
+## A block is also considered "transparent" for the mesher if it does not occupy 
+## a full 1x1x1 cube, preventing incorrect face culling holes on adjacent blocks.
 static func is_transparent(type: Type) -> bool:
 	match type:
 		Type.AIR, Type.LEAVES, Type.WATER, Type.ICE, Type.CLOUD, Type.LAVA, \
 		Type.CROP_SEED, Type.CROP_GROWING, Type.CROP_RIPE, \
-		Type.GLASS: # Glass is a solid transparent block!
+		Type.GLASS, \
+		Type.STONE_SLAB_BOTTOM, Type.STONE_SLAB_TOP: # Slabs are transparent to prevent culling adjacent faces!
 			return true
 		_:
 			return false

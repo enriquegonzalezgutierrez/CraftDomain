@@ -3,23 +3,16 @@
 # Description: Infrastructure Rendering Service responsible for evaluating raw
 #              domain chunks and compiling their physical and visual transformation
 #              data for rendering.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Only handles world carving rules.
-#              CPU MICRO-OPTIMIZATIONS (EXTREME PERFORMANCE):
-#              - Bitwise Masking: Replaced expensive modulo (`%`) division operators 
-#                with native Bitwise AND (`& 15`) for out-of-bounds neighbor wrapping. 
-#                This eliminates branching and division, making C++ loop execution blisteringly fast.
-#              - Packed Vectors: Upgraded the `FACE_VERTICES` dictionary to use native 
-#                `PackedVector3Array` instead of generic Arrays. This eliminates 
-#                dynamic `as Vector3` variant casting inside the hottest loop of the game.
-#              - Distance Physics Culling: Added `build_collision` flag to completely bypass 
-#                gathering triangle faces for distant chunks, saving massive CPU time.
-#              PHYSICS SEAM WINDING RESTORATION (DEFINITIVE FIX):
-#              - Repaired the broken normals on the TOP and BOTTOM faces. Originally, 
-#                these faces had conflicting triangle normals (one pointing up, one pointing down), 
-#                which caused the RayCast to fail half the time. 
-#              - Realigned the vertices to enforce a strict CCW winding order `(v2, v1, v0)` 
-#                so that ALL collision normals project outward safely, preventing floor-clipping.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Only handles chunk data extraction.
+# - Open-Closed Principle (OCP): No longer hardcodes 1x1x1 face geometry or collision arrays.
+#   It dynamically queries block definitions for their custom shapes and opacities.
+# - Dependency Inversion Principle (DIP): Depends on the IVoxelGeometry domain abstraction.
+# STABILIZATION FIXES:
+# - Resolved Ocean Floor Bug: Added `BlockType.is_transparent(neighbor_type)` to the 
+#   culling check. This ensures adjacent solid blocks (like sand under water or stone 
+#   under slabs) do not have their faces culled, eliminating the see-through world void.
+# - Restored original physics-proven winding order for stable collision calculations.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkVisualBuilder.gd
 # ==============================================================================
@@ -38,18 +31,6 @@ static var DIRECTIONS: Array[Vector3i] = [
 	Vector3i(0, 0, 1),   # FRONT
 	Vector3i(0, 0, -1)   # BACK
 ]
-
-## Local vertex tables defining the 4 vertices per face (from origin 0,0,0 to 1,1,1).
-## Optimized as PackedVector3Array to bypass Variant casting overhead in GDScript.
-## MATHEMATICALLY VERIFIED WINDING ORDER: Ensured all faces push their normals OUTWARD.
-static var FACE_VERTICES: Dictionary = {
-	Vector3i(0, 1, 0): PackedVector3Array([Vector3(1, 1, 0), Vector3(1, 1, 1), Vector3(0, 1, 1), Vector3(0, 1, 0)]), # TOP (Corrected UP)
-	Vector3i(0, -1, 0): PackedVector3Array([Vector3(1, 0, 1), Vector3(1, 0, 0), Vector3(0, 0, 0), Vector3(0, 0, 1)]), # BOTTOM (Corrected DOWN)
-	Vector3i(1, 0, 0): PackedVector3Array([Vector3(1, 0, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(1, 0, 0)]), # RIGHT
-	Vector3i(-1, 0, 0): PackedVector3Array([Vector3(0, 0, 0), Vector3(0, 1, 0), Vector3(0, 1, 1), Vector3(0, 0, 1)]), # LEFT
-	Vector3i(0, 0, 1): PackedVector3Array([Vector3(0, 0, 1), Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 0, 1)]), # FRONT
-	Vector3i(0, 0, -1): PackedVector3Array([Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(0, 1, 0), Vector3(0, 0, 0)])  # BACK
-}
 
 
 ## Extracts block data from a chunk, applies occlusion culling, and packages 
@@ -78,6 +59,7 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState, build_col
 				if block_type == BlockType.Type.AIR or block_type == BlockType.Type.WATER or block_type == BlockType.Type.LAVA:
 					continue
 					
+				var def := BlockLibrary.get_definition(block_type)
 				var local_pos := Vector3(float(x), float(y), float(z))
 				var is_exposed: bool = false
 				
@@ -105,39 +87,54 @@ static func extract_render_data(chunk: Chunk, world_state: WorldState, build_col
 							# If neighbor chunk doesn't exist yet, assume exposed to prevent holes
 							neighbor_type = BlockType.Type.AIR 
 							
-					# If the neighbor is transparent, this block is visible
-					if BlockType.is_transparent(neighbor_type):
+					var neighbor_def := BlockLibrary.get_definition(neighbor_type)
+					
+					# STABILIZED OCCLUSION CULLING:
+					# A face is drawn if the neighbor is AIR, visually transparent (like Water/Slabs), 
+					# or geometrically does not completely cover it. This restores the ocean floor.
+					var face_visible: bool = (
+						neighbor_type == BlockType.Type.AIR or 
+						BlockType.is_transparent(neighbor_type) or 
+						not neighbor_def.geometry.is_face_opaque(-dir)
+					)
+					
+					if face_visible:
 						is_exposed = true
 						
 						# SOW COLLISION FACES: Collect vertices of this exposed face if block is solid
 						# MASSIVE OPTIMIZATION: Only build collision vertices if requested (Close chunks)
 						if build_collision and BlockType.is_solid(block_type):
-							var face_verts: PackedVector3Array = FACE_VERTICES[dir]
-							var v0 := local_pos + face_verts[0]
-							var v1 := local_pos + face_verts[1]
-							var v2 := local_pos + face_verts[2]
-							var v3 := local_pos + face_verts[3]
-							
-							# Triangle 1 (CCW - Counter-Clockwise Winding Order)
-							collision_vertices.append(v2)
-							collision_vertices.append(v1)
-							collision_vertices.append(v0)
-							
-							# Triangle 2 (CCW - Counter-Clockwise Winding Order)
-							collision_vertices.append(v3)
-							collision_vertices.append(v2)
-							collision_vertices.append(v0)
+							# Polymorphically extract the CW custom physics vertices from the geometry strategy
+							var face_verts := def.geometry.get_face_collision_vertices(dir)
+							if face_verts.size() == 4:
+								var v0 := local_pos + face_verts[0]
+								var v1 := local_pos + face_verts[1]
+								var v2 := local_pos + face_verts[2]
+								var v3 := local_pos + face_verts[3]
+								
+								# Triangle 1 (CCW Winding Order for Godot Physics Engine)
+								collision_vertices.append(v2)
+								collision_vertices.append(v1)
+								collision_vertices.append(v0)
+								
+								# Triangle 2 (CCW Winding Order for Godot Physics Engine)
+								collision_vertices.append(v3)
+								collision_vertices.append(v2)
+								collision_vertices.append(v0)
 
 				# Skip completely buried blocks! Saves GPU, CPU, and RAM instantly.
 				if not is_exposed:
 					continue 
 				
-				var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
-				var t := Transform3D(Basis(), transform_pos)
-				
-				if not render_data.has(block_type):
-					render_data[block_type] = []
-				render_data[block_type].append(t)
+				# HIGH-SPEED PIPELINE: Only standard full 1x1x1 cubes are rendered via MultiMesh.
+				# Custom geometries (like Slabs) will be built manually to prevent texture stretching.
+				if def.geometry is FullCubeGeometry:
+					var transform_pos := local_pos + Vector3(0.5, 0.5, 0.5)
+					var t := Transform3D(Basis(), transform_pos)
+					
+					if not render_data.has(block_type):
+						render_data[block_type] = []
+					render_data[block_type].append(t)
 					
 	# ======================================================================
 	# BACKGROUND THREAD MEMORY PACKING
