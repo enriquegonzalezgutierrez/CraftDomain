@@ -1,7 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Infrastructure Service responsible for calculating and spawning
-#              inert interactive scenery props (chests, streetlights) inside chunks.
+#              inert interactive scenery props (chests, streetlights, campfires).
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively handles the spawning and
 #   placement of inanimate/interactive world decorations, completely freeing
@@ -9,13 +9,17 @@
 # - Open-Closed Principle (OCP): Queries PropRegistry and RoadGeneratorService 
 #   dynamically, allowing new scenery decorations and highway lighting to be 
 #   placed without modifying this service's internal state.
+# MILESTONE 8 UPGRADE:
+#              - Integrated CampfireEntity (ID 203) spawning loops.
+#              - Spawns central village outposts campfires.
+#              - Spawns random organic woodland campsites in plains and forest biomes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/PropSpawningService.gd
 # ==============================================================================
 class_name PropSpawningService
 extends RefCounted
 
-## Spawns village loot chests, streetlights, and highway illumination inside a newly loaded chunk.
+## Spawns village loot chests, streetlights, campfires, and highway illumination.
 func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
 	var props_list: Array[Node] = []
 	var chunk_pos := chunk.position
@@ -42,6 +46,9 @@ func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldSta
 		
 		# Streetlight spawns in all village outposts (ID 202)
 		_spawn_and_register_prop(202, chunk_offset, 2.5, 10.5, world_state, world_node, props_list)
+		
+		# Campfire spawns at the heart of the village outpost (ID 203)
+		_spawn_and_register_prop(203, chunk_offset, 8.5, 8.5, world_state, world_node, props_list)
 	else:
 		# 2. Spawning organically in the wilderness
 		# We spawn streetlights organically in ALL land-based biomes, skipping only 
@@ -50,12 +57,18 @@ func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldSta
 			var should_spawn_organic_light: bool = (abs(chunk_pos.x) * 11 + abs(chunk_pos.z) * 17) % 35 == 3
 			if should_spawn_organic_light:
 				_spawn_and_register_prop(202, chunk_offset, 8.5, 8.5, world_state, world_node, props_list)
+				
+			# ==================================================================
+			# WILDERNESS Rest Campfires (4% spawn chance in Plains/Forests)
+			# ==================================================================
+			if active_biome_id == 2 or active_biome_id == 5:
+				var should_spawn_campfire: bool = ((abs(chunk_pos.x) * 73 + abs(chunk_pos.z) * 19) % 100 == 12)
+				if should_spawn_campfire:
+					_spawn_and_register_prop(203, chunk_offset, 8.5, 8.5, world_state, world_node, props_list)
 
 	# 3. HIGHWAY LIGHTING: Spawns streetlights along the paved roads shoulders
 	var road_lamps := RoadGeneratorService.get_roadside_lamps_for_chunk(chunk_pos)
 	for lamp_pos: Vector3 in road_lamps:
-		# Symmetrically spawn streetlight (ID 202) along the road shoulder.
-		# Using Vector3.ZERO as offset because lamp_pos already contains absolute global coordinates.
 		_spawn_and_register_prop(202, Vector3.ZERO, lamp_pos.x, lamp_pos.z, world_state, world_node, props_list)
 
 	return props_list

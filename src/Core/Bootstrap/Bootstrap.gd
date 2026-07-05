@@ -9,9 +9,12 @@
 #              - Open-Closed Principle (OCP): Closed for modifications when adding 
 #                new biomes, structures, or entities.
 #              - Dependency Inversion Principle (DIP): Injects concrete 
-#                Infrastructure prop factories (ChestEntity, StreetlightEntity) 
+#                Infrastructure prop factories (ChestEntity, StreetlightEntity, CampfireEntity) 
 #                into the pure Domain PropRegistry on startup, and sets up 
 #                weather & audio dependency injection paths.
+# MILESTONE 8 UPGRADE:
+#              - Registered CampfireEntity (ID 203) into PropRegistry for dynamic 
+#                placement across villages and forests.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -93,6 +96,13 @@ func _setup_prop_registry() -> void:
 		var light := StreetlightEntity.new()
 		light.position = pos
 		return light
+	)
+	
+	# Cozy Luminous Campfire (ID 203)
+	PropRegistry.register_prop(203, func(pos: Vector3) -> Node:
+		var campfire := CampfireEntity.new()
+		campfire.position = pos
+		return campfire
 	)
 
 
@@ -281,4 +291,4 @@ func _inject_dependencies() -> void:
 			
 		if is_instance_valid(audio_service):
 			audio_service.player = player_controller
-			audio_service.world_controller = world_controller # <--- DIP COMPLIANCE: Injects audio dependencies
+			audio_service.world_controller = world_controller

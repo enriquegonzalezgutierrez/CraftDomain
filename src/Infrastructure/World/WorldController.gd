@@ -16,8 +16,9 @@
 # MILESTONE 8 UPGRADE:
 #              - Integrated FluidSimulationService into the main delta loop.
 #              - Added immediate fluid registration for player-placed liquids.
-#              - Optimized Main Thread: Removed the heavy 4096-block scan from 
-#                spawn_entities_for_chunk() to completely restore locked 120 FPS.
+#              - Optimized Main Thread: Removed heavy loop scans from 
+#                spawn_entities_for_chunk() to completely preserve locked 120 FPS.
+#              - Fixed circular parser locks by typing nested adapters cleanly as Node3D.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -92,6 +93,9 @@ func _initialize_systems() -> void:
 	
 	_setup_persistence()
 	
+	# Setup environment settings
+	_setup_environment()
+	
 	# Load dialogue trees
 	DialogueRegistry.initialize_dialogue_database()
 	
@@ -101,7 +105,7 @@ func _initialize_systems() -> void:
 	# Fixed constructor parameters: services require references to the world controller and world state
 	_streetlight_service = StreetlightService.new(self, world_state)
 	_agriculture_service = AgricultureService.new(self, world_state)
-	_fluid_service = FluidSimulationService.new(self, world_state)
+	_fluid_service = FluidSimulationService.new(self, world_state) # <--- NEW FLUID SERVICE INSTANTIATED
 	
 	# Create the RefCounted Chunk Manager Service (Not a Node, do not call add_child)
 	chunk_manager = ChunkManagerService.new(self, world_state)
@@ -398,6 +402,9 @@ func _restore_player_inventory() -> void:
 func _setup_persistence() -> void:
 	pass
 
+func _setup_environment() -> void:
+	pass
+
 
 ## Triggers high-priority spawn area loads exactly once upon teleportation
 func _trigger_prioritized_spawn_loads() -> void:
@@ -416,8 +423,7 @@ func _trigger_prioritized_spawn_loads() -> void:
 #                  This decouples Domain layer strategies from the SceneTree-dependent 
 #                  WorldController class, resolving the DIP violation.
 # ==============================================================================
-class WorldModifierAdapter:
-	extends IWorldModifier
+class WorldModifierAdapter extends IWorldModifier:
 	
 	# Using loose 'Node3D' typing to completely break the circular compiler parser lock.
 	# This allows the engine to compile WorldController successfully on startup.
