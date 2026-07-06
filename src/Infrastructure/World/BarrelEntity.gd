@@ -8,12 +8,13 @@
 #                to act as a physical collidable obstacle in the world.
 #              - Dependency Inversion Principle (DIP): Modifies the player's inventory 
 #                strictly through the abstract IInventory interface contract.
-# INTERACTIVE BREAKABLE LOOT MECHANIC (V5 Telemetry):
+# INTERACTIVE BREAKABLE LOOT MECHANIC (V5 Telemetry & i18n):
 #              - Total model height is 0.900m. Scale set to 1.0x (perfect size).
 #              - Model origin is already perfectly at the bottom base (Y = 0.0).
 #                No vertical offset is required (position.y = 0.0).
 #              - Right-clicking the barrel breaks it, spawning wood debris, 
 #                and drops a random provision (Seeds or Fried Chicken) before self-freeing.
+#              - Replaced all hardcoded string notifications with `tr()` wrappers.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/BarrelEntity.gd
 # ==============================================================================
@@ -112,11 +113,16 @@ func interact(player_node: CharacterBody3D) -> void:
 		var rolled_item_id := 18 if randf() > 0.5 else 16
 		inventory.add_item(rolled_item_id, 1)
 		
-		var reward_name := tr("BLOCK_CROP_SEED") if rolled_item_id == 18 else tr("ITEM_16_DESC").left(14)
+		# Dynamically localized item names
+		var reward_name := tr("BLOCK_CROP_SEED") if rolled_item_id == 18 else tr("ITEM_FRIED_CHICKEN")
 		
-		# 3. Display a gold toast notification on the player's HUD
+		# 3. Display a gold toast notification on the player's HUD with localized i18n keys
 		if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-			hud.call("show_quest_notification", "BARREL SHATTERED!", "Found: 1x " + reward_name.to_upper())
+			hud.call(
+				"show_quest_notification", 
+				tr("NOTIFICATION_BARREL_SHATTERED_HEADER"), 
+				tr("NOTIFICATION_FOUND_PREFIX") + " 1x " + reward_name.to_upper()
+			)
 			
 		# 4. Spawn wood debris breaking particles
 		_spawn_wood_break_particles()

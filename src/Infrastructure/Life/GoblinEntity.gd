@@ -8,20 +8,26 @@
 #                and satisfies base physics and signal contracts.
 #              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
 #                statically through the decoupled CelestialService provider.
-# MATHEMATICAL CALIBRATION (V5 Telemetry):
-#              - Total model height is 1.00m. Scaled by 1.2x to achieve a 
-#                realistic sneaky, hunched-over height of ~1.20m.
-#              - Model origin is centered. Raised the model Y-position by +0.599m 
-#                to anchor its feet flat on the physical voxel colliders.
-#              - Corrected the sideways orientation mesh bug by setting the 
-#                Y-axis rotation offset to -90 degrees.
+# HYBRID GRAPHICS PIPELINE & PROCEDURAL MOVEMENT SWAYS (Pivot Offset Fix):
+#              - Attempts to load `assets/models/mobs/goblin.glb`.
+#              - Model origin is centered in the chest (Min Y = -0.5m). Raised 
+#                the Y-position to +0.50m to anchor its feet flat on the ground.
+#              - Scaled dynamically by 0.75x (suggested by analyze_model.gd) 
+#                to achieve a realistic medium/small mob height of ~0.75m.
+#              - Static Mesh Detection: If no skeletal AnimationPlayer is found, 
+#                the script automatically runs its procedural lurching and trotting 
+#                algorithms in `_process()` so the model remains animated.
+# JUMP ANIMATION & 3D NAMEPLATE INTEGRATION:
+#              - Added dynamic binding and fallback protection for the new `jump` track.
+#              - Blends the airborne jumping states elegantly inside the state controller.
+#              - Instantiates a high-contrast 3D Floating `Label3D` Nameplate above the model head.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GoblinEntity.gd
 # ==============================================================================
 class_name GoblinEntity
 extends CharacterBody3D
 
-const MODEL_PATH := "res://assets/models/mobs/goblin.glb"
+const BASE_MODEL_PATH := "res://assets/models/mobs/goblin.glb"
 
 # Combat configurations (Fast, fragile skirmisher)
 const SPEED: float = 3.5
@@ -42,6 +48,7 @@ var player: CharacterBody3D
 # Dynamic visual part tracker bindings (SRP)
 var _visual_parts: Array[VisualPart] = []
 var _model_node: Node3D
+var _anim_player: AnimationPlayer
 
 # AI wandering/chasing state variables
 var _wander_timer: float = 0.0
@@ -52,6 +59,12 @@ var _stuck_timer: float = 0.0
 
 # Procedural Animation tracker
 var _animation_time: float = 0.0
+
+# Procedural combat state
+var _is_lunging: bool = false
+
+# UI elements
+var _nameplate: Label3D
 
 
 ## Value Object storing mesh-material original colors for damage flash restoration
@@ -79,6 +92,8 @@ func _ready() -> void:
 	_build_visual_representation()
 	_setup_collision()
 	_locate_player()
+	
+	_setup_nameplate()
 
 
 func _setup_collision() -> void:
@@ -86,12 +101,12 @@ func _setup_collision() -> void:
 	col.name = "GoblinCollider"
 	var box_shape := BoxShape3D.new()
 	
-	# Calibrated to the scaled bounding box of the GLB model (1.2m height)
-	box_shape.size = Vector3(0.6, 1.2, 0.6)
+	# Calibrated to the scaled bounding box of the GLB model
+	box_shape.size = _get_collision_box_size()
 	col.shape = box_shape
 	
-	# Set collider center Y position to 0.6m to align with the ground plane
-	col.position = Vector3(0, 0.6, 0)
+	# Set collider center position to align with the ground plane
+	col.position = _get_collision_box_position()
 	add_child(col)
 
 
@@ -101,36 +116,91 @@ func _locate_player() -> void:
 		player = world_node.get("player") as CharacterBody3D
 
 
+## Instantiates a native, high-performance Label3D billboard to display creature name
+func _setup_nameplate() -> void:
+	_nameplate = Label3D.new()
+	_nameplate.name = "FloatingNameplate"
+	_nameplate.text = tr("NPC_NAME_GOBLIN").to_upper()
+	_nameplate.pixel_size = 0.005 # Crisp, matching speech bubble sizing scale
+	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_nameplate.no_depth_test = false # Occluded by solid blocks
+	_nameplate.render_priority = 5
+	
+	# Text styling and high-contrast outline
+	_nameplate.modulate = Color(1.0, 1.0, 1.0)
+	_nameplate.outline_modulate = Color(0, 0, 0)
+	_nameplate.outline_size = 5
+	
+	# Set position right above the model head (0.75m height + 15cm offset = 0.90m)
+	var col_height := _get_collision_box_size().y
+	_nameplate.position = Vector3(0.0, col_height + 0.15, 0.0)
+	add_child(_nameplate)
+
+
 ## Loads the external GLB model and applies calculated mathematical transforms
 func _build_visual_representation() -> void:
 	var visual_root := Node3D.new()
 	visual_root.name = "Visuals"
 	add_child(visual_root)
 	
-	if ResourceLoader.exists(MODEL_PATH):
-		var model_scene := load(MODEL_PATH) as PackedScene
+	if ResourceLoader.exists(BASE_MODEL_PATH):
+		var model_scene := load(BASE_MODEL_PATH) as PackedScene
 		_model_node = model_scene.instantiate() as Node3D
 		
 		_prune_extraneous_nodes(_model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
+		# MATHEMATICAL CALIBRATION (Fitted via analyze_model.gd telemetry)
 		# ======================================================================
-		# 1. Scale model by 1.2x to achieve a realistic hunched-over height of ~1.2m
-		_model_node.scale = Vector3(1.2, 1.2, 1.2) 
+		# 1. Scale model by 0.75x to achieve a realistic goblin height of ~0.75m
+		_model_node.scale = Vector3(0.75, 0.75, 0.75) 
 		
-		# 2. Origin is centered. Pull it down by -0.599m on Y
-		#    to anchor the feet perfectly flat on the ground plane
-		_model_node.position = Vector3(0.0, -0.599, 0.0) 
+		# 2. Origin is centered. Raise Y by +0.50m (Positive!) to ground the feet
+		_model_node.position = Vector3(0.0, 0.50, 0.0) 
 		
-		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
-		_model_node.rotation_degrees = Vector3(0, -90, 0) 
+		# 3. Apply 90-degree visual offset to correct the orientation bug
+		_model_node.rotation_degrees = Vector3(0, 90, 0) 
 		# ======================================================================
 		
 		visual_root.add_child(_model_node)
 		_register_glb_materials(_model_node)
+		
+		# Query if the imported GLTF has a skeletal AnimationPlayer inside
+		_anim_player = _model_node.get_node_or_null("AnimationPlayer") as AnimationPlayer
 	else:
-		push_error("[GoblinEntity] GLB model not found at path: " + MODEL_PATH)
+		_build_procedural_representation()
+
+
+## Contingency fallback procedural rendering
+func _build_procedural_representation() -> void:
+	var visual_root := get_node_or_null("Visuals")
+	if not is_instance_valid(visual_root):
+		visual_root = Node3D.new()
+		visual_root.name = "Visuals"
+		add_child(visual_root)
+		
+	var zombie_color := Color(0.24, 0.35, 0.12) # Muddy green
+	var shirt_color := Color(0.15, 0.15, 0.18)  # Charcoal
+	
+	var body := MeshInstance3D.new()
+	var body_mesh := BoxMesh.new()
+	body_mesh.size = Vector3(0.4, 0.6, 0.2)
+	body.mesh = body_mesh
+	body.position = Vector3(0, 0.6, 0)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = shirt_color
+	body.material_override = mat
+	visual_root.add_child(body)
+	
+	var head := MeshInstance3D.new()
+	var head_mesh := BoxMesh.new()
+	head_mesh.size = Vector3(0.3, 0.3, 0.3)
+	head.mesh = head_mesh
+	head.position = Vector3(0, 1.0, 0)
+	var h_mat := StandardMaterial3D.new()
+	h_mat.albedo_color = zombie_color
+	head.material_override = h_mat
+	visual_root.add_child(head)
 
 
 ## Recursively scans the GLB hierarchy to extract and duplicate mesh materials
@@ -142,6 +212,13 @@ func _register_glb_materials(node: Node) -> void:
 			
 		if mat is BaseMaterial3D:
 			var new_mat := mat.duplicate() as BaseMaterial3D
+			
+			# TANGENT WARNING SHIELD
+			new_mat.normal_enabled = false
+			new_mat.anisotropy_enabled = false
+			new_mat.clearcoat_enabled = false
+			new_mat.heightmap_enabled = false
+			
 			node.material_override = new_mat
 			var original_color: Color = new_mat.albedo_color
 			_visual_parts.append(VisualPart.new(new_mat, original_color))
@@ -196,6 +273,9 @@ func _on_domain_entity_died() -> void:
 	var col := get_node_or_null("GoblinCollider") as CollisionShape3D
 	if is_instance_valid(col): 
 		col.queue_free()
+	
+	if is_instance_valid(_nameplate):
+		_nameplate.queue_free()
 			
 	_spawn_death_particles()
 	
@@ -249,6 +329,10 @@ func _process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 		
+	# If we are running a skeletal AnimationPlayer, bypass procedural sways
+	if is_instance_valid(_anim_player):
+		return
+		
 	var visuals_node: Node3D = get_node_or_null("Visuals") as Node3D
 	if not is_instance_valid(visuals_node):
 		return
@@ -286,7 +370,68 @@ func _physics_process(delta: float) -> void:
 		_locate_player()
 
 	_process_ai_intelligence(delta)
+	
+	# Process Skeletal Animation blended states (Mixamo)
+	_process_skeletal_animations(delta)
+	
 	move_and_slide()
+
+
+## Machine-state Controller: Blends Mixamo skeletal joints seamlessly
+func _process_skeletal_animations(_delta: float) -> void:
+	if not is_instance_valid(_anim_player):
+		return
+		
+	var flat_velocity := Vector2(velocity.x, velocity.z)
+	var is_moving := flat_velocity.length_squared() > 0.1
+	
+	# State blending priority checks
+	if _attack_cooldown_timer > 0.6: # Active bite phase (cooldown starts at 1.5s)
+		_play_animation_safe("attack")
+	elif not is_on_floor(): # <-- High priority jump check!
+		_play_animation_safe("jump")
+	elif is_moving and is_on_floor():
+		_play_animation_safe("walk")
+	else:
+		_play_animation_safe("idle")
+
+
+## Prevents animation snapping by executing a 0.25s linear crossfade
+func _play_animation_safe(anim_name: String) -> void:
+	if not is_instance_valid(_anim_player):
+		return
+		
+	var target_anim := anim_name
+	
+	# Fallback: If bite/attack is missing, play idle and lean forward procedurally!
+	if target_anim == "attack" and not _anim_player.has_animation("attack"):
+		target_anim = "idle"
+		_simulate_procedural_bite_lunge()
+	elif target_anim == "jump" and not _anim_player.has_animation("jump"):
+		target_anim = "idle"
+		
+	if _anim_player.has_animation(target_anim):
+		if _anim_player.current_animation != target_anim:
+			# Execute a 0.25s smooth crossfade blend to prevent bone snapping!
+			_anim_player.play(target_anim, 0.25)
+
+
+## Procedural Bite Lunge: Tilts the zombie forward to simulate biting
+func _simulate_procedural_bite_lunge() -> void:
+	if _is_lunging or not is_instance_valid(_model_node):
+		return
+	_is_lunging = true
+	
+	var tween := create_tween()
+	# Step 1: Lurch forward (Tilt X-rotation 20 degrees down and step 20cm Z)
+	tween.tween_property(_model_node, "rotation_degrees:x", 20.0, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(_model_node, "position:z", -0.20, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	
+	# Step 2: Recover back to upright pose
+	tween.chain().tween_property(_model_node, "rotation_degrees:x", 0.0, 0.20).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.parallel().tween_property(_model_node, "position:z", 0.0, 0.20).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	
+	tween.chain().tween_callback(func() -> void: _is_lunging = false)
 
 
 func _process_ai_intelligence(delta: float) -> void:
@@ -327,6 +472,7 @@ func _process_ai_intelligence(delta: float) -> void:
 		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
 			var target_look_at: Vector3 = global_position + _wander_direction
 			if not global_position.is_equal_approx(target_look_at):
+				# Lock rotation to movement vector, preserving visual sways
 				var current_rot_x := visuals_node.rotation.x
 				var current_rot_z := visuals_node.rotation.z
 				visuals_node.look_at(target_look_at, Vector3.UP)
@@ -361,13 +507,20 @@ func _process_ai_intelligence(delta: float) -> void:
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var dir := (player.global_position - global_position).normalized()
-		var knockback := Vector3(dir.x * 4.5, 0.25, dir.z * 4.5)
+		var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
 		if player.has_method("take_damage"):
 			player.call("take_damage", 1, knockback)
 
 
-## Drops 1x Stone Block and 1x Oak Planks on death (Reclaimed gold coin loot)
-func _drop_loot(inv: IInventory) -> void:
-	# Item ID 1: Stone, Item ID 29: Oak Planks
-	inv.add_item(1, 1)
-	inv.add_item(29, 1)
+## Dynamic Collision Box Sizing: Adapts physically to voxel (1.2m) vs Mixamo (0.75m) heights
+func _get_collision_box_size() -> Vector3:
+	if ResourceLoader.exists(BASE_MODEL_PATH):
+		return Vector3(0.5, 0.75, 0.5) # Dynamic 0.75m height
+	return Vector3(0.6, 1.2, 0.6) # Fallback 1.2m voxel height
+
+
+## Dynamic Collision Box Position: Centered dynamically depending on active mesh scale
+func _get_collision_box_position() -> Vector3:
+	if ResourceLoader.exists(BASE_MODEL_PATH):
+		return Vector3(0.0, 0.375, 0.0) # Center Y at 0.375m
+	return Vector3(0.0, 0.6, 0.0) # Center Y at 0.6m

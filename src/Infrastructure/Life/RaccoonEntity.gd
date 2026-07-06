@@ -5,16 +5,9 @@
 #              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity, 
 #                matching the base collision, gravity, and lifecycle contracts.
 #              - Single Responsibility Principle (SRP): Delegates visual rendering 
-#                to the sub-component, and physics movements to the base class.
-#              - Dependency Inversion Principle (DIP): Automatically prunes 
-#                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-# MATHEMATICAL CALIBRATION:
-#              - Total model height is 3.289m. Scaled by 0.1x to achieve a 
-#                realistic small forest raccoon height of ~0.33m.
-#              - Model origin is centered. Raised the model Y-position by +0.138m 
-#                to anchor its paws flat on the physical voxel colliders.
-#              - Corrected the crab-walk bug by setting the Y-axis rotation offset 
-#                to 180 degrees (standard quadruped Z-alignment).
+#                and skeletal animations entirely to the FaunaVisualRepresentation strategy.
+#              - Dependency Inversion Principle (DIP): Independent of physical rendering,
+#                binding visuals purely to the IEntityVisualRepresentation abstraction.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/RaccoonEntity.gd
 # ==============================================================================
@@ -30,74 +23,38 @@ func _init(spawn_pos: Vector3) -> void:
 	name = "Entity_RACCOON"
 
 
-## Loads the external GLB model and hooks it into the procedural bobbing skeleton
+## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
 func _build_visual_representation() -> void:
-	if ResourceLoader.exists(MODEL_PATH):
-		var model_scene := load(MODEL_PATH) as PackedScene
-		var model_node := model_scene.instantiate() as Node3D
-		
-		# Prune Blender's default light and camera nodes to prevent rendering conflicts
-		_prune_extraneous_nodes(model_node)
-		
-		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
-		# ======================================================================
-		# 1. Scale model by 0.1x to reduce height from 3.289m to ~0.33m
-		model_node.scale = Vector3(0.1, 0.1, 0.1)
-		
-		# 2. Origin is centered. Raise it up by +0.138m on Y
-		#    to anchor the paws perfectly flat on the ground plane
-		model_node.position = Vector3(0.0, 0.138, 0.0)
-		
-		# 3. Apply 180-degree visual offset to correct the sideways orientation bug
-		#    Change to 0 if it walks backwards.
-		model_node.rotation_degrees = Vector3(0, 180, 0)
-		# ======================================================================
-		
-		# Append the model to the bob joint to automatically inherit walk animations
-		visual_component.body_bob_node.add_child(model_node)
-		_register_glb_materials(model_node)
-	else:
-		push_error("[RaccoonEntity] GLB model not found at path: " + MODEL_PATH)
+	var strategy := FaunaVisualRepresentation.new()
+	strategy.model_path = MODEL_PATH
+	
+	# Scale and position offsets calculated via GLB Analyzer V5
+	strategy.scale_multiplier = Vector3(0.1, 0.1, 0.1)
+	strategy.position_offset = Vector3(0.0, 0.138, 0.0)
+	strategy.rotation_offset = Vector3(0, 180, 0) # Face forward (-Z)
+	
+	# Physical collision bounds
+	strategy.collision_size = Vector3(0.35, 0.33, 0.55)
+	strategy.collision_position = Vector3(0.0, 0.165, 0.0)
+	
+	# Animations paths
+	strategy.anim_idle_name = "idle"
+	strategy.anim_walk_name = "walk"
+	
+	# Inject strategy into parent coordinator
+	visual_representation = strategy
+	visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
-## Recursively duplicates materials to prevent material-sharing leaks
-func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		# EXPLICIT CASTING: Prevents static analyzer type inference errors
-		var mat: Material = node.get_active_material(0) as Material
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0) as Material
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			node.material_override = new_mat
-			
-	for child: Node in node.get_children():
-		_register_glb_materials(child)
-
-
-## Recursively locates and frees extraneous camera and light nodes
-func _prune_extraneous_nodes(node: Node) -> void:
-	for i in range(node.get_child_count() - 1, -1, -1):
-		var child := node.get_child(i)
-		if "Camera" in child.name or "Light" in child.name:
-			child.free()
-		else:
-			_prune_extraneous_nodes(child)
-
-
-## Calibrated to the scaled bounding box size (0.33m height, 0.83m depth, 0.20m width)
 func _get_collision_box_size() -> Vector3:
 	return Vector3(0.35, 0.33, 0.55)
 
 
-## Centered relative to the body height
 func _get_collision_box_position() -> Vector3:
 	return Vector3(0.0, 0.165, 0.0)
 
 
-## Flag used by the animation ticker to configure bouncy walks (Disabled for quadrupeds/raccoons)
+## Flag used by the animation ticker to configure bouncy walks (Disabled for quadrupeds)
 func _is_avian() -> bool:
 	return false
 

@@ -1,19 +1,40 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Villager NPC physics controller. Generates unique 3D visual 
-#              outfits dynamically based on its home biome coordinate.
-#              SOLID COMPLIANCE:
-#              - Liskov Substitution Principle (LSP): Inherits PassiveEntity and 
-#                fully satisfies all base physics and signals.
-#              - Single Responsibility Principle (SRP): Delegates rendering setups 
-#                and AI state execution to specialized sibling components.
+# Description: Villager NPC physics controller with dynamic visual strategy injection.
+#              SOLID COMPLIANCE: 
+#              - Liskov Substitution Principle (LSP): Inherits PassiveEntity, 
+#                matching the base collision, gravity, and lifecycle contracts.
+#              - Single Responsibility Principle (SRP): Delegates visual rendering 
+#                to the sub-component, and physics movements to the base class.
 #              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
 #                statically through the decoupled CelestialService provider.
+# HYBRID GRAPHICS PIPELINE & SKELETAL BLENDING:
+#              - Attempts to load `assets/models/mobs/villager/villager_base.fbx`.
+#              - Programmatically loads separate animation files (idle, walk, panic, jump) 
+#                from the same folder, extracts their bone tracks, and 
+#                injects them into the main AnimationPlayer at runtime.
+#              - Scale is calibrated dynamically to 0.8856x (calculated via 
+#                natively-headless analyze_model.gd) to match 1.8m height perfectly.
+#              - Panic Fallback: If `villager_panic` is missing, the script automatically 
+#                accelerates the `walk` animation speed to simulate sprinting procedurally.
+#              - Fallback: Reverts to building procedurally generated voxel-villagers 
+#                (with dynamic skin tones, outfits, hats, and hair) if GLB is missing.
+#              - Dynamic Collision: Swaps collision shape sizes from 0.8m to 1.8m in 
+#                runtime based on asset existence, matching Mixamo sizes.
+# JUMP ANIMATION INTEGRATION:
+#              - Added dynamic binding and loading support for the new `villager_jump.fbx` track.
+#              - Blends the airborne jumping states elegantly inside the Mixamo state controller.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
 class_name VillagerEntity
 extends PassiveEntity
+
+const BASE_MODEL_PATH := "res://assets/models/mobs/villager/villager_base.fbx"
+
+# Visual GLB/FBX references
+var _model_node: Node3D
+var _anim_player: AnimationPlayer
 
 
 func _init(spawn_pos: Vector3) -> void:
@@ -24,6 +45,88 @@ func _init(spawn_pos: Vector3) -> void:
 ## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
 ## to the visual component joints.
 func _build_visual_representation() -> void:
+	if FileAccess.file_exists(BASE_MODEL_PATH):
+		_build_glb_representation()
+	else:
+		_build_procedural_representation()
+
+
+func _build_glb_representation() -> void:
+	var model_scene := load(BASE_MODEL_PATH) as PackedScene
+	_model_node = model_scene.instantiate() as Node3D
+	
+	# Prune Blender's default light and camera nodes
+	_prune_extraneous_nodes(_model_node)
+	
+	# ======================================================================
+	# DYNAMIC GEOMETRY CALIBRATION (Fitted via analyze_model.gd telemetry)
+	# ======================================================================
+	# 1. Scale model by 0.8856x to achieve a perfect humanoid height of ~1.8m
+	_model_node.scale = Vector3(0.8856, 0.8856, 0.8856)
+	
+	# 2. Origin is flat on its feet natively (Y = 0.0)
+	_model_node.position = Vector3(0.0, 0.0, 0.0)
+	
+	# 3. Orient forward
+	_model_node.rotation_degrees = Vector3(0, 180, 0) # Face forward (-Z)
+	# ======================================================================
+	
+	visual_component.body_bob_node.add_child(_model_node)
+	_register_glb_materials(_model_node)
+	
+	# Find nested AnimationPlayer inside Mixamo rig hierarchy
+	_anim_player = _model_node.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if is_instance_valid(_anim_player):
+		_load_external_fbx_animations()
+		_anim_player.play("idle")
+
+
+## Programmatically extracts and compiles separate FBX/GLTF animation tracks
+func _load_external_fbx_animations() -> void:
+	if not is_instance_valid(_anim_player):
+		return
+		
+	# Ensure the default animation library exists
+	var anim_library := _anim_player.get_animation_library("")
+	if anim_library == null:
+		anim_library = AnimationLibrary.new()
+		_anim_player.add_animation_library("", anim_library)
+		
+	# Paths to separate Mixamo FBX animations
+	var anim_sources := {
+		"idle": ANIM_DIR + "villager/villager_idle.fbx",
+		"walk": ANIM_DIR + "villager/villager_walk.fbx",
+		"panic": ANIM_DIR + "villager/villager_panic.fbx",
+		"jump": ANIM_DIR + "villager/villager_jump.fbx" # <-- Added for jump track
+	}
+	
+	for anim_name: String in anim_sources.keys():
+		var path: String = anim_sources[anim_name] as String
+		if FileAccess.file_exists(path):
+			var anim_scene := load(path) as PackedScene
+			if anim_scene != null:
+				var temp_instance := anim_scene.instantiate()
+				var temp_player := temp_instance.get_node_or_null("AnimationPlayer") as AnimationPlayer
+				
+				if is_instance_valid(temp_player) and temp_player.get_animation_list().size() > 0:
+					var raw_name := temp_player.get_animation_list()[0]
+					var animation_resource := temp_player.get_animation(raw_name)
+					
+					# Force loop mode on idle, walk, and panic tracks
+					if anim_name == "idle" or anim_name == "walk" or anim_name == "panic":
+						animation_resource.loop_mode = Animation.LOOP_LINEAR
+					elif anim_name == "jump":
+						animation_resource.loop_mode = Animation.LOOP_NONE
+						
+					anim_library.add_animation(anim_name, animation_resource)
+					print("  -> Bound dynamic FBX animation: '", anim_name, "' from ", path)
+					
+				temp_instance.queue_free()
+
+
+## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
+## to the visual component joints.
+func _build_procedural_representation() -> void:
 	var biome_id := _detect_current_biome()
 	
 	# Extract procedural color parameters calculated on boot by the visual component
@@ -35,10 +138,10 @@ func _build_visual_representation() -> void:
 	var boots_color := Color(0.12, 0.12, 0.15)       # Dark boots black
 	var pants_color := Color(0.18, 0.15, 0.12)       # Dark trousers brown
 	var brow_brown := Color(0.18, 0.12, 0.08)        # Unibrow dark brown
-	var nose_brown := Color(0.55, 0.42, 0.32)        # Big long nose brown
+	var nose_brown := Color(0.55, 0.42, 0.32)       # Big long nose brown
 	var eye_green := Color(0.0, 0.75, 0.35)          # High-contrast emerald eye cian
 	
-	# 1. Base Legs & Segmented Feet (Attached to the bobbing joint)
+	# 1. Base Legs & Segmented Feet (Attached to the bouncing joint)
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.16, 0.28, 0.16), Vector3(-0.1, 0.14, 0.0), pants_color) # Left leg
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.16, 0.28, 0.16), Vector3(0.1, 0.14, 0.0), pants_color)  # Right leg
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.18, 0.08, 0.20), Vector3(-0.1, 0.04, -0.02), boots_color) # Left boot
@@ -128,7 +231,7 @@ func _build_custom_headwear(biome_id: int, hair_color: Color) -> void:
 			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.52, 0), Color(0.85, 0.12, 0.12)) 
 			visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.48, -0.22), Color(0.85, 0.12, 0.12)) 
 			visual_component.create_box(visual_component.head_node, Vector3(0.12, 0.10, 0.03), Vector3(0, 0.52, -0.20), Color.WHITE) 
-		4: # Frostbite Glaciers (Winter Fur-Hood)
+		4: # Frostbite Glaciers (Heavy insulated white fur)
 			visual_component.create_box(visual_component.head_node, Vector3(0.39, 0.48, 0.39), Vector3(0, 0.26, 0.02), Color(0.82, 0.82, 0.85)) 
 			visual_component.create_box(visual_component.head_node, Vector3(0.42, 0.52, 0.10), Vector3(0, 0.26, -0.15), Color(0.98, 0.98, 0.98)) 
 		5: # Whispering Redwood Forest (Elven Leaf Crown)
@@ -227,3 +330,115 @@ func _detect_current_biome() -> int:
 
 func _can_socialize() -> bool:
 	return true
+
+
+func _is_avian() -> bool:
+	return false
+
+
+## Overrides standard physics tracker to execute skeletal animations
+func _physics_process(delta: float) -> void:
+	if domain_entity.is_dead: 
+		return
+		
+	# Apply downward gravity conditionally
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+	else:
+		velocity.y = -0.1
+
+	# Process AI component decision tree calculations
+	if is_instance_valid(ai_component):
+		ai_component.process_ai(delta)
+	
+	_quest_check_timer -= delta
+	if _quest_check_timer <= 0.0:
+		_quest_check_timer = 0.5
+		_update_quest_bubble_state()
+
+	# Process Skeletal Animation blended states (Mixamo)
+	_process_skeletal_animations(delta)
+
+	move_and_slide()
+
+
+## Machine-state Controller: Blends Mixamo skeletal joints seamlessly
+func _process_skeletal_animations(_delta: float) -> void:
+	if not is_instance_valid(_anim_player):
+		return
+		
+	var flat_velocity := Vector2(velocity.x, velocity.z)
+	var is_moving := flat_velocity.length_squared() > 0.1
+	
+	var is_panicking := false
+	if is_instance_valid(ai_component):
+		is_panicking = ai_component.current_task == NPCAIComponent.TaskState.PANIC
+	
+	# State blending priority checks
+	if not is_on_floor(): # <-- High priority jump check!
+		_play_animation_safe("jump", 1.0)
+	elif is_panicking and is_moving:
+		if _anim_player.has_animation("panic"):
+			_play_animation_safe("panic", 1.0)
+		else:
+			# Fallback: Play walk animation at double speed!
+			_play_animation_safe("walk", 1.8)
+	elif is_moving and is_on_floor():
+		_play_animation_safe("walk", 1.0)
+	else:
+		_play_animation_safe("idle", 1.0)
+
+
+## Prevents animation snapping by executing a 0.25s linear crossfade
+func _play_animation_safe(anim_name: String, speed: float = 1.0) -> void:
+	if is_instance_valid(_anim_player) and _anim_player.has_animation(anim_name):
+		_anim_player.speed_scale = speed
+		if _anim_player.current_animation != anim_name:
+			# Execute a 0.25s smooth crossfade blend to prevent bone snapping!
+			_anim_player.play(anim_name, 0.25)
+
+
+## Dynamic Collision Box Sizing: Adapts physically to voxel (0.8m) vs Mixamo (1.8m) heights
+func _get_collision_box_size() -> Vector3:
+	if FileAccess.file_exists(BASE_MODEL_PATH):
+		return Vector3(0.6, 1.8, 0.6) # Standard Mixamo height (1.8m)
+	return Vector3(0.6, 0.8, 0.6) # Voxel fallback height (0.8m)
+
+
+## Dynamic Collision Box Position: Centered dynamically depending on active scale
+func _get_collision_box_position() -> Vector3:
+	if FileAccess.file_exists(BASE_MODEL_PATH):
+		return Vector3(0.0, 0.9, 0.0) # Center Y at 0.9m for 1.8m box
+	return Vector3(0.0, 0.4, 0.0) # Center Y at 0.4m for 0.8m box
+
+
+## Recursively duplicates materials and patches tangent warnings
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mat: Material = node.get_active_material(0) as Material
+		if mat == null and node.mesh != null:
+			mat = node.mesh.surface_get_material(0) as Material
+			
+		if mat is BaseMaterial3D:
+			var new_mat := mat.duplicate() as BaseMaterial3D
+			
+			# TANGENT WARNING SHIELD
+			new_mat.normal_enabled = false
+			new_mat.anisotropy_enabled = false
+			new_mat.clearcoat_enabled = false
+			new_mat.heightmap_enabled = false
+			
+			node.material_override = new_mat
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
+
+
+## Recursively locates and frees extraneous camera and light nodes
+func _prune_extraneous_nodes(node: Node) -> void:
+	for i in range(node.get_child_count() - 1, -1, -1):
+		var child := node.get_child(i)
+		if "Camera" in child.name or "Light" in child.name:
+			child.free()
+		else:
+			_prune_extraneous_nodes(child)

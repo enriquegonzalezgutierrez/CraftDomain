@@ -8,13 +8,16 @@
 #                to the sub-component, and physics movements to the base class.
 #              - Dependency Inversion Principle (DIP): Automatically prunes 
 #                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-# MATHEMATICAL CALIBRATION (V5 Telemetry):
+# MATHEMATICAL CALIBRATION:
 #              - Total model height is 6.137m. Scaled by 0.0570x to achieve a 
 #                realistic aquatic turtle height of ~0.35m.
-#              - Model origin is offset. Raised the model Y-position by +0.1838m 
-#                to anchor its flippers flat on the physical voxel colliders.
+#              - Fixed floating bug: Lowered model Y-position back to 0.0.
 #              - Corrected the Z-Asymmetry (5.640 ratio) pivot bug by setting the 
 #                Y-axis rotation offset to 180 degrees.
+# WARNING RESOLUTION:
+#              - Injected material property overrides in `_register_glb_materials` 
+#                to force-disable normal maps and anisotropy. This completely suppresses 
+#                the "shader requires tangents" error from GLBs exported without them.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/TurtleEntity.gd
 # ==============================================================================
@@ -40,17 +43,15 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
 		# ======================================================================
-		# 1. Scale model by 0.0570x to reduce height from 6.137m to ~0.35m
+		# 1. Scale model by 0.0570x to reduce height to ~0.35m
 		model_node.scale = Vector3(0.0570, 0.0570, 0.0570)
 		
-		# 2. Origin sits low at -3.222m. Raise it up by +0.1838m on Y
-		#    to anchor the flippers perfectly flat on the ground plane
-		model_node.position = Vector3(0.0, 0.1838, 0.0)
+		# 2. Origin fix: Anchored to 0.0 so the flippers sit flat on the ground plane
+		model_node.position = Vector3(0.0, 0.0, 0.0)
 		
-		# 3. Corrected the Z-Asymmetry pivot offset bug. Applied 180 degrees
-		#    of Y-rotation to flip the mesh forward.
+		# 3. Corrected orientation to face forward (-Z)
 		model_node.rotation_degrees = Vector3(0, 180, 0)
 		# ======================================================================
 		
@@ -61,7 +62,7 @@ func _build_visual_representation() -> void:
 		push_error("[TurtleEntity] GLB model not found at path: " + MODEL_PATH)
 
 
-## Recursively duplicates materials to prevent material-sharing leaks
+## Recursively duplicates materials and patches tangent warnings
 func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D:
 		# EXPLICIT CASTING: Prevents static analyzer type inference errors
@@ -71,6 +72,16 @@ func _register_glb_materials(node: Node) -> void:
 			
 		if mat is BaseMaterial3D:
 			var new_mat := mat.duplicate() as BaseMaterial3D
+			
+			# ==================================================================
+			# TANGENT WARNING SHIELD: Disables material properties that crash  
+			# the clustered forward renderer when the mesh lacks tangent arrays.
+			# ==================================================================
+			new_mat.normal_enabled = false
+			new_mat.anisotropy_enabled = false
+			new_mat.clearcoat_enabled = false
+			new_mat.heightmap_enabled = false
+			
 			node.material_override = new_mat
 			
 	for child: Node in node.get_children():

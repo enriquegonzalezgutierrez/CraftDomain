@@ -2,11 +2,14 @@
 # Project: CraftDomain
 # Description: SRP-compliant UI Widget responsible ONLY for rendering the 
 #              dynamic, color-coded FPS (Frames Per Second) counter.
+#              i18n UPGRADE: Uses `tr()` to localize the FPS label text, 
+#              ensuring 100% OCP compliance across the UI.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/FPSCounterWidget.gd
 # ==============================================================================
 class_name FPSCounterWidget
 extends Label
+
 
 func _ready() -> void:
 	name = "FPSCounter"
@@ -21,9 +24,12 @@ func _ready() -> void:
 	ls.outline_color = Color.BLACK
 	label_settings = ls
 
+
 func _process(_delta: float) -> void:
 	var fps := Engine.get_frames_per_second()
-	text = "FPS: " + str(fps)
+	
+	# Dynamically localized prefix using Godot's translation engine
+	text = tr("HUD_FPS") + ": " + str(fps)
 	
 	# Dynamically color-code the text based on performance thresholds
 	if fps >= 55:

@@ -8,7 +8,7 @@
 #   layout, and Drag-and-Drop operations of the inventory. Consuming, swapping, 
 #   and sorting rules are delegated to the IInventory domain interface.
 # - Open-Closed Principle (OCP): Data-driven asset rendering. Adding new items 
-#   does not require changing the main layout structures.
+#   does not require changing the main layout structures. All texts utilize `tr()`.
 # - Liskov Substitution Principle (LSP): Fully compatible with standard Control flows.
 # EXPORT FIX:
 # - Replaced FileAccess.file_exists with ResourceLoader.exists in the texture
@@ -122,7 +122,7 @@ func _setup_backpack_ui() -> void:
 	left_vbox.add_child(header_hbox)
 	
 	var catalog_title := Label.new()
-	catalog_title.text = "BACKPACK STORAGE"
+	catalog_title.text = tr("INVENTORY_BACKPACK_STORAGE").to_upper() # Localized
 	catalog_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var ts := LabelSettings.new()
 	ts.font_size = 18
@@ -158,7 +158,7 @@ func _setup_backpack_ui() -> void:
 	left_vbox.add_child(_create_spacer(14))
 	
 	var hotbar_title := Label.new()
-	hotbar_title.text = "HOTBAR DOCK"
+	hotbar_title.text = tr("INVENTORY_HOTBAR_DOCK").to_upper() # Localized
 	var hts := LabelSettings.new()
 	hts.font_size = 13
 	hts.font_color = Color(0.65, 0.65, 0.7)
@@ -233,7 +233,7 @@ func _setup_backpack_ui() -> void:
 	
 	# Localized Description Text
 	_detail_desc = Label.new()
-	_detail_desc.text = "Click or Drag any backpack item to inspect or move it."
+	_detail_desc.text = tr("INVENTORY_EMPTY_DESC")
 	_detail_desc.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_detail_desc.custom_minimum_size = Vector2(0, 70)
 	var dds := LabelSettings.new()

@@ -9,6 +9,9 @@
 #                rendering a procedural voxel-box well if the GLB is missing.
 #              - Dependency Inversion Principle (DIP): Modifies the player's inventory 
 #                strictly through the abstract IInventory interface contract.
+#              i18n LOCALIZATION OVERHAUL:
+#              - Replaced all hardcoded string notifications (like "WISH GRANTED")
+#                with localized `tr()` translation keys for multi-language support.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WishingWellEntity.gd
 # ==============================================================================
@@ -128,19 +131,27 @@ func interact(player_node: CharacterBody3D) -> void:
 			var rolled_item_id := rewards_pool[randi() % rewards_pool.size()]
 			inventory.add_item(rolled_item_id, 1)
 			
-			# Symmetrically fetch name binding
+			# Symmetrically fetch localized name binding
 			var reward_name := ""
-			if rolled_item_id == 16: reward_name = tr("ITEM_16_DESC").left(14)
+			if rolled_item_id == 16: reward_name = tr("ITEM_FRIED_CHICKEN")
 			elif rolled_item_id == 28: reward_name = tr("BLOCK_DIAMOND_ORE")
 			else: reward_name = tr("BLOCK_GLOWSTONE")
 			
 			# 4. Display a gold toast notification on the player's HUD
 			if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-				hud.call("show_quest_notification", "WISH GRANTED!", "Received: 1x " + reward_name.to_upper())
+				hud.call(
+					"show_quest_notification", 
+					tr("NOTIFICATION_WISH_GRANTED_HEADER"), 
+					tr("NOTIFICATION_RECEIVED_PREFIX") + " 1x " + reward_name.to_upper()
+				)
 		else:
-			# If the player has no stone coin, flash a helpful tip
+			# If the player has no stone coin, flash a localized helpful tip
 			if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-				hud.call("show_quest_notification", "WISHING WELL", "Toss 1x Stone Block (ID 1) to make a wish!")
+				hud.call(
+					"show_quest_notification", 
+					tr("NOTIFICATION_WISHING_WELL_HEADER"), 
+					tr("NOTIFICATION_WISHING_WELL_DESC")
+				)
 				AudioService.play_sfx_static("npc_chat", global_position)
 
 

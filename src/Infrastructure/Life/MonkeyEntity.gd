@@ -8,13 +8,17 @@
 #                to the sub-component, and physics movements to the base class.
 #              - Dependency Inversion Principle (DIP): Automatically prunes 
 #                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-# MATHEMATICAL CALIBRATION (V5 Telemetry):
-#              - Total model height is 0.601m. Scaled by 1.2473x to achieve a 
-#                realistic forest monkey height of ~0.75m.
-#              - Model origin is centered. Raised the model Y-position by +0.3734m 
-#                to anchor its paws flat on the physical voxel colliders.
+# MATHEMATICAL CALIBRATION (Blender Z-Up Axis Fix):
+#              - Model contains a baked 90-degree X-rotation. The TRUE vertical height 
+#                is its raw Z-axis (1.075m), not its Y-axis (0.601m).
+#              - Scaled by 0.6976x to achieve a realistic forest monkey height of ~0.75m.
+#              - Max Z-vertex is 0.0. When rotated 90 degrees, the feet sit perfectly 
+#                at Y = 0.0. No vertical Y-offset is needed!
 #              - Corrected the bipedal alignment by setting the Y-axis rotation 
-#                offset to 180 degrees (standard quadruped Z-alignment).
+#                offset to 180 degrees.
+# WARNING RESOLUTION:
+#              - Injected material property overrides in `_register_glb_materials` 
+#                to force-disable normal maps and anisotropy.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MonkeyEntity.gd
 # ==============================================================================
@@ -40,16 +44,15 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
+		# MATHEMATICAL CALIBRATION (Cross-Axis Fix)
 		# ======================================================================
-		# 1. Scale model by 1.2473x to reduce height from 0.601m to ~0.75m
-		model_node.scale = Vector3(1.2473, 1.2473, 1.2473)
+		# 1. Scale model by 0.6976x (Target: 0.75m / Actual Z-Depth: 1.075m)
+		model_node.scale = Vector3(0.6976, 0.6976, 0.6976)
 		
-		# 2. Origin sits low at -0.299m. Raise Y by +0.3734m to anchor
-		#    the paws perfectly flat on the ground plane
-		model_node.position = Vector3(0.0, 0.3734, 0.0)
+		# 2. Z-Axis max was 0.0. With X=90 rotation, feet are perfectly at 0.0.
+		model_node.position = Vector3(0.0, 0.0, 0.0)
 		
-		# 3. Apply 180-degree visual offset to correct the backwards-walk orientation bug
+		# 3. Apply 180-degree visual offset to correct the backwards-walk orientation
 		model_node.rotation_degrees = Vector3(0, 180, 0)
 		# ======================================================================
 		
@@ -60,7 +63,7 @@ func _build_visual_representation() -> void:
 		push_error("[MonkeyEntity] GLB model not found at path: " + MODEL_PATH)
 
 
-## Recursively duplicates materials to prevent material-sharing leaks
+## Recursively duplicates materials and patches tangent warnings
 func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D:
 		# EXPLICIT CASTING: Prevents static analyzer type inference errors
@@ -70,6 +73,16 @@ func _register_glb_materials(node: Node) -> void:
 			
 		if mat is BaseMaterial3D:
 			var new_mat := mat.duplicate() as BaseMaterial3D
+			
+			# ==================================================================
+			# TANGENT WARNING SHIELD: Disables material properties that crash  
+			# the clustered forward renderer when the mesh lacks tangent arrays.
+			# ==================================================================
+			new_mat.normal_enabled = false
+			new_mat.anisotropy_enabled = false
+			new_mat.clearcoat_enabled = false
+			new_mat.heightmap_enabled = false
+			
 			node.material_override = new_mat
 			
 	for child: Node in node.get_children():

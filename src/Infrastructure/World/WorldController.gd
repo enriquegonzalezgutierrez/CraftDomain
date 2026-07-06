@@ -19,6 +19,10 @@
 #              - Optimized Main Thread: Removed heavy loop scans from 
 #                spawn_entities_for_chunk() to completely preserve locked 120 FPS.
 #              - Fixed circular parser locks by typing nested adapters cleanly as Node3D.
+# PROCEDURAL BLOCK-SUPPORT GRAVITY ENGINE:
+#              - Added `_check_and_resolve_floating_props` to simulate gravity.
+#              - Destructible props (barrels, chests, fires) shatter and drop loot on block break.
+#              - Heavy structural props (wells, lamps) slide down smoothly with elastic bounces.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -49,7 +53,7 @@ var _mob_spawning_service: MobSpawningService
 var _prop_spawning_service: PropSpawningService
 var _streetlight_service: StreetlightService
 var _agriculture_service: AgricultureService
-var _fluid_service: FluidSimulationService # NEW: Fluid Cellular Automata Service
+var _fluid_service: FluidSimulationService # Fluid Cellular Automata Service
 
 # Throttling timer variables
 var _update_timer: float = 0.0
@@ -105,7 +109,7 @@ func _initialize_systems() -> void:
 	# Fixed constructor parameters: services require references to the world controller and world state
 	_streetlight_service = StreetlightService.new(self, world_state)
 	_agriculture_service = AgricultureService.new(self, world_state)
-	_fluid_service = FluidSimulationService.new(self, world_state) # <--- NEW FLUID SERVICE INSTANTIATED
+	_fluid_service = FluidSimulationService.new(self, world_state)
 	
 	# Create the RefCounted Chunk Manager Service (Not a Node, do not call add_child)
 	chunk_manager = ChunkManagerService.new(self, world_state)
@@ -297,8 +301,59 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		_chunk_versions[neighbor_pos] = _chunk_versions.get(neighbor_pos, 0) + 1
 		_rebuild_chunk_instantly(neighbor_pos)
 		
+	# ==========================================================================
+	# BLOCK-SUPPORT VALIDATOR (Mimic Gravity for Props)
+	# If a block is broken (AIR), check if any decorative prop was resting on it!
+	# ==========================================================================
+	if type == BlockType.Type.AIR:
+		_check_and_resolve_floating_props(global_pos)
+		
 	# --- EMIT MODIFICATION SIGNAL FOR AUDIO OBSERVERS (Milestone 10) ---
 	block_modified.emit(global_pos, type)
+
+
+## Scans all active child nodes to find props resting on the newly mined block coordinate
+func _check_and_resolve_floating_props(mined_pos: Vector3i) -> void:
+	# Define target trigger checks (Props are centered at X+0.5, Z+0.5)
+	var expected_x := float(mined_pos.x) + 0.5
+	var expected_z := float(mined_pos.z) + 0.5
+	var expected_y_min := float(mined_pos.y) + 0.9
+	var expected_y_max := float(mined_pos.y) + 1.1
+	
+	for child: Node in get_children():
+		if child is StaticBody3D and child.name.begins_with("Prop_"):
+			var c_pos := child.global_position
+			var match_x := abs(c_pos.x - expected_x) < 0.1
+			var match_z := abs(c_pos.z - expected_z) < 0.1
+			var match_y := c_pos.y >= expected_y_min - 0.2 and c_pos.y <= expected_y_max + 0.2
+			
+			if match_x and match_z and match_y:
+				_resolve_unsupported_prop(child as StaticBody3D)
+
+
+## Triggers a procedural collapse or a satisfying shatter explosion on un-supported props
+func _resolve_unsupported_prop(prop: StaticBody3D) -> void:
+	if prop is BarrelEntity or prop is ChestEntity or prop is CampfireEntity:
+		# Satisfying Shatter: Triggers their standard break/loot transaction
+		if prop.has_method("interact") and is_instance_valid(player):
+			prop.call("interact", player)
+	else:
+		# Structural Drop: Slides down Wells and Lampposts to the next solid surface
+		var gx := floori(prop.global_position.x)
+		var gz := floori(prop.global_position.z)
+		var safe_y := world_state.get_highest_solid_y(gx, gz)
+		
+		# Compute the surface level relative to the safe air-space coordinate
+		var target_y := safe_y - 1.0
+		
+		# Animate falling with an organic bounce landing Tween!
+		var tween := create_tween()
+		tween.tween_property(prop, "global_position:y", target_y, 0.4).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+		
+		# Play a heavy stone thud sound upon landing
+		tween.chain().tween_callback(func() -> void:
+			AudioService.play_sfx_static("footstep_stone", prop.global_position)
+		)
 
 
 ## Rebuilds a chunk instantly on the Main Thread

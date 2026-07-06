@@ -8,6 +8,8 @@
 #              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
 #                spawn livestock, deep coal veins, nocturnal Gargoyles (12), 
 #                and sneaky, rapid-trotting Goblins (13) in mountain caves.
+#              - i18n Localization: Added `tr()` wrapper to the biome name 
+#                to ensure dynamic translation parsing across the GPS HUD.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/CraggyMinesBiome.gd
 # ==============================================================================
@@ -19,9 +21,9 @@ func get_biome_id() -> int:
 	return 3
 
 
-## Concrete Implementation: Returns the HUD friendly name
+## Concrete Implementation: Returns the HUD friendly name using dynamic i18n lookup
 func get_biome_name() -> String:
-	return "Craggy Peaks & Caves"
+	return tr("BIOME_CRAGGY_MINES")
 
 
 ## Concrete Implementation: Returns the dark grey peaks color for the minimap

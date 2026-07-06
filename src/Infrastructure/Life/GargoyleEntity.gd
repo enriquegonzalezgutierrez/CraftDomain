@@ -13,6 +13,9 @@
 #              - Nighttime (AWAKE): Awakens, hovers at +2.5m using active 
 #                procedural flight sways, and aggressively pursues the player.
 #              - Upon death, polymorphically drops 1x Stone Block (ID 1).
+#              - Fixed backward walking bug by setting Y rotation to 90 degrees.
+# 3D FLOATING NAMEPLATE INTEGRATION:
+#              - Instantiates a high-contrast 3D Floating `Label3D` Nameplate above the model head.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GargoyleEntity.gd
 # ==============================================================================
@@ -48,6 +51,9 @@ var _is_wandering: bool = false
 var _attack_cooldown_timer: float = 0.0
 var _animation_time: float = 0.0
 
+# UI elements
+var _nameplate: Label3D
+
 
 ## Value Object storing mesh-material original colors for damage flash restoration
 class VisualPart:
@@ -74,6 +80,8 @@ func _ready() -> void:
 	_build_visual_representation()
 	_setup_collision()
 	_locate_player()
+	
+	_setup_nameplate()
 
 
 func _setup_collision() -> void:
@@ -92,6 +100,26 @@ func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
+
+
+## Instantiates a native, high-performance Label3D billboard to display creature name
+func _setup_nameplate() -> void:
+	_nameplate = Label3D.new()
+	_nameplate.name = "FloatingNameplate"
+	_nameplate.text = tr("NPC_NAME_GARGOYLE").to_upper()
+	_nameplate.pixel_size = 0.005 # Crisp, matching speech bubble sizing scale
+	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_nameplate.no_depth_test = false # Occluded by solid blocks
+	_nameplate.render_priority = 5
+	
+	# Text styling and high-contrast outline
+	_nameplate.modulate = Color(1.0, 1.0, 1.0)
+	_nameplate.outline_modulate = Color(0, 0, 0)
+	_nameplate.outline_size = 5
+	
+	# Set position right above the model head baseline (1.8m height + 15cm offset)
+	_nameplate.position = Vector3(0.0, 1.95, 0.0)
+	add_child(_nameplate)
 
 
 ## Loads the external GLB model and applies calculated mathematical transforms
@@ -115,8 +143,8 @@ func _build_visual_representation() -> void:
 		# 2. Ground level offset: Raise by +0.8982m to align paws with collision floor
 		_model_node.position = Vector3(0.0, 0.8982, 0.0) 
 		
-		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
-		_model_node.rotation_degrees = Vector3(0, -90, 0) 
+		# 3. Apply 90-degree visual offset to correct the sideways/backward orientation bug
+		_model_node.rotation_degrees = Vector3(0, 90, 0) 
 		# ======================================================================
 		
 		visual_root.add_child(_model_node)
@@ -182,6 +210,9 @@ func _on_domain_entity_died() -> void:
 	var col := get_node_or_null("GargoyleCollider") as CollisionShape3D
 	if is_instance_valid(col): 
 		col.queue_free()
+	
+	if is_instance_valid(_nameplate):
+		_nameplate.queue_free()
 			
 	_spawn_death_particles()
 	
@@ -254,9 +285,9 @@ func _process(delta: float) -> void:
 				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
 				_model_node.rotation.x = 0.0
 		else:
-			# Daytime (STONE): Lerp back to solid ground position and 0° rotation
+			# Daytime (STONE): Lerp back to solid ground position and 90° rotation
 			_model_node.position.y = lerp(_model_node.position.y, 0.8982, delta * 5.0)
-			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(-90.0), 0.0), delta * 5.0)
+			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(90.0), 0.0), delta * 5.0)
 
 
 # ==============================================================================
@@ -303,6 +334,10 @@ func _update_nocturnal_state(is_night: bool) -> void:
 				part.material.albedo_color = part.original_color
 				part.material.roughness = 0.5
 				
+	elif not is_night and current_state == State.STONE:
+		current_state = State.STONE
+		# Make sure it rests on solid ground during day
+		
 	elif not is_night and current_state == State.AWAKE:
 		current_state = State.STONE
 		print("[Gargoyle] GOTHIC SENTINEL TURNS TO STONE.")

@@ -8,6 +8,8 @@
 #                3D visual assembly, light flickers, and particle loops.
 #              - Liskov Substitution Principle (LSP): Extends StaticBody3D cleanly 
 #                to act as a physical collidable obstacle in the world.
+#              - i18n Localization: Wrapped the easter-egg healing notification
+#                in a dynamic `tr()` lookup.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/CampfireEntity.gd
 # ==============================================================================
@@ -227,7 +229,8 @@ func interact(player_node: CharacterBody3D) -> void:
 			var hud := player_node.get("hud") as PlayerHUD
 			if is_instance_valid(hud):
 				hud.update_health_display(entity_domain.health)
-				hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "Humanity Restored") # Easter egg toast!
+				# Localized the easter egg string to support i18n
+				hud.show_quest_notification(tr("NOTIFICATION_CONSUME_FOOD_HEADER"), tr("NOTIFICATION_HUMANITY_RESTORED"))
 				
 			# Play cozy sizzling popping sound statically
 			AudioService.play_sfx_static("block_break", global_position)

@@ -1,8 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Golem NPC physics controller. A giant stone defender of villagers 
-#              that patrols outposts, scans for zombies, and executes high-impact 
-#              vertical tossing attacks to protect the plains.
+# Description: Golem NPC physics controller. A giant stone warrior/defender 
+#              protecting village outposts from incoming hostiles.
 #              SOLID COMPLIANCE: 
 #              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity, 
 #                safely overriding movement, task routing, and visual meshes.
@@ -10,13 +9,19 @@
 #                to the sub-component, and physics movements to the base class.
 #              - Dependency Inversion Principle (DIP): Automatically prunes 
 #                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-# MATHEMATICAL CALIBRATION (V5 Telemetry):
-#              - Total model height is 6.137m. Scaled by 0.5703x to achieve a 
-#                colossal giant height of ~3.5m.
-#              - Model origin is offset. Raised the model Y-position by +1.8376m 
-#                to anchor its feet flat on the physical voxel colliders.
-#              - Corrected the Z-Asymmetry (5.640 ratio) pivot offset bug by setting the 
+#              i18n LOCALIZATION OVERHAUL:
+#              - Wrapped the hardcoded billboard speech bubble text in `tr()`
+#                to ensure dynamic language switching.
+# MATHEMATICAL CALIBRATION (Waist-Pivot Offset Fix):
+#              - Model origin was incorrectly centered at the waist (Min Y = -1.0m).
+#              - Scaled by 1.7516x to achieve a colossal giant height of ~3.5m.
+#              - Raised the model Y-position by +1.7509m to anchor its feet flat 
+#                on the physical voxel colliders.
+#              - Corrected the backward orientation mesh bug by setting the 
 #                Y-axis rotation offset to 180 degrees.
+# WARNING RESOLUTION:
+#              - Injected material property overrides in `_register_glb_materials` 
+#                to force-disable normal maps and anisotropy.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GolemEntity.gd
 # ==============================================================================
@@ -58,17 +63,16 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
+		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
 		# ======================================================================
-		# 1. Scale model by 0.5703x to achieve a colossal giant height of ~3.5m
-		model_node.scale = Vector3(0.5703, 0.5703, 0.5703)
+		# 1. Scale model by 1.7516x to achieve a colossal giant height of ~3.5m
+		model_node.scale = Vector3(1.7516, 1.7516, 1.7516)
 		
-		# 2. Origin is centered. Raise it up by +1.8376m on Y
+		# 2. Waist-Pivot Fix: Raise it up by +1.7509m on Y
 		#    to anchor the feet perfectly flat on the ground plane
-		model_node.position = Vector3(0.0, 1.8376, 0.0)
+		model_node.position = Vector3(0.0, 1.7509, 0.0)
 		
-		# 3. Corrected the Z-Asymmetry pivot offset bug. Applied 180 degrees
-		#    of Y-rotation to flip the mesh forward.
+		# 3. Apply 180-degree visual offset to correct the backwards orientation
 		model_node.rotation_degrees = Vector3(0, 180, 0)
 		# ======================================================================
 		
@@ -79,16 +83,22 @@ func _build_visual_representation() -> void:
 		push_error("[GolemEntity] GLB model not found at path: " + MODEL_PATH)
 
 
-## Recursively duplicates materials to prevent material-sharing leaks
+## Recursively duplicates materials and patches tangent warnings
 func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D:
-		# EXPLICIT CASTING: Prevents static analyzer type inference errors
 		var mat: Material = node.get_active_material(0) as Material
 		if mat == null and node.mesh != null:
 			mat = node.mesh.surface_get_material(0) as Material
 			
 		if mat is BaseMaterial3D:
 			var new_mat := mat.duplicate() as BaseMaterial3D
+			
+			# TANGENT WARNING SHIELD
+			new_mat.normal_enabled = false
+			new_mat.anisotropy_enabled = false
+			new_mat.clearcoat_enabled = false
+			new_mat.heightmap_enabled = false
+			
 			node.material_override = new_mat
 			
 	for child: Node in node.get_children():
@@ -105,9 +115,9 @@ func _prune_extraneous_nodes(node: Node) -> void:
 			_prune_extraneous_nodes(child)
 
 
-## Calibrated to the scaled bounding box size (3.5m height, 6.3m depth, 2.8m width)
+## Calibrated to the scaled bounding box size (3.5m height, 2.8m width, 1.3m depth)
 func _get_collision_box_size() -> Vector3:
-	return Vector3(2.8, 3.5, 6.3)
+	return Vector3(2.8, 3.5, 1.3)
 
 
 ## Centered relative to the body height
@@ -120,7 +130,7 @@ func _setup_floating_bubble() -> void:
 	if sb_script != null:
 		_bubble = sb_script.new() as Node3D
 		add_child(_bubble)
-		_bubble.call("set_text", "DEFENDER")
+		_bubble.call("set_text", tr("BUBBLE_DEFENDER")) # <-- Localized
 
 
 ## Public Gaze Interaction: Heavy rumbling sound responses.

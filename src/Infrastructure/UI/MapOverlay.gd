@@ -13,6 +13,8 @@
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Isolates map drawing.
 # - Liskov Substitution Principle (LSP): Fully compatible with standard Control flows.
+# - Open-Closed Principle (OCP) & i18n: All labels and tooltips now dynamically 
+#   use the `tr()` function to swap text based on the active language locale.
 # I/O OPTIMIZATION (120 FPS STABILIZATION):
 # - Removed all verbose `[MapOverlay DEBUG]` print statements to prevent synchronous, 
 #   blocking console I/O stalls during fast-travel map transitions.
@@ -376,7 +378,7 @@ func _on_radar_draw() -> void:
 	_radar_canvas.draw_rect(scanline_rect, Color(0.2, 0.85, 1.0, 0.15), true)
 	_radar_canvas.draw_line(Vector2(0, _scanline_pos), Vector2(_map_panel_size, _scanline_pos), Color(0.2, 0.85, 1.0, 0.5), 1.0)
 	
-	# 6. DRAG INSTRUCTION LABEL (Centered at the top)
+	# 6. DRAG INSTRUCTION LABEL (Localized dynamically)
 	_radar_canvas.draw_string(default_font, Vector2(_map_panel_size / 2.0, _map_panel_size - 15), "[ " + tr("MAP_DRAG_INSTRUCTION").to_upper() + " ]", HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color(0.3, 0.85, 1.0, 0.6))
 
 
@@ -420,7 +422,8 @@ func _populate_landmark_pins() -> void:
 		btn.size = Vector2(28, 28)
 		btn.position = pin_pos - Vector2(14, 14)
 		
-		btn.tooltip_text = "%s\n[ X: %d | Z: %d ]\n\n➔ CLICK TO TELEPORT (FAST TRAVEL)" % [
+		# Localized dynamic translation tooltip string formatting
+		btn.tooltip_text = tr("MAP_TELEPORT_TOOLTIP") % [
 			tr(landmark.get_name()).to_upper(),
 			landmark.global_center.x,
 			landmark.global_center.y

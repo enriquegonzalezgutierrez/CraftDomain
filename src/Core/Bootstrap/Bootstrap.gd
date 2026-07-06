@@ -12,9 +12,9 @@
 #                Infrastructure prop factories (ChestEntity, StreetlightEntity, CampfireEntity) 
 #                into the pure Domain PropRegistry on startup, and sets up 
 #                weather & audio dependency injection paths.
-# MILESTONE 8 UPGRADE:
-#              - Registered CampfireEntity (ID 203) into PropRegistry for dynamic 
-#                placement across villages and forests.
+# CLEANUP NOTE:
+#              - Removed RitualStoneEntity (ID 214) registration block to prune 
+#                unneeded resources completely.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Core/Bootstrap/Bootstrap.gd
 # ==============================================================================
@@ -110,13 +110,6 @@ func _setup_prop_registry() -> void:
 		var well := WishingWellEntity.new()
 		well.position = pos
 		return well
-	)
-	
-	# Interactive Ritual Stone (ID 214)
-	PropRegistry.register_prop(214, func(pos: Vector3) -> Node:
-		var stone := RitualStoneEntity.new()
-		stone.position = pos
-		return stone
 	)
 	
 	# ==========================================================================

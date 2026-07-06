@@ -4,8 +4,13 @@
 #              3D Billboard Speech Bubble floating above NPC heads.
 #              Uses an isolated SubViewport and a Sprite3D to render crisp 2D 
 #              Label elements cleanly in 3D space.
-#              MEMORY SECURITY FIX: Replaced infinite process_frame lambda with 
-#              a native CONNECT_ONE_SHOT method callback to prevent memory leaks on exit.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively the SubViewport 
+#   texture projection pipeline.
+# DYNAMIC POSITIONING UPGRADE:
+#              - Reset `_sprite.position` to Vector3.ZERO. This decouples the 
+#                billboard's visual height offset, allowing parent entities to 
+#                translate the node dynamically in runtime based on physical heights.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/SpeechBubble.gd
 # ==============================================================================
@@ -17,8 +22,10 @@ var _viewport: SubViewport
 var _panel: Panel
 var _label: Label
 
+
 func _ready() -> void:
 	_setup_speech_bubble()
+
 
 ## Programmatically builds the viewport texture and Sprite3D billboard projection
 func _setup_speech_bubble() -> void:
@@ -67,16 +74,22 @@ func _setup_speech_bubble() -> void:
 	_sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST # Sharp pixel texture
 	_sprite.pixel_size = 0.008 # Custom scaling in the 3D grid
 	
-	# Hover exactly at Y=1.9 meters (right above human-npc eye level)
-	_sprite.position = Vector3(0, 1.9, 0)
+	# ==========================================================================
+	# DECOUPLED DYNAMIC BASELINE: 
+	# Reset position to 0.0. Height offset is now managed dynamically 
+	# by the parent NPC script based on its physical collider bounding box.
+	# ==========================================================================
+	_sprite.position = Vector3(0.0, 0.0, 0.0)
 	add_child(_sprite)
 	
-	# MEMORY FIX: Bind texture dynamically using a safe, one-shot native method
+	# Safe, one-shot connection to apply the viewport texture once fully compiled
 	get_tree().process_frame.connect(_apply_texture, CONNECT_ONE_SHOT)
+
 
 func _apply_texture() -> void:
 	if is_instance_valid(_sprite) and is_instance_valid(_viewport):
 		_sprite.texture = _viewport.get_texture()
+
 
 ## Public API: Allows dynamic updating of floating dialogue or alerts from outside
 func set_text(new_text: String) -> void:

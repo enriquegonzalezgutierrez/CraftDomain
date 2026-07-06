@@ -5,21 +5,9 @@
 #              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity, 
 #                matching the base collision, gravity, and lifecycle contracts.
 #              - Single Responsibility Principle (SRP): Delegates visual rendering 
-#                to the sub-component, and physics movements to the base class.
-#              - Dependency Inversion Principle (DIP): Automatically prunes 
-#                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-# PROCEDURAL FLIGHT ENGINE:
-#              - Visually offsets the model upwards by +2.3m, making the parrot soar 
-#                in the air while the physics collider navigates the ground safely.
-#              - Injected real-time floating sine wave bobbing to simulate thermal glide.
-#              - Injected high-frequency roll tilting to simulate active wing flapping.
-# MATHEMATICAL CALIBRATION:
-#              - Total model height is 0.805m. Scaled by 0.55x to achieve a 
-#                realistic tropical parrot height of ~0.44m.
-#              - Model origin is offset. Raised the model Y-position by +0.221m 
-#                to anchor its feet flat on the physical voxel colliders.
-#              - Corrected the crab-walk bug by setting the Y-axis rotation offset 
-#                to 180 degrees (standard bird Z-alignment).
+#                and skeletal animations entirely to the FaunaVisualRepresentation strategy.
+#              - Dependency Inversion Principle (DIP): Independent of physical rendering,
+#                binding visuals purely to the IEntityVisualRepresentation abstraction.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/ParrotEntity.gd
 # ==============================================================================
@@ -29,8 +17,8 @@ extends PassiveEntity
 const MODEL_PATH := "res://assets/models/mobs/parrot.glb"
 
 # Procedural flight animation variables
-var _model_node: Node3D
 var _animation_time: float = 0.0
+var _model_node: Node3D
 
 
 func _init(spawn_pos: Vector3) -> void:
@@ -39,65 +27,48 @@ func _init(spawn_pos: Vector3) -> void:
 	name = "Entity_PARROT"
 
 
-## Loads the external GLB model and hooks it into the procedural bobbing skeleton
+## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
 func _build_visual_representation() -> void:
-	if ResourceLoader.exists(MODEL_PATH):
-		_model_node = model_scene_instantiate()
-		
-		# Prune Blender's default light and camera nodes to prevent rendering conflicts
-		_prune_extraneous_nodes(_model_node)
-		
-		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer)
-		# ======================================================================
-		# 1. Scale model by 0.55x to reduce height from 0.805m to ~0.44m
-		_model_node.scale = Vector3(0.55, 0.55, 0.55)
-		
-		# 2. Initial flight height: Offset Y upwards by +2.5 meters (including +0.221m pivot alignment)
-		_model_node.position = Vector3(0.0, 2.521, 0.0)
-		
-		# 3. Apply 180-degree visual offset to correct the sideways orientation bug
-		#    Change to 0 if it walks backwards.
-		_model_node.rotation_degrees = Vector3(0, 180, 0)
-		# ======================================================================
-		
-		# Append the model to the bob joint to automatically inherit animations
-		visual_component.body_bob_node.add_child(_model_node)
-		_register_glb_materials(_model_node)
+	var strategy := FaunaVisualRepresentation.new()
+	strategy.model_path = MODEL_PATH
+	strategy.scale_multiplier = Vector3(0.4350, 0.4350, 0.4350)
+	
+	# Dynamic Showcase Grounding:
+	# Climbs up the ancestral tree to detect if we are inside the Showcase SubViewport.
+	var is_showcase := false
+	var current_node := get_parent()
+	while current_node != null:
+		if current_node is SubViewport and current_node.name != "root":
+			is_showcase = true
+			break
+		current_node = current_node.get_parent()
+	
+	if is_showcase:
+		# Anchor to ground level in showcase (Center offset: 0.402 * 0.4350 scale = 0.1750)
+		strategy.position_offset = Vector3(0.0, 0.1750, 0.0)
 	else:
-		push_error("[ParrotEntity] GLB model not found at path: " + MODEL_PATH)
+		# Standard flight height in active gameplay
+		strategy.position_offset = Vector3(0.0, 2.521, 0.0)
+		
+	# Rotations & Collision boundaries
+	strategy.rotation_offset = Vector3(0, 90, 0)
+	strategy.collision_size = Vector3(0.46, 0.69, 0.46)
+	strategy.collision_position = Vector3(0.0, 0.345, 0.0)
+	
+	# Inject strategy into parent coordinator
+	visual_representation = strategy
+	visual_representation.build_representation(self, visual_component.body_bob_node)
+	
+	# Retrieve the actual instanced model node reference to support flight bobs in _process()
+	_model_node = visual_component.body_bob_node.get_child(0) as Node3D
 
 
-## Safe helper instantiator preventing cyclic compilation locks
-func model_scene_instantiate() -> Node3D:
-	var model_scene := load(MODEL_PATH) as PackedScene
-	return model_scene.instantiate() as Node3D
+func _get_collision_box_size() -> Vector3:
+	return Vector3(0.46, 0.69, 0.46)
 
 
-## Recursively duplicates materials to prevent material-sharing leaks
-func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		# EXPLICIT CASTING: Prevents static analyzer type inference errors
-		var mat: Material = node.get_active_material(0) as Material
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0) as Material
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			node.material_override = new_mat
-			
-	for child: Node in node.get_children():
-		_register_glb_materials(child)
-
-
-## Recursively locates and frees extraneous camera and light nodes
-func _prune_extraneous_nodes(node: Node) -> void:
-	for i in range(node.get_child_count() - 1, -1, -1):
-		var child := node.get_child(i)
-		if "Camera" in child.name or "Light" in child.name:
-			child.free()
-		else:
-			_prune_extraneous_nodes(child)
+func _get_collision_box_position() -> Vector3:
+	return Vector3(0, 0.345, 0)
 
 
 ## Real-time Procedural Flight Simulator Loop (OCP/SRP Compliant)
@@ -114,7 +85,20 @@ func _process(delta: float) -> void:
 		
 		# 1. Thermal Hover Bobbing (Smooth vertical sine wave, slightly out-of-phase with the yellow bird!)
 		var hover_bob := sin(_animation_time * 3.5) * 0.22
-		_model_node.position.y = 2.521 + hover_bob
+		
+		# Determine if we are flying or grounded in the showcase
+		var is_showcase := false
+		var current_node := get_parent()
+		while current_node != null:
+			if current_node is SubViewport and current_node.name != "root":
+				is_showcase = true
+				break
+			current_node = current_node.get_parent()
+			
+		if is_showcase:
+			_model_node.position.y = 0.1750 # Frozen grounded
+		else:
+			_model_node.position.y = 2.521 + hover_bob
 		
 		# 2. Wing Flap Tilting and Forward Pitch
 		if is_moving:
@@ -126,14 +110,6 @@ func _process(delta: float) -> void:
 			# Slow resting breeze tilts
 			_model_node.rotation.z = sin(_animation_time * 1.8) * 0.04
 			_model_node.rotation.x = 0.0
-
-
-func _get_collision_box_size() -> Vector3:
-	return Vector3(0.46, 0.69, 0.46)
-
-
-func _get_collision_box_position() -> Vector3:
-	return Vector3(0, 0.345, 0)
 
 
 ## Flag used by the animation ticker to configure bouncy walks (Disabled to allow flying)

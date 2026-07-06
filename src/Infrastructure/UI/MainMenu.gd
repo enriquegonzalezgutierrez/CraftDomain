@@ -14,6 +14,8 @@
 #                main menu presentation and overlay transitions.
 #              - Open-Closed Principle (OCP): Dynamically instantiates the 
 #                Model Showcase overlay on-demand without circular locks.
+#              - i18n Localization: All texts now use the `tr()` function to 
+#                support dynamic language switching.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MainMenu.gd
 # ==============================================================================
@@ -81,10 +83,10 @@ func _ready() -> void:
 	_master_vbox.add_theme_constant_override("separation", 35) 
 	center_container.add_child(_master_vbox)
 	
-	# 4. Game Title
+	# 4. Game Title (Localized dynamically)
 	_title_label = Label.new()
 	_title_label.name = "GameTitle"
-	_title_label.text = "CRAFT DOMAIN"
+	_title_label.text = tr("MENU_GAME_TITLE").to_upper()
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title_label.pivot_offset = Vector2(250, 45)
 	
@@ -145,7 +147,7 @@ func _ready() -> void:
 		box.add_child(_reset_btn)
 		
 	# ==========================================================================
-	# NEW: DIAGNOSTIC PIPELINE SHOWCASE SHORTCUT
+	# DIAGNOSTIC PIPELINE SHOWCASE SHORTCUT
 	# ==========================================================================
 	_showcase_btn = _create_tactile_button(Color(0.12, 0.55, 0.82, 1.0)) # Cyan Tonal Button
 	_showcase_btn.pressed.connect(_on_showcase_pressed)
@@ -201,6 +203,7 @@ func _process(delta: float) -> void:
 		_title_label.position.y = lerp(_title_label.position.y, _title_label.position.y + sin(_time_passed) * 0.4, delta * 5.0)
 
 
+## Translates all UI strings based on the active loaded locale language file
 func _refresh_localized_text() -> void:
 	if _has_save_game:
 		if is_instance_valid(_play_continue_btn):
@@ -212,7 +215,7 @@ func _refresh_localized_text() -> void:
 			_play_continue_btn.text = tr("MENU_PLAY_WORLD")
 			
 	if is_instance_valid(_showcase_btn):
-		_showcase_btn.text = "ASSET SHOWCASE"
+		_showcase_btn.text = tr("MENU_ASSET_SHOWCASE").to_upper()
 	if is_instance_valid(_settings_btn):
 		_settings_btn.text = tr("MENU_SETTINGS")
 	if is_instance_valid(_exit_btn):

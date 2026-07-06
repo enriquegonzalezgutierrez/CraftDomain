@@ -1,26 +1,29 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure Service coordinating static scenery prop spawning
-#              (Loot Chests, Campfires, Streetlights, Wishing Wells, Ritual Stones, and Barrels).
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively the 
-#                spawning, height checking, and registration of inert, interactive 
-#                scenery props.
-#              - Open-Closed Principle (OCP): Injects dynamic prop factories 
-#                from the domain PropRegistry without hardcoding specific subclasses.
+# Description: Infrastructure Service responsible for calculating and spawning
+#              inert scenery props and interactive decorations inside newly loaded chunks.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates procedural 
+#   decorative prop placements.
+# - Open-Closed Principle (OCP): Works dynamically based on the global PropRegistry.
+# CLEANUP NOTE:
+#              - Removed RitualStoneEntity (ID 214) from the redwood forest 
+#                procedural spawning pool, re-balancing the remaining prop probabilities.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/World/PropSpawningService.gd
 # ==============================================================================
 class_name PropSpawningService
 extends RefCounted
 
 
-## Spawns procedural static scenery props inside a newly loaded chunk.
+## Spawns dynamic scenery props and interactive decorations inside a newly loaded chunk.
 func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
-	var props_list: Array[Node] = []
+	var entities_list: Array[Node] = []
 	var chunk_pos := chunk.position
 	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	
 	var is_real_village: bool = false
-	var active_biome_id: int = 2
+	var active_biome_id: int = 2 # Default Golden Bazaar plains
 	
 	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator
 	if is_instance_valid(generator):
@@ -33,49 +36,44 @@ func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldSta
 			is_real_village = (profile.landmark_id == 3)
 			active_biome_id = profile.biome_id
 
-	# 1. Spawning inside Village Outposts
+	# 1. Spawning inside Village Outposts (Chests, streetlights, campfires, wells, and loot barrels)
 	if is_real_village:
 		# Loot chest spawns in all outposts (ID 200)
-		_spawn_and_register_prop(200, chunk_offset, 4.5, 8.5, world_state, world_node, props_list)
+		_spawn_and_register_prop(200, chunk_offset, 4.5, 8.5, world_state, world_node, entities_list)
 		
 		# Streetlight spawns in all village outposts (ID 202)
-		_spawn_and_register_prop(202, chunk_offset, 2.5, 10.5, world_state, world_node, props_list)
+		_spawn_and_register_prop(202, chunk_offset, 2.5, 10.5, world_state, world_node, entities_list)
 		
 		# Campfire spawns at the heart of the village outpost (ID 203)
-		_spawn_and_register_prop(203, chunk_offset, 8.5, 3.5, world_state, world_node, props_list)
+		_spawn_and_register_prop(203, chunk_offset, 8.5, 3.5, world_state, world_node, entities_list)
 		
 		# Wishing well spawns in the village plaza (ID 213)
-		_spawn_and_register_prop(213, chunk_offset, 10.5, 3.5, world_state, world_node, props_list)
+		_spawn_and_register_prop(213, chunk_offset, 10.5, 3.5, world_state, world_node, entities_list)
 		
-		# ==========================================================================
-		# BREAKABLE LOOT BARRELS OUTPOST SPAWNING
-		# Spawns two breakable barrels around the village parameters (ID 215)
-		# ==========================================================================
-		_spawn_and_register_prop(215, chunk_offset, 6.5, 9.5, world_state, world_node, props_list)
-		_spawn_and_register_prop(215, chunk_offset, 11.5, 6.5, world_state, world_node, props_list)
+		# Loot barrels spawn around the village perimeter (ID 215)
+		_spawn_and_register_prop(215, chunk_offset, 6.5, 9.5, world_state, world_node, entities_list)
+		_spawn_and_register_prop(215, chunk_offset, 11.5, 6.5, world_state, world_node, entities_list)
 	else:
-		# 2. Spawning organically in the wilderness
+		# 2. Spawning organically in the wilderness (Out of villages)
 		var roll := randf()
 		if roll < 0.12:
 			if active_biome_id == 2: # Plains (Rare Wishing Wells and Wild Barrels)
 				if roll < 0.03:
-					_spawn_and_register_prop(213, chunk_offset, 8.5, 8.5, world_state, world_node, props_list)
-				elif roll < 0.06: # Rare hidden loot barrel
-					_spawn_and_register_prop(215, chunk_offset, 8.5, 8.5, world_state, world_node, props_list)
-			elif active_biome_id == 5: # Redwood Forest (Wishing Wells, Ritual Stones, and Barrels)
-				if roll < 0.02: # 2% chance for a healing monolith
-					_spawn_and_register_prop(214, chunk_offset, 8.5, 8.5, world_state, world_node, props_list)
-				elif roll < 0.04: # Rare wishing well
-					_spawn_and_register_prop(213, chunk_offset, 8.5, 8.5, world_state, world_node, props_list)
-				elif roll < 0.06: # Rare hidden loot barrel
-					_spawn_and_register_prop(215, chunk_offset, 8.5, 8.5, world_state, world_node, props_list)
+					_spawn_and_register_prop(213, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
+				elif roll < 0.06: 
+					_spawn_and_register_prop(215, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
+			elif active_biome_id == 5: # Redwood Forest (Wishing Wells and Barrels)
+				if roll < 0.03: # 3% chance for a wishing well (Adjusted)
+					_spawn_and_register_prop(213, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
+				elif roll < 0.06: # 3% chance for a hidden loot barrel
+					_spawn_and_register_prop(215, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
 
 	# 3. HIGHWAY LIGHTING: Spawns streetlights along the paved roads shoulders
 	var road_lamps := RoadGeneratorService.get_roadside_lamps_for_chunk(chunk_pos)
 	for lamp_pos: Vector3 in road_lamps:
-		_spawn_and_register_prop(202, Vector3.ZERO, lamp_pos.x, lamp_pos.z, world_state, world_node, props_list)
+		_spawn_and_register_prop(202, Vector3.ZERO, lamp_pos.x, lamp_pos.z, world_state, world_node, entities_list)
 
-	return props_list
+	return entities_list
 
 
 ## Instantiates, places, and anchors a registered prop on the highest solid ground.

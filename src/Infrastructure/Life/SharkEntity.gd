@@ -8,17 +8,15 @@
 #                to the sub-component, and physics movements to the base class.
 #              - Dependency Inversion Principle (DIP): Automatically prunes 
 #                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-# PROCEDURAL SWIMMING ENGINE (V5 Telemetry):
-#              - Injected real-time sinusoidal yaw oscillations (tail-wagging) 
-#                modulating dynamically based on swimming velocity.
-#              - Spawns only in water-based biomes, pursuing players within 16 meters.
-# MATHEMATICAL CALIBRATION:
-#              - Total model height is 1.125m. Scaled by 1.6006x to achieve a 
-#                realistic predator height/diameter of ~1.8m.
-#              - Model origin is centered. Raised the model Y-position by +0.8975m 
-#                to anchor the fins flat on the physical water baseline.
-#              - Corrected the sideways orientation mesh bug by setting the 
+# MATHEMATICAL CALIBRATION (Baked GLB Offset Compensation):
+#              - Model contains an internal baked Y-axis offset of +0.6701m in its root node.
+#              - Scaled by 1.8366x to achieve a realistic predator length of ~1.8m.
+#              - Grounded position Y offset set to -0.5328m to counteract the baked 
+#                internal translation and anchor the lower fin to Y = 0.0.
+#              - Corrected the backward orientation mesh bug by setting the 
 #                Y-axis rotation offset to -90 degrees.
+# 3D FLOATING NAMEPLATE INTEGRATION:
+#              - Instantiates a high-contrast 3D Floating `Label3D` Nameplate above the model head.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/SharkEntity.gd
 # ==============================================================================
@@ -48,6 +46,9 @@ var _is_wandering: bool = false
 var _attack_cooldown_timer: float = 0.0
 var _animation_time: float = 0.0
 
+# UI elements
+var _nameplate: Label3D
+
 
 ## Value Object storing mesh-material original colors for damage flash restoration
 class VisualPart:
@@ -74,6 +75,8 @@ func _ready() -> void:
 	_build_visual_representation()
 	_setup_collision()
 	_locate_player()
+	
+	_setup_nameplate()
 
 
 func _setup_collision() -> void:
@@ -81,7 +84,7 @@ func _setup_collision() -> void:
 	col.name = "SharkCollider"
 	var box_shape := BoxShape3D.new()
 	
-	# Calibrated to the scaled bounding box of the GLB model (1.80m height, 1.10m depth, 0.85m width after rotation)
+	# Calibrated to the scaled bounding box of the GLB model
 	box_shape.size = Vector3(0.85, 1.80, 1.10) 
 	col.shape = box_shape
 	col.position = Vector3(0, 0.9, 0)
@@ -92,6 +95,26 @@ func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
+
+
+## Instantiates a native, high-performance Label3D billboard to display creature name
+func _setup_nameplate() -> void:
+	_nameplate = Label3D.new()
+	_nameplate.name = "FloatingNameplate"
+	_nameplate.text = tr("NPC_NAME_SHARK").to_upper()
+	_nameplate.pixel_size = 0.005 # Crisp, matching speech bubble sizing scale
+	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_nameplate.no_depth_test = false # Occluded by solid blocks
+	_nameplate.render_priority = 5
+	
+	# Text styling and high-contrast outline
+	_nameplate.modulate = Color(1.0, 1.0, 1.0)
+	_nameplate.outline_modulate = Color(0, 0, 0)
+	_nameplate.outline_size = 5
+	
+	# Set position right above the model head (1.80m height + 15cm offset = 1.95m)
+	_nameplate.position = Vector3(0.0, 1.95, 0.0)
+	add_child(_nameplate)
 
 
 ## Loads the external GLB model and applies calculated mathematical transforms
@@ -107,16 +130,15 @@ func _build_visual_representation() -> void:
 		_prune_extraneous_nodes(_model_node)
 		
 		# ======================================================================
-		# MATHEMATICAL CALIBRATION (Based on GLB Analyzer V5)
+		# MATHEMATICAL CALIBRATION (Baked GLB Compensation)
 		# ======================================================================
-		# 1. Scale model by 1.6006x to achieve a realistic great white length of ~1.8m
-		_model_node.scale = Vector3(1.6006, 1.6006, 1.6006) 
+		# 1. Scale model by 1.8366x to achieve a realistic great white length of ~1.8m
+		_model_node.scale = Vector3(1.8366, 1.8366, 1.8366) 
 		
-		# 2. Origin is centered. Raise it up by +0.8975m on Y
-		#    to anchor the fins flat on the water collision baseline
-		_model_node.position = Vector3(0.0, 0.8975, 0.0) 
+		# 2. Origin offset calculation. Ground the shark by subtracting 0.5328m on Y
+		_model_node.position = Vector3(0.0, -0.5328, 0.0) 
 		
-		# 3. Apply -90-degree visual offset to correct the sideways orientation bug
+		# 3. Apply -90-degree visual offset to face forward (-Z)
 		_model_node.rotation_degrees = Vector3(0, -90, 0) 
 		# ======================================================================
 		
@@ -136,6 +158,13 @@ func _register_glb_materials(node: Node) -> void:
 		if mat is BaseMaterial3D:
 			# Duplicate material so the red flash doesn't affect other instances
 			var new_mat := mat.duplicate() as BaseMaterial3D
+			
+			# TANGENT WARNING SHIELD
+			new_mat.normal_enabled = false
+			new_mat.anisotropy_enabled = false
+			new_mat.clearcoat_enabled = false
+			new_mat.heightmap_enabled = false
+			
 			node.material_override = new_mat
 			var original_color: Color = new_mat.albedo_color
 			_visual_parts.append(VisualPart.new(new_mat, original_color))
@@ -183,6 +212,9 @@ func _on_domain_entity_died() -> void:
 	var col := get_node_or_null("SharkCollider") as CollisionShape3D
 	if is_instance_valid(col): 
 		col.queue_free()
+	
+	if is_instance_valid(_nameplate):
+		_nameplate.queue_free()
 			
 	_spawn_death_particles()
 	
@@ -328,3 +360,9 @@ func _bite_player() -> void:
 		var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
 		if player.has_method("take_damage"):
 			player.call("take_damage", 1, knockback)
+
+
+## Drops 1x Sand Block on death
+func _drop_loot(inv: IInventory) -> void:
+	# Item ID 7: Sand Block
+	inv.add_item(7, 1)

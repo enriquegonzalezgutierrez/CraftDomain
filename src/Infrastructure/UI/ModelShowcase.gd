@@ -5,15 +5,19 @@
 #              SOLID COMPLIANCE:
 #              - Single Responsibility Principle (SRP): Handles exclusively the 
 #                showcase layout and viewport rendering pipelines.
-#              - Liskov Substitution Principle (LSP): Fully compatible with standard 
-#                control nodes, running safely at 120 FPS.
-#              - Dependency Inversion Principle (DIP): Instantiates mobs and props 
-#                strictly through the decoupled MobRegistry and PropRegistry factories.
-# PROCEDURAL TREADMILL SYSTEM:
-#              - Instantiates a flat tiled plane under the pedestal using 'road.png'.
-#              - Dynamically pans the UV coordinates of the road backward when 
-#                walk simulation is ON, creating a flawless treadmill illusion.
-#              - Clamps preview coordinates tightly to prevent physical translation drifts.
+# PURE STATIC DIAGNOSTICS OVERHAUL:
+#              - Removed "Simulate Walk". Entities are now completely frozen 
+#                in their base bind-pose (no bobbing, no AI processes).
+#              - Reintroduced strict `Vector3.ZERO` position clamping to completely 
+#                prevent models from sinking, sliding, or drifting.
+#              - Added "AUTO-ROTATE" toggle so developers can freeze the pedestal 
+#                to perfectly inspect the Z-axis alignment.
+#              - Neutral Studio Lighting: Swapped the colored neon rim lights (teal/magenta) 
+#                for clean, white studio ambient lights to allow accurate texture diagnostics.
+#              - Diagnostic UI Preservation: Retained SpeechBubble and FloatingQuestArrow 
+#                nodes on the model so developers can verify dynamic vertical elevations.
+#              - i18n Localization: Extracted and wrapped all hardcoded interface texts 
+#                using the translation engine's `tr()`.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/ModelShowcase.gd
 # ==============================================================================
@@ -42,45 +46,43 @@ var _treadmill_mat: StandardMaterial3D
 var _list_container: VBoxContainer
 var _title_label: Label
 var _stats_label: Label
-var _simulate_walk_btn: Button
+var _rotate_btn: Button
 
-# Active showcase state tracking (Sane class scope variables)
+# Active showcase state tracking
 var _active_node: Node3D
 var _selected_asset_id: int = -1
-var _is_walk_simulated: bool = false
-var _animation_time: float = 0.0
+var _is_rotating: bool = true
 
-# Symmetrical catalog mapping (matching all custom GLB entities registered in MobRegistry and PropRegistry)
+# Symmetrical catalog mapping
 const ASSET_CATALOG: Dictionary = {
 	"MOBS (LIVING ENTITIES)": [
-		{"id": 0, "name": "PIG (FAUNA)", "mesh_name": "pig.glb", "is_prop": false},
-		{"id": 1, "name": "CHICKEN (POULTRY)", "mesh_name": "chicken.glb", "is_prop": false},
-		{"id": 2, "name": "SHEEP (FAUNA)", "mesh_name": "sheep.glb", "is_prop": false},
-		{"id": 3, "name": "COW (FAUNA)", "mesh_name": "cow.glb", "is_prop": false},
-		{"id": 10, "name": "CAVE ZOMBIE (HOSTILE)", "mesh_name": "zombie.glb", "is_prop": false},
-		{"id": 11, "name": "GREAT WHITE SHARK (HOSTILE)", "mesh_name": "shark.glb", "is_prop": false},
-		{"id": 12, "name": "NOCTURNAL GARGOYLE", "mesh_name": "gargoyle.glb", "is_prop": false},
-		{"id": 13, "name": "SNEAKY GOBLIN (HOSTILE)", "mesh_name": "goblin.glb", "is_prop": false},
-		{"id": 107, "name": "IRON GOLEM (DEFENDER)", "mesh_name": "golem.glb", "is_prop": false},
-		{"id": 201, "name": "SEA TURTLE (AQUATIC)", "mesh_name": "turtle.glb", "is_prop": false},
-		{"id": 204, "name": "FOREST FOX (FAUNA)", "mesh_name": "fox.glb", "is_prop": false},
-		{"id": 205, "name": "FLYING BIRD (AVIAN)", "mesh_name": "yellow_bird.glb", "is_prop": false},
-		{"id": 206, "name": "DOMESTIC CAT (PET)", "mesh_name": "cat.glb", "is_prop": false},
-		{"id": 207, "name": "TROPICAL PARROT (AVIAN)", "mesh_name": "parrot.glb", "is_prop": false},
-		{"id": 208, "name": "BEACH CRAB (FAUNA)", "mesh_name": "crab.glb", "is_prop": false},
-		{"id": 209, "name": "COLOSSAL ELEPHANT (GIANT)", "mesh_name": "elephant.glb", "is_prop": false},
-		{"id": 210, "name": "DEEP-WATER OCTOPUS", "mesh_name": "octopus.glb", "is_prop": false},
-		{"id": 211, "name": "FOREST RACCOON (FAUNA)", "mesh_name": "raccoon.glb", "is_prop": false},
-		{"id": 212, "name": "FIERY GROWLITHE (CANINE)", "mesh_name": "growlithe.glb", "is_prop": false},
-		{"id": 213, "name": "TROPICAL MONKEY (FAUNA)", "mesh_name": "monkey.glb", "is_prop": false}
+		{"id": 0, "name": "NPC_NAME_PIG", "mesh_name": "pig.glb", "is_prop": false},
+		{"id": 1, "name": "NPC_NAME_CHICKEN", "mesh_name": "chicken.glb", "is_prop": false},
+		{"id": 2, "name": "NPC_NAME_SHEEP", "mesh_name": "sheep.glb", "is_prop": false},
+		{"id": 3, "name": "NPC_NAME_COW", "mesh_name": "cow.glb", "is_prop": false},
+		{"id": 10, "name": "NPC_NAME_ZOMBIE", "mesh_name": "zombie.glb", "is_prop": false},
+		{"id": 11, "name": "NPC_NAME_SHARK", "mesh_name": "shark.glb", "is_prop": false},
+		{"id": 12, "name": "NPC_NAME_GARGOYLE", "mesh_name": "gargoyle.glb", "is_prop": false},
+		{"id": 13, "name": "NPC_NAME_GOBLIN", "mesh_name": "goblin.glb", "is_prop": false},
+		{"id": 107, "name": "NPC_NAME_GOLEM", "mesh_name": "golem.glb", "is_prop": false},
+		{"id": 201, "name": "NPC_NAME_TURTLE", "mesh_name": "turtle.glb", "is_prop": false},
+		{"id": 204, "name": "NPC_NAME_FOX", "mesh_name": "fox.glb", "is_prop": false},
+		{"id": 205, "name": "NPC_NAME_BIRD", "mesh_name": "yellow_bird.glb", "is_prop": false},
+		{"id": 206, "name": "NPC_NAME_CAT", "mesh_name": "cat.glb", "is_prop": false},
+		{"id": 207, "name": "NPC_NAME_PARROT", "mesh_name": "parrot.glb", "is_prop": false},
+		{"id": 208, "name": "NPC_NAME_CRAB", "mesh_name": "crab.glb", "is_prop": false},
+		{"id": 209, "name": "NPC_NAME_ELEPHANT", "mesh_name": "elephant.glb", "is_prop": false},
+		{"id": 210, "name": "NPC_NAME_OCTOPUS", "mesh_name": "octopus.glb", "is_prop": false},
+		{"id": 211, "name": "NPC_NAME_RACCOON", "mesh_name": "raccoon.glb", "is_prop": false},
+		{"id": 212, "name": "NPC_NAME_GROWLITHE", "mesh_name": "growlithe.glb", "is_prop": false},
+		{"id": 213, "name": "NPC_NAME_MONKEY", "mesh_name": "monkey.glb", "is_prop": false}
 	],
 	"DECORATIONS (STATIC PROPS)": [
-		{"id": 200, "name": "LOOT CHEST", "mesh_name": "chest.glb", "is_prop": true},
+		{"id": 200, "name": "NOTIFICATION_LOOT_FOUND_HEADER", "mesh_name": "chest.glb", "is_prop": true},
 		{"id": 202, "name": "STREETLIGHT", "mesh_name": "streetlight_entity", "is_prop": true},
 		{"id": 203, "name": "CAMPFIRE", "mesh_name": "campfire_entity", "is_prop": true},
-		{"id": 213, "name": "WISHING WELL", "mesh_name": "wishing_well_odyssey.glb", "is_prop": true},
-		{"id": 214, "name": "RITUAL STONE MONOLITH", "mesh_name": "ritual_stone.glb", "is_prop": true},
-		{"id": 215, "name": "BREAKABLE BARREL", "mesh_name": "barrel.glb", "is_prop": true}
+		{"id": 213, "name": "NOTIFICATION_WISHING_WELL_HEADER", "mesh_name": "wishing_well_odyssey.glb", "is_prop": true},
+		{"id": 215, "name": "NOTIFICATION_BARREL_SHATTERED_HEADER", "mesh_name": "barrel.glb", "is_prop": true}
 	]
 }
 
@@ -116,7 +118,7 @@ func _setup_showcase_ui() -> void:
 	card_style.bg_color = Color(0.05, 0.05, 0.07, 0.96)
 	card_style.border_width_left = 2; card_style.border_width_top = 2
 	card_style.border_width_right = 2; card_style.border_width_bottom = 2
-	card_style.border_color = Color(0.3, 0.85, 1.0, 0.4) # Holographic Cyan
+	card_style.border_color = Color(0.3, 0.85, 1.0, 0.4) 
 	card_style.shadow_size = 25; card_style.shadow_color = Color(0, 0, 0, 0.5)
 	main_card.add_theme_stylebox_override("panel", card_style)
 	add_child(main_card)
@@ -141,7 +143,7 @@ func _setup_showcase_ui() -> void:
 	left_pane.add_child(left_vbox)
 	
 	var catalog_title := Label.new()
-	catalog_title.text = "DIAGNOSTIC MODEL SHOWCASE"
+	catalog_title.text = tr("SHOWCASE_TITLE").to_upper() # Localized Title
 	var ts := LabelSettings.new()
 	ts.font_size = 18; ts.font_color = Color(0.2, 0.85, 0.85); ts.outline_size = 4; ts.outline_color = Color.BLACK
 	catalog_title.label_settings = ts
@@ -183,14 +185,14 @@ func _setup_showcase_ui() -> void:
 	
 	# Header & Telemetry Labels
 	_title_label = Label.new()
-	_title_label.text = "SELECT AN ACTIVE MOB"
+	_title_label.text = tr("SHOWCASE_SELECT_MOB").to_upper() # Localized Instruction
 	var dts := LabelSettings.new()
 	dts.font_size = 20; dts.font_color = Color.WHITE; dts.outline_size = 4; dts.outline_color = Color.BLACK
 	_title_label.label_settings = dts
 	right_vbox.add_child(_title_label)
 	
 	_stats_label = Label.new()
-	_stats_label.text = ""
+	_stats_label.text = tr("SHOWCASE_INSPECT_DESC") # Localized Subtitle
 	var sts := LabelSettings.new()
 	sts.font_size = 11; sts.font_color = Color(0.65, 0.65, 0.7)
 	_stats_label.label_settings = sts
@@ -215,10 +217,10 @@ func _setup_showcase_ui() -> void:
 	controls_hbox.add_theme_constant_override("separation", 14)
 	right_vbox.add_child(controls_hbox)
 	
-	_simulate_walk_btn = _create_tactile_button(Color(0.12, 0.55, 0.32, 0.8)) # Green Button
-	_simulate_walk_btn.text = "SIMULATE WALK: OFF"
-	_simulate_walk_btn.pressed.connect(_on_walk_toggled)
-	controls_hbox.add_child(_simulate_walk_btn)
+	_rotate_btn = _create_tactile_button(Color(0.12, 0.55, 0.32, 0.8)) # Green Button
+	_rotate_btn.text = tr("SHOWCASE_AUTO_ROTATE_ON").to_upper() # Localized Rotator Text
+	_rotate_btn.pressed.connect(_on_rotate_toggled)
+	controls_hbox.add_child(_rotate_btn)
 	
 	var back_btn := _create_tactile_button(Color(0.2, 0.2, 0.24, 1.0)) # Dark Grey Back
 	back_btn.text = tr("SETTINGS_BACK").to_upper()
@@ -226,7 +228,6 @@ func _setup_showcase_ui() -> void:
 	controls_hbox.add_child(back_btn)
 
 
-## Sets up independent high-contrast laboratory lightings, pedestals, and the treadmill floor
 func _setup_3d_world_environment() -> void:
 	# Add isolated camera
 	_camera = Camera3D.new()
@@ -240,7 +241,7 @@ func _setup_3d_world_environment() -> void:
 	# ==========================================================================
 	_spotlight = SpotLight3D.new()
 	_spotlight.name = "ShowcaseSpotlight"
-	_spotlight.light_color = Color(1.0, 0.90, 0.55) 
+	_spotlight.light_color = Color(1.0, 0.95, 0.90) 
 	_spotlight.light_energy = 3.5
 	_spotlight.spot_range = 10.0
 	_spotlight.spot_angle = 45.0
@@ -249,18 +250,19 @@ func _setup_3d_world_environment() -> void:
 	_spotlight.shadow_enabled = true
 	_viewport.add_child(_spotlight)
 	
+	# NEUTRAL STUDY LIGHTING OVERHAUL: Changed from neons (teal/magenta) to white
 	_ambient_light_left = OmniLight3D.new()
 	_ambient_light_left.name = "LeftRimTeal"
-	_ambient_light_left.light_color = Color(0.0, 0.85, 0.85) 
-	_ambient_light_left.light_energy = 1.8
+	_ambient_light_left.light_color = Color(0.9, 0.92, 0.95) 
+	_ambient_light_left.light_energy = 1.6
 	_ambient_light_left.omni_range = 8.0
 	_ambient_light_left.position = Vector3(-2.2, 1.2, 1.5)
 	_viewport.add_child(_ambient_light_left)
 	
 	_ambient_light_right = OmniLight3D.new()
 	_ambient_light_right.name = "RightRimViolet"
-	_ambient_light_right.light_color = Color(0.85, 0.0, 0.85) 
-	_ambient_light_right.light_energy = 1.4
+	_ambient_light_right.light_color = Color(0.95, 0.92, 0.9) 
+	_ambient_light_right.light_energy = 1.2
 	_ambient_light_right.omni_range = 8.0
 	_ambient_light_right.position = Vector3(2.2, 1.2, -1.5)
 	_viewport.add_child(_ambient_light_right)
@@ -275,23 +277,22 @@ func _setup_3d_world_environment() -> void:
 	
 	# ==========================================================================
 	# COHESIVE VOXEL TREADMILL FLOOR
-	# Instantiates a flat tiled plane using 'road.png' under the pedestal.
 	# ==========================================================================
 	_treadmill = MeshInstance3D.new()
 	_treadmill.name = "TreadmillFloor"
-	_treadmill.position = Vector3(0.0, -0.42, 0.0) # Placed exactly below the feet
+	_treadmill.position = Vector3(0.0, -0.42, 0.0)
 	
 	var plane_mesh := PlaneMesh.new()
 	plane_mesh.size = Vector2(4.0, 4.0)
 	_treadmill.mesh = plane_mesh
 	
 	_treadmill_mat = StandardMaterial3D.new()
-	_treadmill_mat.albedo_color = Color(0.12, 0.12, 0.15) # Charcoal carbon
+	_treadmill_mat.albedo_color = Color(0.12, 0.12, 0.15)
 	
 	if ResourceLoader.exists("res://assets/textures/road.png"):
 		_treadmill_mat.albedo_texture = load("res://assets/textures/road.png") as Texture2D
 		_treadmill_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-		_treadmill_mat.uv1_scale = Vector3(4.0, 4.0, 1.0) # Symmetrical tiling
+		_treadmill_mat.uv1_scale = Vector3(4.0, 4.0, 1.0)
 		
 	_treadmill.material_override = _treadmill_mat
 	_viewport.add_child(_treadmill)
@@ -301,6 +302,47 @@ func _setup_3d_world_environment() -> void:
 	_pedestal.name = "PedestalNode"
 	_pedestal.position = Vector3(0.0, -0.4, 0.0) 
 	_viewport.add_child(_pedestal)
+	
+	_build_directional_arrow()
+
+
+func _build_directional_arrow() -> void:
+	var arrow_root := Node3D.new()
+	arrow_root.name = "DiagnosticArrow"
+	arrow_root.position = Vector3(0, 0.01, 0)
+	_pedestal.add_child(arrow_root)
+	
+	var arrow_mat := ORMMaterial3D.new()
+	arrow_mat.albedo_color = Color(0.2, 0.95, 0.3)
+	arrow_mat.emission_enabled = true
+	arrow_mat.emission = Color(0.2, 0.95, 0.3)
+	arrow_mat.emission_energy_multiplier = 2.0
+	
+	var shaft := MeshInstance3D.new()
+	var shaft_mesh := BoxMesh.new()
+	shaft_mesh.size = Vector3(0.08, 0.02, 1.0)
+	shaft.mesh = shaft_mesh
+	shaft.position = Vector3(0, 0, -0.5)
+	shaft.material_override = arrow_mat
+	arrow_root.add_child(shaft)
+	
+	var head := MeshInstance3D.new()
+	var head_mesh := PrismMesh.new()
+	head_mesh.size = Vector3(0.3, 0.3, 0.02)
+	head.mesh = head_mesh
+	head.rotation_degrees = Vector3(-90, 0, 0)
+	head.position = Vector3(0, 0, -1.0)
+	head.material_override = arrow_mat
+	arrow_root.add_child(head)
+	
+	var label3d := Label3D.new()
+	label3d.text = tr("SHOWCASE_FRONT") # Localized Indicator
+	label3d.pixel_size = 0.006
+	label3d.position = Vector3(0, 0.05, -1.35)
+	label3d.rotation_degrees = Vector3(-90, 0, 0) 
+	label3d.modulate = Color(0.2, 0.95, 0.3)
+	label3d.outline_modulate = Color.BLACK
+	arrow_root.add_child(label3d)
 
 
 func _populate_asset_list() -> void:
@@ -317,7 +359,8 @@ func _populate_asset_list() -> void:
 		
 		for item: Dictionary in items:
 			var btn := Button.new()
-			btn.text = "  " + item["name"]
+			# Translate item names directly using tr() if applicable, removing tags if necessary
+			btn.text = "  " + tr(item["name"]) 
 			btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			btn.custom_minimum_size = Vector2(0, 36)
 			btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -344,51 +387,42 @@ func _populate_asset_list() -> void:
 
 
 func _load_initial_empty_state() -> void:
-	_title_label.text = "SELECT AN ACTIVE MOB"
-	_stats_label.text = "Click any registered creature to inspect its visual animations."
-	_simulate_walk_btn.visible = false
+	_title_label.text = tr("SHOWCASE_SELECT_MOB").to_upper()
+	_stats_label.text = tr("SHOWCASE_INSPECT_DESC")
 
 
-## Handles dynamic node instantiation, grounding calibrations, and material duplicates
 func _on_asset_selected(asset_id: int, asset_name: String, is_prop: bool) -> void:
 	_clear_active_mob()
 	
 	_selected_asset_id = asset_id
-	_title_label.text = asset_name.to_upper()
-	_simulate_walk_btn.visible = not is_prop
+	_title_label.text = tr(asset_name).to_upper()
 	
-	# Instantiate the dynamic Mob/Prop using the clean domain registry (OCP compliant!)
 	if is_prop:
 		_active_node = PropRegistry.create_prop(asset_id, Vector3.ZERO) as Node3D
 	else:
 		_active_node = MobRegistry.create_mob(asset_id, Vector3.ZERO) as Node3D
 		
 	if is_instance_valid(_active_node):
-		# Disable physics and speech bubbles to prevent main-scene leaking
-		_active_node.set_physics_process(false)
-		
-		var bubble := _active_node.get_node_or_null("SpeechBubble") as Node3D
-		if is_instance_valid(bubble): 
-			bubble.queue_free()
-			
-		var arrow := _active_node.get_node_or_null("FloatingQuestArrow") as Node3D
-		if is_instance_valid(arrow): 
-			arrow.queue_free()
-		
 		_pedestal.add_child(_active_node)
 		
-		# Auto-adjust camera focus based on entity volume
-		if is_prop:
-			_camera.position = Vector3(0.0, 1.4, 3.5)
-			_stats_label.text = "STATIC SCENERY PROP  |  ID: " + str(asset_id)
-		else:
-			if asset_name.contains("GIANT") or asset_name.contains("GOLEM") or asset_name.contains("ELEPHANT"):
-				_camera.position = Vector3(0.0, 2.2, 6.0)
-			else:
-				_camera.position = Vector3(0.0, 1.0, 2.5)
-			_stats_label.text = "ACTIVE WILDLIFE MOB  |  ID: " + str(asset_id)
-			
-		_refresh_walk_simulation_state()
+		# ======================================================================
+		# PURE STATIC FREEZE (CALIBRATED):
+		# We strictly disable processing AFTER the node is added to the scene tree.
+		# This bypasses Godot's automatic `_ready()` process restoration.
+		# ======================================================================
+		_active_node.set_physics_process(false)
+		_active_node.set_process(false)
+		
+		# Freeze the nested NPCVisualComponent (stops bobbing and breathing sways)
+		var visual_comp := _active_node.get_node_or_null("NPCVisualComponent")
+		if is_instance_valid(visual_comp):
+			visual_comp.set_process(false)
+		
+		# ======================================================================
+		# DIAGNOSTIC PRESERVATION FIX: 
+		# We do NOT queue_free() SpeechBubble or FloatingQuestArrow nodes anymore. 
+		# This allows developers to verify their correct vertical alignments.
+		# ======================================================================
 
 
 func _clear_active_mob() -> void:
@@ -397,56 +431,31 @@ func _clear_active_mob() -> void:
 		_active_node = null
 
 
-func _on_walk_toggled() -> void:
-	_is_walk_simulated = not _is_walk_simulated
-	_refresh_walk_simulation_state()
-
-
-func _refresh_walk_simulation_state() -> void:
-	if _is_walk_simulated and _simulate_walk_btn.visible:
-		_simulate_walk_btn.text = "SIMULATE WALK: ON"
-		_simulate_walk_btn.add_theme_color_override("font_color", Color.WHITE)
+func _on_rotate_toggled() -> void:
+	_is_rotating = not _is_rotating
+	if _is_rotating:
+		_rotate_btn.text = tr("SHOWCASE_AUTO_ROTATE_ON").to_upper()
+		_rotate_btn.add_theme_color_override("font_color", Color.WHITE)
 	else:
-		_is_walk_simulated = false
-		_simulate_walk_btn.text = "SIMULATE WALK: OFF"
-		_simulate_walk_btn.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+		_rotate_btn.text = tr("SHOWCASE_AUTO_ROTATE_OFF").to_upper()
+		_rotate_btn.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 
 
 func _process(delta: float) -> void:
-	_animation_time += delta
-	
-	# Rotate Pedestal slowly so developer can inspect all angles (360° rotation)
-	# Disables automatic pedestal rotation during walking to let the developer see straight forward!
-	if is_instance_valid(_pedestal) and not _is_walk_simulated:
-		_pedestal.rotate_y(delta * 0.45)
-	elif is_instance_valid(_pedestal):
-		# Face the camera perfectly straight during walking simulation
-		_pedestal.rotation = Vector3.ZERO
+	# Rotate Pedestal slowly so developer can inspect all angles
+	if is_instance_valid(_pedestal):
+		if _is_rotating:
+			_pedestal.rotate_y(delta * 0.45)
+		else:
+			# Snap perfectly forward when paused for precise front-facing inspection
+			_pedestal.rotation = Vector3.ZERO
 		
 	# ==========================================================================
-	# TREADMILL SURFACE UV PANNING (COHESIVE WALK ALIGNMENTS)
-	# ==========================================================================
-	if _is_walk_simulated:
-		# Slide the tiled road texture backward along the Z-axis (V coordinate)
-		if is_instance_valid(_treadmill_mat):
-			_treadmill_mat.uv1_offset.y += delta * 1.5
-	
-	# ==========================================================================
-	# COMPOSITE WALK CYCLES INJECTION & HERMETIC CLAMPING
-	# - Write velocity directly to the preview model to trigger procedural sways.
-	# - Clamp coordinates flat to (0,0,0) so they can never walk off-screen!
+	# HERMETIC ANCHOR: Clamps local coordinates to pedestal origin every frame!
+	# Prevents ANY sinking, sliding, or drifting caused by lingering node velocities.
 	# ==========================================================================
 	if is_instance_valid(_active_node):
-		# HERMETIC ANCHOR: Clamps local coordinates to pedestal origin every frame!
 		_active_node.position = Vector3.ZERO
-		_active_node.global_position = _pedestal.global_position
-		
-		if _is_walk_simulated:
-			# Faking forward velocity (-Z) pushes vectors directly to the preview node's animation loops!
-			_active_node.set("velocity", Vector3(0.0, 0.0, -1.8))
-			_active_node.set_process(true) # Forces visual bobbing process frame
-		else:
-			_active_node.set("velocity", Vector3.ZERO)
 
 
 func _create_spacer(height: int) -> Control:
@@ -455,7 +464,6 @@ func _create_spacer(height: int) -> Control:
 	return spacer
 
 
-## Factory method to programmatically construct 3D tactile buttons
 func _create_tactile_button(base_color: Color) -> Button:
 	var btn := Button.new()
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL

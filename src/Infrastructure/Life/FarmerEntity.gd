@@ -1,169 +1,35 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Farmer NPC physics controller. Automatically scans, wanders to,
-#              and harvests mature golden crops to replant them, while generating
-#              specialized outfits dynamically based on its home biome.
-# SOLID COMPLIANCE:
-# - Liskov Substitution Principle (LSP): Safely extends PassiveEntity.
-# - Single Responsibility Principle (SRP): Delegates rendering setups 
-#   and AI state execution to specialized sibling components.
-# - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
-#   statically through the decoupled CelestialService provider.
-# I/O OPTIMIZATION (120 FPS STABILIZATION):
-# - Removed all verbose `[FarmerAI]` print statements to prevent synchronous, 
-#   blocking console I/O stalls during real-time harvesting sweeps.
+# Description: Farmer NPC physics controller with dynamic visual strategy injection.
+#              SOLID COMPLIANCE: 
+#              - Single Responsibility Principle (SRP): Handles exclusively agricultural 
+#                AI, crop scanning, and tilling logic, delegating all rendering/mesh tasks.
+#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity cleanly.
+#              - Dependency Inversion Principle (DIP): Visual structures are completely 
+#                delegated to the injected `IEntityVisualRepresentation` strategy.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
 class_name FarmerEntity
 extends PassiveEntity
 
+const BASE_MODEL_PATH := "res://assets/models/mobs/farmer/farmer_base.fbx"
+
 # Scanning and harvesting parameters
 var _scan_timer: float = 3.0
 var _target_crop_coord := Vector3i(0, -999, 0)
 var _harvest_timer: float = 0.0
 
-# Handheld tool joint
-var _hoe_joint: Node3D
-
 
 func _init(spawn_pos: Vector3) -> void:
-	super(spawn_pos, 3) # 3 Hearts of health
+	# Initialize with 3 Hearts of health
+	super(spawn_pos, 3)
 	name = "Entity_FARMER"
 
 
-## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 
-## to the visual component joints.
-func _build_visual_representation() -> void:
-	var biome_id := _detect_current_biome()
-	
-	# Extract procedural color parameters calculated on boot by the visual component
-	var shirt_color: Color = visual_component.variant_clothing_color
-	var skin_color: Color = visual_component.variant_skin_color             # Procedural skin tone
-	
-	# Fallback accessory colors
-	var denim_color := Color(0.20, 0.35, 0.55)       # Denim Blue overalls
-	var strap_color := Color(0.35, 0.22, 0.15)       # Leather straps
-	var hat_color := Color(0.88, 0.78, 0.42)        # Straw yellow hat
-	var boots_color := Color(0.18, 0.14, 0.11)       # Muddy boots
-	var iron_color := Color(0.50, 0.50, 0.52)        # Raw steel
-	
-	# Determine specialized colors based on biome
-	match biome_id:
-		4: # Frostbite Glaciers (Thermal fur-lined overalls)
-			denim_color = Color(0.85, 0.85, 0.90)
-			hat_color = Color(0.98, 0.98, 0.98)
-		7: # Neon Ruins (Cybertech cyber-overalls)
-			denim_color = Color(0.12, 0.12, 0.15)
-			strap_color = Color(0.0, 0.95, 0.95) 
-			hat_color = Color(0.95, 0.0, 0.95)   
-		8: # Swamp of Sighs (Muddy green overalls)
-			denim_color = Color(0.18, 0.28, 0.15)
-			boots_color = Color(0.10, 0.08, 0.05)
-		9: # Cloud Kingdom (Sky white cloud overalls)
-			denim_color = Color(0.95, 0.98, 1.0)
-			hat_color = Color(1.0, 0.95, 0.7)
-			
-	# 1. Base Legs & Feet (Attached to the bouncing joint of visual component)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), boots_color)
-	
-	# 2. Clothed Torso Shirt & Overalls
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), shirt_color)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.47, 0.42, 0.47), Vector3(0, 0.36, 0), denim_color) # Overalls
-	
-	# Leather harness straps (Wrapped diagonally across the chest)
-	visual_component.create_box(visual_component.body_bob_node, Vector3(0.08, 0.77, 0.12), Vector3(-0.13, 0.525, -0.19), strap_color)
-	
-	# 3. Head Joint Setup
-	visual_component.head_node = Node3D.new()
-	visual_component.head_node.name = "HumanHead"
-	visual_component.head_node.position = Vector3(0, 1.05, 0)
-	visual_component.body_bob_node.add_child(visual_component.head_node)
-	
-	visual_component.create_box(visual_component.head_node, Vector3(0.35, 0.37, 0.35), Vector3(0, 0.185, 0), skin_color) # Face
-	visual_component.create_box(visual_component.head_node, Vector3(0.09, 0.21, 0.12), Vector3(0, 0.12, -0.21), skin_color * 0.9) # Nose
-	
-	# Blinking Eyes (Assigned to visual component tracking)
-	visual_component.left_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.11, 0.19, -0.18), Color.WHITE)
-	visual_component.create_box(visual_component.left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
-	
-	visual_component.right_eye = visual_component.create_box(visual_component.head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.11, 0.19, -0.18), Color.WHITE)
-	visual_component.create_box(visual_component.right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.2, 0.2, 0.2))
-	
-	# Specialized Hat styles (Farmer cap vs wide-brim straw hat)
-	if biome_id == 1: # Plumber Cap for Steps biome
-		visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.12, 0.38), Vector3(0, 0.36, 0), denim_color)
-		visual_component.create_box(visual_component.head_node, Vector3(0.38, 0.04, 0.12), Vector3(0, 0.48, -0.22), denim_color)
-	else:
-		# Classic Wide-Brim Straw/Field Hat
-		visual_component.create_box(visual_component.head_node, Vector3(0.65, 0.03, 0.65), Vector3(0, 0.36, 0), hat_color) 
-		visual_component.create_box(visual_component.head_node, Vector3(0.24, 0.10, 0.24), Vector3(0, 0.42, 0), hat_color) 
-	
-	# 4. Arms Folded / Clothed sleeves
-	visual_component.arms_node = Node3D.new()
-	visual_component.arms_node.name = "ArmsJoint"
-	visual_component.arms_node.position = Vector3(0, 0.65, -0.23)
-	visual_component.body_bob_node.add_child(visual_component.arms_node)
-	visual_component.create_box(visual_component.arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), shirt_color)
-	
-	# 5. Handheld Tool: Harvesting Hoe (Mounted on right shoulder of bouncing body bob node)
-	_hoe_joint = Node3D.new()
-	_hoe_joint.name = "HarvestHoeJoint"
-	_hoe_joint.position = Vector3(0.18, 0.52, 0.24)
-	_hoe_joint.rotation = Vector3(0, 0, deg_to_rad(45)) 
-	visual_component.body_bob_node.add_child(_hoe_joint)
-	
-	visual_component.create_box(_hoe_joint, Vector3(0.04, 0.52, 0.04), Vector3(0, 0, 0), strap_color) # Handle shaft
-	visual_component.create_box(_hoe_joint, Vector3(0.06, 0.06, 0.14), Vector3(0, 0.24, -0.06), iron_color) # Socket metal
-	visual_component.create_box(_hoe_joint, Vector3(0.10, 0.18, 0.04), Vector3(0, 0.21, -0.12), iron_color) # Blade
-
-
-func _get_collision_box_size() -> Vector3:
-	return Vector3(0.575, 1.5, 0.575)
-
-
-func _get_collision_box_position() -> Vector3:
-	return Vector3(0, 0.75, 0)
-
-
-func _setup_floating_bubble() -> void:
-	var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
-	if sb_script != null:
-		_bubble = sb_script.new() as Node3D
-		add_child(_bubble)
-		_bubble.call("set_text", tr("BUBBLE_FARMER"))
-
-
-## Public Gaze Interaction: Localized dialogue trees.
-func interact(player_node: CharacterBody3D) -> void:
-	var hud := player_node.get("hud") as PlayerHUD
-	if is_instance_valid(hud):
-		var intro_node := DialogueNode.new()
-		intro_node.node_id = "farmer_intro_temp"
-		intro_node.text = _select_procedural_greeting_key()
-		
-		hud.open_dialogue(intro_node, "NPC_NAME_FARMER", self)
-
-
-## Selects a unique localized dialogue key based on time, biome, and variety index.
-func _select_procedural_greeting_key() -> String:
-	# DIP Compliance: Safely retrieve time statically
-	var is_night: bool = CelestialService.is_night_time_static()
-		
-	if is_night:
-		return "DIALOGUE_FARMER_NIGHT"
-		
-	var biome_id := _detect_current_biome()
-	match biome_id:
-		4: return "DIALOGUE_FARMER_GLACIERS"   
-		7: return "DIALOGUE_FARMER_NEON"       
-		8: return "DIALOGUE_FARMER_SWAMP"       
-		9: return "DIALOGUE_FARMER_CLOUD"       
-		_:
-			var variety_index := npc_seed % 2
-			match variety_index:
-				0: return "DIALOGUE_FARMER_PLAINS_A"
-				_: return "DIALOGUE_FARMER_PLAINS_B"
+## Concrete Implementation (DIP): Injects the modular Farmer Role ID into the strategy compiler
+func _get_humanoid_role() -> int:
+	return ProceduralVoxelRepresentation.RoleType.FARMER
 
 
 ## Overrides standard physics ticker to weave defensive aggro scanning loops.
@@ -242,8 +108,9 @@ func _execute_crop_harvesting(world_node: WorldController, delta: float) -> void
 		if is_instance_valid(ai_component):
 			ai_component.wander_direction = diff.normalized()
 		
-		# Animate: Swing the hoe up and down to mimic digging
-		_animate_harvesting_hoe(delta)
+		# SOLID: Delegate harvesting visual swing to the injected strategy
+		if is_instance_valid(visual_representation):
+			visual_representation.trigger_attack_visuals()
 		
 		_harvest_timer -= delta
 		if _harvest_timer <= 0.0:
@@ -257,35 +124,11 @@ func _execute_crop_harvesting(world_node: WorldController, delta: float) -> void
 			# Hop with physical joy!
 			velocity.y = JUMP_VELOCITY
 			
-			# Sheathe hoe and reset state
-			_reset_hoe_transforms()
 			_target_crop_coord = Vector3i(0, -999, 0)
 			
 			if is_instance_valid(ai_component):
 				ai_component.current_task = NPCAIComponent.TaskState.IDLE
 				ai_component.task_timer = 2.0
-
-
-## Animate: Rotates the hoe joint dynamically forward and down to mimic digging.
-func _animate_harvesting_hoe(delta: float) -> void:
-	if is_instance_valid(_hoe_joint):
-		# Interpolate the joint into the farmer's hands
-		_hoe_joint.position = _hoe_joint.position.lerp(Vector3(0.18, 0.52, -0.32), delta * 8.0)
-		
-		# Swing back and forth based on high-frequency sin waves
-		var anim_time: float = visual_component._animation_time if is_instance_valid(visual_component) else 0.0
-		var swing_offset := sin(anim_time * 12.0) * 0.45
-		_hoe_joint.rotation.x = lerp(_hoe_joint.rotation.x, deg_to_rad(45) + swing_offset, delta * 12.0)
-		_hoe_joint.rotation.y = lerp(_hoe_joint.rotation.y, deg_to_rad(-45), delta * 8.0)
-		_hoe_joint.rotation.z = lerp(_hoe_joint.rotation.z, deg_to_rad(0), delta * 8.0)
-
-
-## Animate: Returns the hoe tool back to its resting position on the shoulder.
-func _reset_hoe_transforms() -> void:
-	if is_instance_valid(_hoe_joint):
-		var tw := create_tween().set_parallel(true)
-		tw.tween_property(_hoe_joint, "position", Vector3(0.18, 0.52, 0.24), 0.25).set_trans(Tween.TRANS_SINE)
-		tw.tween_property(_hoe_joint, "rotation", Vector3(0, 0, deg_to_rad(45)), 0.25).set_trans(Tween.TRANS_SINE)
 
 
 ## Spawns agricultural sprout feedback particles above the tilled soil coordinate.
@@ -346,6 +189,15 @@ func _detect_current_biome() -> int:
 	return default_biome_id
 
 
-func _can_socialize() -> bool:
-	var current_task := ai_component.current_task if is_instance_valid(ai_component) else int(NPCAIComponent.TaskState.IDLE)
-	return current_task != NPCAIComponent.TaskState.WORKING
+## Dynamic Collision Box Sizing: Adapts physically to voxel (1.5m) vs Mixamo (1.8m) heights
+func _get_collision_box_size() -> Vector3:
+	if FileAccess.file_exists(BASE_MODEL_PATH):
+		return Vector3(0.6, 1.8, 0.6) # Standard Mixamo height (1.8m)
+	return Vector3(0.575, 1.5, 0.575) # Voxel fallback height (1.5m)
+
+
+## Dynamic Collision Box Position: Centered dynamically depending on active scale
+func _get_collision_box_position() -> Vector3:
+	if FileAccess.file_exists(BASE_MODEL_PATH):
+		return Vector3(0.0, 0.9, 0.0) # Center Y at 0.9m for 1.8m box
+	return Vector3(0.0, 0.75, 0.0) # Center Y at 0.75m for 1.5m box
