@@ -14,8 +14,10 @@
 #                procedural flight sways, and aggressively pursues the player.
 #              - Upon death, polymorphically drops 1x Stone Block (ID 1).
 #              - Fixed backward walking bug by setting Y rotation to 90 degrees.
-# 3D FLOATING NAMEPLATE INTEGRATION:
-#              - Instantiates a high-contrast 3D Floating `Label3D` Nameplate above the model head.
+# RED NAMEPLATE & FLIGHT GEOMETRY TRACKER:
+#              - Instantiates a warning Crimson Red 3D Floating Nameplate above the model head.
+#              - Real-time Height Synchronization: Dynamically shifts the nameplate's Y height 
+#                inside the physics loop to match the model's altitude as it flies or perches.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GargoyleEntity.gd
 # ==============================================================================
@@ -112,8 +114,8 @@ func _setup_nameplate() -> void:
 	_nameplate.no_depth_test = false # Occluded by solid blocks
 	_nameplate.render_priority = 5
 	
-	# Text styling and high-contrast outline
-	_nameplate.modulate = Color(1.0, 1.0, 1.0)
+	# Text styling and high-contrast red warning outline
+	_nameplate.modulate = Color(1.0, 0.15, 0.15) # Warning Red
 	_nameplate.outline_modulate = Color(0, 0, 0)
 	_nameplate.outline_size = 5
 	
@@ -288,6 +290,13 @@ func _process(delta: float) -> void:
 			# Daytime (STONE): Lerp back to solid ground position and 90° rotation
 			_model_node.position.y = lerp(_model_node.position.y, 0.8982, delta * 5.0)
 			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(90.0), 0.0), delta * 5.0)
+			
+		# ======================================================================
+		# DYNAMIC NAMEPLATE HEIGHT TRACKER
+		# Synchronizes the nameplate's Y height with the flying model mesh in real-time!
+		# ======================================================================
+		if is_instance_valid(_nameplate):
+			_nameplate.position.y = _model_node.position.y + 1.05
 
 
 # ==============================================================================

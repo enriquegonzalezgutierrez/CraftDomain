@@ -4,15 +4,10 @@
 #              glassmorphic 24-slot inventory and backpack inspector.
 #              Supports native drag-and-drop operations and sorting.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Manages the presentation layer, 
-#   layout, and Drag-and-Drop operations of the inventory. Consuming, swapping, 
-#   and sorting rules are delegated to the IInventory domain interface.
-# - Open-Closed Principle (OCP): Data-driven asset rendering. Adding new items 
-#   does not require changing the main layout structures. All texts utilize `tr()`.
-# - Liskov Substitution Principle (LSP): Fully compatible with standard Control flows.
-# EXPORT FIX:
-# - Replaced FileAccess.file_exists with ResourceLoader.exists in the texture
-#   preloader to ensure textures load correctly when packed into a binary .pck file.
+# - Single Responsibility Principle (SRP): Coordinates only the layout grids, 
+#   details panel selections, and high-level button clicks. Drag-and-drop data 
+#   and slot-rendering tasks are delegated to `InventorySlotWidget.gd`.
+# - Open-Closed Principle (OCP): Purely data-driven. All texts utilize `tr()`.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/InventoryOverlay.gd
 # ==============================================================================
@@ -40,10 +35,7 @@ var _use_button: Button
 var _first_selected_slot_index: int = -1
 var _focused_slot_index: int = -1
 
-# Static in-memory cache for loaded 2D textures (prevents redundant disk reads)
-static var _textures_cache: Dictionary = {}
-
-# Theme Palette Colors matching the block types
+# Theme Palette Colors matching the block types (Shared mapping)
 const BLOCK_COLORS = {
 	-1: Color(0, 0, 0, 0),       # Empty / Air
 	1: Color(0.55, 0.55, 0.55),  # Stone
@@ -301,12 +293,12 @@ func _refresh_backpack_grids() -> void:
 		
 	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 	
-	# 1. Populate UPPER STORAGE GRID (Slots 8 to 23)
+	# 1. Populate UPPER STORAGE GRID (Slots 8 to 23) using the decoupled widget
 	for i: int in range(8, 24):
 		var btn := _create_grid_slot_button(i, inventory, 68)
 		_backpack_grid_container.add_child(btn)
 		
-	# 2. Populate LOWER QUICKBAR DOCK (Slots 0 to 7)
+	# 2. Populate LOWER QUICKBAR DOCK (Slots 0 to 7) using the decoupled widget
 	for i: int in range(8):
 		var btn := _create_grid_slot_button(i, inventory, 38)
 		_hotbar_grid_container.add_child(btn)
@@ -317,13 +309,12 @@ func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, si
 	var slot := inventory.get_slot_data(slot_index)
 	var qty: int = slot.quantity
 	
-	var btn := InventorySlotButton.new()
+	var btn := InventorySlotWidget.new()
 	btn.slot_index = slot_index
 	btn.overlay = self
 	btn.custom_minimum_size = Vector2(size_pixels, size_pixels)
-	btn.mouse_filter = Control.MOUSE_FILTER_PASS
-	_setup_list_button_animations(btn, size_pixels)
 	
+	# Build layout StyleBoxes
 	var slot_style := StyleBoxFlat.new()
 	slot_style.set_corner_radius_all(6)
 	slot_style.bg_color = Color(0.12, 0.12, 0.15, 0.6)
@@ -346,7 +337,7 @@ func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, si
 	btn.add_theme_stylebox_override("pressed", slot_style)
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	
-	# Only render icon & counter labels if the slot is populated
+	# Render icon and counter labels
 	if slot.item_id != -1 and qty != 0:
 		var icon_container := Control.new()
 		icon_container.name = "ItemIconContainer"
@@ -372,20 +363,19 @@ func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, si
 		tex_display.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		icon_container.add_child(tex_display)
 		
-		var tex := _get_item_texture(slot.item_id)
+		# Delegate rendering extraction statically to the decoupled widget
+		var tex := btn._get_item_texture(slot.item_id)
 		
 		if tex != null:
 			tex_display.texture = tex
 			tex_display.visible = true
 			fallback.visible = false
-			for child: Node in fallback.get_children():
-				child.queue_free()
 		else:
 			tex_display.texture = null
 			tex_display.visible = false
 			fallback.color = BLOCK_COLORS.get(slot.item_id, Color.DARK_GRAY)
 			fallback.visible = true
-			_apply_special_fallback_decoration(fallback, slot.item_id)
+			btn._apply_special_fallback_decoration(fallback, slot.item_id)
 		
 		var qty_label := Label.new()
 		qty_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -455,7 +445,10 @@ func _on_slot_selected(slot_index: int) -> void:
 	for child: Node in _detail_icon.get_children():
 		child.queue_free()
 		
-	var tex := _get_item_texture(slot.item_id)
+	# Leverage the decoupled helper statically to render preview icons
+	var helper := InventorySlotWidget.new()
+	var tex := helper._get_item_texture(slot.item_id)
+	
 	if tex != null:
 		var preview_tex := TextureRect.new()
 		preview_tex.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -466,7 +459,9 @@ func _on_slot_selected(slot_index: int) -> void:
 		_detail_icon.add_child(preview_tex)
 		_detail_icon.color = Color(0, 0, 0, 0) # Transparent background
 	else:
-		_apply_special_fallback_decoration(_detail_icon, slot.item_id)
+		helper._apply_special_fallback_decoration(_detail_icon, slot.item_id)
+		
+	helper.queue_free() # Clean up auxiliary helper instantly
 	
 	_detail_desc.text = tr("ITEM_" + str(slot.item_id) + "_DESC")
 	_detail_instruction.text = tr("ITEM_USAGE_PREFIX") + ": " + tr("ITEM_" + str(slot.item_id) + "_USE")
@@ -597,19 +592,6 @@ func _setup_button_style(btn: Button, normal_color: Color) -> void:
 	btn.add_theme_font_size_override("font_size", 14)
 
 
-func _setup_list_button_animations(btn: Button, size_pixels: int) -> void:
-	btn.pivot_offset = Vector2(float(size_pixels) / 2.0, float(size_pixels) / 2.0)
-	btn.mouse_entered.connect(_on_list_button_hover.bind(btn, true))
-	btn.mouse_exited.connect(_on_list_button_hover.bind(btn, false))
-
-
-func _on_list_button_hover(btn: Button, hover: bool) -> void:
-	if is_instance_valid(btn):
-		var target_scale := Vector2(1.05, 1.05) if hover else Vector2(1.0, 1.0)
-		var tw := create_tween()
-		tw.tween_property(btn, "scale", target_scale, 0.08).set_trans(Tween.TRANS_SINE)
-
-
 func _create_spacer(height: int) -> Control:
 	var s := Control.new()
 	s.custom_minimum_size = Vector2(0, height)
@@ -617,141 +599,8 @@ func _create_spacer(height: int) -> Control:
 
 
 # ==============================================================================
-# EXTERNAL RESOURCES PRELOADER & SAFELY EXTRACTOR
+# VIEW COORDINATION ROUTERS FOR DECOUPLED SLOT WIDGETS
 # ==============================================================================
-
-## Locates and returns cached Texture2D. 
-## Complies with Godot export pipeline by querying ResourceLoader instead of FileAccess.
-func _get_item_texture(item_id: int) -> Texture2D:
-	if _textures_cache.has(item_id):
-		return _textures_cache[item_id] as Texture2D
-		
-	var texture_file := ""
-	match item_id:
-		1: texture_file = "stone.png"
-		2: texture_file = "dirt.png"
-		3: texture_file = "grass_top.png"
-		4: texture_file = "wood.png"
-		5: texture_file = "leaves.png"
-		7: texture_file = "sand.png"
-		8: texture_file = "red_sand.png"
-		9: texture_file = "snow.png"
-		10: texture_file = "ice.png"
-		11: texture_file = "mud.png"
-		13: texture_file = "sakura_leaves.png"
-		15: texture_file = "lava.png"
-		21: texture_file = "coal_ore.png"
-		22: texture_file = "bricks.png"
-		23: texture_file = "glass.png"
-		24: texture_file = "birch_log.png"
-		
-	if texture_file != "":
-		var full_path := "res://assets/textures/" + texture_file
-		if ResourceLoader.exists(full_path):
-			var tex: Texture2D = load(full_path) as Texture2D
-			if tex is Texture2D:
-				_textures_cache[item_id] = tex
-				return tex
-				
-	_textures_cache[item_id] = null
-	return null
-
-
-func _apply_special_fallback_decoration(fallback_node: Control, item_id: int) -> void:
-	for child: Node in fallback_node.get_children():
-		child.queue_free()
-		
-	var symbol := Label.new()
-	symbol.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	symbol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	symbol.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	
-	var ls := LabelSettings.new()
-	ls.font_size = 18 if fallback_node.size.x < 45 else 22
-	ls.outline_size = 3
-	ls.outline_color = Color.BLACK
-	symbol.label_settings = ls
-	
-	match item_id:
-		16: symbol.text = "🍗" 
-		17: symbol.text = "⚔️" 
-		18: symbol.text = "🌱" 
-		12: symbol.text = "💠"
-		14: symbol.text = "☁️"
-		_: symbol.text = ""
-		
-	if symbol.text != "":
-		fallback_node.add_child(symbol)
-
-
-# ==============================================================================
-# DRAG AND DROP NATIVE SWAPPING SUBCLASS
-# ==============================================================================
-
-class InventorySlotButton:
-	extends Button
-	
-	var slot_index: int
-	var overlay: InventoryOverlay
-
-
-	func _get_drag_data(_at_position: Vector2) -> Variant:
-		var inventory: InventoryComponent = overlay.player.get("inventory") as InventoryComponent
-		if not is_instance_valid(inventory):
-			return null
-			
-		var slot := inventory.get_slot_data(slot_index)
-		if slot == null or slot.item_id == -1 or slot.quantity <= 0:
-			return null 
-			
-		var preview := Control.new()
-		preview.name = "BackpackDragPreview"
-		
-		var container := Control.new()
-		container.custom_minimum_size = Vector2(46, 46)
-		container.size = Vector2(46, 46)
-		container.position = -Vector2(23, 23)
-		preview.add_child(container)
-		
-		var backing := ColorRect.new()
-		backing.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		backing.color = BLOCK_COLORS.get(slot.item_id, Color.DARK_GRAY)
-		backing.modulate.a = 0.72 
-		container.add_child(backing)
-		
-		var tex_display := TextureRect.new()
-		tex_display.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		tex_display.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tex_display.text_filter = TextureRect.TEXTURE_FILTER_NEAREST
-		tex_display.stretch_mode = TextureRect.STRETCH_SCALE
-		tex_display.modulate.a = 0.72
-		container.add_child(tex_display)
-		
-		var tex: Texture2D = overlay._get_item_texture(slot.item_id) as Texture2D
-		if tex != null:
-			tex_display.texture = tex
-			tex_display.visible = true
-			backing.visible = false
-		else:
-			tex_display.texture = null
-			tex_display.visible = false
-			backing.visible = true
-			overlay._apply_special_fallback_decoration(backing, slot.item_id)
-			
-		set_drag_preview(preview)
-		overlay.set_drag_source(slot_index)
-		
-		return slot_index
-
-
-	func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
-		return data is int
-
-
-	func _drop_data(_at_position: Vector2, data: Variant) -> void:
-		var source_slot_index := data as int
-		overlay.execute_dnd_swap(source_slot_index, slot_index)
-
 
 ## Highlights slot A and updates display grids.
 func set_drag_source(slot_index: int) -> void:

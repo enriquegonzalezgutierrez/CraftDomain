@@ -16,12 +16,12 @@
 #              - Scale is calibrated dynamically to 1.6635x to achieve a perfect 1.8m height.
 #              - Max Z-vertex is 0.0. When rotated 90 degrees, the feet sit perfectly 
 #                at Y = 0.0. No vertical Y-offset is needed!
-# JUMP ANIMATION & 3D NAMEPLATE INTEGRATION:
+# JUMP ANIMATION & RED NAMEPLATE INTEGRATION:
 #              - Added dynamic binding and loading support for the new `zombie_jump.fbx` track.
 #              - Blends the airborne jumping states elegantly inside the state controller.
 #              - Instantiates a high-contrast 3D Floating `Label3D` Nameplate above the model head.
-#              - Adjusts the height layout of the quest targeting bubble to 2.25m to prevent 
-#                overlapping, and wraps its warning text with a dynamic `tr()`.
+#              - WARNING RED COLOR: The nameplate now renders in high-contrast crimson red 
+#                to immediately alert the player of its hostile nature.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -130,13 +130,13 @@ func _setup_nameplate() -> void:
 	_nameplate.no_depth_test = false # Occluded by solid blocks
 	_nameplate.render_priority = 5
 	
-	# Text styling and high-contrast outline
-	_nameplate.modulate = Color(1.0, 1.0, 1.0)
+	# Text styling and high-contrast red warning outline
+	_nameplate.modulate = Color(1.0, 0.15, 0.15) # Warning Red
 	_nameplate.outline_modulate = Color(0, 0, 0)
 	_nameplate.outline_size = 5
 	
-	# Set position right above the model head baseline (1.8m height + 15cm offset)
-	_nameplate.position = Vector3(0.0, 1.95, 0.0)
+	# Set position right above the model head baseline (1.8m height + 25cm offset)
+	_nameplate.position = Vector3(0.0, 2.05, 0.0)
 	add_child(_nameplate)
 
 
@@ -149,7 +149,7 @@ func _setup_quest_bubble() -> void:
 			_quest_bubble.name = "QuestBubble"
 			add_child(_quest_bubble)
 			_quest_bubble.call("set_text", tr("BUBBLE_TARGET_MONSTER"))
-			_quest_bubble.position = Vector3(0.0, 2.25, 0.0) # Lifted to clear nameplate
+			_quest_bubble.position = Vector3(0.0, 2.45, 0.0) # Lifted to clear nameplate
 
 
 ## Loads the external GLB model and applies calculated mathematical transforms
@@ -209,7 +209,7 @@ func _load_external_fbx_animations() -> void:
 		"idle": ANIM_DIR + "zombie/zombie_idle.fbx",
 		"walk": ANIM_DIR + "zombie/zombie_walk.fbx",
 		"attack": ANIM_DIR + "zombie/zombie_attack.fbx",
-		"jump": ANIM_DIR + "zombie/zombie_jump.fbx" # <-- Added for jump track
+		"jump": ANIM_DIR + "zombie/zombie_jump.fbx"
 	}
 	
 	for anim_name: String in anim_sources.keys():
@@ -299,6 +299,13 @@ func _prune_extraneous_nodes(node: Node) -> void:
 			child.free()
 		else:
 			_prune_extraneous_nodes(child)
+
+
+func take_damage(amount: int, knockback_force: Vector3) -> void:
+	if domain_entity.is_dead:
+		return
+	velocity += knockback_force
+	domain_entity.take_damage(amount)
 
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
@@ -579,3 +586,17 @@ func _bite_player() -> void:
 		var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
 		if player.has_method("take_damage"):
 			player.call("take_damage", 1, knockback)
+
+
+## Dynamic Collision Box Sizing: Adapts physically to voxel (1.2m) vs Mixamo (0.75m) heights
+func _get_collision_box_size() -> Vector3:
+	if ResourceLoader.exists(BASE_MODEL_PATH):
+		return Vector3(0.5, 0.75, 0.5) # Dynamic 0.75m height
+	return Vector3(0.6, 1.2, 0.6) # Fallback 1.2m voxel height
+
+
+## Dynamic Collision Box Position: Centered dynamically depending on active mesh scale
+func _get_collision_box_position() -> Vector3:
+	if ResourceLoader.exists(BASE_MODEL_PATH):
+		return Vector3(0.0, 0.375, 0.0) # Center Y at 0.375m
+	return Vector3(0.0, 0.6, 0.0) # Center Y at 0.6m

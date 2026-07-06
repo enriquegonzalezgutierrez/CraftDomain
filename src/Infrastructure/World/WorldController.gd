@@ -19,8 +19,10 @@
 #              - Optimized Main Thread: Removed heavy loop scans from 
 #                spawn_entities_for_chunk() to completely preserve locked 120 FPS.
 #              - Fixed circular parser locks by typing nested adapters cleanly as Node3D.
-# PROCEDURAL BLOCK-SUPPORT GRAVITY ENGINE:
+# PROCEDURAL BLOCK-SUPPORT GRAVITY ENGINE (STRICT TYPED FIX):
 #              - Added `_check_and_resolve_floating_props` to simulate gravity.
+#              - Resolved the type-inference compilation warnings by casting 
+#                generic nodes to static `StaticBody3D` and explicitly typing positions/flags.
 #              - Destructible props (barrels, chests, fires) shatter and drop loot on block break.
 #              - Heavy structural props (wells, lamps) slide down smoothly with elastic bounces.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -315,20 +317,23 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 ## Scans all active child nodes to find props resting on the newly mined block coordinate
 func _check_and_resolve_floating_props(mined_pos: Vector3i) -> void:
 	# Define target trigger checks (Props are centered at X+0.5, Z+0.5)
-	var expected_x := float(mined_pos.x) + 0.5
-	var expected_z := float(mined_pos.z) + 0.5
-	var expected_y_min := float(mined_pos.y) + 0.9
-	var expected_y_max := float(mined_pos.y) + 1.1
+	var expected_x: float = float(mined_pos.x) + 0.5
+	var expected_z: float = float(mined_pos.z) + 0.5
+	var expected_y_min: float = float(mined_pos.y) + 0.9
+	var expected_y_max: float = float(mined_pos.y) + 1.1
 	
 	for child: Node in get_children():
 		if child is StaticBody3D and child.name.begins_with("Prop_"):
-			var c_pos := child.global_position
-			var match_x := abs(c_pos.x - expected_x) < 0.1
-			var match_z := abs(c_pos.z - expected_z) < 0.1
-			var match_y := c_pos.y >= expected_y_min - 0.2 and c_pos.y <= expected_y_max + 0.2
+			var prop_node := child as StaticBody3D # Secure Casting
+			var c_pos: Vector3 = prop_node.global_position
+			
+			# Compare positions with a small tolerance (to avoid float precision issues)
+			var match_x: bool = abs(c_pos.x - expected_x) < 0.1
+			var match_z: bool = abs(c_pos.z - expected_z) < 0.1
+			var match_y: bool = c_pos.y >= expected_y_min - 0.2 and c_pos.y <= expected_y_max + 0.2
 			
 			if match_x and match_z and match_y:
-				_resolve_unsupported_prop(child as StaticBody3D)
+				_resolve_unsupported_prop(prop_node)
 
 
 ## Triggers a procedural collapse or a satisfying shatter explosion on un-supported props
@@ -339,15 +344,15 @@ func _resolve_unsupported_prop(prop: StaticBody3D) -> void:
 			prop.call("interact", player)
 	else:
 		# Structural Drop: Slides down Wells and Lampposts to the next solid surface
-		var gx := floori(prop.global_position.x)
-		var gz := floori(prop.global_position.z)
-		var safe_y := world_state.get_highest_solid_y(gx, gz)
+		var gx: int = floori(prop.global_position.x)
+		var gz: int = floori(prop.global_position.z)
+		var safe_y: float = world_state.get_highest_solid_y(gx, gz)
 		
 		# Compute the surface level relative to the safe air-space coordinate
-		var target_y := safe_y - 1.0
+		var target_y: float = safe_y - 1.0
 		
 		# Animate falling with an organic bounce landing Tween!
-		var tween := create_tween()
+		var tween: Tween = create_tween()
 		tween.tween_property(prop, "global_position:y", target_y, 0.4).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 		
 		# Play a heavy stone thud sound upon landing

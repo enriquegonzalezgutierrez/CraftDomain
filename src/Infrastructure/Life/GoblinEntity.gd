@@ -17,10 +17,10 @@
 #              - Static Mesh Detection: If no skeletal AnimationPlayer is found, 
 #                the script automatically runs its procedural lurching and trotting 
 #                algorithms in `_process()` so the model remains animated.
-# JUMP ANIMATION & 3D NAMEPLATE INTEGRATION:
+# JUMP ANIMATION, RED NAMEPLATE & 3D NAMEPLATE INTEGRATION:
 #              - Added dynamic binding and fallback protection for the new `jump` track.
 #              - Blends the airborne jumping states elegantly inside the state controller.
-#              - Instantiates a high-contrast 3D Floating `Label3D` Nameplate above the model head.
+#              - Instantiates a warning Crimson Red 3D Floating Nameplate above the model head.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GoblinEntity.gd
 # ==============================================================================
@@ -126,8 +126,8 @@ func _setup_nameplate() -> void:
 	_nameplate.no_depth_test = false # Occluded by solid blocks
 	_nameplate.render_priority = 5
 	
-	# Text styling and high-contrast outline
-	_nameplate.modulate = Color(1.0, 1.0, 1.0)
+	# Text styling and high-contrast red warning outline
+	_nameplate.modulate = Color(1.0, 0.15, 0.15) # Warning Red
 	_nameplate.outline_modulate = Color(0, 0, 0)
 	_nameplate.outline_size = 5
 	

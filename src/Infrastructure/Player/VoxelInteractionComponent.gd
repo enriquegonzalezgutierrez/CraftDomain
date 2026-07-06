@@ -26,6 +26,9 @@
 # - Block Mining Safeguard: Strictly prevents breaking blocks when holding 
 #   weapons (ID 17), food (ID 16), or seeds (ID 18), preserving standard 
 #   sandbox gameplay rules.
+# - GATHERING QUEST FIXES:
+#   * Mining ICE (Hielo) now correctly yields clean WATER blocks (ID 6) for polar foraging.
+#   * Mining MUD (Lodo) now correctly yields swamp WATER blocks (ID 6) for swamp purification.
 # CIRCULAR DEPENDENCY SHIELD:
 # - Removed all "PlayerController" type hints to break Godot's parser lock.
 #   Interacts with the player node strictly via loose-binding getters.
@@ -266,10 +269,14 @@ func _mine_or_attack() -> void:
 			else:
 				# Standard block collection (DIP: Translate BlockType to Item ID on the fly)
 				match mined_type:
-					BlockType.Type.SAND, BlockType.Type.RED_SAND, BlockType.Type.MUD:
+					BlockType.Type.SAND, BlockType.Type.RED_SAND:
 						target_id = 2 # Dirt ID
-					BlockType.Type.SNOW, BlockType.Type.ICE, BlockType.Type.NEON_CYAN, BlockType.Type.NEON_MAGENTA:
+					BlockType.Type.MUD:
+						target_id = 6 # Water ID (Squeezing swamp water out of mud blocks!)
+					BlockType.Type.SNOW, BlockType.Type.NEON_CYAN, BlockType.Type.NEON_MAGENTA:
 						target_id = 1 # Stone ID
+					BlockType.Type.ICE:
+						target_id = 6 # Water ID (Melting glacial ice blocks into pure water!)
 					BlockType.Type.CLOUD:
 						target_id = 5 # Leaves ID
 					BlockType.Type.LEAVES:

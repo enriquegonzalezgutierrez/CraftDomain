@@ -3,10 +3,14 @@
 # Description: Pure Domain Value Object defining all supported voxel block types.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by encapsulating only the block classification maps.
-#              OCP EXPANSION (MILESTONE 8 - CAVES & DUNGEONS):
+# OCP EXPANSION (MILESTONE 8 - CAVES & DUNGEONS):
 #              - Added DIAMOND_ORE (28) for rare deep-cave mining rewards.
 #              - Added OAK_PLANKS (29) as a refined wooden construction block.
 #              - Added GLOWSTONE (30) as a solid, high-intensity light-emitting block.
+# HARVESTING STABILIZATION FIX:
+#              - Removed Type.LEAVES from the non-solid list. Leaves are now solid 
+#                physical obstacles, allowing players to climb tree canopies and 
+#                permitting raycasts to register hits for harvesting.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockType.gd
 # ==============================================================================
@@ -62,7 +66,7 @@ static func is_solid(type: Type) -> bool:
 	match type:
 		Type.AIR, Type.WATER, Type.LAVA, \
 		Type.CROP_SEED, Type.CROP_GROWING, Type.CROP_RIPE, \
-		Type.LEAVES, Type.CLOUD: # Leaves and Clouds are non-solid traversable blocks!
+		Type.CLOUD: # Leaves are removed from here to make them solid and harvestable!
 			return false
 		_:
 			# Slabs, Ores, Planks, and Glowstone are solid physical obstacles (default fallback)
