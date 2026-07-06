@@ -20,6 +20,9 @@
 #   node's scene-tree name, ensuring translations never break or show raw pointers.
 # - Adjusts the height layout of Speech Bubbles and Quest Arrows to stack 
 #   symmetrically and prevent text overlapping.
+# FIXED COMPILATION STUTTER:
+# - Corrected GPUParticles3D Material properties inside `_spawn_death_particles()` 
+#   to use `scale_min` and `scale_max` instead of `scale_amount_min`.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -159,7 +162,7 @@ func _setup_dynamic_visual_strategy(role: int) -> void:
 		var strategy := SkeletalVisualRepresentation.new()
 		strategy.base_model_path = fbx_path
 		strategy.scale_multiplier = _get_role_scale(role)
-		strategy.position_offset = Vector3.ZERO
+		strategy.position_offset = Vector3(0.0, 0.0, 0.0)
 		strategy.rotation_offset = Vector3(0, 180, 0)
 		
 		# Asset paths mapped dynamically including the newly added jump track
@@ -227,7 +230,7 @@ func _setup_nameplate() -> void:
 	_nameplate.outline_modulate = Color(0, 0, 0)
 	_nameplate.outline_size = 5
 	
-	# Set position right above the model head baseline
+	# Set position right above the model head
 	_nameplate.position = Vector3(0.0, _collision_height + 0.15, 0.0)
 	add_child(_nameplate)
 

@@ -18,6 +18,12 @@
 #   a populated village by over 95% without compromising responsiveness.
 # - MATH OPTIMIZATION: `distance_to` replaced with `distance_squared_to` for 
 #   internal evaluations, bypassing expensive CPU square root calculations.
+# INTELLIGENT BOUNDARY PATHFINDING:
+# - Added `_is_direction_safe` look-ahead checks. Land mobs strictly avoid walking 
+#   into water, lava, or falling down open voids (AIR).
+# - Aquatic mobs (Turtles) are mathematically constrained to stay in water or wet sand.
+# - Resolved Wall-stiction: Bumping against un-jumpable walls immediately triggers 
+#   an alternative safe direction recalculation, preventing wall-clinging.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/NPCAIComponent.gd
 # ==============================================================================
@@ -89,13 +95,17 @@ func process_ai(delta: float) -> void:
 		# 1. Threat Detection (Highest priority state override: PANIC)
 		var closest_hostile := _detect_closest_zombie_threat()
 		if closest_hostile != null:
-			current_task = TaskState.PANIC
-			wander_direction = (_host.global_position - closest_hostile.global_position).normalized()
-			wander_direction.y = 0.0
-			task_timer = 2.5 
-			stuck_timer = 0.0
-			_apply_movement_vectors()
-			return
+			var escape_dir := (_host.global_position - closest_hostile.global_position).normalized()
+			escape_dir.y = 0.0
+			
+			# Symmetrical safety validation: Only run if escape vector is safe
+			if _is_direction_safe(escape_dir):
+				current_task = TaskState.PANIC
+				wander_direction = escape_dir
+				task_timer = 2.5 
+				stuck_timer = 0.0
+				_apply_movement_vectors()
+				return
 		
 		# 2. Check Player Greeting Proximity
 		var player_node := _host.get_parent().get_node_or_null("Player") as CharacterBody3D
@@ -132,6 +142,11 @@ func process_ai(delta: float) -> void:
 	task_timer -= delta
 	if task_timer <= 0.0:
 		_select_next_random_task()
+		
+	# Real-time boundary check: Halt immediately if we are about to step into danger!
+	if current_task == TaskState.WANDERING or current_task == TaskState.PANIC:
+		if not _is_direction_safe(wander_direction):
+			_select_next_random_task()
 		
 	_process_movement_avoidance(delta)
 	_apply_movement_vectors()
@@ -175,26 +190,37 @@ func _process_movement_avoidance(delta: float) -> void:
 			_host.velocity.y = jump_vel
 			
 		stuck_timer += delta
-		if stuck_timer > 0.4: 
+		if stuck_timer > 0.2: # Highly responsive stuck escape
 			stuck_timer = 0.0
-			var wall_normal := _host.get_wall_normal()
-			var flat_normal := Vector3(wall_normal.x, 0, wall_normal.z).normalized()
-			
-			if flat_normal != Vector3.ZERO:
-				wander_direction = wander_direction.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
-			else:
-				var angle := randf() * TAU
-				wander_direction = Vector3(cos(angle), 0, sin(angle))
+			_select_next_random_task() # Instantly pick a safe, alternative path
 	else:
 		stuck_timer = 0.0
 
 
+## Smart-Checking Wandering: Scans directions and picks a safe heading
 func _select_next_random_task() -> void:
 	var roll := randf()
 	if roll < 0.35:
 		current_task = TaskState.WANDERING
 		var angle := randf() * TAU
-		wander_direction = Vector3(cos(angle), 0, sin(angle))
+		var dir := Vector3(cos(angle), 0, sin(angle))
+		
+		# Proactively try up to 5 safe directions, otherwise stand still (IDLE)
+		var found_safe := false
+		for attempt in range(5):
+			if _is_direction_safe(dir):
+				wander_direction = dir
+				found_safe = true
+				break
+			angle = randf() * TAU
+			dir = Vector3(cos(angle), 0, sin(angle))
+			
+		if not found_safe:
+			current_task = TaskState.IDLE
+			wander_direction = Vector3.ZERO
+			task_timer = randf_range(1.5, 3.0)
+			return
+			
 		task_timer = randf_range(3.0, 7.0)
 	elif roll < 0.70:
 		current_task = TaskState.EXAMINING 
@@ -204,6 +230,40 @@ func _select_next_random_task() -> void:
 	else:
 		current_task = TaskState.IDLE
 		task_timer = randf_range(1.5, 4.0)
+
+
+## Look-Ahead Validator: Protects land mobs from drowning and constrains aquatic species
+func _is_direction_safe(dir: Vector3) -> bool:
+	if not is_instance_valid(_host):
+		return false
+		
+	var world_node := _host.get_parent()
+	if not is_instance_valid(world_node) or not "world_state" in world_node:
+		return true # Safe fallback
+		
+	var ws: WorldState = world_node.world_state
+	if ws == null:
+		return true
+		
+	# Look ahead 1.5 meters along the movement vector line
+	var check_pos := _host.global_position + dir * 1.5
+	
+	var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 0.5), floori(check_pos.z))
+	var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
+	
+	var block_below := ws.get_block(block_below_coord)
+	var block_at := ws.get_block(block_at_coord)
+	
+	var is_aquatic: bool = _host.name.contains("TURTLE") or _host.name.contains("SHARK") or _host.name.contains("OCTOPUS")
+	
+	if is_aquatic:
+		# Aquatic creatures MUST stay in Water, Sand, or Mud shores
+		return block_below == BlockType.Type.WATER or block_below == BlockType.Type.SAND or block_below == BlockType.Type.MUD
+	else:
+		# Land creatures MUST NOT step into liquid Water, Lava, or fall into open voids (AIR)
+		var is_water: bool = block_below == BlockType.Type.WATER or block_below == BlockType.Type.LAVA or block_at == BlockType.Type.WATER
+		var is_void: bool = block_below == BlockType.Type.AIR
+		return not is_water and not is_void
 
 
 ## Scanning for hostiles utilizing Godot's O(1) group lookup

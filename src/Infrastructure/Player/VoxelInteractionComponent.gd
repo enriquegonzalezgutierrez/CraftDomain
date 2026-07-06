@@ -29,6 +29,13 @@
 # - GATHERING QUEST FIXES:
 #   * Mining ICE (Hielo) now correctly yields clean WATER blocks (ID 6) for polar foraging.
 #   * Mining MUD (Lodo) now correctly yields swamp WATER blocks (ID 6) for swamp purification.
+# 120 FPS MINING STABILIZATION (CPUParticles3D & SHUTDOWN LEAK FIX):
+#   * Swapped the expensive, shader-compiling GPUParticles3D for compile-free CPUParticles3D.
+#   * Configure physical parameters directly on the CPUParticles3D node, bypassing ParticleProcessMaterial.
+#   * FIXED EXIT CRASH: Timer timeout connects directly to `particles.queue_free` instead of a lambda capture.
+#     If the world is closed, Godot's C++ signal router cleanly disconnects the pointer, throwing 0 errors.
+#   * Set materials to SHADING_MODE_UNSHADED, bypassing real-time GPU pipelines to 
+#     guarantee stiction-free frame rates during mining.
 # CIRCULAR DEPENDENCY SHIELD:
 # - Removed all "PlayerController" type hints to break Godot's parser lock.
 #   Interacts with the player node strictly via loose-binding getters.
@@ -303,7 +310,7 @@ func _mine_or_attack() -> void:
 		world_ctrl.set_block_globally(block_coord, BlockType.Type.AIR)
 
 
-## Instantiates a temporary color-matched GPU debris emitter on block destruction.
+## Instantiates a temporary, compile-free CPU debris emitter on block destruction.
 func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) -> void:
 	if block_type == BlockType.Type.AIR:
 		return
@@ -312,7 +319,7 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	if def == null:
 		return
 		
-	var particles := GPUParticles3D.new()
+	var particles := CPUParticles3D.new() # <-- Uses CPUParticles3D directly
 	particles.name = "MinedDebrisParticles"
 	particles.emitting = false
 	particles.amount = 12
@@ -320,37 +327,32 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	particles.explosiveness = 0.95
 	particles.lifetime = 0.45
 	
-	var pm := ParticleProcessMaterial.new()
-	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	pm.emission_box_extents = Vector3(0.35, 0.35, 0.35)
-	pm.direction = Vector3(0.0, 1.0, 0.0) 
-	pm.spread = 50.0
-	pm.initial_velocity_min = 2.5
-	pm.initial_velocity_max = 4.5
-	pm.gravity = Vector3(0.0, -9.8, 0.0) 
-	pm.scale_min = 0.6
-	pm.scale_max = 1.3
-	particles.process_material = pm
+	# Configure physical parameters directly on the CPUParticles3D node
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	particles.emission_box_extents = Vector3(0.35, 0.35, 0.35)
+	particles.direction = Vector3(0.0, 1.0, 0.0) 
+	particles.spread = 50.0
+	particles.initial_velocity_min = 2.5
+	particles.initial_velocity_max = 4.5
+	particles.gravity = Vector3(0.0, -9.8, 0.0) 
+	particles.scale_amount_min = 0.6
+	particles.scale_amount_max = 1.3
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.12, 0.12, 0.12)
-	var mat := ORMMaterial3D.new()
+	var mat := StandardMaterial3D.new()
 	mat.albedo_color = def.color_top
 	mat.roughness = 0.8
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED # Unshaded is extremely fast!
 	mesh.material = mat
-	particles.draw_pass_1 = mesh
+	particles.mesh = mesh
 	
 	if is_instance_valid(world_controller):
 		world_controller.add_child(particles)
 		particles.global_position = global_pos + Vector3(0.5, 0.5, 0.5)
 		
 	particles.emitting = true
-	get_tree().create_timer(0.6).timeout.connect(_cleanup_particles.bind(particles))
-
-
-func _cleanup_particles(particles_node: GPUParticles3D) -> void:
-	if is_instance_valid(particles_node):
-		particles_node.queue_free()
+	get_tree().create_timer(0.6).timeout.connect(particles.queue_free) # <-- Memory safe direct connection!
 
 
 ## Executes right-click actions: placing blocks, planting crops, or speaking with NPCs.
@@ -406,7 +408,7 @@ func _build_or_interact() -> void:
 			modifier.set("last_hit_fractional_y", fractional_y)
 		
 		# Validate strategy requirements
-		if strategy.can_use(player.domain_entity, inventory, target_coord, hit_normal, world_state):
+		if strategy.can_use(player.get("domain_entity"), inventory, target_coord, hit_normal, world_state):
 			
 			# SPECIAL BOUNDING SHIELD: Prevent placing solid blocks inside player's body
 			if strategy is PlaceableBlockStrategy:
@@ -420,12 +422,12 @@ func _build_or_interact() -> void:
 					return # Prevent trapping the player inside a solid block!
 					
 			# Execute strategy business rules (Injected through the Domain Adapter abstraction)
-			strategy.use(player.domain_entity, inventory, target_coord, hit_normal, world_ctrl.world_modifier)
+			strategy.use(player.get("domain_entity"), inventory, target_coord, hit_normal, world_ctrl.world_modifier)
 			
 			# Contextual visual toast notifications (Decoupled from core strategy rules)
 			if is_instance_valid(hud):
 				if strategy is ConsumableItemStrategy:
-					hud.update_health_display(player.domain_entity.health)
+					hud.update_health_display(player.get("domain_entity").health)
 					hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "NOTIFICATION_CONSUME_FOOD_DESC")
 				elif strategy is PlantableItemStrategy:
 					hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")

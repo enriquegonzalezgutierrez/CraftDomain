@@ -7,9 +7,10 @@
 #              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity cleanly.
 #              - Dependency Inversion Principle (DIP): Visual structures are completely 
 #                delegated to the injected `IEntityVisualRepresentation` strategy.
-# WARNING RESOLUTION:
-#              - Removed redundant duplicate "ANIM_DIR" constant definition to 
-#                prevent subclass collision compilation errors.
+# INTERACTION RECONSTRUCTION:
+#              - Restored the missing `interact()` and `_select_procedural_greeting_key()` 
+#                methods, allowing the player to engage in conversations with guards.
+#              - Restored full i18n support for defensive and location-based dialogues.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GuardEntity.gd
 # ==============================================================================
@@ -158,6 +159,32 @@ func _execute_combat_strike() -> void:
 	# SOLID: Delegate attack visuals directly to the injected visual strategy
 	if is_instance_valid(visual_representation):
 		visual_representation.trigger_attack_visuals()
+
+
+## Restored: Registers right-click interactions to trigger defensive dialogues
+func interact(player_node: CharacterBody3D) -> void:
+	var hud := player_node.get("hud") as PlayerHUD
+	if is_instance_valid(hud):
+		var intro_node := DialogueNode.new()
+		intro_node.node_id = "guard_intro_temp"
+		intro_node.text = _select_procedural_greeting_key()
+		
+		hud.open_dialogue(intro_node, "NPC_NAME_GUARD", self)
+
+
+## Restored: Returns localized warning or advice keys based on time and biome coordinates
+func _select_procedural_greeting_key() -> String:
+	var is_night: bool = CelestialService.is_night_time_static()
+	if is_night:
+		return "DIALOGUE_GUARD_NIGHT"
+		
+	var biome_id := _detect_current_biome()
+	match biome_id:
+		4: return "DIALOGUE_GUARD_GLACIERS"   # Frostbite Glaciers
+		7: return "DIALOGUE_GUARD_NEON"       # Neon Ruins
+		_:
+			# Default Golden Bazaar plains variety
+			return "DIALOGUE_GUARD_PLAINS_A" if (npc_seed % 2 == 0) else "DIALOGUE_GUARD_PLAINS_B"
 
 
 ## Queries coordinate biomes.
