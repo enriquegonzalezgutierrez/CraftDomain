@@ -9,8 +9,9 @@ This document details the completed development phases and outlines the future m
 ### Milestone 1: Architectural Foundation & DDD Segregation
 *   **Composition Root (`Bootstrap.gd`):** Established a centralized bootstrap entry point, isolating initial startup parameters from active gameplay loops.
 *   **Core Domain Isolation:** Fully segregated pure business rules (such as entity health, recipe value objects, and coordinate biome routing) from hardware-bound rendering or saving loops.
-*   **Interface Segregation (`IInventory.gd`):** Created abstract inventory contracts, allowing decoupled systems (crafting services, trading droids) to process items without knowledge of physical character nodes.
+*   **Interface Segregation (`IInventory.gd` & `IWorldModifier.gd`):** Created abstract inventory and modification contracts, allowing decoupled systems (crafting services, trading droids, placement strategies) to process items and blocks without knowledge of physical character nodes.
 *   **Asynchronous Saving:** Implemented background delta JSON saving in the `user://` directory, storing precise coordinates, 24-slot inventory statuses, and active quest chains smoothly.
+*   **Persistence Decoupling (SRP):** Split the repository layer into **`VoxelSaveSerializer.gd`** (which handles coordinate packing and state translations exclusively) and **`DiskWorldRepository.gd`** (which handles direct file streams and OS directories exclusively).
 
 ### Milestone 2: Unified Voxel Rendering & Shaders Overhaul
 *   **Multi-Mesh Partitioning:** Segregated rendering segments by `BlockType` to apply tailored materials (translucent, glossy water, reflective glass, and emissive glowing lava).
@@ -18,24 +19,27 @@ This document details the completed development phases and outlines the future m
 *   **Foliage Wind-Sway:** Implemented a wind-sway displacement shader executing high-frequency sine expansions along normals to simulate organic voxel canopies.
 *   **Voxel Grain Texturing:** Programmed a shared, statically cached high-frequency cellular noise texture applied with `TEXTURE_FILTER_NEAREST` to paint detailed, blocky textures over all animal and NPC meshes with zero performance overhead.
 
-### Milestone 3: Advanced Reactive AI & Variety
-*   **Deterministic Variant Seeding:** Designed coordinate-based randomization loops inside `PassiveEntity.gd` to proceduralize outfits, skin tones, hair colors, and height scales so no two neighbors look identical.
+### Milestone 3: Advanced Reactive AI, Pathfinding & variety
+*   **3D A* Pathfinding (Phase 1):** Designed the data-oriented **`VoxelNavigationService`** leveraging Godot's C++ `AStar3D` solver, completely decoupled from the SceneTree. Built a spatial **`ChunkNavigationBuilder`** to compile walkable, stair-climb, and drop-down coordinates dynamically as chunks render on the main thread.
+*   **Day/Night & Storm Shelter Schedules (Phase 2):** Refactored **`NPCAIComponent.gd`** to execute real-time schedules. At sunset or during storms, civilian NPCs dynamically cancel tasks, locate the closest cached indoor shelter node, and route an A* path straight to it.
+*   **3D Floating Nameplates & LSP Compliance:** Added native `Label3D` billboarding nameplates. Resolved scene-tree name-collisions polimorphically by evaluating the class type (`self is ClassType`) rather than reading node names. Excluded wild animals from carrying civilian conversation nodes via `_has_ui_decorations()`.
 *   **Conversational Gaze-Locks:** Updated the dialogue coordinators to pass the active speaker's node reference. Interacting with NPCs freezes their physical velocities, pauses walk cycles, and rotates their visual meshes smoothly to maintain eye contact.
-*   **Defensive Guard Aggro:** Programmed active protector behaviors. Guards draw their sheathed back swords and sprint to attack any zombie within 10 meters.
 *   **Automated Agricultural Farmers:** Enhanced farmers to scan for mature crops, wander to them, draw their harvesting hoes, and swing them up and down to harvest and replant seeds with green particle feedback.
 
 ### Milestone 4: Symmetrical Localization & Dialogue
 *   **Dialogue Translation Keys:** Refactored all NPC dialogue databases and fallback prompts to consume clean translation keys (e.g. `DIALOGUE_VILLAGER_INTRO`) rather than hardcoded English.
 *   **Dynamic Greeting Pools:** Integrated coordinate-seeded variety indices inside NPC conversation routers to serve unique situational lines based on time, biomes, or random rolls.
-*   **Symmetrical Language Packs:** Re-aligned both `en.json` and `es.json` to possess the exact same key structures, spacings, and sorting order to prevent parser drift during localization lookups.
+*   **Symmetrical Language Packs:** Re-aligned both `en.json` and `es.json` to possess the exact same key structures, spacings, and sorting order to prevent parser drift during localization lookups. Corrected all incomplete translations.
 
 ### Milestone 5: Procedural Horizons & Biomes Expansion
 *   **Horizon Draw Distance:** Quadrupled the active loading radius inside `ChunkLoaderService.gd` to load a 3D 162-chunk grid (9x2x9 chunks), rendering beautiful vistas under Forward+.
+*   **Polymorphic Boundary Sensing:** Removed the hardcoded coordinate angle/sector split calculations inside `BiomeService.gd`. Concrete `IBiome` strategy classes now encapsulate their own territorial boundaries polimorphically using `is_coordinate_inside()`.
 *   **Themed Spawning Outposts:** Updated `MobSpawningService.gd` to inspect the loaded outpost's active Biome ID and dynamically deploy specialized populations (Druids in Redwoods, Miners with active headlamps in mountains, Androids in Cyber ruins).
 *   **Global Mega-Structures:** Engineered massive, multi-chunk architectural POIs (Grand Castle, Nether Outpost, Steve's Cabin) that overwrite procedural terrain at fixed coordinates.
 
 ### Milestone 6: High-Fidelity Graphics & Physics Threading
-*   **Thread-Safe Physics Shape Compilation:** Prevented the `PhysicsServer3D` background lock by extracting flat collision vertex arrays on worker threads and instantiating the single concave body on the main thread.
+*   **Hybrid Instant/Threaded Mesher:** Redesigned block edits to execute a dual-pipeline update. The modified chunk is rebuilt synchronously on the main thread for 0-latency collision, while boundary neighboring chunks are offloaded asynchronously to background hilos, completely eliminating mining stutters.
+*   **Compile-Free Unshaded Particles:** Migrated mining debris generators to use **`CPUParticles3D`** with unshaded materials. This runs entirely on the CPU and completely avoids dynamic Vulkan pipeline compilations on the GPU.
 *   **Group AI Targeting ($O(1)$ complexity):** Replaced slow, high-frequency $O(N)$ child-seeking loops with fast, native Godot group lookups (`"hostiles"` and `"passives"`).
 *   **Procedural Bevel Normal Mapping (Selective):** Programmatically baked a perfect 64x64 bevel normal map in RAM at startup to simulate beautiful rounded corners on building blocks under direct sunlight.
 *   **Global Wind Shader System:** Integrated dynamic wind vectors and wind strength as global shader uniforms (`"wind_vector"`), making water waves and leaf sways physically react to storms in complete, zero-cost synchronicity.
@@ -43,19 +47,24 @@ This document details the completed development phases and outlines the future m
 ### Milestone 7: Extreme 120 FPS Stabilization & Memory Pooling
 *   **ChunkNode Object Pooling:** Implemented dynamic recycling of `ChunkNode` instances inside `ChunkManagerService.gd` to completely eliminate Garbage Collection stuttering during fast travel.
 *   **Time-Sliced Physics Budgeting:** Capped main-thread `ConcavePolygonShape3D` generation to 1-2 shapes per frame, spreading the physics load perfectly over time.
-*   **UI / AI Scan Throttling:** Reduced $O(1)$ group tactical scans and HUD metric updates (like GPS coordinate tracking) from 120Hz to 4Hz/20Hz, slashing CPU load by 95% in heavily populated areas without sacrificing responsiveness.
+*   **Dynamic LOD AI Tick Throttle (Phase 5):** AI logical update rates scale dynamically based on distance to the player (20Hz close, 4Hz mid, 0.5Hz far), slashing CPU processing overhead by over 95% in heavily populated areas.
 *   **Opaque Far-LOD Culling:** Disabled alpha-blending (`TRANSPARENCY_DISABLED`) on distant translucent chunks (water, glass, ice, clouds) to save massive GPU pixel fillrate on the horizon.
+*   **Memory-Safe Shutdown Timers:** Configured all temporary particle timers to connect their timeout signals directly to `particles.queue_free`, permanently preventing `Lambda capture at index 0 was freed` memory leaks upon world exit.
 
 ### Milestone 8: Commercial UI/UX Overhaul
 *   **Tactile Glassmorphism:** Upgraded all menus (Main Menu, Settings, Pause, Inventory) with responsive `PanelContainers`, dynamic pivots, and physical 3D button depression Tweens.
+*   **Decoupled Slot Widgets (SRP):** Extracted the `InventorySlotWidget.gd` from the main panel to isolate cell rendering and drag-and-drop operations from layout containers.
+*   **Duplicate Color Map Deletion:** Completely deleted the hardcoded, duplicate `BLOCK_COLORS` map from `HotbarDockWidget.gd` and `InventoryOverlay.gd`. The UI now queries the Domain `BlockLibrary` directly for accurate fallback colors.
+*   **Corrected Checklist Verification:** Re-engineered the crafting checklist. It now queries the player's total cumulative stock of the required item globally using `get_item_total_quantity()` instead of checking slot indexes.
 *   **Sub-pixel Hermetic Sealing:** Mathematically scaled liquid and custom solid (Slab) vertices by `1.002` to perfectly overlap chunk boundaries, permanently fixing Z-fighting and light leaks.
-*   **Precision Mathematical Alignment:** Re-anchored hotbar docks, status bars (Hearts/Food), and floating speech bubbles to guarantee pixel-perfect symmetry and zero layout shifting.
 
-### Milestone 9: Observer Audio Engine
+### Milestone 9: Observer Audio & Physics Gravity Engine
 *   **Service Locator Pattern:** Implemented `AudioService.instance` for zero-coupling static access, allowing any pure Domain event to trigger sound effects instantly.
 *   **Spatial 3D Positional Audio:** Added dynamic OGG sound triggers for block breaking, placing, sword swings, chest openings, and NPC interactions that auto-free upon completion.
-*   **Seamless Soundtrack Crossfading:** Implemented double-buffered audio streams to smoothly transition between Day, Combat, Cyber, and Polar EDM tracks based on biome and time of day.
-*   **Dynamic Footstep Accumulator:** Tracked player velocity lengths to trigger terrain-specific footstep audio (Grass, Stone, Wood, Snow) accurately based on the exact block beneath the player's feet.
+*   **Coordinated Alarm Networks (Phase 3):** Struck civilians find the closest hostile and broadcast an alarm through `AlertNetworkService.instance`. Nearby guards and golems within 30m immediately run to intercept.
+*   **Village Reputation & Karma (Phase 4):** Attacking civilians deducts reputation points. Falling below the outlaw threshold causes protectors to turn hostile, while high reputation grants up to a 30% price discount at Merchant stalls.
+*   **Voxel-Support Block Gravity:** Added support checking. Broken blocks supporting a Barrel, Chest, or Campfire cause the prop to shatter and drop loot, while heavy Wishing Wells and Streetlights slide down smoothly with elastic bouncing Tweens.
+*   **Harvesting Bugs Resolved:** Reclassified leaves as solid so they can be mined. Mining Ice (in glaciers) and Mud (in swamps) now correctly yields clean Water blocks.
 
 ---
 

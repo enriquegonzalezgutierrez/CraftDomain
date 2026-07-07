@@ -29,6 +29,7 @@ Located in the upper right-hand corner of your screen is a high-contrast **GPS N
 *   **Active Mission Tracker:** Renders active quest descriptions, remaining distance in meters, and inventory progress bars. For gathering quests, it dynamically routes you to the nearest natural resource hotspot (e.g., pointing to Nether Outposts for Lava).
 *   **Holographic GPS Path Line:** The minimap renders a dynamic, pulsing, dashed pink path-line connecting your character's center position directly to the active quest target.
 *   **Tactical Compass Pointer:** The GPS HUD dynamically identifies the closest Global Mega-Structure, displaying its name, distance, and cardinal direction (N, NE, E, SE, S, SW, W, NW).
+*   **3D Altitude-Aware Radar:** Displays dynamic height indicators. For tracked targets, the minimap renders specialized vertical chevrons (`^` or `v`) indicating whether the target lies far above (on a cliff/air) or deep below (inside a cave/mine shaft), providing full tridimensional navigation.
 
 ---
 
@@ -71,12 +72,14 @@ When holding a buildable block, a 3D preview box outlines your target:
     * **Merging:** Right-clicking directly on the top face of a Bottom Slab (or bottom face of a Top Slab) will magically fuse them into a single, solid full Stone block!
 3.  **Lava Placement:** Right-Clicking with a **Lava Bucket** (ID 15) places glowing, flowing orange Lava in the world, consuming 1 Bucket.
 4.  **Crop Planting:** Right-Clicking with **Crop Seeds** (ID 18) on top of Grass or Dirt will sow a young sprout that grows over time.
+5.  **Sub-pixel Hermetic Sealing:** Transparent liquid and slab vertices are mathematically scaled outward from their block center by a factor of `1.002` (2 millimeters), tightly overlapping chunk borders to permanently eliminate all Z-fighting and sub-pixel light leaks.
+6.  **Compile-Free Unshaded Particles:** Spawns unshaded `CPUParticles3D` on block breaking, bypassing runtime GPU shader compilations completely and maintaining a solid 120 FPS.
 
 ---
 
 ## 5. Procedural Voxel Biomes & Weather Atmosphere
 
-The world features 10 completely distinct geographical regions:
+The world features 10 completely distinct geographical regions, each implementing its own **Polymorphic Boundary Strategy** (`is_coordinate_inside()`) to dynamically determine their territorial limits:
 
 *   **Bay of Sails:** Tropical shores with aquatic Sea Turtles.
 *   **Warp Plateau:** Vibrant green step-plateaus with giant Mario mushrooms.
@@ -101,7 +104,13 @@ The world features 10 completely distinct geographical regions:
 The procedural world is populated with active creatures and villagers featuring detailed pixel-grain textures, blinking eyes, and physical body-bobbing walk cycles.
 
 ### High-Performance AI Throttling
-To keep the game running at a flawless 120 FPS, AI tactical scans (looking for players or threats) are heavily optimized. They utilize Godot's $O(1)$ group registries and are throttled to run exactly **4 times per second**, reducing CPU load by 95% without losing responsiveness.
+To keep the game running at a flawless 120 FPS, AI tactical scans are heavily optimized. They utilize Godot's $O(1)$ group registries and are throttled to run exactly **4 times per second**, reducing CPU load by 95% without losing responsiveness.
+*   **Dynamic AI Tick Throttle (LOD AI):** Mobs right next to the player (<15m) update at 20Hz, while distant mobs scale down their logical updates to 4Hz or 0.5Hz, saving massive CPU cycles.
+
+### Intelligent 3D Pathfinding & Schedulers
+*   **A* Voxel Pathfinding:** NPCs navigate using a 3D coordinate graph. They calculate paths around obstacles, climb stairs/slabs, and walk along village layouts.
+*   **Day/Night & Storm Shelter Schedules:** At sunset or during storms, civilian NPCs (Villagers, Merchants, Farmers, Miners, Druids) cancel their tasks, locate the closest registered indoor shelter (roofed coordinates), and plan an A* path to run inside safely.
+*   **Intelligent Land/Water Boundary checks:** Land-dwelling civilians strictly avoid falling into deep voids (AIR) or walking into liquid Water/Lava, while aquatic species (Turtles) remain constrained to water and sand shores. Bumping against walls instantly triggers course-corrections.
 
 ### Specialized Community Roles & Outfits
 NPCs generate stylized outfits tailored to their home coordinates:
@@ -113,6 +122,7 @@ NPCs generate stylized outfits tailored to their home coordinates:
 ### Interactive 3D Loot Chests & Trading
 1.  **Loot Chests:** Right-click a 3D chest in a village. It will pop, play a `chest_open` sound effect, grant you a reward, and vanish safely.
 2.  **Lava-Fried Chicken Trade:** Hold a **Lava Bucket** and Right-Click a Merchant. They will hop with joy, consume the lava, and give you 1x **Fried Chicken**.
+3.  **Voxel-Support Block Gravity:** Breaking blocks underneath props cause them to fall: destructible props (barrels, chests, campfires) shatter and drop loot, while heavy structural props (wishing wells, streetlights) slide down to the new floor level with elastic bouncing Tweens.
 
 ---
 
@@ -120,15 +130,22 @@ NPCs generate stylized outfits tailored to their home coordinates:
 
 As night falls, dangerous hostiles emerge. Getting bit deals **1 Heart** of damage, flashes your screen with a deep red vignette, and triggers camera trauma shake.
 
+### Warning RED Nameplates
+All hostile entities (Zombies, Goblins, Gargoyles, Sharks) now render with aggressive **Crimson Red Nameplates** displaying their names above their heads.
+*   **Gargoyle Flight Tracking:** The Gargoyle's nameplate dynamically tracks its model vertical position in real-time, gliding smoothly up and down during flight sways.
+
 ### The Golem & Guard Defenders
-Villages are actively protected by tactical defenders:
+Villages are actively protected by tactical defenders (Guards and Golems) which register themselves into a shared **Alert Alarm Network** upon spawning.
+*   **Coordinated Alarm Interceptions:** Struck civilians immediately broadcast a proximity alarm. Nearby protectors within a 30m radius will break their patrols, sprint to the rescue, and intercept the attacker.
 *   **Iron Golems:** Colossal stone giants covered in ivy. If a zombie comes near, they execute a heavy double-arm launch attack, dealing massive damage and throwing the zombie **9.5 meters into the air**.
 *   **Guards:** Armored knights with a sheathed iron sword and wooden shield. They proactively draw their weapons, sprint towards hostiles, and execute coordinated striking cooldowns.
 
-### Player Combat & Polymorphic Loot
+### Player Combat, Karma & Polymorphic Loot
 1.  Press **Key 8** to hold your **Wooden Sword** (Slot 7).
 2.  Aim at a zombie and **Left-Click** to swing. The action plays a metallic `hit_sword` swish sound and a physical hand animation.
-3.  Zombies take 3 hits to defeat. Upon death, enemies and fauna shrink, emit a puff of grey GPU smoke, and polymorphically drop loot (Meat, Leaves, Sand, Lava) directly into your bag.
+3.  **Village Reputation (Karma Engine):** Hitting peaceful civilians deducts `-15 reputation points` from your karma, and killing them deducts an additional `-35 points` (total of `-50`). If your reputation falls to **Wanted Outlaw** status (reputation <= -50), all village guards and golems will become hostile and attack you on sight!
+4.  **Trade Price Adjustments:** Your karma modifies Merchant bartering prices dynamically: high reputation grants up to **30% discounts**, while poor reputation increases prices by up to 30%.
+5.  Zombies take 3 hits to defeat. Upon death, enemies and fauna shrink, emit a puff of grey GPU smoke, and polymorphically drop loot (Meat, Leaves, Sand, Lava) directly into your bag.
 
 ---
 
@@ -137,6 +154,7 @@ Villages are actively protected by tactical defenders:
 Pressing **`I`** freezes the gameplay physics and opens a detailed **Backpack Inventory & Inspector** overlay.
 
 ### 24-Slot Storage & Auto-Sorting
+*   **Decoupled Grid Slot Widgets:** Inventory slots use isolated `InventorySlotWidget` nodes, completely separating cell drawing and drag-and-drop mechanics from container layouts.
 *   **Stacking:** Items stack dynamically up to 64 units per slot.
 *   **Sequential Swapping:** Click Slot A (glows in gold), then click Slot B to instantly swap their contents.
 *   **⚡ AUTO-SORT:** Click the "SORT" button in the Backpack header. The engine will instantly consolidate all fragmented stacks and sort your backpack by Item ID in ascending order, leaving your active Hotbar completely untouched for combat safety!
@@ -151,6 +169,7 @@ Clicking any item displays its Lore Tooltip, Stock quantity, and Action buttons.
 Pressing **`C`** opens a dual-pane **Blueprint Taller & Crafting Workshop** overlay, parsed entirely from external JSON data files.
 
 *   **Inputs Checklist:** Scans your entire 24-slot inventory dynamically to aggregate your stock, showing a green checkmark (`✔`) if you have enough materials.
+*   **Corrected Checklist Verification:** The checklist strictly queries cumulative total stocks globally using `get_item_total_quantity()`, resolving old slot-matching lookup discrepancies.
 *   **Fabricate Action:** Clicking the green "Fabricate" button consumes the inputs globally, grants the crafted outcome, triggers a viewmodel hand-swing, plays a satisfying `craft_clink` audio cue, and pops a sliding success notification.
 
 ### Recipe Quick Reference:
@@ -171,7 +190,7 @@ Pressing **`C`** opens a dual-pane **Blueprint Taller & Crafting Workshop** over
 CraftDomain features a silent, zero-stutter background **Delta-Save** process. You never have to manually click a save button:
 
 1.  Pressing **Escape** pauses the game, opens the sleek Pause Menu, and triggers the save sequence.
-2.  The engine instantly gathers your current `(X, Y, Z)` position, camera look angles, world seed, celestial moon phase, full 24-slot backpack item quantities, and active quest states, writing them to `user://world_save/global_save.json`.
+2.  The engine instantly gathers your current `(X, Y, Z)` position, camera look angles, world seed, celestial calendar day (persisting moon phases), active quest states, and full 24-slot backpack item quantities, writing them to `user://world_save/global_save.json`.
 3.  Simultaneously, any blocks you broke or placed are gathered as localized modification deltas and saved directly to chunk files on disk (e.g., `chunk_-21_1_10.json`).
 
 ---
@@ -180,5 +199,5 @@ CraftDomain features a silent, zero-stutter background **Delta-Save** process. Y
 
 To easily bridge the gap between first-person look controls and HUD-element interactions:
 *   **Holding `Left Alt`:** Freezes camera rotation and reveals the hardware mouse pointer. You can move the pointer freely to click on the HUD shortcut icons (`🎒` to open inventory or `🛠️` to open the crafting workshop).
-*   **Releasing `Left Alt`:** Hides the mouse pointer and locks it back into first-person rotation mode. 
+*   **Releasing `Left Alt` Hides Pointer:** Locks it back into first-person rotation mode. 
 *   **Open-Close Safety Hook:** Releasing `Left Alt` will *not* lock the cursor if any overlay window (Backpack, Workshop, Map, Pause, or Dialogue) is actively open on the screen.

@@ -39,6 +39,9 @@ graph TD
 		DialogueService[DialogueService.gd - Dialogue Router]
 		CraftingService[CraftingService.gd - Transaction Logic]
 		IWorldModifier[IWorldModifier.gd - Adapter]
+		VoxelNavigationService[VoxelNavigationService.gd - 3D AStar Graph]
+		AlertNetworkService[AlertNetworkService.gd - Proximity Alarms]
+		VillageReputationService[VillageReputationService.gd - Karma Engine]
 	end
 
 	Bootstrap -->|Injects Repositories & Controllers| WorldController
@@ -55,14 +58,14 @@ graph TD
 1. **The Domain Layer (`src/Domain/`):** Contains the core business logic. It has zero dependencies on Godot's scene tree, physics servers, or rendering API. It consists of:
    * **Aggregates & Entities:** `WorldState.gd` (Aggregate Root managing chunks), `Chunk.gd` (Voxel Grid), `VoxelEntity.gd` (Logical health rules), and `Quest.gd` (Logical quest representation).
    * **Value Objects:** `BlockDefinition.gd` (Immutable block traits and procedural color definitions) and `Recipe.gd` (Encapsulates required inputs and output attributes for crafting).
-   * **Domain Services:** `TradingService.gd` (Decoupled inventory transaction rules), `BiomeService.gd` (Dynamic biome routing), `StructureLibrary.gd` (Blueprint routing), `QuestService.gd` (Decoupled quest state coordinator), and `CraftingService.gd`.
+   * **Domain Services:** `TradingService.gd` (Decoupled inventory transaction rules), `BiomeService.gd` (Dynamic biome routing), `StructureLibrary.gd` (Blueprint routing), `QuestService.gd` (Decoupled quest state coordinator), `VoxelNavigationService.gd` (3D A* graph network coordinator), `VillageReputationService.gd` (Player karma tracker), and `CraftingService.gd`.
    * **Interfaces:** `IInventory.gd` (Segregated inventory contract supporting item-ID stacking queries) and `IWorldModifier.gd`.
 
 2. **The Infrastructure Layer (`src/Infrastructure/`):** Concrete implementations of hardware-bound or framework-bound systems.
    * **Rendering & Materials (`src/Infrastructure/Rendering/`):** `ChunkNode.gd` segments rendering transforms into individual, block-type MultiMesh nodes, applying PBR materials and custom GPU shaders. `ChunkManagerService.gd` controls multithreading and Node Object Pools.
    * **Physics & Interactions (`src/Infrastructure/Player/`):** First-person motion physics, camera rotation, head bobbing, and decoupled raycast interaction solvers.
-   * **Persistence (`src/Infrastructure/Persistence/`):** `DiskWorldRepository.gd` implements JSON delta serialization inside Godot's safe `user://` directory, now supporting full 24-slot inventory status profiles.
-   * **Life & AI (`src/Infrastructure/Life/`):** Physics-bound passive and hostile AI, rendering programmatic 3D box-composition models and scheduling walk/idle tasks.
+   * **Persistence (`src/Infrastructure/Persistence/`):** `DiskWorldRepository.gd` implements JSON delta serialization inside Godot's safe `user://` directory, now supporting full 24-slot inventory status profiles. Uses `VoxelSaveSerializer.gd` to decouple serialization structures from raw I/O.
+   * **Life & AI (`src/Infrastructure/Life/`):** Physics-bound passive and hostile AI, rendering programmatic 3D box-composition models, and scheduling pathfinding or shelter tasks.
    * **Audio (`src/Infrastructure/Audio/`):** `AudioService.gd` manages soundtrack crossfading and observer-driven 3D positional OGG sound effects.
 
 3. **The Core/Bootstrap Layer (`src/Core/Bootstrap`):**
@@ -79,48 +82,36 @@ Each class has a single, strictly defined reason to change:
 * **`WorldController.gd`:** Offloaded from physical and visual meshing calculations. It acts strictly as an asynchronous coordinator for chunk I/O and thread scheduling, delegating 3D matrix grouping to the stateless `ChunkVisualBuilder.gd` and threading limits to `ChunkManagerService.gd`.
 * **`PlayerController.gd`:** Responsible *only* for movement physics, camera input handling, and velocity calculations. It delegates all raycasting, block mining, building, eating, and combat actions to `VoxelInteractionComponent.gd`.
 * **`PlayerHUD.gd`:** Acts strictly as a lightweight orchestrator for the UI composition. It delegates specific layout configurations and real-time mathematical calculations to dedicated widgets: `MinimapWidget`, `GPSPanelWidget`, and `QuestTrackerWidget`.
+* **`VoxelSaveSerializer.gd`:** Extracted from the repository to handle data formatting/parsing exclusively, leaving `DiskWorldRepository.gd` with the sole responsibility of disk I/O.
+* **`InventorySlotWidget.gd`:** Extracted from the inventory overlay to isolate cell rendering and drag-and-drop mechanics from container orchestration.
 
 ### 2. Open-Closed Principle (OCP)
 *Classes are open for extension, but closed for modification.*
 CraftDomain utilizes data-driven registry, loading, and strategy patterns to ensure new content can be added without modifying existing code.
 
-#### The Data-Driven Quest & Campaign System
-Instead of hardcoding quests inside scripts, the system reads from external JSON quest configuration files.
-
-```mermaid
-sequenceDiagram
-	participant Boot as Bootstrap
-	participant Reg as CampaignRegistry
-	participant Serv as QuestService
-	participant HUD as PlayerHUD
-	
-	Boot->>Reg: initialize_campaign()
-	Note over Reg: Scans assets/quests/ for .json files
-	Reg->>Reg: Parse JSON Quest Packs
-	loop For Each Quest Object
-		Reg->>Serv: register_quest(Quest)
-	end
-	Reg->>Serv: set_active_quest("lost_bazaar")
-	Serv->>HUD: Broadcast Active Quest Update
-	Note over HUD: Render Quest Tracker Panel & Minimap Gold Marker
-```
-
 * **Data-Driven 1:1 Translations (i18n):** The engine dynamically loads translation data from `assets/translations/en.json` and `es.json`. Dialogue trees, item names, UI headers, and even floating speech bubbles are parsed using localization keys (e.g. `DIALOGUE_VILLAGER_INTRO`) without hardcoding raw text in the controllers.
+* **Data-Driven Block Properties:** `BlockType` physical properties (solidity, transparency) are determined dynamically by querying configurations registered inside `BlockLibrary.gd`'s static constructor, removing monolithic hardcoded `match` tables.
+* **Data-Driven Structure Blueprints:** Procedural tree/shrub generator scripts have been completely replaced. `StructureLibrary.gd` dynamically registers structures by loading relative-coordinate JSON layouts (e.g. `oak_tree.json`, `warp_pipe.json`) polimorphically through `TemplateStructureBlueprint.gd`.
+* **Polymorphic Biome Territories:** Biome boundary divisions inside `BiomeService.gd` are decoupled from hardcoded mathematical angles. Concrete `IBiome` strategies determine their own coordinates polimorphically using `is_coordinate_inside()`.
+* **Dynamic Streetlight Themes:** `StreetlightEntity.gd` is agnostic of specific biome styles. It queries the active biome strategy for a custom configuration dictionary (`get_streetlight_theme()`) to paint lights and poles dynamically.
 
 ### 3. Liskov Substitution Principle (LSP)
 Subclasses must be substitutable for their base classes without altering program correctness:
 * Any strategy implementing `IBiome` can be processed by `BiomeService` and evaluated by `WorldGenerator` without runtime exceptions.
-* Passive entities (`VillagerEntity`, `MinerEntity`, `GuardEntity`, `FarmerEntity`, `TurtleEntity`) inherit from `PassiveEntity`, implementing their custom shapes polymorphically while using the parent's base physics, blinking loops, variant seeding, and death sequences seamlessly.
+* Passive entities (`VillagerEntity`, `MinerEntity`, `GuardEntity`, `FarmerEntity`, `TurtleEntity`) inherit from `PassiveEntity`, implementing their custom shapes polimorphically while using the parent's base physics, blinking loops, variant seeding, and death sequences seamlessly.
+* **Fauna Segregation:** The virtual contract `_has_ui_decorations()` restricts floating speech bubbles, quest arrows, and conversation states exclusively to humanoid civilians. Wild animals return `false` on this check, avoiding redundant UI overhead and complying cleanly with LSP.
 
 ### 4. Interface Segregation Principle (ISP)
 *Clients should not be forced to depend upon interfaces they do not use.*
 * Instead of passing the entire `PlayerController.gd` (which contains camera vectors, physics movement, and input states) to the trading, loot drop, or crafting systems, the game defines `IInventory.gd`.
 * `TradingService`, `CraftingService`, and `PassiveEntity` (NPCs) interact *only* with the abstract `IInventory` interface, completely separating transaction logic from character movement and camera physics.
+* **Strict Casting & Type Validation:** UI overlays and controllers (like `DialogueOverlay.gd` and `DialogueManager.gd`) execute safe runtime casting (`as DialogueNode`, `as DialogueChoice`, `as IInventory`) to query parameters, securing compile-time property validation and clearing untyped Variant warnings.
 
 ### 5. Dependency Inversion Principle (DIP)
 *High-level modules must not depend on low-level modules; both must depend on abstractions.*
 * `WorldController.gd` (High-level coordinator) never directly instantiates or imports `DiskWorldRepository.gd` (Low-level JSON file details). Instead, it holds a reference to the abstract class `WorldRepository`.
 * `VoxelInteractionComponent.gd` interacts with the world grid via an injected `IWorldModifier` adapter, preventing the Domain from coupling with concrete Godot SceneTree nodes.
+* **Parser Scoping Safety:** Static inner class adapters (like `WorldModifierAdapter` inside `WorldController.gd`) are placed at the very end of scripts, preventing GDScript's indentation-based C++ parser from capturing base-class helper methods into inner class scopes.
 
 ---
 
@@ -128,35 +119,26 @@ Subclasses must be substitutable for their base classes without altering program
 
 Voxel sandbox games are traditionally notorious for CPU and GPU bottlenecks. CraftDomain implements custom lower-level optimizations to maintain rock-solid 120 FPS:
 
-### 1. Offloaded Physics Shape Compilation (Instant Teleportation)
-In Godot 4, instantiating physics shapes and setting their faces (`set_faces()`) from background threads forces the engine's `PhysicsServer3D` to run synchronous global memory locks. This stalls parallel worker threads during bulk loads, causing severe thread thrashing and freezes during teleportation.
-
-```mermaid
-sequenceDiagram
-	participant WT as Background Thread
-	participant TS as Main Thread Queue
-	participant PS as PhysicsServer3D
-
-	WT->>WT: Calculate flat collision_vertices (Triangles)
-	WT->>TS: Dispatch task with raw vertex arrays
-	Note over TS,PS: Executed on the Main Thread (0.05ms)
-	TS->>PS: Instantiate ConcavePolygonShape3D
-	TS->>PS: Call set_faces(collision_vertices)
-	TS->>TS: Attach to ChunkNode StaticBody3D
-```
-
-To resolve this, background threads now only perform mathematically pure computations (extracting raw `collision_vertices` arrays). The single `ConcavePolygonShape3D` is compiled on the Main Thread during rendering (taking under 0.05ms), completely resolving thread stalls.
+### 1. Hybrid Instant/Threaded Mesher (120 FPS Mining)
+To prevent Main Thread stutters and lag when placing or breaking blocks, CraftDomain utilizes a dual-pipeline meshing system:
+* The modified chunk is rebuilt synchronously on the Main Thread (`_rebuild_chunk_instantly`), completing in less than 0.5ms to provide instantaneous physical/visual feedback.
+* Any adjacent boundary chunks affected by the edit are offloaded asynchronously as high-priority tasks to background thread workers via the `WorkerThreadPool` (`_request_chunk_rebuild`), preventing rendering freezes completely.
 
 ### 2. Time-Sliced Physics Budgeting & Object Pooling
 * **Dynamic Throttling:** Background threads are capped strictly to 2 during teleports or startup, leaving CPU cores free for Vulkan shader compiles.
 * **Physics Budgeting:** `ChunkManagerService` compiles a maximum of 1-2 heavy concave collision bodies per frame, spreading physics registration overhead evenly and guaranteeing zero frame drops.
 * **Object Pooling:** Inactive chunks are stored in `_chunk_node_pool` and recycled dynamically instead of triggering expensive Garbage Collection `queue_free()` sweeps.
 
-### 3. Group AI Tracking ($O(1)$ Complexity) & Main Thread Throttling
+### 3. Dynamic LOD AI Throttling & main-thread decoupling
+* **LOD AI Tick Rate:** AI sensory sweeps, threat scans, and pathfinding calculations scale their update intervals dynamically based on distance to the player: Close Range (<15m) updates at 20Hz, Mid Range (15-35m) at 4Hz, and Far Range (>35m) at 0.5Hz, reducing village CPU overhead by over 95%.
+* **Smooth Vector Continuation:** Walk-cycle vector interpolations and local obstacle-jumping are processed every frame on the physics thread, ensuring entities continue to slide smoothly on screen even during throttled frames.
 * **$O(1)$ Targeting:** Active entities scan for targets by querying Godot's C++ native group registry (`"hostiles"` and `"passives"`), eliminating the performance spikes of old $O(N)$ child-scanning loops.
-* **Throttled AI/UI Scans:** AI tactical evaluations and UI metric updates (Minimap distance, GPS) are no longer executed every physics frame (120Hz). They are throttled via internal timers (e.g., 4 times per second), reducing the CPU load of a populated village by over 95%.
 
-### 4. Global Wind Shader System
+### 4. Compile-Free Unshaded Particles & Safe Shutdowns
+* To prevent dynamic Vulkan pipeline compilations (which drop FPS down to single digits during block mining), mining debris has been migrated to `CPUParticles3D` using `SHADING_MODE_UNSHADED` materials. This runs entirely on the CPU at zero compile cost.
+* **Memory-Safe Timers:** All temporary particle timers connect their `timeout` signals directly to `particles.queue_free` instead of compiling dynamic lambda captures, permanently preventing `Lambda capture at index 0 was freed` memory leaks upon world exit.
+
+### 5. Global Wind Shader System
 To synchronize environmental weather parameters (waves travelling with the wind, foliage leaves swaying along the wind line) across all shaders without incurring materials overhead, CraftDomain utilizes **Global Shader Uniforms**:
 
 ```mermaid
@@ -175,11 +157,11 @@ graph LR
 	end
 ```
 
-### 5. Opaque Far-LOD Culling & Sub-pixel Sealing
+### 6. Opaque Far-LOD Culling & Sub-pixel Sealing
 * **Alpha-Blend Bypass:** Distant chunks automatically switch translucent materials (Water, Glass, Clouds, Ice) to `TRANSPARENCY_DISABLED`. This bypasses expensive depth-sorting and alpha-blending passes on the GPU horizon, saving massive pixel fillrate overhead.
 * **Sub-pixel Hermetic Sealing:** Transparent liquid and slab vertices are mathematically scaled outward from their center by a factor of `1.002` (2 millimeters). This tightly overlaps chunk borders, perfectly fixing all Z-fighting and sub-pixel light leaks.
 
-### 6. Primitive Box Flyweight Collision Grid
+### 7. Primitive Box Flyweight Collision Grid
 Traditional `ConcavePolygonShape3D` meshes (triangle soups with zero volume) are prone to corner traps and seam-clinging bugs. `ChunkManagerService.gd` parses active solid transforms and constructs a grid of primitive solid `BoxShape3D` colliders using the **Flyweight Design Pattern**, sharing a single static instance across memory to resolve tunneling bugs natively.
 
 ```mermaid
@@ -201,12 +183,17 @@ sequenceDiagram
 	CMS->>CMS: Attach StaticBody3D to ChunkNode
 ```
 
-### 7. Expanded Horizon Draw Distance (162-Chunk Radius)
-Through massive occlusion culling and background thread matrix compilation within `ChunkVisualBuilder.gd`, `ChunkLoaderService` pushes a **9x2x9 3D loading grid**. This active volume of **162 procedural chunks** quadruples the standard visual draw distance natively without overwhelming the physics servers.
+### 8. Expanded Horizon Draw Distance (162-Chunk Radius)
+Through massive occlusion culling and background thread matrix compilation within `ChunkVisualBuilder.gd`, `ChunkLoaderService` pushes a **9x2x9 3D loading grid**. This active volume of **162 procedural chunks** quadruples the standard visual draw distance natively, allowing you to see mountain peaks and castles way in the distance while maintaining a locked 120 FPS.
 
-### 8. Anisotropic PBR Terrain Rendering & Selective Beveling
+### 9. Anisotropic PBR Terrain Rendering & Selective Beveling
 * **Texture Filtering:** Configured to `BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC` to completely eliminate shimmering and Moiré noise artifacts on oblique flat surfaces (beaches, highways).
 * **Selective Beveling:** Implements a procedural, mathematically perfect 64x64 Bevel Normal Map baked into RAM on startup. Applied selectively only to construction blocks (Bricks, Wood, Glass), leaving natural terrain flat and contiguous to prevent "waffle grid" patterns.
+
+### 10. Voxel-Support Block Gravity for Props
+Since interactive village props are spawned as lightweight `StaticBody3D` nodes to protect CPU cycles, they do not simulate physical gravity. Instead, the engine implements a block-support validation check when blocks are broken:
+* **Shattering Destructibles:** Broken blocks supporting a Barrel, Chest, or Campfire cause the prop to shatter, spawning wood debris particles and dropping loot.
+* **Procedural Sliding:** Broken blocks supporting a heavy Wishing Well or Streetlight trigger a smooth, downward bouncing Tween to the next solid floor surface and play heavy stone thud landing sounds.
 
 ---
 
@@ -305,9 +292,9 @@ Massive, multi-chunk architectural marvels are spawned dynamically at fixed coor
 
 To satisfy the Single Responsibility Principle, the HUD is separated into modular, decoupled widgets managed under `PlayerHUD.gd`:
 
-* **`MinimapWidget.gd`:** Renders the 2D circular radar, tracking the player arrow, regional biome colors, and auto-guided quest marker dots.
+* **`MinimapWidget.gd`:** Renders the 2D circular radar, tracking the player arrow, regional biome colors, active markers, and 3D altitude chevrons (^ / v) for cave/climbing depth-sensing.
 * **`GPSPanelWidget.gd`:** An elegant, localized overlay tracking coordinate grids, clock cycles, current biomes, and a procedural compass pointing directly toward the closest Global Mega-Structure.
-* **`MapOverlay.gd`:** A fullscreen glassmorphic tactical world map enabling instant OCP-compliant fast-travel to discovered POIs. Transitions are smoothed using the dynamic cinematic `LoadingScreen.gd`.
+* **`MapOverlay.gd`:** A fullscreen glassmorphic tactical world map enabling interactive dragging, panning, and OCP-compliant fast-travel teleportation. Transitions are smoothed using the dynamic cinematic `LoadingScreen.gd`.
 
 ### Commercial-Grade Responsive Design
 * **100% Responsiveness:** Built strictly with `PanelContainer`, `MarginContainer`, and dynamic pivots. The UI automatically expands and centers itself regardless of screen resolution, aspect ratio, or translation length.
