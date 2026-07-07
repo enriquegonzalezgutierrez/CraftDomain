@@ -6,6 +6,9 @@
 #              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
 #                spawn Foxes (204), Flying Yellow Birds (205), Raccoons (211), 
 #                and climbing Monkeys (213) organically in the woods.
+# GEOGRAPHICAL SENSING (Phase 4):
+#              - Implements `is_coordinate_inside()` to encapsulate its own 
+#                spawning boundaries (polar angle slice between 0.392 and 1.178 rad).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/RedwoodForestBiome.gd
 # ==============================================================================
@@ -65,3 +68,12 @@ func get_outpost_population_ids() -> Array[int]:
 func get_wilderness_wildlife_ids() -> Array[int]:
 	var local_wildlife: Array[int] = [204, 205, 211, 213]
 	return local_wildlife
+
+
+# ==============================================================================
+# GEOGRAPHICAL BOUNDARY SENSING (OCP Compliant)
+# ==============================================================================
+
+## Concrete Implementation: Returns true if within the southeastern forest slice
+func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
+	return angle_rad >= 0.392 and angle_rad < 1.178

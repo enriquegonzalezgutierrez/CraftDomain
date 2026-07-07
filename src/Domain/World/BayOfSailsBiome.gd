@@ -7,6 +7,9 @@
 #              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
 #                spawn aquatic Sea Turtles (201), Beach Crabs (208), 
 #                deep-water Octopuses (210), and Great White Sharks (11) on shores.
+# GEOGRAPHICAL SENSING (Phase 4):
+#              - Implements `is_coordinate_inside()` to encapsulate its own 
+#                spawning boundaries (restricted to a 130m circular spawn core).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BayOfSailsBiome.gd
 # ==============================================================================
@@ -51,3 +54,12 @@ func get_landmark_type(spawn_hash: int, base_height: int) -> int:
 func get_wilderness_wildlife_ids() -> Array[int]:
 	var local_wildlife: Array[int] = [201, 208, 210, 11]
 	return local_wildlife
+
+
+# ==============================================================================
+# GEOGRAPHICAL BOUNDARY SENSING (OCP Compliant)
+# ==============================================================================
+
+## Concrete Implementation: Returns true if within the 130-meter spawning core
+func is_coordinate_inside(_pos_flat: Vector2, distance: float, _angle_rad: float) -> bool:
+	return distance < 130.0

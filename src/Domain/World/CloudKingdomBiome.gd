@@ -6,6 +6,9 @@
 #              - Liskov Substitution Principle (LSP): Fully implements IBiome.
 #              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
 #                spawn Yellow Birds (205) and Tropical Parrots (207) in the sky.
+# GEOGRAPHICAL SENSING (Phase 4):
+#              - Implements `is_coordinate_inside()` returning false, as sky islands 
+#                occupy vertical high-altitude bounds rather than flat horizontal sectors.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/CloudKingdomBiome.gd
 # ==============================================================================
@@ -46,3 +49,12 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 func get_wilderness_wildlife_ids() -> Array[int]:
 	var local_wildlife: Array[int] = [205, 207]
 	return local_wildlife
+
+
+# ==============================================================================
+# GEOGRAPHICAL BOUNDARY SENSING (OCP Compliant)
+# ==============================================================================
+
+## Concrete Implementation: Ignored horizontally as sky islands use vertical boundaries
+func is_coordinate_inside(_pos_flat: Vector2, _distance: float, _angle_rad: float) -> bool:
+	return false

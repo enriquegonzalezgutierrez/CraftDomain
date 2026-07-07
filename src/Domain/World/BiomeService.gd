@@ -1,12 +1,12 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Domain Service acting as a Registry and Coordinator for voxel biomes.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Isolates coordinate 
-#                evaluations and biome registrations.
-#              - Open-Closed Principle (OCP): Encapsulates default biome startup 
-#                registrations in its own initialization loop, freeing Bootstrap 
-#                from concrete registration details.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Isolates coordinate 
+#   evaluations and biome registrations.
+# - Open-Closed Principle (OCP): Dynamic territory routing. The service no longer 
+#   contains hardcoded coordinate divisions, delegating boundary checks polimorphically 
+#   to the registered `IBiome` strategy classes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BiomeService.gd
 # ==============================================================================
@@ -86,35 +86,29 @@ static func evaluate_coordinate(global_x: int, global_z: int, terrain_noise: Fas
 	return profile
 
 
-## Calculates the deterministic biome sector ID based on polar coordinates.
+## Calculates the deterministic biome sector ID polimorphically (OCP Compliant).
 static func _calculate_sector_biome_id(global_x: int, global_z: int) -> int:
 	var gx := float(global_x)
 	var gz := float(global_z)
-	var distance: float = sqrt(gx * gx + gz * gz)
+	var pos_flat := Vector2(gx, gz)
+	var distance: float = pos_flat.length()
+	
+	# Spawn Bay at center has priority over all other biomes (ID 0)
+	if distance < 130.0:
+		return 0 # BAY_OF_SAILS
+		
 	var angle: float = atan2(gz, gx) 
 	
-	# Spawn Bay at center
-	if distance < 130.0:
-		return 0 # BAY_OF_SAILS (Spawn Ocean)
-		
-	# North Polar Ice Cap Core (Strict high altitude North cap)
-	if global_z < -420.0 and abs(global_x) < 180.0:
-		return 4 # FROSTBITE_GLACIERS (North Polar Cap)
-		
-	# 8 Symmetrical Cardinal Slices
-	if angle >= -0.392 and angle < 0.392:
-		return 2 # GOLDEN_BAZAAR (East Plain Corridor)
-	elif angle >= 0.392 and angle < 1.178:
-		return 5 # REDWOOD_FOREST (South-East Canopy)
-	elif angle >= 1.178 and angle < 1.963:
-		return 1 # WARP_PLATEAU (South Mario Steps)
-	elif angle >= 1.963 and angle < 2.748:
-		return 6 # RED_BADLANDS (South-West Terraces)
-	elif angle >= 2.748 or angle < -2.748:
-		return 8 # SWAMP_OF_SIGHS (West Mud Valleys)
-	elif angle >= -2.748 and angle < -1.963:
-		return 3 # CRAGGY_MINES (North-West Mountains)
-	elif angle >= -1.963 and angle < -1.178:
-		return 4 # FROSTBITE_GLACIERS (North Glacial shelves)
-	else:
-		return 7 # NEON_RUINS (North-East Obsidian Ruins)
+	# Symmetrical Polimorphic Query:
+	# Iterate through registered biomes, letting them decide if they own this coordinate.
+	# FIX: Explicit static typing on loop biome ID keys iterator
+	for b_id: int in _biomes.keys():
+		if b_id == 0:
+			continue # Skip spawn bay which was handled
+			
+		var biome: IBiome = _biomes[b_id] as IBiome
+		if is_instance_valid(biome) and biome.has_method("is_coordinate_inside"):
+			if biome.call("is_coordinate_inside", pos_flat, distance, angle):
+				return b_id
+				
+	return _default_biome.get_biome_id()

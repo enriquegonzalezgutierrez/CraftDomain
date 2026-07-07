@@ -6,6 +6,9 @@
 #              - Liskov Substitution Principle (LSP): Fully implements IBiome.
 #              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
 #                spawn livestock, domestic house Cats (206), and scavenging Raccoons (211).
+# GEOGRAPHICAL SENSING (Phase 4):
+#              - Implements `is_coordinate_inside()` to encapsulate its own 
+#                spawning boundaries (polar angle slice between -0.392 and 0.392 rad).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/GoldenBazaarBiome.gd
 # ==============================================================================
@@ -59,3 +62,12 @@ func get_scatter_blueprint_id(scatter_hash: int) -> int:
 func get_wilderness_wildlife_ids() -> Array[int]:
 	var local_wildlife: Array[int] = [0, 1, 2, 3, 206, 211]
 	return local_wildlife
+
+
+# ==============================================================================
+# GEOGRAPHICAL BOUNDARY SENSING (OCP Compliant)
+# ==============================================================================
+
+## Concrete Implementation: Returns true if within the eastern corridor plain slice
+func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
+	return angle_rad >= -0.392 and angle_rad < 0.392

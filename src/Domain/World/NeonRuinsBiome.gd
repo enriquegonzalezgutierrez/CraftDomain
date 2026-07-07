@@ -10,6 +10,9 @@
 #                (ROAD) and deep volcanic coal bedrock (COAL_ORE).
 #              - Spawns mystical glowing giant fungi (UnderworldFungus) and 
 #                neon stepped pyramids (NeonPyramid) to create elegant contrast.
+# GEOGRAPHICAL SENSING (Phase 4):
+#              - Implements `is_coordinate_inside()` to encapsulate its own 
+#                spawning boundaries (polar angle slice between -1.178 and -0.392 rad).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/NeonRuinsBiome.gd
 # ==============================================================================
@@ -54,7 +57,7 @@ func get_landmark_type(spawn_hash: int, _base_height: int) -> int:
 ## Override: Spawns magical Glowing Giant Fungi in the cyber basin
 func get_scatter_blueprint_id(scatter_hash: int) -> int:
 	if scatter_hash % 70 == 9:
-		return 11 # Giant Underworld Fungus (ID 11)
+		return 11 
 	return 0
 
 
@@ -62,3 +65,18 @@ func get_scatter_blueprint_id(scatter_hash: int) -> int:
 func get_outpost_population_ids() -> Array[int]:
 	var specialized_population: Array[int] = [106, 102]
 	return specialized_population
+
+
+## Concrete Override (OCP): Spawns livestock [0, 1, 2, 3] in the ruins.
+func get_wilderness_wildlife_ids() -> Array[int]:
+	var local_wildlife: Array[int] = [0, 1, 2, 3]
+	return local_wildlife
+
+
+# ==============================================================================
+# GEOGRAPHICAL BOUNDARY SENSING (OCP Compliant)
+# ==============================================================================
+
+## Concrete Implementation: Returns true if within the northeastern tech basin slice
+func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
+	return angle_rad >= -1.178 and angle_rad < -0.392

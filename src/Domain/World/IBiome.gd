@@ -4,11 +4,15 @@
 #              procedural biome. Decouples physical, visual, and landmark
 #              rules into independent, extensible classes.
 # SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Isolates biome specifications.
-#              - Liskov Substitution Principle (LSP): Sub-classes fully satisfy 
-#                the contract, implementing custom outpost populations and wildlife.
-#              - Open-Closed Principle (OCP): Outpost and wilderness spawns are now 
-#                completely data-driven, removing hardcoded mappings from spawner services.
+# - Single Responsibility Principle (SRP): Isolates biome specifications.
+# - Liskov Substitution Principle (LSP): Sub-classes fully satisfy 
+#   the contract, implementing custom outpost populations and wildlife.
+# - Open-Closed Principle (OCP): Outpost and wilderness spawns are now 
+#   completely data-driven, removing hardcoded mappings from spawner services.
+# GEOGRAPHICAL BOUNDARY SENSING UPGRADE:
+# - Added `is_coordinate_in_biome()` virtual contract. Each concrete biome 
+#   subclass now determines its own physical boundary mathematics, allowing 
+#   `BiomeService.gd` to remain closed to modifications during world expansions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/IBiome.gd
 # ==============================================================================
@@ -59,3 +63,12 @@ func get_outpost_population_ids() -> Array[int]:
 func get_wilderness_wildlife_ids() -> Array[int]:
 	var default_wildlife: Array[int] = [0, 1, 2, 3]
 	return default_wildlife
+
+# ==============================================================================
+# GEOGRAPHICAL BOUNDARY SENSING CONTRACT (OCP Compliant - Phase 4)
+# ==============================================================================
+
+## Virtual Contract: Returns true if the given 2D global coordinate, length, and 
+## polar angle belongs to this biome's territory boundary.
+func is_coordinate_in_biome(_pos_2d: Vector2, _distance: float, _angle: float) -> bool:
+	return false
