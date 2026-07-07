@@ -18,12 +18,21 @@
 #   a populated village by over 95% without compromising responsiveness.
 # - MATH OPTIMIZATION: `distance_to` replaced with `distance_squared_to` for 
 #   internal evaluations, bypassing expensive CPU square root calculations.
-# INTELLIGENT BOUNDARY PATHFINDING:
-# - Added `_is_direction_safe` look-ahead checks. Land mobs strictly avoid walking 
-#   into water, lava, or falling down open voids (AIR).
-# - Aquatic mobs (Turtles) are mathematically constrained to stay in water or wet sand.
-# - Resolved Wall-stiction: Bumping against un-jumpable walls immediately triggers 
-#   an alternative safe direction recalculation, preventing wall-clinging.
+# INTELLIGENT 3D PATHFINDING INTEGRATION:
+# - Connects dynamically to the `VoxelNavigationService` stored in WorldController.
+# - Refactored `WANDERING` state to request, verify, and follow step-by-step 3D paths 
+#   sequentially, enabling fluid stair climbs and wall avoidances.
+# - Robust Fallback: Automatically falls back to safe look-ahead wandering if 
+#   navigation coordinates are still compiling, preventing lockups.
+# CLIMATOLOGICAL ROUTINES & JOBS UPGRADE (Phase 2):
+# - Monitors real-time celestial clock shifts and active weather storms.
+# - Civilian Mobs dynamically cancel tasks at sunset or during storms, routing 
+#   themselves toward the closest cached indoor shelter node and staying protected.
+# - Military defenders (Guards, Golems) remain active on patrols at night.
+# DYNAMIC AI TICK THROTTLING (LOD AI Optimization - Phase 5):
+# - Measures distance to player dynamically to scale down logical update rates.
+# - Throttles expensive A* pathing and sensory sweeps to 4Hz or 0.5Hz at a distance, 
+#   slashing CPU overhead by over 95% while maintaining fluid movement continuation.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/NPCAIComponent.gd
 # ==============================================================================
@@ -59,9 +68,17 @@ var stuck_timer: float = 0.0
 var _tactical_scan_timer: float = 0.0
 const SCAN_INTERVAL: float = 0.25 # 4 times per second
 
-# Reference to the controlled physical entity parent
+# Reference to the controlled physical entity parent and spawn anchors
 var _host: CharacterBody3D
 var _spawn_point: Vector3
+
+# Dynamic 3D Path-following parameters Sourced from VoxelNavigationService
+var _nav_service: VoxelNavigationService = null
+var _active_path: Array[Vector3] = []
+var _current_path_index: int = 0
+
+# Dynamic AI Tick rate tracker (LOD AI)
+var _ai_tick_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -69,8 +86,22 @@ func _ready() -> void:
 	_host = get_parent() as CharacterBody3D
 	if is_instance_valid(_host):
 		_spawn_point = _host.global_position
-		# Stagger initial scan timers to prevent multiple NPCs from scanning on the exact same frame
-		_tactical_scan_timer = randf_range(0.0, SCAN_INTERVAL)
+		_stagger_and_setup()
+
+
+## Staggers updates and queries WorldController for the shared navigation map
+func _stagger_and_setup() -> void:
+	_tactical_scan_timer = randf_range(0.0, SCAN_INTERVAL)
+	
+	# Delayed retrieval to ensure WorldController has finished bootstrapping
+	get_tree().process_frame.connect(func() -> void:
+		if is_instance_valid(_host) and _host.is_inside_tree():
+			var world_ctrl := _host.get_parent()
+			if is_instance_valid(world_ctrl) and "chunk_manager" in world_ctrl:
+				if "navigation_service" in world_ctrl:
+					_nav_service = world_ctrl.get("navigation_service") as VoxelNavigationService
+					print("[NPCAI] Successfully linked to the shared VoxelNavigationService.")
+	, CONNECT_ONE_SHOT)
 
 
 ## Core AI state-machine tick.
@@ -83,7 +114,33 @@ func process_ai(delta: float) -> void:
 		current_task = TaskState.IDLE
 		wander_direction = Vector3.ZERO
 		stuck_timer = 0.0
+		_active_path.clear()
 		return
+
+	# ==========================================================================
+	# DYNAMIC AI TICK THROTTLING (LOD AI - Phase 5)
+	# Measures spatial distances to player and scales update intervals accordingly.
+	# ==========================================================================
+	var player_node := _host.get_parent().get_node_or_null("Player") as CharacterBody3D
+	var dist_sq := 999999.0
+	if is_instance_valid(player_node):
+		dist_sq = _host.global_position.distance_squared_to(player_node.global_position)
+		
+	var tick_interval := 0.05 # Close Range (<15m): 20Hz updates for fluid physics
+	if dist_sq > 1225.0:     # Far Range (>35m): 0.5Hz updates (Once every 2 seconds)
+		tick_interval = 2.0
+	elif dist_sq > 225.0:    # Mid Range (15m to 35m): 4Hz updates (Once every 0.25s)
+		tick_interval = 0.25
+		
+	_ai_tick_timer -= delta
+	if _ai_tick_timer > 0.0:
+		# Throttle state: Skip heavy sweeps (A* paths, threat checks, jobs)
+		# but still process physics continuation and local stuck-jumps!
+		_process_movement_avoidance(delta)
+		_apply_movement_vectors()
+		return
+		
+	_ai_tick_timer = tick_interval # Reset timer based on distance LOD
 
 	# ==========================================================================
 	# TACTICAL PROXIMITY SCAN (Throttled for Performance)
@@ -101,23 +158,46 @@ func process_ai(delta: float) -> void:
 			# Symmetrical safety validation: Only run if escape vector is safe
 			if _is_direction_safe(escape_dir):
 				current_task = TaskState.PANIC
+				_active_path.clear() # Cancel standard walks during panic
 				wander_direction = escape_dir
 				task_timer = 2.5 
 				stuck_timer = 0.0
 				_apply_movement_vectors()
 				return
 		
-		# 2. Check Player Greeting Proximity
-		var player_node := _host.get_parent().get_node_or_null("Player") as CharacterBody3D
-		var distance_to_player_sq: float = 9999.0
-		if is_instance_valid(player_node):
-			distance_to_player_sq = _host.global_position.distance_squared_to(player_node.global_position)
-			
+		# 2. Check Environmental & Time Schedule (Day/Night & Storm Sheltering)
+		var is_night: bool = CelestialService.is_night_time_static()
+		var is_storming := false
+		
+		var world_node := _host.get_parent()
+		if is_instance_valid(world_node):
+			var weather_node := world_node.get_node_or_null("WeatherService")
+			if is_instance_valid(weather_node):
+				var current_weather: int = int(weather_node.get("current_weather"))
+				is_storming = (current_weather == 1 or current_weather == 2)
+				
+		var is_civilian: bool = (
+			_host is VillagerEntity or 
+			_host is MerchantEntity or 
+			_host is FarmerEntity or 
+			_host is MinerEntity or 
+			_host is DruidEntity or 
+			_host is CyberCitizenEntity
+		)
+		
+		# If night or storm occurs, civilians cancel work/walks and seek shelter
+		if (is_night or is_storming) and is_civilian:
+			_seek_shelter_routine()
+			_apply_movement_vectors()
+			return
+		
+		# 3. Check Player Greeting Proximity
 		var can_socialize: bool = _host.has_method("_can_socialize") and _host.call("_can_socialize") as bool
 		
 		if can_socialize and current_task != TaskState.PANIC:
-			if distance_to_player_sq <= GREET_DISTANCE_SQ:
+			if dist_sq <= GREET_DISTANCE_SQ: # Reused optimized dist_sq
 				current_task = TaskState.GREETING
+				_active_path.clear()
 				var look_dir := (player_node.global_position - _host.global_position).normalized()
 				look_dir.y = 0
 				if look_dir != Vector3.ZERO:
@@ -129,6 +209,7 @@ func process_ai(delta: float) -> void:
 				var closest_peer := _detect_closest_peer_npc()
 				if closest_peer != null:
 					current_task = TaskState.CHATTIING
+					_active_path.clear()
 					var look_dir := (closest_peer.global_position - _host.global_position).normalized()
 					look_dir.y = 0
 					if look_dir != Vector3.ZERO:
@@ -146,10 +227,39 @@ func process_ai(delta: float) -> void:
 	# Real-time boundary check: Halt immediately if we are about to step into danger!
 	if current_task == TaskState.WANDERING or current_task == TaskState.PANIC:
 		if not _is_direction_safe(wander_direction):
+			_active_path.clear()
 			_select_next_random_task()
 		
 	_process_movement_avoidance(delta)
 	_apply_movement_vectors()
+
+
+## Searches the navigation graph and compiles an A* path towards the closest cached indoor shelter
+func _seek_shelter_routine() -> void:
+	# If we are already indoors, or already routing towards shelter, stay calm
+	if current_task == TaskState.IDLE and _active_path.is_empty():
+		var my_coord := Vector3i(floori(_host.global_position.x), floori(_host.global_position.y), floori(_host.global_position.z))
+		if is_instance_valid(_nav_service) and _nav_service._indoor_nodes.has(my_coord):
+			return # Safely sheltered under a roof, stand still
+			
+	if not _active_path.is_empty() and current_task == TaskState.WANDERING:
+		return # Active pathfinding is already routing towards shelter, proceed
+		
+	if is_instance_valid(_nav_service):
+		var shelter_pos: Vector3 = _nav_service.find_closest_shelter_node(_host.global_position)
+		if shelter_pos != Vector3.ZERO:
+			var path := _nav_service.find_path(_host.global_position, shelter_pos)
+			if path.size() > 1:
+				_active_path = path
+				_current_path_index = 0
+				current_task = TaskState.WANDERING
+				task_timer = 15.0 # Large timer to complete path routing
+				return
+				
+	# If no shelter is loaded or graph is compiling, hunker down in place
+	current_task = TaskState.IDLE
+	_active_path.clear()
+	task_timer = randf_range(1.5, 3.0)
 
 
 ## Evasion: Calculates and applies velocities to the parent host based on task states.
@@ -168,6 +278,30 @@ func _apply_movement_vectors() -> void:
 			stuck_timer = 0.0
 			
 		TaskState.WANDERING, TaskState.PANIC:
+			# If a smart 3D path is active, follow the nodes sequentially!
+			if current_task == TaskState.WANDERING and _active_path.size() > 0:
+				if _current_path_index < _active_path.size():
+					var target_node: Vector3 = _active_path[_current_path_index]
+					var diff: Vector3 = target_node - _host.global_position
+					diff.y = 0.0 # Maintain flat navigation plane
+					
+					# If within 40cm threshold, proceed to the next path node
+					if diff.length_squared() < 0.16:
+						_current_path_index += 1
+						_apply_movement_vectors()
+						return
+						
+					wander_direction = diff.normalized()
+				else:
+					# Target reached successfully! Stand still.
+					_active_path.clear()
+					current_task = TaskState.IDLE
+					task_timer = randf_range(1.5, 3.5)
+					_host.velocity.x = 0.0
+					_host.velocity.z = 0.0
+					stuck_timer = 0.0
+					return
+			
 			var speed_mult := 2.8 if current_task == TaskState.PANIC else 1.0
 			_host.velocity.x = wander_direction.x * base_speed * speed_mult
 			_host.velocity.z = wander_direction.z * base_speed * speed_mult
@@ -175,6 +309,7 @@ func _apply_movement_vectors() -> void:
 			# Tethering: Anchor human NPCs so they never wander away from spawn villages
 			if _host.name.contains("VILLAGER") or _host.name.contains("MERCHANT") or _host.name.contains("GUARD") or _host.name.contains("FARMER"):
 				if _host.global_position.distance_squared_to(_spawn_point) > 144.0: # 12m squared
+					_active_path.clear()
 					wander_direction = (_spawn_point - _host.global_position).normalized()
 					wander_direction.y = 0
 
@@ -192,6 +327,7 @@ func _process_movement_avoidance(delta: float) -> void:
 		stuck_timer += delta
 		if stuck_timer > 0.2: # Highly responsive stuck escape
 			stuck_timer = 0.0
+			_active_path.clear()
 			_select_next_random_task() # Instantly pick a safe, alternative path
 	else:
 		stuck_timer = 0.0
@@ -202,10 +338,30 @@ func _select_next_random_task() -> void:
 	var roll := randf()
 	if roll < 0.35:
 		current_task = TaskState.WANDERING
+		_active_path.clear()
+		
+		# ======================================================================
+		# SMART A* PATHFINDING DEPLOYMENT
+		# Requests a path toward a random, distant walkable point inside the map
+		# ======================================================================
+		if is_instance_valid(_nav_service):
+			var wander_range := 8.0
+			var target_offset := Vector3(randf_range(-wander_range, wander_range), 0.0, randf_range(-wander_range, wander_range))
+			var target_pos := _host.global_position + target_offset
+			
+			var path := _nav_service.find_path(_host.global_position, target_pos)
+			if path.size() > 1:
+				_active_path = path
+				_current_path_index = 0
+				task_timer = randf_range(5.0, 10.0) # Larger timer for structured path walks
+				return
+				
+		# ======================================================================
+		# FALLBACK: LOCAL LOOK-A-HEAD SAFE CHANNELS (If A* is compiling or blocked)
+		# ======================================================================
 		var angle := randf() * TAU
 		var dir := Vector3(cos(angle), 0, sin(angle))
 		
-		# Proactively try up to 5 safe directions, otherwise stand still (IDLE)
 		var found_safe := false
 		for attempt in range(5):
 			if _is_direction_safe(dir):
@@ -224,11 +380,13 @@ func _select_next_random_task() -> void:
 		task_timer = randf_range(3.0, 7.0)
 	elif roll < 0.70:
 		current_task = TaskState.EXAMINING 
+		_active_path.clear()
 		var angle := randf() * TAU
 		wander_direction = Vector3(cos(angle), 0, sin(angle))
 		task_timer = randf_range(2.0, 5.0)
 	else:
 		current_task = TaskState.IDLE
+		_active_path.clear()
 		task_timer = randf_range(1.5, 4.0)
 
 

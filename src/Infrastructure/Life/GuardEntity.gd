@@ -11,6 +11,13 @@
 #              - Restored the missing `interact()` and `_select_procedural_greeting_key()` 
 #                methods, allowing the player to engage in conversations with guards.
 #              - Restored full i18n support for defensive and location-based dialogues.
+# COMBAT ALERTS INTEGRATION (Phase 3):
+#              - Overrode `_ready()` to execute base configurations and proactively 
+#                register itself into the active static `AlertNetworkService.instance` pool.
+# VILLAGE REPUTATION & OUTLAW AGGRO (Phase 4):
+#              - Enhanced `_scan_for_active_zombie_target()` to query player karma.
+#              - Declares the player as an active target if their reputation falls to 
+#                WANTED outlaw status (reputation <= -50), prioritizing public defense.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GuardEntity.gd
 # ==============================================================================
@@ -40,6 +47,16 @@ func _init(spawn_pos: Vector3) -> void:
 	super(spawn_pos, 10)
 	name = "Entity_GUARD"
 	_tactical_scan_timer = randf_range(0.0, SCAN_INTERVAL)
+
+
+## Overrode ready to run base configurations and register into the alert pool
+func _ready() -> void:
+	super() # <-- CRITICAL: Executes base PassiveEntity colliders, nameplate and bubble setups
+	
+	# Register in the shared alert network
+	var alert_net := AlertNetworkService.instance
+	if is_instance_valid(alert_net):
+		alert_net.register_defender(self)
 
 
 ## Concrete Implementation (DIP): Injects the modular Guard Role ID into the strategy compiler
@@ -115,29 +132,43 @@ func _process_defensive_aggro_intelligence(delta: float) -> void:
 			ai_component.task_timer = 1.0
 
 
-## Trigonometric Scan: Locates the closest active zombie within combat range.
+## Trigonometric Scan: Locates the closest active zombie or outlaw player within combat range.
 func _scan_for_active_zombie_target() -> CharacterBody3D:
 	if not is_inside_tree():
 		return null
 		
-	var closest_zombie: CharacterBody3D = null
+	var closest_target: CharacterBody3D = null
 	var min_dist_sq := AGGRO_SIGHT_RANGE_SQ
 	
-	# HIGH PERFORMANCE GROUP QUERY
+	# 1. Check if the player is currently WANTED for crimes against the village
+	var rep := VillageReputationService.instance
+	if is_instance_valid(rep) and rep.is_player_wanted():
+		var parent_node := get_parent()
+		if is_instance_valid(parent_node):
+			var player_node := parent_node.get_node_or_null("Player") as CharacterBody3D
+			if is_instance_valid(player_node):
+				var p_domain := player_node.get("domain_entity") as VoxelEntity
+				if p_domain != null and not p_domain.is_dead:
+					var dist_sq := global_position.distance_squared_to(player_node.global_position)
+					if dist_sq < min_dist_sq:
+						min_dist_sq = dist_sq
+						closest_target = player_node # Priority target: WANTED player!
+	
+	# 2. Check traditional hostile monsters (Zombies)
 	var hostiles := get_tree().get_nodes_in_group("hostiles")
 	for child: Node in hostiles:
-		if is_instance_valid(child):
+		if is_instance_valid(child) and child is CharacterBody3D:
 			var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
 			if zombie_entity != null and not zombie_entity.is_dead:
 				var dist_sq := global_position.distance_squared_to(child.global_position)
 				if dist_sq < min_dist_sq:
 					min_dist_sq = dist_sq
-					closest_zombie = child as CharacterBody3D
+					closest_target = child as CharacterBody3D
 					
-	return closest_zombie
+	return closest_target
 
 
-## Executes sword slash calculations against the target zombie.
+## Executes sword slash calculations against the target zombie or outlaw player.
 func _execute_combat_strike() -> void:
 	if not is_instance_valid(_combat_target) or _combat_target.get("domain_entity").is_dead:
 		return
@@ -152,9 +183,9 @@ func _execute_combat_strike() -> void:
 	var knockback_dir := wander_dir * 4.5
 	knockback_dir.y = 2.0
 	
-	# Deal 1 Heart damage (Zombies have 3 Hearts and die in 3 hits)
+	# Deal 1 Heart damage
 	if _combat_target.has_method("take_damage"):
-		_combat_target.call("take_damage", 1, knockback_dir)
+		_combat_target.call("take_damage", 1, knockback_dir, self) # Pass self as attacker
 		
 	# SOLID: Delegate attack visuals directly to the injected visual strategy
 	if is_instance_valid(visual_representation):

@@ -36,6 +36,9 @@
 #     If the world is closed, Godot's C++ signal router cleanly disconnects the pointer, throwing 0 errors.
 #   * Set materials to SHADING_MODE_UNSHADED, bypassing real-time GPU pipelines to 
 #     guarantee stiction-free frame rates during mining.
+# VILLAGE REPUTATION & COMBAT LINKS (Phase 4):
+#   * Modified the sword strike code to pass the `player` node as the third parameter inside 
+#     `take_damage()`. This enables the karma engine to detect and punish player attacks on peaceful villagers.
 # CIRCULAR DEPENDENCY SHIELD:
 # - Removed all "PlayerController" type hints to break Godot's parser lock.
 #   Interacts with the player node strictly via loose-binding getters.
@@ -225,7 +228,7 @@ func _mine_or_attack() -> void:
 				var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
 				knockback_dir.y = 2.5
 				if collider.has_method("take_damage"):
-					collider.call("take_damage", 1, knockback_dir)
+					collider.call("take_damage", 1, knockback_dir, player) # <-- PASS THE PLAYER REFERENCE!
 				return
 
 	# ==========================================================================
@@ -408,7 +411,7 @@ func _build_or_interact() -> void:
 			modifier.set("last_hit_fractional_y", fractional_y)
 		
 		# Validate strategy requirements
-		if strategy.can_use(player.get("domain_entity"), inventory, target_coord, hit_normal, world_state):
+		if strategy.can_use(player.domain_entity, inventory, target_coord, hit_normal, world_state):
 			
 			# SPECIAL BOUNDING SHIELD: Prevent placing solid blocks inside player's body
 			if strategy is PlaceableBlockStrategy:
@@ -422,12 +425,12 @@ func _build_or_interact() -> void:
 					return # Prevent trapping the player inside a solid block!
 					
 			# Execute strategy business rules (Injected through the Domain Adapter abstraction)
-			strategy.use(player.get("domain_entity"), inventory, target_coord, hit_normal, world_ctrl.world_modifier)
+			strategy.use(player.domain_entity, inventory, target_coord, hit_normal, world_ctrl.world_modifier)
 			
 			# Contextual visual toast notifications (Decoupled from core strategy rules)
 			if is_instance_valid(hud):
 				if strategy is ConsumableItemStrategy:
-					hud.update_health_display(player.get("domain_entity").health)
+					hud.update_health_display(player.domain_entity.health)
 					hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "NOTIFICATION_CONSUME_FOOD_DESC")
 				elif strategy is PlantableItemStrategy:
 					hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")

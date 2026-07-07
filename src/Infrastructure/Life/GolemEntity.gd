@@ -1,27 +1,24 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Golem NPC physics controller. A giant stone warrior/defender 
-#              protecting village outposts from incoming hostiles.
-#              SOLID COMPLIANCE: 
-#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity, 
-#                safely overriding movement, task routing, and visual meshes.
-#              - Single Responsibility Principle (SRP): Delegates visual rendering 
-#                to the sub-component, and physics movements to the base class.
-#              - Dependency Inversion Principle (DIP): Automatically prunes 
-#                extraneous Blender-exported nodes (Cameras, Lights) on initialization.
-#              i18n LOCALIZATION OVERHAUL:
-#              - Wrapped the hardcoded billboard speech bubble text in `tr()`
-#                to ensure dynamic language switching.
-# MATHEMATICAL CALIBRATION (Waist-Pivot Offset Fix):
-#              - Model origin was incorrectly centered at the waist (Min Y = -1.0m).
-#              - Scaled by 1.7516x to achieve a colossal giant height of ~3.5m.
-#              - Raised the model Y-position by +1.7509m to anchor its feet flat 
-#                on the physical voxel colliders.
-#              - Corrected the backward orientation mesh bug by setting the 
-#                Y-axis rotation offset to 180 degrees.
-# WARNING RESOLUTION:
-#              - Injected material property overrides in `_register_glb_materials` 
-#                to force-disable normal maps and anisotropy.
+# Description: Golem NPC physics controller. A giant stone defender of villagers 
+#              that patrols outposts, scans for zombies, and executes high-impact 
+#              vertical tossing attacks to protect the plains.
+# SOLID COMPLIANCE: 
+# - Liskov Substitution Principle (LSP): Subclasses PassiveEntity, 
+#   safely overriding movement, task routing, and visual meshes.
+# - Single Responsibility Principle (SRP): Delegates visual rendering 
+#   to the sub-component, and physics movements to the base class.
+# - Dependency Inversion Principle (DIP): Automatically prunes 
+#   extraneous Blender-exported nodes (Cameras, Lights) on initialization.
+# COMBAT ALERTS INTEGRATION (Phase 3):
+#              - Overrode `_ready()` to execute base configurations and proactively 
+#                register itself into the active static `AlertNetworkService.instance` pool.
+# VILLAGE REPUTATION & OUTLAW AGGRO (Phase 4):
+#              - Enhanced `_scan_for_active_zombie_target()` to query player karma.
+#              - Declares the player as an active target if their reputation falls to 
+#                WANTED outlaw status (reputation <= -50), prioritizing public defense.
+#              - Passes `self` as the attacker within `take_damage` to ensure correct 
+#                damage source mapping.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GolemEntity.gd
 # ==============================================================================
@@ -51,6 +48,16 @@ func _init(spawn_pos: Vector3) -> void:
 	super(spawn_pos, 30)
 	name = "Entity_GOLEM"
 	_tactical_scan_timer = randf_range(0.0, SCAN_INTERVAL)
+
+
+## Overrode ready to run base configurations and register into the alert pool
+func _ready() -> void:
+	super() # <-- CRITICAL: Executes base PassiveEntity colliders, nameplate and bubble setups
+	
+	# Register in the shared alert network
+	var alert_net := AlertNetworkService.instance
+	if is_instance_valid(alert_net):
+		alert_net.register_defender(self)
 
 
 ## Loads the external GLB model and applies calculated mathematical transforms
@@ -88,7 +95,8 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D:
 		var mat: Material = node.get_active_material(0) as Material
 		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0) as Material
+			var surface_material := node.mesh.surface_get_material(0) as Material
+			mat = surface_material
 			
 		if mat is BaseMaterial3D:
 			var new_mat := mat.duplicate() as BaseMaterial3D
@@ -130,7 +138,7 @@ func _setup_floating_bubble() -> void:
 	if sb_script != null:
 		_bubble = sb_script.new() as Node3D
 		add_child(_bubble)
-		_bubble.call("set_text", tr("BUBBLE_DEFENDER")) # <-- Localized
+		_bubble.call("set_text", tr("BUBBLE_DEFENDER"))
 
 
 ## Public Gaze Interaction: Heavy rumbling sound responses.
@@ -204,14 +212,29 @@ func _process_defensive_aggro_intelligence(delta: float) -> void:
 			ai_component.task_timer = 1.0
 
 
-## Trigonometric Scan: Locates the closest active zombie within combat range.
+## Trigonometric Scan: Locates the closest active zombie or outlaw player within combat range.
 func _scan_for_active_zombie_target() -> CharacterBody3D:
 	if not is_inside_tree():
 		return null
 		
-	var closest_zombie: CharacterBody3D = null
+	var closest_target: CharacterBody3D = null
 	var min_dist_sq := AGGRO_SIGHT_RANGE_SQ
 	
+	# 1. Check if the player is currently WANTED for crimes against the village
+	var rep := VillageReputationService.instance
+	if is_instance_valid(rep) and rep.is_player_wanted():
+		var parent_node := get_parent()
+		if is_instance_valid(parent_node):
+			var player_node := parent_node.get_node_or_null("Player") as CharacterBody3D
+			if is_instance_valid(player_node):
+				var p_domain := player_node.get("domain_entity") as VoxelEntity
+				if p_domain != null and not p_domain.is_dead:
+					var dist_sq := global_position.distance_squared_to(player_node.global_position)
+					if dist_sq < min_dist_sq:
+						min_dist_sq = dist_sq
+						closest_target = player_node # Priority target: WANTED player!
+	
+	# 2. Check traditional hostile monsters (Zombies)
 	var hostiles := get_tree().get_nodes_in_group("hostiles")
 	for child: Node in hostiles:
 		if is_instance_valid(child):
@@ -220,12 +243,12 @@ func _scan_for_active_zombie_target() -> CharacterBody3D:
 				var dist_sq := global_position.distance_squared_to(child.global_position)
 				if dist_sq < min_dist_sq:
 					min_dist_sq = dist_sq
-					closest_zombie = child as CharacterBody3D
+					closest_target = child as CharacterBody3D
 					
-	return closest_zombie
+	return closest_target
 
 
-## Executes Golem's iconic heavy double-arm launch attack (Throws Zombies up!)
+## Executes Golem's iconic heavy double-arm launch attack (Throws Zombies/Outlaws up!)
 func _execute_heavy_combat_strike() -> void:
 	if not is_instance_valid(_combat_target) or _combat_target.get("domain_entity").is_dead:
 		return
@@ -236,12 +259,12 @@ func _execute_heavy_combat_strike() -> void:
 	target_dir.y = 0.0
 	target_dir = target_dir.normalized()
 	
-	# Launch force scaled to throw the zombie 9.5 meters up!
+	# Launch force scaled to throw the target 9.5 meters up!
 	var throw_force := target_dir * 3.5 + Vector3(0.0, 9.5, 0.0)
 	
 	# Deals heavy 2 Hearts damage
 	if _combat_target.has_method("take_damage"):
-		_combat_target.call("take_damage", 2, throw_force)
+		_combat_target.call("take_damage", 2, throw_force, self) # Pass self as attacker
 
 
 func _can_socialize() -> bool:

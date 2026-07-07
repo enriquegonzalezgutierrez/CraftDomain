@@ -23,6 +23,14 @@
 # FIXED COMPILATION STUTTER:
 # - Corrected GPUParticles3D Material properties inside `_spawn_death_particles()` 
 #   to use `scale_min` and `scale_max` instead of `scale_amount_min`.
+# COMBAT ALERTS INTEGRATION (Phase 3):
+# - Added dynamic threat-scanning and alarm broadcasting. Struck civilians find 
+#   the closest hostile zombie and sound the alarm via `AlertNetworkService`.
+# - Clears defenders from the alarm network during the death cleanup sequence.
+# VILLAGE REPUTATION & KARMA INTEGRATION (Phase 4):
+# - Modified `take_damage()` signature to accept an optional `attacker: Node` parameter.
+# - Attacking peaceful civilians deducts -15 rep points from the player's karma.
+# - Killing peaceful civilians deducts an additional -35 rep points (total of -50).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -69,6 +77,9 @@ var _collision_height: float = 1.5
 # ==============================================================================
 var is_talking: bool = false
 var _talking_partner: CharacterBody3D = null
+
+# Reputation and combat trackers
+var _last_attacker: Node = null
 
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
@@ -303,11 +314,15 @@ func stop_talking() -> void:
 		ai_component.task_timer = 1.0
 
 
-func take_damage(amount: int, knockback_force: Vector3) -> void:
+## Modified take_damage signature to track and remember the direct attacker Node
+func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -> void:
 	if domain_entity.is_dead: 
 		return
 	if is_talking:
 		stop_talking()
+		
+	if is_instance_valid(attacker):
+		_last_attacker = attacker
 		
 	velocity += knockback_force
 	domain_entity.take_damage(amount)
@@ -322,6 +337,54 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 		ai_component.task_timer = randf_range(3.0, 5.0)
 		var angle := randf() * TAU
 		ai_component.wander_direction = Vector3(cos(angle), 0, sin(angle))
+		
+	# Determine if the victim is a civilian to deduct reputation points
+	var is_civilian: bool = (
+		self is VillagerEntity or 
+		self is MerchantEntity or 
+		self is FarmerEntity or 
+		self is MinerEntity or 
+		self is DruidEntity or 
+		self is CyberCitizenEntity
+	)
+	
+	# ==========================================================================
+	# PLAYER KARMA PUNISHMENT: DEDUCT ON DAMAGE (Phase 4)
+	# Hitting peaceful civilians deducts -15 points of reputation instantly
+	# ==========================================================================
+	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
+		var rep := VillageReputationService.instance
+		if is_instance_valid(rep):
+			rep.modify_reputation(-15)
+		
+	# ==========================================================================
+	# PROACTIVE COMBAT ALARM BROADCAST (Phase 3)
+	# Locate closest attacking zombie and notify nearby defenders through network
+	# ==========================================================================
+	var closest_attacker := _find_closest_hostile_threat()
+	if is_instance_valid(closest_attacker):
+		AlertNetworkService.broadcast_alarm(closest_attacker, global_position)
+
+
+## Proximity Scanner: Identifies the closest active zombie within an 8-meter combat radius
+func _find_closest_hostile_threat() -> CharacterBody3D:
+	if not is_inside_tree():
+		return null
+		
+	var hostiles := get_tree().get_nodes_in_group("hostiles")
+	var closest: CharacterBody3D = null
+	var min_dist_sq := 64.0 # 8 meters squared sight limit
+	
+	for child: Node in hostiles:
+		if is_instance_valid(child) and child is CharacterBody3D:
+			var zombie_domain := child.get("domain_entity") as VoxelEntity
+			if zombie_domain != null and not zombie_domain.is_dead:
+				var dist_sq := global_position.distance_squared_to(child.global_position)
+				if dist_sq < min_dist_sq:
+					min_dist_sq = dist_sq
+					closest = child as CharacterBody3D
+					
+	return closest
 
 
 # ==============================================================================
@@ -344,6 +407,28 @@ func _on_domain_entity_died() -> void:
 		_quest_arrow.queue_free()
 	if is_instance_valid(_nameplate):
 		_nameplate.queue_free()
+		
+	# Unregister from active alert pools on death
+	var alert_net := AlertNetworkService.instance
+	if is_instance_valid(alert_net):
+		alert_net.unregister_defender(self)
+		
+	# ==========================================================================
+	# PLAYER KARMA PUNISHMENT: DEDUCT ON MURDER (Phase 4)
+	# Killing peaceful civilians deducts an additional -35 points (total -50)
+	# ==========================================================================
+	var is_civilian: bool = (
+		self is VillagerEntity or 
+		self is MerchantEntity or 
+		self is FarmerEntity or 
+		self is MinerEntity or 
+		self is DruidEntity or 
+		self is CyberCitizenEntity
+	)
+	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
+		var rep := VillageReputationService.instance
+		if is_instance_valid(rep):
+			rep.modify_reputation(-35)
 		
 	# 2. Spawn death particles (Smoke puff)
 	_spawn_death_particles()
