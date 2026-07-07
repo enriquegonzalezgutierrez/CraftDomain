@@ -8,6 +8,9 @@
 #                and skeletal animations entirely to the FaunaVisualRepresentation strategy.
 #              - Dependency Inversion Principle (DIP): Independent of physical rendering,
 #                binding visuals purely to the IEntityVisualRepresentation abstraction.
+# ROTATION CALIBRATION (LSP Fix):
+#              - Corrected 'rotation_offset' from Y=-90 to Y=90 to rotate the visual 
+#                mesh exactly 180 degrees, ensuring the pig faces and walks forward!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PigEntity.gd
 # ==============================================================================
@@ -23,6 +26,10 @@ func _init(spawn_pos: Vector3) -> void:
 	name = "Entity_PIG"
 
 
+# ==============================================================================
+# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
+# ==============================================================================
+
 ## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
 func _build_visual_representation() -> void:
 	var strategy := FaunaVisualRepresentation.new()
@@ -31,7 +38,7 @@ func _build_visual_representation() -> void:
 	# Scale and position offsets calculated via GLB Analyzer V5
 	strategy.scale_multiplier = Vector3(9.4485, 9.4485, 9.4485)
 	strategy.position_offset = Vector3(0.0, 0.0102, 0.0)
-	strategy.rotation_offset = Vector3(0, -90, 0) # Face forward (-Z)
+	strategy.rotation_offset = Vector3(0, 90, 0) # Corrected Y-rotation so the pig faces forward
 	
 	# Physical collision dimensions (0.75m height)
 	strategy.collision_size = Vector3(0.6, 0.75, 0.65)
@@ -46,12 +53,14 @@ func _build_visual_representation() -> void:
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
-func _get_collision_box_size() -> Vector3:
-	return Vector3(0.6, 0.75, 0.65)
+# ==============================================================================
+# COMBAT & LOOT LOGIC
+# ==============================================================================
 
-
-func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.375, 0.0)
+## Override: Drops 1x Fried Chicken (Meat proxy) on death
+func _drop_loot(inv: IInventory) -> void:
+	# Item ID 16: Fried Chicken
+	inv.add_item(16, 1)
 
 
 ## Flag used by the animation ticker to configure bouncy walks (Disabled for quadrupeds)
@@ -61,17 +70,3 @@ func _is_avian() -> bool:
 
 func _can_socialize() -> bool:
 	return true
-
-
-func _on_domain_entity_took_damage(_amount: int) -> void:
-	# Pig panic escape velocity
-	velocity.y = JUMP_VELOCITY
-	if is_instance_valid(ai_component):
-		ai_component.current_task = NPCAIComponent.TaskState.PANIC
-		ai_component.task_timer = randf_range(3.0, 5.0)
-
-
-## Drops 1x Fried Chicken (Meat proxy) on death
-func _drop_loot(inv: IInventory) -> void:
-	# Item ID 16: Fried Chicken
-	inv.add_item(16, 1)

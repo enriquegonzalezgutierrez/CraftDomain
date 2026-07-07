@@ -15,21 +15,21 @@
 # - Implemented a time-sliced proximity sweep that checks the distance to the player 
 #   only once every 15 physics frames (60 FPS / 15 = 4 times per second).
 # - If the entity is further than 40 meters, it enters a physical sleep state, 
-#   bypassing Godot's heavy `move_and_slide()` solver and AI updates entirely, 
-#   which frees immense CPU cycles while keeping the mob rendering in its idle pose.
+#   bypassing Godot's heavy `move_and_slide()` solver and AI updates entirely.
 # - Added an immediate wake-up lock in `take_damage()` to prevent desync during combat.
 # GEOMETRIC & I18N NAMEPLATE BINDINGS:
 # - Added class-matching hooks inside `_setup_nameplate()` for newly unified hostiles 
 #   (Shark, Zombie, Goblin, Gargoyle) to bind them to their correct translation keys.
-# - Upgraded height formula utilizing a non-negative clamp `maxf(0.0, visual_offset_y)` 
-#   to combine physical bounding box height with positive visual Y-axis displacements, 
-#   guaranteeing nameplates float perfectly above head and dorsal fins.
-# ABSOLUTE BOUNDARY FORCEFIELD (Strict Habitat Prohibitions):
+# - Upgraded height formula: Sourced directly from the absolute world physical size 
+#   (`box_shape.size.y`) combined with positive visual displacements, completely 
+#   avoiding "double-dipping" scaling bugs on models with massive visual scaling factors (like the Pig).
+# ABSOLUTE BOUNDARY FORCEFIELD WITH VERTICAL COLUMN SCANNING:
 # - Implemented `_apply_absolute_boundary_forcefield(delta)` to project the 
 #   next immediate frame position of the mob.
-# - If a terrestrial mob is about to slide into liquid Water/Lava, or if an 
-#   aquatic mob is about to slide onto dry land shores, the horizontal velocity 
-#   is nullified, creating an invisible, foolproof wall of collision.
+# - If a terrestrial mob is about to step off a cliff into AIR, the code performs 
+#   a fast downward vertical column scan.
+# - If liquid WATER or LAVA is detected at any height below before hitting solid ground, 
+#   the step is flagged as a boundary violation and horizontal velocity is nullified.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -124,10 +124,10 @@ func _ready() -> void:
 		_setup_floating_bubble()
 		_setup_quest_arrow()
 		
-	# Setup physics collision shape (Reads size from active strategy)
+	# Setup physics Cylinder collision shape (OCP Wall Sliding Solution)
 	var col := CollisionShape3D.new()
 	col.name = "EntityCollider"
-	var box_shape := BoxShape3D.new()
+	var cylinder_shape := CylinderShape3D.new()
 	
 	var size_scale := Vector3(1.0, visual_component.variant_height_scale, 1.0)
 	
@@ -142,34 +142,41 @@ func _ready() -> void:
 		col_size = _get_collision_box_size()
 		col_pos = _get_collision_box_position()
 		
-	box_shape.size = col_size * size_scale
-	col.shape = box_shape
+	# ==========================================================================
+	# UNIFIED PHYSICAL SCALING (OCP/LSP compliant):
+	# Collision sizes are now defined as absolute world-space physical bounds 
+	# within entity files, completely uncoupled from model scale multipliers.
+	# This protects smaller animals (like Pigs, Cats) from double-dipping scaling bugs.
+	# ==========================================================================
+	cylinder_shape.height = col_size.y * size_scale.y
+	cylinder_shape.radius = maxf(col_size.x, col_size.z) * 0.5 * size_scale.x
+	col.shape = cylinder_shape
 	
 	# ---> COLLISION CUSHION HOOK <---
-	var target_pos := col_pos * visual_component.variant_height_scale
-	target_pos.y -= 0.06 * visual_component.variant_height_scale
+	var target_pos := col_pos * size_scale
+	target_pos.y -= 0.06 * size_scale.y
 	col.position = target_pos
 	
 	add_child(col)
 	
 	# ==========================================================================
 	# DYNAMIC COLLISION-AWARE ELEVATION & NAMEPLATE PIPELINE
-	# Combines physical box height with non-negative visual Y-axis displacements, 
+	# Combines physical cylinder height with positive visual Y-axis displacements, 
 	# preventing negative offsets (like Shark's -0.53m) from sinking the nameplate.
 	# ==========================================================================
 	var visual_offset_y := 0.0
 	if is_instance_valid(visual_representation) and "position_offset" in visual_representation:
 		visual_offset_y = visual_representation.position_offset.y
 		
-	_collision_height = (box_shape.size.y + maxf(0.0, visual_offset_y))
+	_collision_height = (cylinder_shape.height + maxf(0.0, visual_offset_y))
 	_setup_nameplate() # Instantiate the nameplate above head
 	
 	# Symmetrical Stacking Offset Heights to prevent overlaps (only if UI is active)
 	if is_instance_valid(_bubble):
-		_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0) # Lifted to clear nameplate
+		_bubble.position = Vector3(0.0, _collision_height + 0.45, 0.0) # Lifted to clear nameplate
 		
 	if is_instance_valid(_quest_arrow):
-		_quest_arrow.position = Vector3(0.0, _collision_height + 1.15, 0.0) # Lifted to clear bubble
+		_quest_arrow.position = Vector3(0.0, _collision_height + 0.85, 0.0) # Lifted to clear bubble
 	# ==========================================================================
 
 
@@ -554,12 +561,30 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 		is_crossing = (next_block_below != BlockType.Type.WATER and next_block_at != BlockType.Type.WATER)
 	elif habitat == MobRegistry.Habitat.TERRESTRIAL:
 		# Pure terrestrial cannot step into water or lava blocks
-		is_crossing = (
+		var next_is_water := (
 			next_block_below == BlockType.Type.WATER or 
 			next_block_below == BlockType.Type.LAVA or 
 			next_block_at == BlockType.Type.WATER or 
 			next_block_at == BlockType.Type.LAVA
 		)
+		
+		if next_is_water:
+			is_crossing = true
+		elif next_block_below == BlockType.Type.AIR:
+			# ==================================================================
+			# VERTICAL COLUMN LEDGE-SCANNING (CLIFF PREVENTER):
+			# If a land mob walks off a cliff edge into AIR, we scan downwards.
+			# If WATER or LAVA is detected at any height below, we flag this 
+			# as an absolute boundary crossing and nullify their velocity, 
+			# physically preventing them from ever falling off into water!
+			# ==================================================================
+			for check_y in range(next_coord.y - 1, -1, -1):
+				var block_type := ws.get_block(Vector3i(next_coord.x, check_y, next_coord.z))
+				if block_type == BlockType.Type.WATER or block_type == BlockType.Type.LAVA:
+					is_crossing = true
+					break
+				elif block_type != BlockType.Type.AIR:
+					break # Safe land drop found first, let them step and fall
 		
 	if is_crossing:
 		# Symmetrical constraint: Cancel horizontal speeds, acting as an invisible solid wall!

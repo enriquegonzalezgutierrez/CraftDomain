@@ -12,15 +12,19 @@
 #              - Integrated `_apply_absolute_boundary_forcefield(delta)` right before 
 #                `move_and_slide()`. The Zombie now bounces off shoreline water/lava blocks 
 #                as if they were solid stone walls, preventing accidental drowning.
-# WALL STEERING EVASION ENGINE (Intelligence Upgrade):
-#              - Refactored `_process_ai_intelligence()` wall collision. 
-#              - If the Zombie hits a wall while actively chasing the player, 
-#                the code projects its chase vector perpendicular to the `get_wall_normal()`.
-#              - This allows the Zombie to automatically slide sideways and skirt 
-#                around corners and obstacles to reach the player, instead of getting stuck!
-# COMPILER CLASH RESOLUTION:
-#              - Removed duplicated `ANIM_DIR` and `JUMP_VELOCITY` constants to 
-#                prevent GDScript parent-member redefinition compile errors.
+# REAL-TIME WALL FLANKING STEERING (Evasion Fix):
+#              - Re-engineered `_process_ai_intelligence()` steering pipeline.
+#              - The chase vector is calculated first. If the Zombie is colliding 
+#                with a wall, we immediately project its heading perpendicular 
+#                to the `get_wall_normal()` in the same frame.
+#                This mathematically prevents the movement vector from being 
+#                overwritten, allowing the Zombie to glide smoothly along walls 
+#                to flank the player instead of running into them.
+# COLLISION & SCALE CALIBRATION (V5 Telemetry & Spacing Fix):
+#              - Restored base human bounds: 1.80m height and 0.90m center.
+#              - The parent class 'PassiveEntity' now automatically multiplies these 
+#                dimensions by its scale multiplier (1.6635x) and sets up the 
+#                cylinder collider, preventing any 'double-dipping' scale bugs.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -109,9 +113,9 @@ func _build_visual_representation() -> void:
 	strategy.position_offset = Vector3(0.0, 0.0, 0.0)
 	strategy.rotation_offset = Vector3(0, 180, 0)
 	
-	# Physical collision bounds
-	strategy.collision_size = Vector3(0.6, 1.8, 0.6)
-	strategy.collision_position = Vector3(0.0, 0.9, 0.0)
+	# Physical base unscaled bounds (Parent scales them automatically to 3.0m height)
+	strategy.collision_size = Vector3(0.60, 1.80, 0.60)
+	strategy.collision_position = Vector3(0.0, 0.90, 0.0)
 	
 	# External Animation Tracks (Using inherited constant ANIM_DIR)
 	strategy.anim_idle_path = ANIM_DIR + "zombie/zombie_idle.fbx"
@@ -203,6 +207,21 @@ func _process_ai_intelligence(delta: float) -> void:
 			_wander_direction.y = 0
 			is_player_trackable = true
 			
+			# ======================================================================
+			# REAL-TIME FLANKING WALL STEERING:
+			# If we are actively chasing the player but hit a wall, immediately 
+			# project our desired chase vector perpendicular to the wall's normal plane.
+			# This lets the Zombie slide sideways and navigate around obstacles 
+			# dynamically, rather than getting stuck!
+			# ======================================================================
+			if is_on_wall():
+				var wall_normal := get_wall_normal()
+				var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+				if flat_normal != Vector3.ZERO:
+					var slide_dir := (_wander_direction - flat_normal * (_wander_direction.dot(flat_normal))).normalized()
+					if slide_dir != Vector3.ZERO:
+						_wander_direction = slide_dir
+			
 			if global_position.distance_to(player.global_position) <= ATTACK_RANGE:
 				if _attack_cooldown_timer <= 0.0:
 					_bite_player()
@@ -237,21 +256,7 @@ func _process_ai_intelligence(delta: float) -> void:
 			
 			if _stuck_timer > patience:
 				_stuck_timer = 0.0
-				# ======================================================================
-				# FLANKING WALL STEERING:
-				# If chasing the player and hitting a wall, mathematically project the 
-				# desired chase vector perpendicular to the wall's normal plane.
-				# This lets the Zombie slide sideways and navigate around obstacles 
-				# dynamically, rather than getting stuck!
-				# ======================================================================
-				if is_player_trackable:
-					var wall_normal := get_wall_normal()
-					var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-					if flat_normal != Vector3.ZERO:
-						var slide_dir := (_wander_direction - flat_normal * (_wander_direction.dot(flat_normal))).normalized()
-						if slide_dir != Vector3.ZERO:
-							_wander_direction = slide_dir
-				else:
+				if not is_player_trackable:
 					# Standard non-chasing random wall bounce
 					var wall_normal := get_wall_normal()
 					var flat_normal := Vector3(wall_normal.x, 0, wall_normal.z).normalized()
