@@ -7,7 +7,8 @@
 # - Single Responsibility Principle (SRP): Coordinates only the layout grids, 
 #   details panel selections, and high-level button clicks. Drag-and-drop data 
 #   and slot-rendering tasks are delegated to `InventorySlotWidget.gd`.
-# - Open-Closed Principle (OCP): Purely data-driven. All texts utilize `tr()`.
+# - Open-Closed Principle (OCP): Completely deleted the duplicate color dictionary. 
+#   Fallback slots and the inspector icon query colors dynamically from `BlockLibrary`.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/InventoryOverlay.gd
 # ==============================================================================
@@ -34,22 +35,6 @@ var _use_button: Button
 # Internal selection state tracking
 var _first_selected_slot_index: int = -1
 var _focused_slot_index: int = -1
-
-# Theme Palette Colors matching the block types (Shared mapping)
-const BLOCK_COLORS = {
-	-1: Color(0, 0, 0, 0),       # Empty / Air
-	1: Color(0.55, 0.55, 0.55),  # Stone
-	2: Color(0.55, 0.38, 0.25),  # Dirt
-	3: Color(0.42, 0.78, 0.25),  # Grass
-	4: Color(0.72, 0.55, 0.35),  # Wood
-	5: Color(0.25, 0.65, 0.18),  # Leaves
-	15: Color(1.0, 0.45, 0.0),   # Lava
-	16: Color(0.85, 0.35, 0.25), # Fried Chicken
-	17: Color(0.25, 0.35, 0.45), # Wooden Sword
-	18: Color(0.48, 0.35, 0.22), # Crop Seed
-	19: Color(0.65, 0.92, 0.15), # Growing Crop Sprout
-	20: Color(0.95, 0.78, 0.18)  # Ripe Wheat Crop
-}
 
 
 func _ready() -> void:
@@ -373,7 +358,11 @@ func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, si
 		else:
 			tex_display.texture = null
 			tex_display.visible = false
-			fallback.color = BLOCK_COLORS.get(slot.item_id, Color.DARK_GRAY)
+			
+			var def: BlockDefinition = BlockLibrary.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
+			# Symmetrical fallback: if not a block, renders a clean dark background (OCP!)
+			fallback.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
+			
 			fallback.visible = true
 			btn._apply_special_fallback_decoration(fallback, slot.item_id)
 		
@@ -439,7 +428,9 @@ func _on_slot_selected(slot_index: int) -> void:
 	var item_name := inventory.get_slot_item_name(slot_index)
 	_detail_title.text = item_name.to_upper()
 	
-	_detail_icon.color = BLOCK_COLORS.get(slot.item_id, Color.WHITE)
+	# Leverage the domain block library to obtain colors dynamically, completely removing local dictionaries
+	var def: BlockDefinition = BlockLibrary.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
+	_detail_icon.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
 	_detail_icon.visible = true
 	
 	for child: Node in _detail_icon.get_children():

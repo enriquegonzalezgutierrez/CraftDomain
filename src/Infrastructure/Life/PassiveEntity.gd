@@ -4,7 +4,9 @@
 #              Schedules procedural walk cycles, spatial state-machines, and variety.
 # SOLID COMPLIANCE:
 # - Liskov Substitution Principle (LSP): Serves as a robust base 
-#   contract with safe default virtual values for subclasses.
+#   contract with safe default virtual values for subclasses. 
+#   * RESOLVED FAUNA OVERHEAD: Added `_has_ui_decorations()` contract to prevent 
+#     wild animals from carrying or executing civilian dialogue/quest UI routines.
 # - Single Responsibility Principle (SRP): Decoupled into specialized 
 #   components, leaving this class strictly in charge of sliding physics.
 # - Dependency Inversion Principle (DIP): Visual structures are completely 
@@ -30,7 +32,7 @@
 # VILLAGE REPUTATION & KARMA INTEGRATION (Phase 4):
 # - Modified `take_damage()` signature to accept an optional `attacker: Node` parameter.
 # - Attacking peaceful civilians deducts -15 rep points from the player's karma.
-# - Killing peaceful civilians deducts an additional -35 rep points (total of -50).
+# - Killing peaceful civilians deducts an additional -35 rep points (total -50).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -107,16 +109,18 @@ func _ready() -> void:
 	add_child(visual_component)
 	
 	# ==========================================================================
-	# DYNAMIC STRATEGY INJECTION (DIP/OCP Compliant)
+	# DYNAMIC STRATEGY INJECTION & SOLID SEGREGATION (LSP COMPLIANCE)
+	# Speech bubbles and quest indicators are strictly reserved for civilians/protectors.
 	# ==========================================================================
 	var role := _get_humanoid_role()
+	
 	if role >= 0:
 		_setup_dynamic_visual_strategy(role)
-		_setup_floating_bubble()
-		_setup_quest_arrow()
 	else:
-		# Fallback for animals (Fauna) which manage their own visual representations
+		# Fallback for animals (Fauna)
 		_build_visual_representation()
+		
+	if _has_ui_decorations():
 		_setup_floating_bubble()
 		_setup_quest_arrow()
 		
@@ -154,7 +158,7 @@ func _ready() -> void:
 	_collision_height = box_shape.size.y
 	_setup_nameplate() # Instantiate the nameplate above head
 	
-	# Symmetrical Stacking Offset Heights to prevent overlaps
+	# Symmetrical Stacking Offset Heights to prevent overlaps (only if UI is active)
 	if is_instance_valid(_bubble):
 		_bubble.position = Vector3(0.0, _collision_height + 0.45, 0.0) # Lifted to clear nameplate
 		
@@ -266,6 +270,13 @@ func _setup_floating_bubble() -> void:
 ## Returns -1 for animals (fauna), or a specific RoleType index for humanoids.
 func _get_humanoid_role() -> int:
 	return -1
+
+
+## Virtual Contract (LSP - Phase 4): Returns true if this entity requires 
+## floating speech bubbles, dialogue interactions, or active quest arrows.
+## Civilians and defenders return true. Wild animals (Fauna) return false.
+func _has_ui_decorations() -> bool:
+	return _get_humanoid_role() >= 0
 
 
 ## Programmatically constructs and styles the 3D rotating quest arrow (PrismMesh)
@@ -516,11 +527,13 @@ func _physics_process(delta: float) -> void:
 		_quest_check_timer = 0.5
 		_update_quest_bubble_state()
 
-	# ANIMATE QUEST ARROW (Rotation on Y axis & float bounce up/down)
-	if is_instance_valid(_quest_arrow) and _quest_arrow.visible:
-		_quest_arrow.rotate_y(delta * 2.5) # Spin
-		var bounce := sin(Time.get_ticks_msec() / 250.0) * 0.12
-		_quest_arrow.position.y = _collision_height + 0.85 + bounce # Updated
+	# Only process quest evaluations if the entity is a civilian (LSP Compliance!)
+	if _has_ui_decorations():
+		# ANIMATE QUEST ARROW (Rotation on Y axis & float bounce up/down)
+		if is_instance_valid(_quest_arrow) and _quest_arrow.visible:
+			_quest_arrow.rotate_y(delta * 2.5) # Spin
+			var bounce := sin(Time.get_ticks_msec() / 250.0) * 0.12
+			_quest_arrow.position.y = _collision_height + 0.85 + bounce
 
 	# Delegate dynamic skeletal movements to the injected strategy
 	if is_instance_valid(visual_representation):

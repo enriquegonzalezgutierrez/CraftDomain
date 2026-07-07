@@ -11,6 +11,9 @@
 #                northern glacial shelf sector slice).
 #              - FIXED COMPILER ERROR: Explicitly typed boundary checks as `bool` 
 #                to satisfy Godot's strict static type analyzer.
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant):
+#              - Overrides `get_streetlight_theme()` to polimorphically supply 
+#                its own Frost/Ice theme parameters (frozen blue ice, snow-white poles).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/FrostbiteGlaciersBiome.gd
 # ==============================================================================
@@ -67,3 +70,19 @@ func is_coordinate_inside(pos_flat: Vector2, _distance: float, angle_rad: float)
 	var is_north_glacial_shelf: bool = angle_rad >= -1.963 and angle_rad < -1.178
 	
 	return is_north_polar_cap or is_north_glacial_shelf
+
+
+# ==============================================================================
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant)
+# ==============================================================================
+
+## Concrete Override: Returns the custom Frost/Ice theme parameters for glacial streetlights
+func get_streetlight_theme() -> Dictionary:
+	return {
+		"stone_dark": Color(0.62, 0.88, 0.95),       # Frozen ice blue base
+		"stone_light": Color(0.48, 0.75, 0.85),      # Frosted blue-ice shaft
+		"wood_pole": Color(0.98, 0.98, 0.98),        # Cold snow-white post
+		"iron_black": Color(0.12, 0.12, 0.15),       # Wrought iron cap
+		"lantern_glow": Color(0.75, 0.85, 1.0),      # Silver-blue ice bulb emission
+		"light_tint": Color(0.75, 0.85, 1.0)         # Cold silver-blue OmniLight3D color
+	}

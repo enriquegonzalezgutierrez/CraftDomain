@@ -2,18 +2,12 @@
 # Project: CraftDomain
 # Description: SRP-compliant UI Widget responsible ONLY for building and managing
 #              the unified bottom HUD selection dock (Hotbar).
-#              COMMERCIAL UI OVERHAUL:
-#              - Implemented pixel-perfect geometric alignment. The health and 
-#                food status bars are now mathematically clamped to the exact 
-#                width of the 8 central hotbar slots.
-#              - Fixed "Layout Shifting" bugs: Selection borders now use a fixed 
-#                width with alpha-color toggling to prevent the HBox from resizing 
-#                when scrolling through items.
-#              - Polished glassmorphic panel with inner drop shadows and strict 
-#                margins for a sleek, modern sandbox aesthetic.
-# EXPORT FIX:
-# - Replaced FileAccess.file_exists with ResourceLoader.exists in the texture
-#   preloader to ensure textures load correctly when packed into a binary .pck file.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively the hotbar slots, 
+#   selection outlines, and civilian shortcuts rendering.
+# - Open-Closed Principle (OCP): Completely deleted the hardcoded, duplicate 
+#   color dictionary. Block fallback colors are dynamically queried from `BlockLibrary`, 
+#   leaving the HUD completely closed to modifications when adding new blocks.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd
 # ==============================================================================
@@ -33,16 +27,6 @@ var _toast_tween: Tween
 
 # Static in-memory cache for loaded 2D textures
 static var _textures_cache: Dictionary = {}
-
-## Fallback colors used when block textures are missing
-const BLOCK_COLORS = {
-	-1: Color(0, 0, 0, 0),       
-	1: Color(0.55, 0.55, 0.55), 2: Color(0.55, 0.38, 0.25), 
-	3: Color(0.42, 0.78, 0.25), 4: Color(0.72, 0.55, 0.35), 
-	5: Color(0.25, 0.65, 0.18), 15: Color(1.0, 0.45, 0.0),  
-	16: Color(0.85, 0.35, 0.25), 17: Color(0.25, 0.35, 0.45), 
-	18: Color(0.48, 0.35, 0.22)
-}
 
 
 func _ready() -> void:
@@ -306,11 +290,15 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 						fallback.visible = false
 						for child: Node in fallback.get_children():
 							child.queue_free()
-					# Case B: No texture exists. Apply fallback color + unicode shape
+					# Case B: No texture exists. Query the domain color dynamically (OCP/SOLID!)
 					else:
 						tex_display.texture = null
 						tex_display.visible = false
-						fallback.color = BLOCK_COLORS.get(item_id, Color.DARK_GRAY)
+						
+						var def: BlockDefinition = BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
+						# Symmetrical fallback: if not a block, renders a clean dark background
+						fallback.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
+						
 						fallback.visible = true
 						_apply_special_fallback_decoration(fallback, item_id)
 						

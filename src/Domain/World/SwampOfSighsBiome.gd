@@ -8,6 +8,9 @@
 # GEOGRAPHICAL SENSING (Phase 4):
 #              - Implements `is_coordinate_inside()` to encapsulate its own 
 #                spawning boundaries (polar angle slice >= 2.748 or < -2.748 rad).
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant):
+#              - Overrides `get_streetlight_theme()` to polimorphically supply 
+#                its own Swamp theme parameters (mud-brown stone base, mossy green pole).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/SwampOfSighsBiome.gd
 # ==============================================================================
@@ -50,6 +53,22 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 # GEOGRAPHICAL BOUNDARY SENSING (OCP Compliant)
 # ==============================================================================
 
-## Concrete Implementation: Returns true if within the western misty mud sector slice
+## Concrete Implementation: Returns true if within the western mucky mud sector slice
 func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
 	return angle_rad >= 2.748 or angle_rad < -2.748
+
+
+# ==============================================================================
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant)
+# ==============================================================================
+
+## Concrete Override: Returns the custom Swamp/Moss theme parameters for swamp streetlights
+func get_streetlight_theme() -> Dictionary:
+	return {
+		"stone_dark": Color(0.22, 0.18, 0.12),       # Mud-brown base stone
+		"stone_light": Color(0.18, 0.28, 0.15),      # Mossy dark-wood shaft
+		"wood_pole": Color(0.15, 0.45, 0.12),        # Foliage-green post
+		"iron_black": Color(0.12, 0.12, 0.15),       # Wrought iron cap
+		"lantern_glow": Color(0.42, 0.85, 0.25),      # Glowing poison-green bulb emission
+		"light_tint": Color(0.42, 0.85, 0.25)         # Swampy green OmniLight3D color
+	}

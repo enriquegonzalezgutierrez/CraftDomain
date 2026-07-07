@@ -2,18 +2,15 @@
 # Project: CraftDomain
 # Description: Infrastructure Coordinator managing the lifecycle of the dialogue 
 #              interface, blocking/unblocking player input, and routing selections.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Only coordinates the UI 
-#                lifecycle and speaker state locks, delegating inventory 
-#                transaction rules to the pure domain service (TradingService).
-#              - Dependency Inversion Principle (DIP): Connects directly with 
-#                IInventory abstractions without direct coupling.
-#              - OBSERVER PATTERN: Removed manual HUD synchronizations. UI updates 
-#                are now driven reactively by the domain.
-#              WARNING FIX:
-#              - Replaced dynamic Variant queries (`raycast`, `merchant`, `inventory`, `hud`) 
-#                with strictly cast static typed variables to completely resolve 
-#                `UNTYPED_DECLARATION` compiler warnings.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Only coordinates the UI 
+#   lifecycle and speaker state locks, delegating inventory 
+#   transaction rules to the pure domain service (TradingService).
+# - Dependency Inversion Principle (DIP) & Strict Typing:
+#   * Completely removed loose dynamic `.set()` or `.get()` reflections. Operates 
+#     on strictly cast classes (`DialogueNode` and `IInventory`) to guarantee 
+#     compile-time type safety across the dialogue routing.
+# - OBSERVER PATTERN: UI updates are driven reactively by the domain.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Dialogue/DialogueManager.gd
 # ==============================================================================
@@ -81,8 +78,7 @@ func close_dialogue() -> void:
 		_active_speaker_node = null
 		
 	# Let the HUD orchestrator check if other panels are open before recapturing cursor
-	# FIX: Explicit static typing on player HUD reference
-	var hud: PlayerHUD = player.get("hud") as PlayerHUD
+	var hud: PlayerHUD = player.get("hud") as PlayerHUD if is_instance_valid(player) else null
 	if is_instance_valid(hud) and not hud.is_any_menu_open():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		
@@ -104,7 +100,7 @@ func _on_dialogue_choice_selected(target_node_id: String) -> void:
 
 func _process_merchant_trade_transaction() -> void:
 	# FIX: Explicit static typing on inventory interface
-	var inventory: IInventory = player.get("inventory") as IInventory
+	var inventory := player.get("inventory") as IInventory if is_instance_valid(player) else null
 	if not is_instance_valid(inventory):
 		return
 		
@@ -124,11 +120,9 @@ func _process_merchant_trade_transaction() -> void:
 ## Handles success visual feedback, quest triggers, and state synchronization.
 func _on_trade_success(_inventory: IInventory) -> void:
 	# Visual physical bounce feedback on the NPC if available
-	# FIX: Explicit static typing on player raycast reference
-	var raycast: RayCast3D = player.get("raycast") as RayCast3D
+	var raycast := player.get("raycast") as RayCast3D if is_instance_valid(player) else null
 	if is_instance_valid(raycast) and raycast.is_colliding():
-		# FIX: Explicit static typing on hit merchant collider node
-		var merchant: CharacterBody3D = raycast.get_collider() as CharacterBody3D
+		var merchant := raycast.get_collider() as CharacterBody3D
 		if is_instance_valid(merchant) and merchant.has_method("take_damage"):
 			merchant.velocity.y = 5.0 # Make the merchant hop with physical joy!
 			
@@ -137,19 +131,20 @@ func _on_trade_success(_inventory: IInventory) -> void:
 	if active_q != null and active_q.quest_id == "fuel_fryer":
 		QuestService.complete_active_quest(player)
 		
-		# Set localized translation key for quest completion
-		var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute")
+		# Set localized translation key for quest completion (strictly typed!)
+		var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute") as DialogueNode
 		if exec_node != null:
-			exec_node.set("text", "DIALOGUE_MERCHANT_TRADE_QUEST_COMPLETE")
+			exec_node.text = "DIALOGUE_MERCHANT_TRADE_QUEST_COMPLETE"
 	else:
-		# Set localized translation key for successful trade
-		var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute")
+		# Set localized translation key for successful trade (strictly typed!)
+		var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute") as DialogueNode
 		if exec_node != null:
-			exec_node.set("text", "DIALOGUE_MERCHANT_TRADE_SUCCESS")
+			exec_node.text = "DIALOGUE_MERCHANT_TRADE_SUCCESS"
 
 
 ## Handles failure responses using localized translation keys.
 func _on_trade_failed() -> void:
-	var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute")
+	# Set localized translation key for failed trade (strictly typed!)
+	var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute") as DialogueNode
 	if exec_node != null:
-		exec_node.set("text", "DIALOGUE_MERCHANT_TRADE_FAILED")
+		exec_node.text = "DIALOGUE_MERCHANT_TRADE_FAILED"

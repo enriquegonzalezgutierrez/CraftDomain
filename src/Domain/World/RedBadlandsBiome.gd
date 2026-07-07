@@ -11,6 +11,9 @@
 # GEOGRAPHICAL SENSING (Phase 4):
 #              - Implements `is_coordinate_inside()` to encapsulate its own 
 #                spawning boundaries (polar angle slice between 1.963 and 2.748 rad).
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant):
+#              - Overrides `get_streetlight_theme()` to polimorphically supply 
+#                its own Badlands theme parameters (terracotta orange base, dry wood pole).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/RedBadlandsBiome.gd
 # ==============================================================================
@@ -70,3 +73,19 @@ func get_wilderness_wildlife_ids() -> Array[int]:
 ## Concrete Implementation: Returns true if within the southwestern badlands slice
 func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
 	return angle_rad >= 1.963 and angle_rad < 2.748
+
+
+# ==============================================================================
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant)
+# ==============================================================================
+
+## Concrete Override: Returns the custom Desert Canyon theme parameters for badlands streetlights
+func get_streetlight_theme() -> Dictionary:
+	return {
+		"stone_dark": Color(0.55, 0.32, 0.22),        # Terracotta dark-orange base stone
+		"stone_light": Color(0.75, 0.48, 0.35),       # Sandstone light-orange shaft
+		"wood_pole": Color(0.28, 0.18, 0.12),         # Dry dark-wood post
+		"iron_black": Color(0.12, 0.12, 0.15),        # Wrought iron cap
+		"lantern_glow": Color(1.0, 0.55, 0.0),         # Glowing amber-orange bulb emission
+		"light_tint": Color(1.0, 0.55, 0.0)           # Warm amber-orange OmniLight3D color
+	}

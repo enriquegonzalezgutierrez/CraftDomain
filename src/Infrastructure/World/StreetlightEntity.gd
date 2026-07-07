@@ -2,13 +2,17 @@
 # Project: CraftDomain
 # Description: Infrastructure Static Entity representing a highly detailed, 
 #              3D medieval, cyber, or polar double-lantern streetlight.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively the 
-#                3D programmatic mesh assembly, materials, and lighting controls.
-#              - Liskov Substitution Principle (LSP): Safely extends StaticBody3D 
-#                to act as a physical collidable obstacle in the world.
-#              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
-#                statically through the decoupled CelestialService provider.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively the 
+#   3D programmatic mesh assembly, materials, and lighting controls.
+# - Liskov Substitution Principle (LSP): Safely extends StaticBody3D 
+#   to act as a physical collidable obstacle in the world.
+# - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
+#   statically through the decoupled CelestialService provider.
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant - Phase 4):
+# - Completely removed the hardcoded `match biome_id` blocks. The streetlight 
+#   now queries the coordinate's `IBiome` strategy dynamically, unpacking the 
+#   thematic colors in complete OCP and DIP compliance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/StreetlightEntity.gd
 # ==============================================================================
@@ -40,61 +44,35 @@ func _ready() -> void:
 
 
 ## Programmatically assembles the 3D lamppost out of colored box meshes.
-## Automatically morphs colors and emissions to match the local biome theme.
+## Automatically queries the coordinate's biome to resolve the theme (OCP/DIP Compliant)
 func _build_procedural_3d_model() -> void:
+	# 1. Query the active biome strategy for the coordinate
 	var biome_id := _detect_current_biome()
+	var biome_strategy: IBiome = BiomeService.get_biome(biome_id)
 	
-	# --- DEFAULT THEME: RUSTIC MEDIEVAL ---
-	var stone_dark := Color(0.38, 0.40, 0.42)      # Heavy chiseled stone
-	var stone_light := Color(0.55, 0.58, 0.60)     # Cobblestone wall
-	var wood_brown := Color(0.45, 0.30, 0.15)      # Oak wood posts
-	var iron_black := Color(0.12, 0.12, 0.15)      # Black wrought iron
-	var glow_color := Color(1.0, 0.72, 0.2)        # Incandescent lantern bulb
-	var light_tint := Color(1.0, 0.72, 0.3)        # Warm yellow-orange light
+	# 2. Unpack the custom themed color palette polimorphically
+	var theme: Dictionary = biome_strategy.get_streetlight_theme()
 	
-	# ---> BIOME PALETTE POLIMORPHISM <---
-	match biome_id:
-		4: # Frostbite Glaciers: FROST/ICE THEME
-			stone_dark = Color(0.62, 0.88, 0.95)   # Frozen ice blue
-			stone_light = Color(0.48, 0.75, 0.85)  # Frosted blue-ice
-			wood_brown = Color(0.98, 0.98, 0.98)   # Cold snow white
-			glow_color = Color(0.75, 0.85, 1.0)   # Silver-blue ice bulb
-			light_tint = Color(0.75, 0.85, 1.0)
-			
-		7: # Neon Ruins: CYBERPUNK NEON THEME
-			stone_dark = Color(0.12, 0.12, 0.15)   # Dark obsidian-steel
-			stone_light = Color(0.08, 0.08, 0.1)   # Charcoal black
-			wood_brown = Color(0.0, 0.95, 0.95)    # Glowing cyan neon
-			glow_color = Color(0.95, 0.0, 0.95)   # Glowing magenta bulb
-			light_tint = Color(0.0, 0.95, 0.95)
-			
-		8: # Swamp of Sighs: SWAMP/MOSS THEME
-			stone_dark = Color(0.22, 0.18, 0.12)   # Mud brown base
-			stone_light = Color(0.18, 0.28, 0.15)  # Mossy dark wood
-			wood_brown = Color(0.15, 0.45, 0.12)   # Foliage green
-			glow_color = Color(0.42, 0.85, 0.25)  # Glowing poison-green bulb
-			light_tint = Color(0.42, 0.85, 0.25)
-			
-		6: # Red Badlands: DESERT CANYON THEME
-			stone_dark = Color(0.55, 0.32, 0.22)   # Terracotta dark orange
-			stone_light = Color(0.75, 0.48, 0.35)  # Sandstone light orange
-			wood_brown = Color(0.28, 0.18, 0.12)   # Dry wood
-			glow_color = Color(1.0, 0.55, 0.0)    # Amber orange bulb
-			light_tint = Color(1.0, 0.55, 0.0)
+	var stone_dark: Color = theme["stone_dark"]
+	var stone_light: Color = theme["stone_light"]
+	var wood_brown: Color = theme["wood_pole"]
+	var iron_black: Color = theme["iron_black"]
+	var glow_color: Color = theme["lantern_glow"]
+	var light_tint: Color = theme["light_tint"]
 	
-	# 1. Base Pedestal (Y+1)
+	# 3. Base Pedestal (Y+1)
 	_create_box(self, Vector3(0.55, 0.45, 0.55), Vector3(0, 0.225, 0), stone_dark)
 	
-	# 2. Main Pedestal column (Y+2)
+	# 4. Main Pedestal column (Y+2)
 	_create_box(self, Vector3(0.38, 0.40, 0.38), Vector3(0, 0.65, 0), stone_light)
 	
-	# 3. Vertical post (Y+3)
+	# 5. Vertical post (Y+3)
 	_create_box(self, Vector3(0.18, 1.20, 0.18), Vector3(0, 1.45, 0), wood_brown)
 	
-	# 4. Capital joint (Y+4)
+	# 6. Capital joint (Y+4)
 	_create_box(self, Vector3(0.32, 0.35, 0.32), Vector3(0, 2.225, 0), stone_light)
 	
-	# 5. Arms extending left and right (Y+5)
+	# 7. Arms extending left and right (Y+5)
 	_create_box(self, Vector3(1.42, 0.10, 0.30), Vector3(0, 2.45, 0), wood_brown)
 	
 	# ==========================================================================

@@ -13,6 +13,9 @@
 # GEOGRAPHICAL SENSING (Phase 4):
 #              - Implements `is_coordinate_inside()` to encapsulate its own 
 #                spawning boundaries (polar angle slice between -1.178 and -0.392 rad).
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant):
+#              - Overrides `get_streetlight_theme()` to polimorphically supply 
+#                its own Cyberpunk theme parameters (obsidian-steel base, cyan neon pole).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/NeonRuinsBiome.gd
 # ==============================================================================
@@ -80,3 +83,19 @@ func get_wilderness_wildlife_ids() -> Array[int]:
 ## Concrete Implementation: Returns true if within the northeastern tech basin slice
 func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
 	return angle_rad >= -1.178 and angle_rad < -0.392
+
+
+# ==============================================================================
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant)
+# ==============================================================================
+
+## Concrete Override: Returns the custom Cyberpunk theme parameters for ruins streetlights
+func get_streetlight_theme() -> Dictionary:
+	return {
+		"stone_dark": Color(0.12, 0.12, 0.15),       # Dark matte obsidian-steel base
+		"stone_light": Color(0.08, 0.08, 0.1),       # Charcoal-black shaft
+		"wood_pole": Color(0.0, 0.95, 0.95),         # Glowing cyan neon post
+		"iron_black": Color(0.12, 0.12, 0.15),       # Wrought iron cap
+		"lantern_glow": Color(0.95, 0.0, 0.95),      # Glowing magenta bulb emission
+		"light_tint": Color(0.0, 0.95, 0.95)         # High-contrast cyan OmniLight3D color
+	}

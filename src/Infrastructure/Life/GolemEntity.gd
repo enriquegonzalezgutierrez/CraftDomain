@@ -6,6 +6,8 @@
 # SOLID COMPLIANCE: 
 # - Liskov Substitution Principle (LSP): Subclasses PassiveEntity, 
 #   safely overriding movement, task routing, and visual meshes.
+#   * Overrode `_has_ui_decorations()` to execute base configurations and proactively 
+#     register itself into the active static `AlertNetworkService.instance` pool.
 # - Single Responsibility Principle (SRP): Delegates visual rendering 
 #   to the sub-component, and physics movements to the base class.
 # - Dependency Inversion Principle (DIP): Automatically prunes 
@@ -19,6 +21,8 @@
 #                WANTED outlaw status (reputation <= -50), prioritizing public defense.
 #              - Passes `self` as the attacker within `take_damage` to ensure correct 
 #                damage source mapping.
+#              - FIXED COMPILE ERRORS: Unified all target tracking variables under `closest_target` 
+#                to resolve Godot's static compilation blockages.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GolemEntity.gd
 # ==============================================================================
@@ -237,7 +241,7 @@ func _scan_for_active_zombie_target() -> CharacterBody3D:
 	# 2. Check traditional hostile monsters (Zombies)
 	var hostiles := get_tree().get_nodes_in_group("hostiles")
 	for child: Node in hostiles:
-		if is_instance_valid(child):
+		if is_instance_valid(child) and child is CharacterBody3D:
 			var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
 			if zombie_entity != null and not zombie_entity.is_dead:
 				var dist_sq := global_position.distance_squared_to(child.global_position)
@@ -265,6 +269,15 @@ func _execute_heavy_combat_strike() -> void:
 	# Deals heavy 2 Hearts damage
 	if _combat_target.has_method("take_damage"):
 		_combat_target.call("take_damage", 2, throw_force, self) # Pass self as attacker
+
+
+# ==============================================================================
+# GEOGRAPHICAL DECORATIONS & SPECIFICATIONS CONTRACT OVERRIDES
+# ==============================================================================
+
+## Concrete Override: Returns true to instantiate Golem's bubble decoration polimorphically
+func _has_ui_decorations() -> bool:
+	return true
 
 
 func _can_socialize() -> bool:

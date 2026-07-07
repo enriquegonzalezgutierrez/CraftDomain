@@ -8,6 +8,8 @@
 #   data emission and reception.
 # - Dependency Inversion Principle (DIP): Communicates back to its parent 
 #   coordinating panel strictly via decoupled loose-bound method triggers.
+# - Open-Closed Principle (OCP): Completely deleted the duplicate color dictionary. 
+#   Drag previews now query fallback block colors dynamically from the `BlockLibrary` Domain.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/Widgets/InventorySlotWidget.gd
 # ==============================================================================
@@ -20,22 +22,6 @@ var overlay: Panel # Cast typed loose as Panel to avoid circular compile referen
 
 # Static in-memory cache for loaded 2D textures to save CPU reads
 static var _textures_cache: Dictionary = {}
-
-# Theme Palette Colors matching the block types (Shared mapping)
-const BLOCK_COLORS = {
-	-1: Color(0, 0, 0, 0),       # Empty / Air
-	1: Color(0.55, 0.55, 0.55),  # Stone
-	2: Color(0.55, 0.38, 0.25),  # Dirt
-	3: Color(0.42, 0.78, 0.25),  # Grass
-	4: Color(0.72, 0.55, 0.35),  # Wood
-	5: Color(0.25, 0.65, 0.18),  # Leaves
-	15: Color(1.0, 0.45, 0.0),   # Lava
-	16: Color(0.85, 0.35, 0.25), # Fried Chicken
-	17: Color(0.25, 0.35, 0.45), # Wooden Sword
-	18: Color(0.48, 0.35, 0.22), # Crop Seed
-	19: Color(0.65, 0.92, 0.15), # Growing Crop Sprout
-	20: Color(0.95, 0.78, 0.18)  # Ripe Wheat Crop
-}
 
 
 func _ready() -> void:
@@ -91,7 +77,11 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	
 	var backing := ColorRect.new()
 	backing.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	backing.color = BLOCK_COLORS.get(slot.item_id, Color.DARK_GRAY)
+	
+	# Query the domain block library dynamically to resolve fallback colors (OCP/SOLID!)
+	var def: BlockDefinition = BlockLibrary.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
+	# Symmetrical fallback: if not a block, renders a clean dark background
+	backing.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
 	backing.modulate.a = 0.72 
 	container.add_child(backing)
 	

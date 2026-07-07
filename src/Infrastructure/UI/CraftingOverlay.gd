@@ -2,16 +2,13 @@
 # Project: CraftDomain
 # Description: Infrastructure UI controller representing an interactive, 
 #              glassmorphic dual-pane Crafting and Blueprint Workshop overlay.
-#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by managing only the layout representation and 
-#              UI events, delegating the transaction rules to `CraftingService`.
-#              WARNING FIX:
-#              - Replaced Variant data getters (`inventory`, `viewmodel`, `hud`) with 
-#                strictly-cast typed variables and strongly typed loop iterators 
-#                (including `recipe` and `slot_index`) to completely resolve 
-#                `UNTYPED_DECLARATION` compiler warnings.
-#              - Unified all detail panel variables to use '_detail_panel' with 
-#                the correct class-member scope underscore prefix.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively the layout representation 
+#   and UI events, delegating the transaction rules to `CraftingService`.
+# - Open-Closed Principle (OCP): Completely deleted the duplicate color dictionary. 
+#   Blueprint list cards and the preview panel query block colors dynamically from `BlockLibrary`.
+# - Interface Segregation Principle (ISP): Queries player total stock safely using 
+#   the segregated `IInventory` interface, resolving the legacy slot-quantity mapping bug.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/CraftingOverlay.gd
 # ==============================================================================
@@ -34,18 +31,6 @@ var _craft_button: Button
 
 # Current selection state
 var _selected_recipe: Recipe = null
-
-# Theme palette colors matching our hotbar blocks
-const BLOCK_COLORS = {
-	0: Color(0.55, 0.55, 0.55), # Stone
-	1: Color(0.55, 0.38, 0.25), # Dirt
-	2: Color(0.42, 0.78, 0.25), # Grass
-	3: Color(0.72, 0.55, 0.35), # Wood
-	4: Color(0.25, 0.65, 0.18), # Leaves
-	5: Color(1.0, 0.45, 0.0),   # Lava
-	6: Color(0.92, 0.62, 0.62), # Fried Chicken
-	7: Color(0.75, 0.75, 0.80)  # Wooden Sword
-}
 
 
 func _ready() -> void:
@@ -228,7 +213,10 @@ func _populate_recipes_list() -> void:
 		sn.bg_color = Color(0.12, 0.12, 0.15, 0.4)
 		sn.set_corner_radius_all(8)
 		sn.border_width_left = 4
-		sn.border_color = BLOCK_COLORS.get(recipe.output_item_index, Color.DARK_GRAY) # Color-coded strip!
+		
+		var def: BlockDefinition = BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
+		# Color-coded strip dynamically sourced from the Domain BlockLibrary (OCP Compliant!)
+		sn.border_color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.15, 0.15, 0.18)
 		
 		var sh := sn.duplicate() as StyleBoxFlat
 		sh.bg_color = Color(0.18, 0.18, 0.22, 0.7)
@@ -238,7 +226,7 @@ func _populate_recipes_list() -> void:
 		btn.add_theme_stylebox_override("hover", sh)
 		btn.add_theme_stylebox_override("pressed", sn)
 		btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-		btn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+		btn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.95))
 		
 		btn.pressed.connect(func() -> void: _on_recipe_selected(recipe))
 		_recipes_list.add_child(btn)
@@ -255,7 +243,10 @@ func _on_recipe_selected(recipe: Recipe) -> void:
 	_selected_recipe = recipe
 	_detail_title.text = recipe.recipe_name.to_upper() + " (x" + str(recipe.output_quantity) + ")"
 	
-	_detail_icon.color = BLOCK_COLORS.get(recipe.output_item_index, Color.WHITE)
+	# Dynamically sourced color-top from BlockLibrary (OCP Compliant!)
+	var def: BlockDefinition = BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
+	_detail_icon.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.15, 0.15, 0.18)
+	
 	_detail_icon.visible = true
 	_detail_requirements_box.visible = true
 	_craft_button.visible = true
@@ -277,10 +268,21 @@ func _refresh_checklist() -> void:
 	
 	# Populate visual ingredient cards
 	# FIX: Explicit static typing on recipe ingredients dictionary key iterator
-	for slot_index: int in _selected_recipe.inputs.keys():
-		var required_qty := _selected_recipe.inputs[slot_index] as int
-		var current_qty := inventory.get_slot_quantity(slot_index) as int
-		var item_name := inventory.get_slot_item_name(slot_index)
+	for item_id: int in _selected_recipe.inputs.keys():
+		var required_qty := _selected_recipe.inputs[item_id] as int
+		
+		# COMPLIANCE FIX: Checks global total item ID quantities instead of fixed slot indexes!
+		var current_qty := inventory.get_item_total_quantity(item_id) as int
+		
+		# Fetch localized name safely using index helper
+		var item_name := inventory.get_slot_item_name(inventory._find_first_empty_slot_index() if current_qty == 0 else inventory._slots.find_custom(func(s: InventoryComponent.SlotData) -> bool: return s.item_id == item_id))
+		if current_qty == 0:
+			# If the player has none, construct the fallback nameplate manually (safe OCP lookup)
+			if InventoryComponent.NON_BLOCK_ITEM_NAMES.has(item_id):
+				item_name = tr(InventoryComponent.NON_BLOCK_ITEM_NAMES[item_id])
+			else:
+				var block_def := BlockLibrary.get_definition(item_id as BlockType.Type)
+				item_name = block_def.get_localized_name() if block_def != null else tr("INVENTORY_UNKNOWN")
 		
 		var row := Panel.new()
 		row.custom_minimum_size = Vector2(0, 36)
@@ -368,7 +370,6 @@ func _setup_button_style(btn: Button) -> void:
 	
 	btn.add_theme_stylebox_override("normal", sn)
 	btn.add_theme_stylebox_override("hover", sh)
-	btn.add_theme_stylebox_override("disabled", StyleBoxFlat.new()) # Handled in modulate
 	btn.add_theme_stylebox_override("pressed", sn)
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	

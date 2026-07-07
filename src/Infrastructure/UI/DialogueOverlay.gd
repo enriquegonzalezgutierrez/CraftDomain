@@ -2,14 +2,16 @@
 # Project: CraftDomain
 # Description: Infrastructure UI controller representing an interactive, 
 #              glassmorphic bottom-docked dialogue overlay with branching options.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Responsible only for
-#                laying out, styling, and rendering dialogue choices.
-#              - Open-Closed Principle (OCP) & i18n: Uses Godot's tr() lookup 
-#                on all name labels, speech text, and option texts to support 
-#                seamless multi-language localization.
-#              - Observer SFX (Milestone 10): Triggers a retro crystal chirp sound 
-#                statically when any dialogue node transitions in.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Responsible only for
+#   laying out, styling, and rendering dialogue choices.
+# - Open-Closed Principle (OCP) & i18n: Uses Godot's tr() lookup 
+#   on all name labels, speech text, and option texts to support 
+#   seamless multi-language localization.
+# - Dependency Inversion Principle (DIP) & Strict Typing:
+#   * Completely removed loose dynamic `.get()` lookups. Operates strictly on 
+#     safely cast `DialogueNode` and `DialogueChoice` classes to guarantee 
+#     compile-time type checking and zero dynamic Variant warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/DialogueOverlay.gd
 # ==============================================================================
@@ -118,7 +120,10 @@ func _setup_dialogue_ui() -> void:
 ## Public API: Displays a specific dialogue node and rebuilds option buttons dynamically.
 ## All texts and choices are localized dynamically on the fly.
 func load_dialogue_node(node: Resource, speaker_name: String) -> void:
-	if not is_instance_valid(node):
+	# DIP & Strict Typing: Safe runtime casting of the generic Resource
+	var typed_node := node as DialogueNode
+	if typed_node == null:
+		push_error("[DialogueOverlay ERROR] Passed resource is not a valid DialogueNode instance.")
 		return
 		
 	# --- PLAY DIALOGUE CHIRP SFX OBSERVER (Milestone 10) ---
@@ -126,19 +131,20 @@ func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 		
 	# Update text fields (running speaker and text through tr() lookup)
 	_name_label.text = tr(speaker_name).to_upper()
-	_text_label.text = tr(str(node.get("text")))
+	_text_label.text = tr(typed_node.text)
 	
 	# Clear old button instances
 	for child in _choices_container.get_children():
 		child.queue_free()
 		
-	# Dynamically populate option buttons extracting values safely
-	var choices_list: Array = node.get("choices") as Array
-	if choices_list.size() > 0:
+	# Dynamically populate option buttons extracting values safely with strict typing
+	if typed_node.choices.size() > 0:
 		# FIX: Added explicit static typing `Resource` to loop iterator
-		for choice: Resource in choices_list:
-			var btn := _create_choice_button(choice)
-			_choices_container.add_child(btn)
+		for choice_res: Resource in typed_node.choices:
+			var choice := choice_res as DialogueChoice
+			if choice != null:
+				var btn := _create_choice_button(choice)
+				_choices_container.add_child(btn)
 	else:
 		# Default fallback close button if no options are present (Leaf node)
 		var close_btn := Button.new()
@@ -151,11 +157,11 @@ func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 
 
 ## Builds and configures a responsive choice button.
-func _create_choice_button(choice: Resource) -> Button:
+func _create_choice_button(choice: DialogueChoice) -> Button:
 	var btn := Button.new()
 	
 	# Dynamic translation lookup for choice text
-	btn.text = tr(str(choice.get("option_text")))
+	btn.text = tr(choice.option_text)
 	
 	btn.custom_minimum_size = Vector2(0, 34)
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -165,7 +171,7 @@ func _create_choice_button(choice: Resource) -> Button:
 	
 	# Choice selection event trigger
 	btn.pressed.connect(func() -> void:
-		var target: String = str(choice.get("target_node_id"))
+		var target := choice.target_node_id
 		if target != "":
 			choice_selected.emit(target)
 		else:

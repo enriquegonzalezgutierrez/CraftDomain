@@ -10,9 +10,13 @@
 # - Open-Closed Principle (OCP): Outpost and wilderness spawns are now 
 #   completely data-driven, removing hardcoded mappings from spawner services.
 # GEOGRAPHICAL BOUNDARY SENSING UPGRADE:
-# - Added `is_coordinate_in_biome()` virtual contract. Each concrete biome 
+# - Added `is_coordinate_inside()` virtual contract. Each concrete biome 
 #   subclass now determines its own physical boundary mathematics, allowing 
 #   `BiomeService.gd` to remain closed to modifications during world expansions.
+# STREETLIGHT PORTABLE THEME UPGRADE (Phase 4):
+# - Added `get_streetlight_theme()` virtual contract returning a default 
+#   rustic-plains lighting color palette. Concrete biomes can override this 
+#   to customize surrounding block lamp assemblies polimorphically.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/IBiome.gd
 # ==============================================================================
@@ -65,10 +69,26 @@ func get_wilderness_wildlife_ids() -> Array[int]:
 	return default_wildlife
 
 # ==============================================================================
-# GEOGRAPHICAL BOUNDARY SENSING CONTRACT (OCP Compliant - Phase 4)
+# GEOGRAPHICAL BOUNDARY SENSING CONTRACT (OCP Compliant)
 # ==============================================================================
 
 ## Virtual Contract: Returns true if the given 2D global coordinate, length, and 
 ## polar angle belongs to this biome's territory boundary.
-func is_coordinate_in_biome(_pos_2d: Vector2, _distance: float, _angle: float) -> bool:
+func is_coordinate_inside(_pos_2d: Vector2, _distance: float, _angle_rad: float) -> bool:
 	return false
+
+# ==============================================================================
+# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant)
+# ==============================================================================
+
+## Virtual Contract: Returns the custom 3D model styling parameters for streetlights 
+## built in this biome. Defaults to a rustic-medieval theme (chiseled stone and warm wood).
+func get_streetlight_theme() -> Dictionary:
+	return {
+		"stone_dark": Color(0.38, 0.40, 0.42),      # Heavy chiseled base stone
+		"stone_light": Color(0.55, 0.58, 0.60),     # Cobblestone wall shaft
+		"wood_pole": Color(0.45, 0.30, 0.15),       # Wood post
+		"iron_black": Color(0.12, 0.12, 0.15),      # Wrought iron cap
+		"lantern_glow": Color(1.0, 0.72, 0.2),      # Bulb emission
+		"light_tint": Color(1.0, 0.72, 0.3)         # OmniLight3D color
+	}
