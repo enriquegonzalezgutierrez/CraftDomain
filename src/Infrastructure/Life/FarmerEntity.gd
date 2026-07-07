@@ -4,9 +4,14 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Handles exclusively agricultural 
 #                AI, crop scanning, and tilling logic, delegating all rendering/mesh tasks.
-#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity cleanly.
+#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity cleanly, 
+#                inheriting the base collision, gravity, and lifecycle contracts.
 #              - Dependency Inversion Principle (DIP): Visual structures are completely 
 #                delegated to the injected `IEntityVisualRepresentation` strategy.
+# INTERACTION RECONSTRUCTION (OCP):
+#              - Restored the missing `interact()` and `_select_procedural_greeting_key()` 
+#                methods, enabling player dialogues using localized translation keys 
+#                flawlessly depending on active biomes and sunset hours.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
@@ -23,14 +28,52 @@ var _harvest_timer: float = 0.0
 
 func _init(spawn_pos: Vector3) -> void:
 	# Initialize with 3 Hearts of health
-	super(spawn_pos, 3)
+	super(spawn_pos, 6)
 	name = "Entity_FARMER"
 
+
+# ==============================================================================
+# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
+# ==============================================================================
 
 ## Concrete Implementation (DIP): Injects the modular Farmer Role ID into the strategy compiler
 func _get_humanoid_role() -> int:
 	return ProceduralVoxelRepresentation.RoleType.FARMER
 
+
+func _get_habitat() -> MobRegistry.Habitat:
+	return MobRegistry.Habitat.TERRESTRIAL
+
+
+## Restored: Registers right-click interactions to trigger agricultural dialogues
+func interact(player_node: CharacterBody3D) -> void:
+	var hud := player_node.get("hud") as PlayerHUD
+	if is_instance_valid(hud):
+		var intro_node := DialogueNode.new()
+		intro_node.node_id = "farmer_intro_temp"
+		intro_node.text = _select_procedural_greeting_key()
+		
+		hud.open_dialogue(intro_node, "NPC_NAME_FARMER", self)
+
+
+## Restored: Returns localized advice keys based on time and biome coordinates
+func _select_procedural_greeting_key() -> String:
+	var is_night: bool = CelestialService.is_night_time_static()
+	if is_night:
+		return "DIALOGUE_FARMER_NIGHT"
+		
+	var biome_id := _detect_current_biome()
+	match biome_id:
+		4: return "DIALOGUE_FARMER_GLACIERS"   # Frostbite Glaciers
+		7: return "DIALOGUE_FARMER_NEON"       # Neon Ruins
+		_:
+			# Default Golden Bazaar plains variety
+			return "DIALOGUE_FARMER_PLAINS_A" if (npc_seed % 2 == 0) else "DIALOGUE_FARMER_PLAINS_B"
+
+
+# ==============================================================================
+# AGRICULTURAL INTELLIGENCE ENGINE (SRP)
+# ==============================================================================
 
 ## Overrides standard physics ticker to weave defensive aggro scanning loops.
 func _physics_process(delta: float) -> void:
@@ -201,3 +244,7 @@ func _get_collision_box_position() -> Vector3:
 	if FileAccess.file_exists(BASE_MODEL_PATH):
 		return Vector3(0.0, 0.9, 0.0) # Center Y at 0.9m for 1.8m box
 	return Vector3(0.0, 0.75, 0.0) # Center Y at 0.75m for 1.5m box
+
+
+func _can_socialize() -> bool:
+	return true

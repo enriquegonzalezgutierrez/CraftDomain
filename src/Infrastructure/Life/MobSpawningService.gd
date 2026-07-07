@@ -8,6 +8,13 @@
 # - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
 #   population and wilderness wildlife registries, removing all hardcoded match maps.
 # - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome strategy.
+# HABITAT-DRIVEN SPAWNING (DDD Compliance):
+# - Retrieves the Domain `Habitat` classification before generating the mob.
+# - Automatically routes the vertical surface scan to `_get_ground_surface_y` for
+#   terrestrial creatures, and `_get_water_surface_y` for aquatic/amphibious species.
+# - This completely eliminates the bug where sharks spawned on dry land!
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
 class_name MobSpawningService
 extends RefCounted
@@ -92,14 +99,26 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 	return entities_list
 
 
-## Instantiates, places, and anchors a registered dynamic entity on the highest solid ground.
+## Instantiates, places, and anchors a registered dynamic entity based on its Domain Habitat rules.
 func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node], quest_sync_id: String) -> void:
 	if not MobRegistry.has_mob(spawn_id):
 		return
 		
-	var gy := _get_ground_surface_y(world_state, int(offset.x + lx), int(offset.z + lz))
+	var global_x := int(offset.x + lx)
+	var global_z := int(offset.z + lz)
+	
+	# Determine logical habitat dynamically from the Domain Registry
+	var habitat := MobRegistry.get_mob_habitat(spawn_id)
+	var gy := -1.0
+	
+	if habitat == MobRegistry.Habitat.TERRESTRIAL:
+		gy = _get_ground_surface_y(world_state, global_x, global_z)
+	else:
+		# AQUATIC and AMPHIBIOUS both seek water blocks to spawn into securely
+		gy = _get_water_surface_y(world_state, global_x, global_z)
+		
 	if gy < 0.0:
-		return
+		return # Cancel spawn if no valid habitat block was found in this chunk column!
 		
 	var pos := offset + Vector3(lx, gy, lz)
 	var mob: Node = MobRegistry.create_mob(spawn_id, pos)
@@ -113,7 +132,7 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 				quest.target_position = mob.global_position
 
 
-## Helper: Scans vertical columns downward to find the topmost solid block.
+## Helper: Scans vertical columns downward to find the topmost solid land block.
 func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
 	for y in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
@@ -129,7 +148,7 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 			block_type == BlockType.Type.MUD or 
 			block_type == BlockType.Type.ROAD or
 			block_type == BlockType.Type.STONE or   
-			block_type == BlockType.Type.BRICKS     
+			block_type == BlockType.Type.BRICKS
 		)
 		
 		if is_valid_surface:
@@ -137,5 +156,20 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
 			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
 				return float(y) + 1.0
+				
+	return -1.0
+
+
+## Helper: Scans vertical columns downward specifically seeking the surface of a liquid water body.
+func _get_water_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
+	for y in range(31, -1, -1):
+		var check_pos := Vector3i(global_x, y, global_z)
+		var block_type := world_state.get_block(check_pos)
+		
+		if block_type == BlockType.Type.WATER:
+			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
+			# Ensure the creature isn't spawning encased under a solid ice/stone ceiling over the water
+			if not BlockType.is_solid(space_above_1):
+				return float(y) # Submerged exactly at water level (no +1.0 offset!)
 				
 	return -1.0

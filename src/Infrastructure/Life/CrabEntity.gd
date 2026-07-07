@@ -2,12 +2,15 @@
 # Project: CraftDomain
 # Description: Infrastructure physics controller node representing a passive marine Crab.
 #              SOLID COMPLIANCE: 
-#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity, 
-#                matching the base collision, gravity, and lifecycle contracts.
 #              - Single Responsibility Principle (SRP): Delegates visual rendering 
 #                and skeletal animations entirely to the FaunaVisualRepresentation strategy.
+#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity, 
+#                matching the base collision, gravity, and lifecycle contracts.
 #              - Dependency Inversion Principle (DIP): Independent of physical rendering,
 #                binding visuals purely to the IEntityVisualRepresentation abstraction.
+# HABITAT-DRIVEN SPAWNING (DDD Compliance):
+#              - Overrides `_get_habitat()` to return AMPHIBIOUS, enabling crabs to 
+#                spawn on sandy shores and traverse both sand and water seamlessly.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/CrabEntity.gd
 # ==============================================================================
@@ -23,12 +26,20 @@ func _init(spawn_pos: Vector3) -> void:
 	name = "Entity_CRAB"
 
 
+# ==============================================================================
+# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_habitat() -> MobRegistry.Habitat:
+	return MobRegistry.Habitat.AMPHIBIOUS
+
+
 ## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
 func _build_visual_representation() -> void:
 	var strategy := FaunaVisualRepresentation.new()
 	strategy.model_path = MODEL_PATH
 	
-	# Scale and position offsets calculated via GLB Analyzer V5
+	# Scale and position offsets calibrated for the Crab GLB Mesh
 	strategy.scale_multiplier = Vector3(0.3, 0.3, 0.3)
 	strategy.position_offset = Vector3(0.0, 0.0, 0.0)
 	strategy.rotation_offset = Vector3(0, 180, 0) # Face forward (-Z)
@@ -37,7 +48,7 @@ func _build_visual_representation() -> void:
 	strategy.collision_size = Vector3(0.6, 0.75, 0.65)
 	strategy.collision_position = Vector3(0.0, 0.375, 0.0)
 	
-	# Animations paths
+	# Baked built-in animations
 	strategy.anim_idle_name = "idle"
 	strategy.anim_walk_name = "walk"
 	
@@ -46,32 +57,20 @@ func _build_visual_representation() -> void:
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
-func _get_collision_box_size() -> Vector3:
-	return Vector3(0.6, 0.75, 0.65)
+# ==============================================================================
+# COMBAT & LOOT LOGIC
+# ==============================================================================
+
+## Override: Drops 1x Fried Chicken (Meat proxy) on death
+func _drop_loot(inv: IInventory) -> void:
+	# Item ID 16: Fried Chicken
+	inv.add_item(16, 1)
 
 
-func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.375, 0.0)
-
-
-## Flag used by the animation ticker to configure bouncy walks (Disabled for quadrupeds)
+## Flag used by the animation ticker to configure bouncy walks (Disabled for quadrupeds/crabs)
 func _is_avian() -> bool:
 	return false
 
 
 func _can_socialize() -> bool:
 	return true
-
-
-func _on_domain_entity_took_damage(_amount: int) -> void:
-	# Crab panic escape velocity
-	velocity.y = JUMP_VELOCITY
-	if is_instance_valid(ai_component):
-		ai_component.current_task = NPCAIComponent.TaskState.PANIC
-		ai_component.task_timer = randf_range(3.0, 5.0)
-
-
-## Drops 1x Fried Chicken (Meat proxy) on death
-func _drop_loot(inv: IInventory) -> void:
-	# Item ID 16: Fried Chicken
-	inv.add_item(16, 1)

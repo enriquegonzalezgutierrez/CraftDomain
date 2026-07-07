@@ -4,53 +4,34 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates hostile AI behaviors,
 #                chase tracking, and combat cooldowns.
-#              - Liskov Substitution Principle (LSP): Extends CharacterBody3D cleanly 
-#                and satisfies base physics and signal contracts.
-#              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
-#                statically through the decoupled CelestialService provider.
-# HYBRID GRAPHICS PIPELINE & PROCEDURAL BITE LUNGE (Blender Z-Up Axis Fix):
-#              - Attempts to load `assets/models/mobs/zombie/zombie_base.fbx`.
-#              - Programmatically loads separate animation files (idle, walk, attack) 
-#                from the same folder, extracts their bone tracks, and 
-#                injects them into the main AnimationPlayer at runtime.
-#              - Scale is calibrated dynamically to 1.6635x to achieve a perfect 1.8m height.
-#              - Max Z-vertex is 0.0. When rotated 90 degrees, the feet sit perfectly 
-#                at Y = 0.0. No vertical Y-offset is needed!
+#              - Liskov Substitution Principle (LSP): Now inherits cleanly from 
+#                PassiveEntity to share physics, colliders, and death sequences, 
+#                but safely disables the passive AI component in _ready().
+#              - Dependency Inversion Principle (DIP): Uses the modular 
+#                SkeletalVisualRepresentation strategy to load and animate GLBs, 
+#                eliminating hundreds of lines of duplicated material-pruning code.
+# HABITAT-DRIVEN SPAWNING (DDD Compliance):
+#              - Overrides `_get_habitat()` to return TERRESTRIAL, ensuring it 
+#                never spawns in the ocean.
 # JUMP ANIMATION & RED NAMEPLATE INTEGRATION:
-#              - Added dynamic binding and loading support for the new `zombie_jump.fbx` track.
-#              - Blends the airborne jumping states elegantly inside the state controller.
-#              - Instantiates a high-contrast 3D Floating `Label3D` Nameplate above the model head.
-#              - WARNING RED COLOR: The nameplate now renders in high-contrast crimson red 
-#                to immediately alert the player of its hostile nature.
+#              - Injects the `jump` track seamlessly into the visual strategy.
+#              - Modulates the inherited floating nameplate to Crimson Red.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
 class_name HostileEntity
-extends CharacterBody3D
+extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/zombie/zombie_base.fbx"
-const ANIM_DIR := "res://assets/models/mobs/"
 
 # Combat configurations
 const SPEED: float = 2.2
-const JUMP_VELOCITY: float = 5.0
 const CHASE_RANGE: float = 16.0
 const ATTACK_RANGE: float = 1.2
 const ATTACK_COOLDOWN_INTERVAL: float = 1.5 # Cooldown in seconds between bites
 
-# Physics gravity
-var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-
-# Domain Model Composition (DDD Compliance)
-var domain_entity: VoxelEntity
-
 # Sibling node references
 var player: CharacterBody3D
-
-# Dynamic visual part tracker bindings (SRP)
-var _visual_parts: Array[VisualPart] = []
-var _model_node: Node3D
-var _anim_player: AnimationPlayer
 
 # AI wandering/chasing state variables
 var _wander_timer: float = 0.0
@@ -59,60 +40,84 @@ var _is_wandering: bool = false
 var _attack_cooldown_timer: float = 0.0
 var _stuck_timer: float = 0.0
 
-# Procedural Animation tracker
-var _animation_time: float = 0.0
-
-# Procedural combat state
-var _is_lunging: bool = false
-
-# UI elements
-var _nameplate: Label3D
-var _quest_bubble: Node3D
-
-
-## Value Object storing mesh-material original colors for damage flash restoration
-class VisualPart:
-	var material: BaseMaterial3D
-	var original_color: Color
-	
-	func _init(p_mat: BaseMaterial3D, p_color: Color) -> void:
-		material = p_mat
-		original_color = p_color
-
 
 func _init(spawn_pos: Vector3) -> void:
-	position = spawn_pos
+	# Hostiles spawn with 3 Hearts of health (6 HP)
+	super(spawn_pos, 6)
 	name = "Entity_ZOMBIE"
-	
-	domain_entity = VoxelEntity.new(3) # 3 Hearts of health
-	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
-	domain_entity.died.connect(_on_domain_entity_died)
 
 
 func _ready() -> void:
+	super()
+	
+	# Transition from passive group to hostiles
+	remove_from_group("passives")
 	add_to_group("hostiles")
 	
-	_build_visual_representation()
-	_setup_collision()
+	# Hostiles use aggressive custom AI, so we safely detach the civilian AI
+	if is_instance_valid(ai_component):
+		ai_component.queue_free()
+		ai_component = null
+		
+	# Paint the inherited nameplate in Warning Crimson Red!
+	if is_instance_valid(_nameplate):
+		_nameplate.modulate = Color(1.0, 0.15, 0.15) 
+		
 	_locate_player()
-	
-	_setup_nameplate()
-	_setup_quest_bubble()
 
 
-func _setup_collision() -> void:
-	var col := CollisionShape3D.new()
-	col.name = "ZombieCollider"
-	var box_shape := BoxShape3D.new()
-	
-	# Calibrated to the scaled bounding box of the GLB model
-	box_shape.size = Vector3(1.2, 1.80, 1.2)
-	col.shape = box_shape
-	
-	# Set collider center Y position to 0.9m to align with the ground plane
-	col.position = Vector3(0, 0.9, 0)
-	add_child(col)
+# ==============================================================================
+# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
+# ==============================================================================
 
+func _get_habitat() -> MobRegistry.Habitat:
+	return MobRegistry.Habitat.TERRESTRIAL
+
+
+func _has_ui_decorations() -> bool:
+	return true # We force it true to ensure the red nameplate and quest markers spawn!
+
+
+func _setup_floating_bubble() -> void:
+	# Spawns a floating warning objective if the Plains Defender quest is active
+	var active_q := QuestService.get_active_quest()
+	if active_q != null and active_q.quest_id == "plains_defender":
+		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
+		if sb_script != null:
+			_bubble = sb_script.new() as Node3D
+			_bubble.name = "QuestBubble"
+			add_child(_bubble)
+			_bubble.call("set_text", tr("BUBBLE_TARGET_MONSTER"))
+
+
+## Concrete Implementation (DIP): Instantiates and injects the Mixamo Strategy dynamically
+func _build_visual_representation() -> void:
+	var strategy := SkeletalVisualRepresentation.new()
+	strategy.base_model_path = BASE_MODEL_PATH
+	
+	# Scale and position offsets calibrated for the Zombie Mixamo Rig
+	strategy.scale_multiplier = Vector3(1.6635, 1.6635, 1.6635)
+	strategy.position_offset = Vector3(0.0, 0.0, 0.0)
+	strategy.rotation_offset = Vector3(0, 180, 0)
+	
+	# Physical collision bounds
+	strategy.collision_size = Vector3(0.6, 1.8, 0.6)
+	strategy.collision_position = Vector3(0.0, 0.9, 0.0)
+	
+	# External Animation Tracks
+	strategy.anim_idle_path = ANIM_DIR + "zombie/zombie_idle.fbx"
+	strategy.anim_walk_path = ANIM_DIR + "zombie/zombie_walk.fbx"
+	strategy.anim_attack_path = ANIM_DIR + "zombie/zombie_attack.fbx"
+	strategy.anim_jump_path = ANIM_DIR + "zombie/zombie_jump.fbx"
+	
+	# Inject strategy into parent coordinator
+	visual_representation = strategy
+	visual_representation.build_representation(self, visual_component.body_bob_node)
+
+
+# ==============================================================================
+# COMBAT & LOOT LOGIC
+# ==============================================================================
 
 func _locate_player() -> void:
 	var world_node := get_parent()
@@ -120,316 +125,26 @@ func _locate_player() -> void:
 		player = world_node.get("player") as CharacterBody3D
 
 
-## Instantiates a native, high-performance Label3D billboard to display creature name
-func _setup_nameplate() -> void:
-	_nameplate = Label3D.new()
-	_nameplate.name = "FloatingNameplate"
-	_nameplate.text = tr("NPC_NAME_ZOMBIE").to_upper()
-	_nameplate.pixel_size = 0.005 # Crisp, matching speech bubble sizing scale
-	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_nameplate.no_depth_test = false # Occluded by solid blocks
-	_nameplate.render_priority = 5
-	
-	# Text styling and high-contrast red warning outline
-	_nameplate.modulate = Color(1.0, 0.15, 0.15) # Warning Red
-	_nameplate.outline_modulate = Color(0, 0, 0)
-	_nameplate.outline_size = 5
-	
-	# Set position right above the model head baseline (1.8m height + 25cm offset)
-	_nameplate.position = Vector3(0.0, 2.05, 0.0)
-	add_child(_nameplate)
+## Override: Hostiles do not panic when hit, they charge forward!
+func _on_domain_entity_took_damage(_amount: int) -> void:
+	pass 
 
 
-func _setup_quest_bubble() -> void:
+## Override: Manages quest transactions and drops upon death.
+func _drop_loot(inv: IInventory) -> void:
+	inv.consume_item(15, 1) # Deduct 1x Lava Bucket from player
+	
 	var active_q := QuestService.get_active_quest()
 	if active_q != null and active_q.quest_id == "plains_defender":
-		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
-		if sb_script != null:
-			_quest_bubble = sb_script.new() as Node3D
-			_quest_bubble.name = "QuestBubble"
-			add_child(_quest_bubble)
-			_quest_bubble.call("set_text", tr("BUBBLE_TARGET_MONSTER"))
-			_quest_bubble.position = Vector3(0.0, 2.45, 0.0) # Lifted to clear nameplate
-
-
-## Loads the external GLB model and applies calculated mathematical transforms
-func _build_visual_representation() -> void:
-	if ResourceLoader.exists(BASE_MODEL_PATH):
-		_build_glb_representation()
-	else:
-		_build_procedural_representation()
-
-
-func _build_glb_representation() -> void:
-	var visual_root := Node3D.new()
-	visual_root.name = "Visuals"
-	add_child(visual_root)
-	
-	var model_scene := load(BASE_MODEL_PATH) as PackedScene
-	_model_node = model_scene.instantiate() as Node3D
-	
-	_prune_extraneous_nodes(_model_node)
-	
-	# ======================================================================
-	# MATHEMATICAL CALIBRATION (Cross-Axis Fix)
-	# ======================================================================
-	# 1. Scale model by 1.6635x (Target: 1.8m / Actual Z-Depth: 1.082m)
-	_model_node.scale = Vector3(1.6635, 1.6635, 1.6635) 
-	
-	# 2. Z-Axis max was 0.0. With X=90 rotation, feet are perfectly at 0.0.
-	_model_node.position = Vector3(0.0, 0.0, 0.0) 
-	
-	# 3. Apply 180-degree visual offset to correct the backward orientation bug
-	_model_node.rotation_degrees = Vector3(0, 180, 0) 
-	# ======================================================================
-	
-	visual_root.add_child(_model_node)
-	_register_glb_materials(_model_node)
-	
-	# Find nested AnimationPlayer inside Mixamo rig hierarchy
-	_anim_player = _model_node.get_node_or_null("AnimationPlayer") as AnimationPlayer
-	if is_instance_valid(_anim_player):
-		_load_external_fbx_animations()
-		_anim_player.play("idle")
-
-
-## Programmatically extracts and compiles separate FBX/GLTF animation tracks
-func _load_external_fbx_animations() -> void:
-	if not is_instance_valid(_anim_player):
-		return
-		
-	# Ensure the default animation library exists
-	var anim_library := _anim_player.get_animation_library("")
-	if anim_library == null:
-		anim_library = AnimationLibrary.new()
-		_anim_player.add_animation_library("", anim_library)
-		
-	# Paths to separate Mixamo FBX animations
-	var anim_sources := {
-		"idle": ANIM_DIR + "zombie/zombie_idle.fbx",
-		"walk": ANIM_DIR + "zombie/zombie_walk.fbx",
-		"attack": ANIM_DIR + "zombie/zombie_attack.fbx",
-		"jump": ANIM_DIR + "zombie/zombie_jump.fbx"
-	}
-	
-	for anim_name: String in anim_sources.keys():
-		var path: String = anim_sources[anim_name] as String
-		if ResourceLoader.exists(path):
-			var anim_scene := load(path) as PackedScene
-			if anim_scene != null:
-				var temp_instance := anim_scene.instantiate()
-				var temp_player := temp_instance.get_node_or_null("AnimationPlayer") as AnimationPlayer
-				
-				if is_instance_valid(temp_player) and temp_player.get_animation_list().size() > 0:
-					var raw_name := temp_player.get_animation_list()[0]
-					var animation_resource := temp_player.get_animation(raw_name)
-					
-					# Force loop mode on idle and walk tracks
-					if anim_name == "idle" or anim_name == "walk":
-						animation_resource.loop_mode = Animation.LOOP_LINEAR
-					elif anim_name == "jump":
-						animation_resource.loop_mode = Animation.LOOP_NONE
-						
-					anim_library.add_animation(anim_name, animation_resource)
-					print("  -> Bound dynamic FBX animation: '", anim_name, "' from ", path)
-					
-				temp_instance.queue_free()
-
-
-## Contingency fallback procedural rendering
-func _build_procedural_representation() -> void:
-	var visual_root := Node3D.new()
-	visual_root.name = "Visuals"
-	add_child(visual_root)
-	
-	# Basic block zombie rendering
-	var zombie_color := Color(0.18, 0.42, 0.25) # Rotten Green
-	var shirt_color := Color(0.12, 0.45, 0.82)  # Blue tattered shirt
-	
-	var body := MeshInstance3D.new()
-	var body_mesh := BoxMesh.new()
-	body_mesh.size = Vector3(0.6, 0.8, 0.3)
-	body.mesh = body_mesh
-	body.position = Vector3(0, 0.9, 0)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = shirt_color
-	body.material_override = mat
-	visual_root.add_child(body)
-	
-	var head := MeshInstance3D.new()
-	var head_mesh := BoxMesh.new()
-	head_mesh.size = Vector3(0.4, 0.4, 0.4)
-	head.mesh = head_mesh
-	head.position = Vector3(0, 1.5, 0)
-	var h_mat := StandardMaterial3D.new()
-	h_mat.albedo_color = zombie_color
-	head.material_override = h_mat
-	visual_root.add_child(head)
-
-
-## Recursively scans the GLB hierarchy to extract and duplicate mesh materials
-func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		var mat: Material = node.get_active_material(0) as Material
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0) as Material
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			
-			# TANGENT WARNING SHIELD
-			new_mat.normal_enabled = false
-			new_mat.anisotropy_enabled = false
-			new_mat.clearcoat_enabled = false
-			new_mat.heightmap_enabled = false
-			
-			node.material_override = new_mat
-			var original_color: Color = new_mat.albedo_color
-			_visual_parts.append(VisualPart.new(new_mat, original_color))
-			
-	for child: Node in node.get_children():
-		_register_glb_materials(child)
-
-
-## Recursively locates and frees extraneous camera and light nodes
-func _prune_extraneous_nodes(node: Node) -> void:
-	for i in range(node.get_child_count() - 1, -1, -1):
-		var child := node.get_child(i)
-		if "Camera" in child.name or "Light" in child.name:
-			child.free()
-		else:
-			_prune_extraneous_nodes(child)
-
-
-func take_damage(amount: int, knockback_force: Vector3) -> void:
-	if domain_entity.is_dead:
-		return
-	velocity += knockback_force
-	domain_entity.take_damage(amount)
-
-
-func _on_domain_entity_took_damage(_amount: int) -> void:
-	_flash_red()
-
-
-func _flash_red() -> void:
-	for part: VisualPart in _visual_parts:
-		if is_instance_valid(part.material):
-			part.material.albedo_color = Color(0.95, 0.15, 0.15) # Glowing Red
-		
-	get_tree().create_timer(0.15).timeout.connect(_reset_damage_flash)
-
-
-func _reset_damage_flash() -> void:
-	for part: VisualPart in _visual_parts:
-		if is_instance_valid(part.material):
-			part.material.albedo_color = part.original_color
+		var _un := inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
+		if is_instance_valid(player):
+			QuestService.complete_active_quest(player)
 
 
 # ==============================================================================
-# DEATH SEQUENCE & LOOT ORCHESTRATION
+# MAIN HOSTILE PHYSICS & AI CALCULATIONS
 # ==============================================================================
-func _on_domain_entity_died() -> void:
-	remove_from_group("hostiles")
-	set_physics_process(false)
-	set_process(false) # Disable visual procedural processing loop on death
-	
-	var col := get_node_or_null("ZombieCollider") as CollisionShape3D
-	if is_instance_valid(col): 
-		col.queue_free()
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.queue_free()
-	if is_instance_valid(_quest_bubble):
-		_quest_bubble.queue_free()
-	
-	if is_instance_valid(player):
-		var inv := player.get("inventory") as IInventory
-		if is_instance_valid(inv):
-			inv.consume_item(15, 1) # Deduct 1x Lava Bucket from player
-			
-			var active_q := QuestService.get_active_quest()
-			if active_q != null and active_q.quest_id == "plains_defender":
-				var _un := inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
-				QuestService.complete_active_quest(player)
-			
-	_spawn_death_particles()
-	
-	var death_tween := create_tween().set_parallel(true)
-	var visuals_node: Node3D = get_node("Visuals") as Node3D
-	if is_instance_valid(visuals_node):
-		death_tween.tween_property(visuals_node, "scale", Vector3.ZERO, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-		death_tween.tween_property(visuals_node, "rotation:y", deg_to_rad(180), 0.25).set_trans(Tween.TRANS_SINE)
-		
-	death_tween.chain().tween_callback(queue_free)
 
-
-func _spawn_death_particles() -> void:
-	var particles := CPUParticles3D.new()
-	particles.emitting = false
-	particles.amount = 15
-	particles.one_shot = true
-	particles.explosiveness = 0.9
-	particles.lifetime = 0.6
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 0.4
-	particles.direction = Vector3(0, 1, 0)
-	particles.spread = 180.0
-	particles.initial_velocity_min = 2.0
-	particles.initial_velocity_max = 4.0
-	particles.gravity = Vector3(0, 2.0, 0)
-	particles.scale_amount_min = 0.5
-	particles.scale_amount_max = 1.2
-	
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.15, 0.15, 0.15)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8) # Smoke grey
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mesh.material = mat
-	particles.mesh = mesh
-	
-	var world_node := get_parent() as Node
-	if is_instance_valid(world_node):
-		world_node.add_child(particles)
-		particles.global_position = global_position + Vector3(0, 0.9, 0) # Calibrated center height
-		particles.emitting = true
-		get_tree().create_timer(1.0).timeout.connect(particles.queue_free)
-
-
-# ==============================================================================
-# PROCEDURAL ANIMATION (For static models without skeletal bones)
-# ==============================================================================
-func _process(delta: float) -> void:
-	if domain_entity.is_dead:
-		return
-		
-	# If we are running a skeletal AnimationPlayer, bypass procedural sways
-	if is_instance_valid(_anim_player):
-		return
-		
-	var visuals_node: Node3D = get_node_or_null("Visuals") as Node3D
-	if not is_instance_valid(visuals_node):
-		return
-		
-	_animation_time += delta
-	var flat_velocity := Vector2(velocity.x, velocity.z)
-	
-	if flat_velocity.length() > 0.1 and is_on_floor():
-		# Aggressive procedural zombie-lurch sway
-		var bob_mult := 8.0
-		visuals_node.rotation.z = sin(_animation_time * bob_mult) * 0.08
-		visuals_node.rotation.x = abs(sin(_animation_time * bob_mult * 0.5)) * 0.05
-	else:
-		# Idle breathing sways when standing still
-		visuals_node.rotation.z = lerp(visuals_node.rotation.z, 0.0, delta * 5.0)
-		visuals_node.rotation.x = lerp(visuals_node.rotation.x, sin(_animation_time * 2.0) * 0.02, delta * 5.0)
-
-
-# ==============================================================================
-# MAIN PHYSICS & SWIMMING AI CALCULATIONS
-# ==============================================================================
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
@@ -447,67 +162,12 @@ func _physics_process(delta: float) -> void:
 
 	_process_ai_intelligence(delta)
 	
-	# Process Skeletal Animation blended states (Mixamo)
-	_process_skeletal_animations(delta)
+	# Delegate dynamic skeletal movements to the injected strategy
+	if is_instance_valid(visual_representation):
+		var flat_velocity := Vector2(velocity.x, velocity.z)
+		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)
 	
 	move_and_slide()
-
-
-## Machine-state Controller: Blends Mixamo skeletal joints seamlessly
-func _process_skeletal_animations(_delta: float) -> void:
-	if not is_instance_valid(_anim_player):
-		return
-		
-	var flat_velocity := Vector2(velocity.x, velocity.z)
-	var is_moving := flat_velocity.length_squared() > 0.1
-	
-	# State blending priority checks
-	if _attack_cooldown_timer > 0.6: # Active bite phase (cooldown starts at 1.5s)
-		_play_animation_safe("attack")
-	elif not is_on_floor(): # <-- High priority jump check!
-		_play_animation_safe("jump")
-	elif is_moving and is_on_floor():
-		_play_animation_safe("walk")
-	else:
-		_play_animation_safe("idle")
-
-
-## Prevents animation snapping by executing a 0.25s linear crossfade
-func _play_animation_safe(anim_name: String) -> void:
-	if not is_instance_valid(_anim_player):
-		return
-		
-	var target_anim := anim_name
-	
-	# Fallback: If bite/attack is missing, play idle and lean forward procedurally!
-	if target_anim == "attack" and not _anim_player.has_animation("attack"):
-		target_anim = "idle"
-		_simulate_procedural_bite_lunge()
-	elif target_anim == "jump" and not _anim_player.has_animation("jump"):
-		target_anim = "idle"
-		
-	if _anim_player.has_animation(target_anim):
-		if _anim_player.current_animation != target_anim:
-			# Execute a 0.25s smooth crossfade blend to prevent bone snapping!
-			_anim_player.play(target_anim, 0.25)
-
-
-## Procedural Bite Lunge: Tilts the zombie forward to simulate biting
-func _simulate_procedural_bite_lunge() -> void:
-	if _is_lunging or not is_instance_valid(_model_node):
-		return
-	_is_lunging = true
-	
-	var tween := create_tween()
-	# Step 1: Lurch forward (Tilt X-rotation 20 degrees down and step 20cm Z)
-	tween.tween_property(_model_node, "rotation_degrees:x", 20.0, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(_model_node, "position:z", -0.20, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	
-	# Step 2: Recover back to upright pose
-	tween.chain().tween_property(_model_node, "rotation_degrees:x", 0.0, 0.20).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.parallel().tween_property(_model_node, "position:z", 0.0, 0.20).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	
-	tween.chain().tween_callback(func() -> void: _is_lunging = false)
 
 
 func _process_ai_intelligence(delta: float) -> void:
@@ -535,6 +195,8 @@ func _process_ai_intelligence(delta: float) -> void:
 				if _attack_cooldown_timer <= 0.0:
 					_bite_player()
 					_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL
+					if is_instance_valid(visual_representation):
+						visual_representation.trigger_attack_visuals()
 				
 	if not is_player_trackable and _wander_direction_tmp != Vector3.ZERO:
 		_wander_direction = _wander_direction_tmp
@@ -544,11 +206,10 @@ func _process_ai_intelligence(delta: float) -> void:
 		velocity.x = _wander_direction.x * speed_mult
 		velocity.z = _wander_direction.z * speed_mult
 		
-		var visuals_node: Node3D = get_node("Visuals") as Node3D
+		var visuals_node: Node3D = get_node_or_null("NPCVisualComponent/Visuals") as Node3D
 		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
 			var target_look_at: Vector3 = global_position + _wander_direction
 			if not global_position.is_equal_approx(target_look_at):
-				# Lock rotation to movement vector, preserving visual sways
 				var current_rot_x := visuals_node.rotation.x
 				var current_rot_z := visuals_node.rotation.z
 				visuals_node.look_at(target_look_at, Vector3.UP)
@@ -586,17 +247,3 @@ func _bite_player() -> void:
 		var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
 		if player.has_method("take_damage"):
 			player.call("take_damage", 1, knockback)
-
-
-## Dynamic Collision Box Sizing: Adapts physically to voxel (1.2m) vs Mixamo (0.75m) heights
-func _get_collision_box_size() -> Vector3:
-	if ResourceLoader.exists(BASE_MODEL_PATH):
-		return Vector3(0.5, 0.75, 0.5) # Dynamic 0.75m height
-	return Vector3(0.6, 1.2, 0.6) # Fallback 1.2m voxel height
-
-
-## Dynamic Collision Box Position: Centered dynamically depending on active mesh scale
-func _get_collision_box_position() -> Vector3:
-	if ResourceLoader.exists(BASE_MODEL_PATH):
-		return Vector3(0.0, 0.375, 0.0) # Center Y at 0.375m
-	return Vector3(0.0, 0.6, 0.0) # Center Y at 0.6m

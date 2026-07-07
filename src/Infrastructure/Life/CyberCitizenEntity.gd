@@ -4,11 +4,19 @@
 #              built out of dark obsidian-steel metallic boxes, detailed with 
 #              glowing cyan visor bands and magenta circuitry pipelines.
 #              SOLID COMPLIANCE:
-#              - Liskov Substitution Principle (LSP): Inherits PassiveEntity.
+#              - Liskov Substitution Principle (LSP): Inherits PassiveEntity 
+#                and satisfies all structural base contracts cleanly.
 #              - Single Responsibility Principle (SRP): Delegates rendering setups 
 #                and AI state execution to specialized sibling components.
 #              - Dependency Inversion Principle (DIP): Resolves time-of-day queries 
 #                statically through the decoupled CelestialService provider.
+# POLIMORFISMO Y HORARIOS (OCP):
+#              - Overrides `_get_humanoid_role()` to return `0` (VILLAGER), allowing 
+#                the AI Component to dynamically identify it as a civilian 
+#                and schedule shelter tasks during storms or nightfall.
+#              - Overrides `_has_ui_decorations()` to safely spawn speech bubbles 
+#                and receive raycast clicks from the mouse.
+#              - Overrides `_get_habitat()` to register its terrestrial nature.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/CyberCitizenEntity.gd
 # ==============================================================================
@@ -17,8 +25,25 @@ extends PassiveEntity
 
 
 func _init(spawn_pos: Vector3) -> void:
-	super(spawn_pos, 5) # 5 Hearts of health (10 HP)
+	# Citizens spawn with 5 Hearts of health (10 HP)
+	super(spawn_pos, 10)
 	name = "Entity_CYBER"
+
+
+# ==============================================================================
+# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_habitat() -> MobRegistry.Habitat:
+	return MobRegistry.Habitat.TERRESTRIAL
+
+
+func _get_humanoid_role() -> int:
+	return 0 # Classified as VILLAGER for safe OCP scheduling (renders custom visual blocks below)
+
+
+func _has_ui_decorations() -> bool:
+	return true # Explicitly enabled to render the speech bubbles and accept right-clicks
 
 
 ## Concrete Setup: Assembles the detailed 3D model, binding voxel nodes 

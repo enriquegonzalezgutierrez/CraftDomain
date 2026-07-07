@@ -24,6 +24,10 @@
 # JUMP ANIMATION INTEGRATION:
 #              - Added dynamic binding and loading support for the new `villager_jump.fbx` track.
 #              - Blends the airborne jumping states elegantly inside the Mixamo state controller.
+# UI DECORATION FIX:
+#              - Added `_has_ui_decorations()` override to guarantee villagers are 
+#                treated as civilians (rendering quest arrows and speech bubbles) 
+#                even when using custom procedural rendering pipelines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
@@ -442,3 +446,12 @@ func _prune_extraneous_nodes(node: Node) -> void:
 			child.free()
 		else:
 			_prune_extraneous_nodes(child)
+
+
+# ==============================================================================
+# GEOGRAPHICAL DECORATIONS & SPECIFICATIONS CONTRACT OVERRIDES
+# ==============================================================================
+
+## Concrete Override: Force UI decorations to spawn since Villager uses custom rendering
+func _has_ui_decorations() -> bool:
+	return true

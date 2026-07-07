@@ -11,24 +11,16 @@
 #   components, leaving this class strictly in charge of sliding physics.
 # - Dependency Inversion Principle (DIP): Visual structures are completely 
 #   delegated to the injected `IEntityVisualRepresentation` strategy resource.
-# JUMP ANIMATION INTEGRATION:
-# - Updated `_setup_dynamic_visual_strategy` to dynamically feed the new 
-#   `_jump.fbx` asset path into the skeletal strategy compiler.
+# HABITAT OVERHAUL (DDD/OCP):
+# - Added `_get_habitat()` virtual contract returning `MobRegistry.Habitat.TERRESTRIAL` 
+#   by default. Subclasses (like Turtles or Sharks) can safely override this to inform 
+#   the AI and Spawning services of their environmental needs without string-matching.
 # 3D FLOATING NAMEPLATES FEATURE (COLLISION-SAFE FIX):
 # - Instantiates a native `Label3D` billboard nameplate displaying the creature's 
 #   localized name in uppercase above its model.
 # - RESOLVED SCENE-TREE NAME COLLISIONS: Resolves the translation keys dynamically 
 #   by pattern-matching the class type (`self is ClassType`) rather than reading the 
 #   node's scene-tree name, ensuring translations never break or show raw pointers.
-# - Adjusts the height layout of Speech Bubbles and Quest Arrows to stack 
-#   symmetrically and prevent text overlapping.
-# FIXED COMPILATION STUTTER:
-# - Corrected GPUParticles3D Material properties inside `_spawn_death_particles()` 
-#   to use `scale_min` and `scale_max` instead of `scale_amount_min`.
-# COMBAT ALERTS INTEGRATION (Phase 3):
-# - Added dynamic threat-scanning and alarm broadcasting. Struck civilians find 
-#   the closest hostile zombie and sound the alarm via `AlertNetworkService`.
-# - Clears defenders from the alarm network during the death cleanup sequence.
 # VILLAGE REPUTATION & KARMA INTEGRATION (Phase 4):
 # - Modified `take_damage()` signature to accept an optional `attacker: Node` parameter.
 # - Attacking peaceful civilians deducts -15 rep points from the player's karma.
@@ -266,6 +258,10 @@ func _setup_floating_bubble() -> void:
 	pass
 
 
+# ==============================================================================
+# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
+# ==============================================================================
+
 ## Virtual method overridden by subclasses to define their humanoid role.
 ## Returns -1 for animals (fauna), or a specific RoleType index for humanoids.
 func _get_humanoid_role() -> int:
@@ -278,6 +274,14 @@ func _get_humanoid_role() -> int:
 func _has_ui_decorations() -> bool:
 	return _get_humanoid_role() >= 0
 
+
+## Virtual Contract: Informs AI and Spawners about the entity's environmental limits.
+## Subclasses like Turtles or Sharks must override this to return AMPHIBIOUS or AQUATIC.
+func _get_habitat() -> MobRegistry.Habitat:
+	return MobRegistry.Habitat.TERRESTRIAL
+
+
+# ==============================================================================
 
 ## Programmatically constructs and styles the 3D rotating quest arrow (PrismMesh)
 func _setup_quest_arrow() -> void:
