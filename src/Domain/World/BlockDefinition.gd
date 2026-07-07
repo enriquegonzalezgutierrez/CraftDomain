@@ -9,6 +9,10 @@
 #   translation key to strictly adhere to OCP for multi-language support.
 # - Liskov Substitution Principle (LSP): Dynamically falls back to FullCubeGeometry 
 #   if no custom shape is passed, maintaining absolute contract safety.
+# DECOUPLED CONSTRUCTOR UPGRADE:
+# - Updated the constructor signature to accept `p_is_solid` and `p_is_transparent` 
+#   parameters explicitly. This breaks circular compile-time dependency loops with 
+#   `BlockType.gd` and allows parameters to be fully data-driven.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockDefinition.gd
 # ==============================================================================
@@ -32,6 +36,8 @@ var geometry: IVoxelGeometry
 func _init(
 	p_type: BlockType.Type, 
 	p_translation_key: String, 
+	p_is_solid: bool, # <-- Added
+	p_is_transparent: bool, # <-- Added
 	p_color_top: Color, 
 	p_color_side: Color, 
 	p_color_bottom: Color,
@@ -39,8 +45,8 @@ func _init(
 ) -> void:
 	type = p_type
 	translation_key = p_translation_key
-	is_solid = BlockType.is_solid(p_type)
-	is_transparent = BlockType.is_transparent(p_type)
+	is_solid = p_is_solid
+	is_transparent = p_is_transparent
 	color_top = p_color_top
 	color_side = p_color_side
 	color_bottom = p_color_bottom

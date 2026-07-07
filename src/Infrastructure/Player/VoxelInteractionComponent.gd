@@ -39,6 +39,9 @@
 # VILLAGE REPUTATION & COMBAT LINKS (Phase 4):
 #   * Modified the sword strike code to pass the `player` node as the third parameter inside 
 #     `take_damage()`. This enables the karma engine to detect and punish player attacks on peaceful villagers.
+# DECLARATIVE MINING REGISTRY (OCP CLEANUP):
+#   * Extracted all hardcoded mining block-to-item drop translations into a clean constant 
+#     dictionary at the top of the file, completely removing nested match statements.
 # CIRCULAR DEPENDENCY SHIELD:
 # - Removed all "PlayerController" type hints to break Godot's parser lock.
 #   Interacts with the player node strictly via loose-binding getters.
@@ -53,6 +56,28 @@ var player: CharacterBody3D
 var world_controller: Node3D
 
 var raycast: RayCast3D
+
+# ==============================================================================
+# DECLARATIVE CONFIGURATION REGISTRIES (OCP Compliant)
+# ==============================================================================
+# Maps mined block types directly to their dropped inventory item IDs.
+# Standard blocks not present here default to dropping their own block type ID.
+const MINED_BLOCK_TO_ITEM_DROP: Dictionary = {
+	BlockType.Type.SAND: 2,         # Sand drops Dirt (ID 2)
+	BlockType.Type.RED_SAND: 2,     # Red Sand drops Dirt (ID 2)
+	BlockType.Type.MUD: 6,          # Mud drops Water (ID 6 - Swamp water extraction)
+	BlockType.Type.SNOW: 1,         # Snow drops Stone (ID 1)
+	BlockType.Type.NEON_CYAN: 1,    # Neon Cyan drops Stone (ID 1)
+	BlockType.Type.NEON_MAGENTA: 1, # Neon Magenta drops Stone (ID 1)
+	BlockType.Type.ICE: 6,          # Ice drops Water (ID 6 - Melting glacial ice)
+	BlockType.Type.CLOUD: 5,        # Cloud drops Leaves (ID 5)
+	BlockType.Type.LEAVES: 5,       # Leaves drop Leaves (ID 5)
+	BlockType.Type.STONE_SLAB_BOTTOM: 26, # Slabs drop Stone Slabs (ID 26)
+	BlockType.Type.STONE_SLAB_TOP: 26,
+	BlockType.Type.DIAMOND_ORE: 28, # Diamond Ore drops Diamond (ID 28)
+	BlockType.Type.OAK_PLANKS: 29,  # Oak Planks drop Planks (ID 29)
+	BlockType.Type.GLOWSTONE: 30    # Glowstone drops Glowstone (ID 30)
+}
 
 
 func _ready() -> void:
@@ -277,31 +302,14 @@ func _mine_or_attack() -> void:
 				if is_instance_valid(hud):
 					hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
 			else:
-				# Standard block collection (DIP: Translate BlockType to Item ID on the fly)
-				match mined_type:
-					BlockType.Type.SAND, BlockType.Type.RED_SAND:
-						target_id = 2 # Dirt ID
-					BlockType.Type.MUD:
-						target_id = 6 # Water ID (Squeezing swamp water out of mud blocks!)
-					BlockType.Type.SNOW, BlockType.Type.NEON_CYAN, BlockType.Type.NEON_MAGENTA:
-						target_id = 1 # Stone ID
-					BlockType.Type.ICE:
-						target_id = 6 # Water ID (Melting glacial ice blocks into pure water!)
-					BlockType.Type.CLOUD:
-						target_id = 5 # Leaves ID
-					BlockType.Type.LEAVES:
-						target_id = 5 # Leaves ID
-						if randf() < 0.25:
-							var _un4 := inventory.add_item(18, 1) # Bonus seed drop
-					BlockType.Type.STONE_SLAB_BOTTOM, BlockType.Type.STONE_SLAB_TOP:
-						target_id = 26 # Reclaim as standard Stone Slab Item (ID 26) on mining!
-					BlockType.Type.DIAMOND_ORE:
-						target_id = 28 # Reclaim Diamond Ore
-					BlockType.Type.OAK_PLANKS:
-						target_id = 29 # Reclaim Oak Planks
-					BlockType.Type.GLOWSTONE:
-						target_id = 30 # Reclaim Glowstone
-				
+				# Declarative block collection lookup (OCP Compliant)
+				if MINED_BLOCK_TO_ITEM_DROP.has(mined_type):
+					target_id = MINED_BLOCK_TO_ITEM_DROP[mined_type] as int
+					
+				# Handle special leaf bonus drop seed chance
+				if mined_type == BlockType.Type.LEAVES and randf() < 0.25:
+					var _un4 := inventory.add_item(18, 1) # Bonus seed drop
+					
 				var _un5 := inventory.add_item(target_id, 1)
 				
 			# DIP INVERSION: Update quest progress using the injected provider reference

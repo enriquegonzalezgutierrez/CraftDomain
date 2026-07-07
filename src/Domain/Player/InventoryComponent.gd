@@ -2,21 +2,15 @@
 # Project: CraftDomain
 # Description: Concrete domain component managing a 24-slot stackable inventory grid.
 #              Slots 0-7 represent the active Hotbar. Slots 8-23 represent the Backpack.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Exclusively manages grid 
-#                swaps, item stacking transactions, and inventory data structures.
-#              - Dependency Inversion Principle (DIP): Rather than hardcoding 
-#                static calls to BlockLibrary, it holds an injectable reference 
-#                to a block library provider.
-#              - OBSERVER PATTERN: Emits the interface `inventory_changed` signal 
-#                on state mutations to cleanly notify presentation layers.
-# UX FEATURE OVERHAUL:
-#              - Added `consolidate_and_sort_backpack()` to merge identical item stack 
-#                fragments and sort them by ID, cleanly organizing the backpack 
-#                while leaving the player's active Hotbar dock completely untouched.
-#              MATH PRECISION EXTENSION:
-#              - Added Item ID 26 (Stone Slab) to the starting inventory and registered 
-#                its localized name binding.
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Exclusively manages grid 
+#   swaps, item stacking transactions, and inventory data structures.
+# - Open-Closed Principle (OCP): All non-block item names and legacy block drop 
+#   mappings have been extracted into clean, declarative dictionaries at the top of 
+#   the file. All hardcoded `match` logic has been completely removed.
+# - Dependency Inversion Principle (DIP): Rather than hardcoding 
+#   static calls to BlockLibrary, it holds an injectable reference 
+#   to a block library provider.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Player/InventoryComponent.gd
 # ==============================================================================
@@ -37,6 +31,31 @@ class SlotData:
 
 # Array of 24 strictly managed inventory slots (0-7 Hotbar, 8-23 Backpack)
 var _slots: Array[SlotData] = []
+
+# ==============================================================================
+# DECLARATIVE CONFIGURATION REGISTRIES (OCP Compliant)
+# ==============================================================================
+# Mappings of non-block Item IDs to their dynamic translation keys
+const NON_BLOCK_ITEM_NAMES: Dictionary = {
+	15: "BLOCK_LAVA",          # Lava Bucket
+	16: "ITEM_FRIED_CHICKEN",  # Fried Chicken
+	17: "ITEM_WOODEN_SWORD",   # Wooden Sword
+	18: "BLOCK_CROP_SEED",     # Crop Seeds
+	20: "BLOCK_CROP_RIPE",     # Golden Wheat Grains
+	26: "ITEM_STONE_SLAB",     # Stone Losa/Slab Item
+}
+
+# Legacy mapping for block types to their inventory drop item IDs
+const BLOCK_TYPE_TO_ITEM_DROP: Dictionary = {
+	BlockType.Type.SAND: 2, 
+	BlockType.Type.RED_SAND: 2, 
+	BlockType.Type.MUD: 2,
+	BlockType.Type.SNOW: 1, 
+	BlockType.Type.ICE: 1, 
+	BlockType.Type.NEON_CYAN: 1, 
+	BlockType.Type.NEON_MAGENTA: 1,
+	BlockType.Type.CLOUD: 5
+}
 
 # ==============================================================================
 # DEPENDENCY INVERSION (DIP): Injectable service providers
@@ -212,17 +231,18 @@ func get_slot_item_name(index: int) -> String:
 	if slot == null or slot.item_id == -1:
 		return tr("INVENTORY_EMPTY")
 		
-	# DIP INVERSION: Ask the injected block library provider for metadata
+	# 1. Ask the injected block library provider for metadata first
 	# FIX: Explicit static typing to `def` as `BlockDefinition` prevents variant warning
 	var def: BlockDefinition = block_library_provider.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
 	if def != null and def.type != BlockType.Type.AIR:
 		return def.get_localized_name()
 		
-	match slot.item_id:
-		16: return tr("ITEM_FRIED_CHICKEN")
-		17: return tr("ITEM_WOODEN_SWORD")
-		26: return tr("ITEM_STONE_SLAB") # Dynamic binding for Stone Slabs (ID 26)
-		_: return tr("INVENTORY_UNKNOWN")
+	# 2. Symmetrical Fallback: Check non-block static registries
+	if NON_BLOCK_ITEM_NAMES.has(slot.item_id):
+		var translation_key: String = NON_BLOCK_ITEM_NAMES[slot.item_id]
+		return tr(translation_key)
+		
+	return tr("INVENTORY_UNKNOWN")
 
 
 func _find_first_empty_slot_index() -> int:
@@ -232,19 +252,15 @@ func _find_first_empty_slot_index() -> int:
 	return -1
 
 
+## Legacy mapping method refactored to consume OCP declarative registries
 func add_block_by_type(block_type: BlockType.Type) -> void:
 	var target_id := int(block_type)
 	
-	match block_type:
-		BlockType.Type.SAND, BlockType.Type.RED_SAND, BlockType.Type.MUD:
-			target_id = 2 
-		BlockType.Type.SNOW, BlockType.Type.ICE, BlockType.Type.NEON_CYAN, BlockType.Type.NEON_MAGENTA:
-			target_id = 1 
-		BlockType.Type.CLOUD:
-			target_id = 5 
+	if BLOCK_TYPE_TO_ITEM_DROP.has(block_type):
+		target_id = BLOCK_TYPE_TO_ITEM_DROP[block_type] as int
 			
 	if block_type == BlockType.Type.LEAVES and randf() < 0.25:
-		add_item(18, 1) 
+		add_item(18, 1) # Bonus crop seeds drop
 			
 	add_item(target_id, 1)
 

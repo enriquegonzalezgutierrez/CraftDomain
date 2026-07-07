@@ -1,16 +1,13 @@
 # ==============================================================================
 # Project: CraftDomain
 # Description: Pure Domain Value Object defining all supported voxel block types.
-#              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
-#              Principle (SRP) by encapsulating only the block classification maps.
-# OCP EXPANSION (MILESTONE 8 - CAVES & DUNGEONS):
-#              - Added DIAMOND_ORE (28) for rare deep-cave mining rewards.
-#              - Added OAK_PLANKS (29) as a refined wooden construction block.
-#              - Added GLOWSTONE (30) as a solid, high-intensity light-emitting block.
-# HARVESTING STABILIZATION FIX:
-#              - Removed Type.LEAVES from the non-solid list. Leaves are now solid 
-#                physical obstacles, allowing players to climb tree canopies and 
-#                permitting raycasts to register hits for harvesting.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Encapsulates exclusively the raw block
+#   ID enum type mappings.
+# - Open-Closed Principle (OCP): No longer hardcodes physical properties (solidity,
+#   transparency) inside static tables. These parameters are dynamically retrieved 
+#   from the centralized, data-driven `BlockLibrary` definitions, making this class
+#   completely closed to modifications when adding new block types.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/BlockType.gd
 # ==============================================================================
@@ -62,26 +59,16 @@ enum Type {
 
 
 ## Returns true if the block type occupies physical space (is solid).
+## Sourced dynamically from the data-driven BlockLibrary.
 static func is_solid(type: Type) -> bool:
-	match type:
-		Type.AIR, Type.WATER, Type.LAVA, \
-		Type.CROP_SEED, Type.CROP_GROWING, Type.CROP_RIPE, \
-		Type.CLOUD: # Leaves are removed from here to make them solid and harvestable!
-			return false
-		_:
-			# Slabs, Ores, Planks, and Glowstone are solid physical obstacles (default fallback)
-			return true
+	# DIP Inversion: Query the central library definitions instead of hardcoding match cases
+	var def := BlockLibrary.get_definition(type)
+	return def.is_solid if def != null else false
 
 
 ## Returns true if the block type is transparent or semi-transparent.
-## A block is also considered "transparent" for the mesher if it does not occupy 
-## a full 1x1x1 cube, preventing incorrect face culling holes on adjacent blocks.
+## Sourced dynamically from the data-driven BlockLibrary.
 static func is_transparent(type: Type) -> bool:
-	match type:
-		Type.AIR, Type.LEAVES, Type.WATER, Type.ICE, Type.CLOUD, Type.LAVA, \
-		Type.CROP_SEED, Type.CROP_GROWING, Type.CROP_RIPE, \
-		Type.GLASS, \
-		Type.STONE_SLAB_BOTTOM, Type.STONE_SLAB_TOP: # Slabs are transparent to prevent culling adjacent faces!
-			return true
-		_:
-			return false
+	# DIP Inversion: Query the central library definitions instead of hardcoding match cases
+	var def := BlockLibrary.get_definition(type)
+	return def.is_transparent if def != null else false
