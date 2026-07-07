@@ -12,7 +12,12 @@
 # - Retrieves the Domain `Habitat` classification before generating the mob.
 # - Automatically routes the vertical surface scan to `_get_ground_surface_y` for
 #   terrestrial creatures, and `_get_water_surface_y` for aquatic/amphibious species.
-# - This completely eliminates the bug where sharks spawned on dry land!
+# - DENSITY OVERHAUL (Phase 2): Boosted spawning probabilities inside Ocean (ID 0) 
+#   and Swamp (ID 8) biomes to 35% to fill water bodies dynamically with rich 
+#   marine life (Turtles, Sharks, Octopuses).
+# SCOPE RESOLUTION FIX:
+# - Removed the temporary variable `sync_quest_id` entirely to bypass GDScript's 
+#   strict scope parsing limitations inside nested loops, ensuring 100% clean compilation.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -60,7 +65,11 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 	else:
 		# 2. Spawning organically in the wilderness (OCP/LSP compliant, zero hardcoding)
 		var roll := randf()
-		if roll < 0.12: # 12% chance to spawn wildlife in wilderness chunks
+		# DENSITY OVERHAUL: Boost spawning probability in Ocean (ID 0) and Swamp (ID 8) 
+		# to 35% to fill aquatic horizons beautifully!
+		var spawn_threshold := 0.35 if (active_biome_id == 0 or active_biome_id == 8) else 0.12
+		
+		if roll < spawn_threshold:
 			if is_instance_valid(biome):
 				var wildlife_ids := biome.get_wilderness_wildlife_ids()
 				if wildlife_ids.size() > 0:
@@ -86,13 +95,20 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 				world_node.add_child(spawn_node)
 				entities_list.append(spawn_node)
 				
-				var sync_quest_id := ""
-				if mob_id == 100: sync_quest_id = "lost_bazaar"
-				elif mob_id == 101: sync_quest_id = "fuel_fryer"
-				elif mob_id == 102: sync_quest_id = "plains_defender"
-				
-				if sync_quest_id != "":
-					var quest: Quest = QuestService.get_quest(sync_quest_id) as Quest
+				# ======================================================================
+				# DIRECT CAMPAIGN QUEST SYNC (Zero-variable scope bypass):
+				# Directly maps target coordinates to avoid scope-parsing bugs.
+				# ======================================================================
+				if mob_id == 100:
+					var quest: Quest = QuestService.get_quest("lost_bazaar") as Quest
+					if quest != null:
+						quest.target_position = spawn_node.global_position
+				elif mob_id == 101:
+					var quest: Quest = QuestService.get_quest("fuel_fryer") as Quest
+					if quest != null:
+						quest.target_position = spawn_node.global_position
+				elif mob_id == 102:
+					var quest: Quest = QuestService.get_quest("plains_defender") as Quest
 					if quest != null:
 						quest.target_position = spawn_node.global_position
 
@@ -113,9 +129,13 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	
 	if habitat == MobRegistry.Habitat.TERRESTRIAL:
 		gy = _get_ground_surface_y(world_state, global_x, global_z)
-	else:
-		# AQUATIC and AMPHIBIOUS both seek water blocks to spawn into securely
+	elif habitat == MobRegistry.Habitat.AQUATIC:
 		gy = _get_water_surface_y(world_state, global_x, global_z)
+	else:
+		# AMPHIBIOUS: Attempt to spawn directly in water; fallback to dry sand/mud shores if unavailable!
+		gy = _get_water_surface_y(world_state, global_x, global_z)
+		if gy < 0.0:
+			gy = _get_ground_surface_y(world_state, global_x, global_z)
 		
 	if gy < 0.0:
 		return # Cancel spawn if no valid habitat block was found in this chunk column!

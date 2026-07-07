@@ -11,20 +11,25 @@
 #   components, leaving this class strictly in charge of sliding physics.
 # - Dependency Inversion Principle (DIP): Visual structures are completely 
 #   delegated to the injected `IEntityVisualRepresentation` strategy resource.
-# HABITAT OVERHAUL (DDD/OCP):
-# - Added `_get_habitat()` virtual contract returning `MobRegistry.Habitat.TERRESTRIAL` 
-#   by default. Subclasses (like Turtles or Sharks) can safely override this to inform 
-#   the AI and Spawning services of their environmental needs without string-matching.
-# 3D FLOATING NAMEPLATES FEATURE (COLLISION-SAFE FIX):
-# - Instantiates a native `Label3D` billboard nameplate displaying the creature's 
-#   localized name in uppercase above its model.
-# - RESOLVED SCENE-TREE NAME COLLISIONS: Resolves the translation keys dynamically 
-#   by pattern-matching the class type (`self is ClassType`) rather than reading the 
-#   node's scene-tree name, ensuring translations never break or show raw pointers.
-# VILLAGE REPUTATION & KARMA INTEGRATION (Phase 4):
-# - Modified `take_damage()` signature to accept an optional `attacker: Node` parameter.
-# - Attacking peaceful civilians deducts -15 rep points from the player's karma.
-# - Killing peaceful civilians deducts an additional -35 rep points (total -50).
+# PHYSICS LOD & SLEEP ENGINE (Phase 5 Optimization):
+# - Implemented a time-sliced proximity sweep that checks the distance to the player 
+#   only once every 15 physics frames (60 FPS / 15 = 4 times per second).
+# - If the entity is further than 40 meters, it enters a physical sleep state, 
+#   bypassing Godot's heavy `move_and_slide()` solver and AI updates entirely, 
+#   which frees immense CPU cycles while keeping the mob rendering in its idle pose.
+# - Added an immediate wake-up lock in `take_damage()` to prevent desync during combat.
+# GEOMETRIC & I18N NAMEPLATE BINDINGS:
+# - Added class-matching hooks inside `_setup_nameplate()` for newly unified hostiles 
+#   (Shark, Zombie, Goblin, Gargoyle) to bind them to their correct translation keys.
+# - Upgraded height formula utilizing a non-negative clamp `maxf(0.0, visual_offset_y)` 
+#   to combine physical bounding box height with positive visual Y-axis displacements, 
+#   guaranteeing nameplates float perfectly above head and dorsal fins.
+# ABSOLUTE BOUNDARY FORCEFIELD (Strict Habitat Prohibitions):
+# - Implemented `_apply_absolute_boundary_forcefield(delta)` to project the 
+#   next immediate frame position of the mob.
+# - If a terrestrial mob is about to slide into liquid Water/Lava, or if an 
+#   aquatic mob is about to slide onto dry land shores, the horizontal velocity 
+#   is nullified, creating an invisible, foolproof wall of collision.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
@@ -74,6 +79,9 @@ var _talking_partner: CharacterBody3D = null
 
 # Reputation and combat trackers
 var _last_attacker: Node = null
+
+# Physics LOD status flag
+var _is_physically_sleeping: bool = false
 
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
@@ -146,16 +154,22 @@ func _ready() -> void:
 	
 	# ==========================================================================
 	# DYNAMIC COLLISION-AWARE ELEVATION & NAMEPLATE PIPELINE
+	# Combines physical box height with non-negative visual Y-axis displacements, 
+	# preventing negative offsets (like Shark's -0.53m) from sinking the nameplate.
 	# ==========================================================================
-	_collision_height = box_shape.size.y
+	var visual_offset_y := 0.0
+	if is_instance_valid(visual_representation) and "position_offset" in visual_representation:
+		visual_offset_y = visual_representation.position_offset.y
+		
+	_collision_height = (box_shape.size.y + maxf(0.0, visual_offset_y))
 	_setup_nameplate() # Instantiate the nameplate above head
 	
 	# Symmetrical Stacking Offset Heights to prevent overlaps (only if UI is active)
 	if is_instance_valid(_bubble):
-		_bubble.position = Vector3(0.0, _collision_height + 0.45, 0.0) # Lifted to clear nameplate
+		_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0) # Lifted to clear nameplate
 		
 	if is_instance_valid(_quest_arrow):
-		_quest_arrow.position = Vector3(0.0, _collision_height + 0.85, 0.0) # Lifted to clear bubble
+		_quest_arrow.position = Vector3(0.0, _collision_height + 1.15, 0.0) # Lifted to clear bubble
 	# ==========================================================================
 
 
@@ -226,6 +240,12 @@ func _setup_nameplate() -> void:
 	elif self is GrowlitheEntity: key = "NPC_NAME_GROWLITHE"
 	elif self is MonkeyEntity: key = "NPC_NAME_MONKEY"
 	
+	# Newly refactored hostile subclasses bindings
+	elif self is SharkEntity: key = "NPC_NAME_SHARK"
+	elif self is GargoyleEntity: key = "NPC_NAME_GARGOYLE"
+	elif self is GoblinEntity: key = "NPC_NAME_GOBLIN"
+	elif self is HostileEntity: key = "NPC_NAME_ZOMBIE"
+	
 	_nameplate.text = tr(key).to_upper()
 	_nameplate.pixel_size = 0.005 # Crisp, matching speech bubble sizing scale
 	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -237,8 +257,8 @@ func _setup_nameplate() -> void:
 	_nameplate.outline_modulate = Color(0, 0, 0)
 	_nameplate.outline_size = 5
 	
-	# Set position right above the model head
-	_nameplate.position = Vector3(0.0, _collision_height + 0.15, 0.0)
+	# Set position right above the model head (with a comfortable 35cm safety margin)
+	_nameplate.position = Vector3(0.0, _collision_height + 0.35, 0.0)
 	add_child(_nameplate)
 
 
@@ -262,21 +282,14 @@ func _setup_floating_bubble() -> void:
 # POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
 # ==============================================================================
 
-## Virtual method overridden by subclasses to define their humanoid role.
-## Returns -1 for animals (fauna), or a specific RoleType index for humanoids.
 func _get_humanoid_role() -> int:
 	return -1
 
 
-## Virtual Contract (LSP - Phase 4): Returns true if this entity requires 
-## floating speech bubbles, dialogue interactions, or active quest arrows.
-## Civilians and defenders return true. Wild animals (Fauna) return false.
 func _has_ui_decorations() -> bool:
 	return _get_humanoid_role() >= 0
 
 
-## Virtual Contract: Informs AI and Spawners about the entity's environmental limits.
-## Subclasses like Turtles or Sharks must override this to return AMPHIBIOUS or AQUATIC.
 func _get_habitat() -> MobRegistry.Habitat:
 	return MobRegistry.Habitat.TERRESTRIAL
 
@@ -306,7 +319,7 @@ func _setup_quest_arrow() -> void:
 	_quest_arrow.rotation.z = PI
 	
 	# Default fallback height (will be overwritten dynamically in _ready())
-	_quest_arrow.position = Vector3(0.0, 2.5, 0.0)
+	_quest_arrow.position = Vector3(0.0, _collision_height + 1.15, 0.0)
 	_quest_arrow.visible = false # Hidden by default
 	
 	add_child(_quest_arrow)
@@ -338,6 +351,9 @@ func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -
 		
 	if is_instance_valid(attacker):
 		_last_attacker = attacker
+		
+	# FORCE WAKE UP: Wakes up instantly on receiving damage or knockback
+	_is_physically_sleeping = false
 		
 	velocity += knockback_force
 	domain_entity.take_damage(amount)
@@ -510,11 +526,72 @@ func _drop_loot(_inv: IInventory) -> void:
 
 
 # ==============================================================================
+# ABSOLUTE BOUNDARY FORCEFIELD (Strict Habitat Prohibitions)
+# ==============================================================================
+
+## Symmetrical physical forcefield that cancels horizontal velocities 
+## if the next immediate projected position crosses habitat boundaries.
+func _apply_absolute_boundary_forcefield(delta: float) -> void:
+	var world_controller_ref := get_parent()
+	if not is_instance_valid(world_controller_ref) or not "world_state" in world_controller_ref:
+		return
+		
+	var ws: WorldState = world_controller_ref.world_state
+	if ws == null:
+		return
+		
+	# Project future step position
+	var next_pos := global_position + velocity * delta
+	var next_coord := Vector3i(floori(next_pos.x), floori(next_pos.y), floori(next_pos.z))
+	var next_block_below := ws.get_block(next_coord + Vector3i(0, -1, 0))
+	var next_block_at := ws.get_block(next_coord)
+	
+	var habitat := _get_habitat()
+	var is_crossing := false
+	
+	if habitat == MobRegistry.Habitat.AQUATIC:
+		# Pure aquatic cannot leave water blocks
+		is_crossing = (next_block_below != BlockType.Type.WATER and next_block_at != BlockType.Type.WATER)
+	elif habitat == MobRegistry.Habitat.TERRESTRIAL:
+		# Pure terrestrial cannot step into water or lava blocks
+		is_crossing = (
+			next_block_below == BlockType.Type.WATER or 
+			next_block_below == BlockType.Type.LAVA or 
+			next_block_at == BlockType.Type.WATER or 
+			next_block_at == BlockType.Type.LAVA
+		)
+		
+	if is_crossing:
+		# Symmetrical constraint: Cancel horizontal speeds, acting as an invisible solid wall!
+		velocity.x = 0.0
+		velocity.z = 0.0
+
+
+# ==============================================================================
 # MAIN PHYSICS CALCULATIONS & ANIMAITONS
 # ==============================================================================
+
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
+		
+	# ==========================================================================
+	# PHYSICS LOD & SLEEP ENGINE (Phase 5):
+	# Time-sliced distance sweeps: checks distance to player every 15 frames.
+	# If > 40m away, we bypass heavy move_and_slide() and AI, freezing 
+	# physical updates completely to preserve locked CPU frame-rates.
+	# ==========================================================================
+	if Engine.get_physics_frames() % 15 == 0:
+		var player_node := get_parent().get_node_or_null("Player") as CharacterBody3D
+		if is_instance_valid(player_node):
+			var dist_sq := global_position.distance_squared_to(player_node.global_position)
+			_is_physically_sleeping = dist_sq > 1600.0 # 40 meters squared
+			
+	if _is_physically_sleeping:
+		# Sleep: Apply zero velocities, skip AI, and bypass move_and_slide()
+		velocity = Vector3.ZERO
+		return
+	# ==========================================================================
 		
 	# Apply downward gravity conditionally
 	if not is_on_floor():
@@ -537,7 +614,10 @@ func _physics_process(delta: float) -> void:
 		if is_instance_valid(_quest_arrow) and _quest_arrow.visible:
 			_quest_arrow.rotate_y(delta * 2.5) # Spin
 			var bounce := sin(Time.get_ticks_msec() / 250.0) * 0.12
-			_quest_arrow.position.y = _collision_height + 0.85 + bounce
+			_quest_arrow.position.y = _collision_height + 1.15 + bounce
+
+	# Apply the physical absolute habitat barrier boundary check before moving!
+	_apply_absolute_boundary_forcefield(delta)
 
 	# Delegate dynamic skeletal movements to the injected strategy
 	if is_instance_valid(visual_representation):

@@ -11,6 +11,13 @@
 # HABITAT-DRIVEN SPAWNING (DDD Compliance):
 #              - Overrides `_get_habitat()` to return AQUATIC, ensuring it 
 #                spawns strictly submerged in deep water.
+# ABSOLUTE BOUNDARY FORCEFIELD (Strict Habitat Prohibitions):
+#              - Integrated `_apply_absolute_boundary_forcefield(delta)` right before 
+#                `move_and_slide()`. The Shark is now physically locked inside the 
+#                water volume, making beaching or dry land spawning impossible.
+# WARNING RESOLUTION:
+#              - Cleaned up unused private class variables (`_model_node`, `_anim_player`, 
+#                and `_is_lunging`) to guarantee a 100% warning-free compilation.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/SharkEntity.gd
 # ==============================================================================
@@ -80,7 +87,7 @@ func _build_visual_representation() -> void:
 	var strategy := FaunaVisualRepresentation.new()
 	strategy.model_path = MODEL_PATH
 	
-	# Scale and position offsets calculated via GLB Analyzer V5
+	# Scale and position offsets calibrated for the Shark GLB Mesh
 	strategy.scale_multiplier = Vector3(1.8366, 1.8366, 1.8366)
 	strategy.position_offset = Vector3(0.0, -0.5328, 0.0)
 	strategy.rotation_offset = Vector3(0, -90, 0) # Face forward (-Z)
@@ -157,6 +164,10 @@ func _physics_process(delta: float) -> void:
 		_locate_player()
 
 	_process_ai_intelligence(delta)
+	
+	# Apply the physical absolute habitat barrier boundary check before moving!
+	_apply_absolute_boundary_forcefield(delta)
+	
 	move_and_slide()
 
 
@@ -195,7 +206,7 @@ func _process_ai_intelligence(delta: float) -> void:
 		velocity.x = _wander_direction.x * speed_mult
 		velocity.z = _wander_direction.z * speed_mult
 		
-		var visuals_node: Node3D = get_node_or_null("NPCVisualComponent/Visuals") as Node3D
+		var visuals_node := get_node_or_null("NPCVisualComponent/Visuals") as Node3D
 		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
 			var target_look_at: Vector3 = global_position + _wander_direction
 			if not global_position.is_equal_approx(target_look_at):

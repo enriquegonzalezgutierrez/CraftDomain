@@ -8,9 +8,12 @@
 #   climbs (like ladders or vines) can be integrated by adding offset connect rules.
 # - Dependency Inversion Principle (DIP): Communicates directly with the abstract
 #   VoxelNavigationService, decoupling graph mathematics from the scene tree.
-# SHELTER-SEEKING SCHEDULE UPGRADE:
-# - Implemented `_check_is_roofed` to dynamically scan vertical axes above walkable coordinates.
-# - Registers nodes as indoor shelters inside the navigation graph if a solid ceiling block is found.
+# BACKGROUND NAVIGATION COMPILATION (Phase 4 Optimization):
+# - Split the navigation pipeline into an asynchronous thread-safe compilation stage 
+#   (`compile_walkable_nodes_asynchronous`) and a rapid main-thread registration stage 
+#   (`register_compiled_nodes_synchronous`).
+# - This completely cuts down the main-thread 16x16x16 loop overhead to zero, 
+#   preventing CPU frame spikes during exploration.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkNavigationBuilder.gd
 # ==============================================================================
@@ -24,39 +27,56 @@ const HORIZONTAL_OFFSETS: Array[Vector3i] = [
 ]
 
 
-## Scans a tridimensional chunk grid and registers all discovered walkable nodes into the graph.
-static func build_navigation_for_chunk(chunk: Chunk, world_state: WorldState, nav_service: VoxelNavigationService) -> void:
-	if chunk == null or world_state == null or nav_service == null:
-		return
-		
+# ==============================================================================
+# ASYNCHRONOUS THREAD-SAFE COMPILATION STAGE (Runs on Background Threads)
+# ==============================================================================
+
+## Loops through the 4096 voxel nodes of a chunk in the background, compiling 
+## a pre-filtered array of walkable coordinate nodes and their roofed status.
+static func compile_walkable_nodes_asynchronous(chunk: Chunk, world_state: WorldState) -> Array[Dictionary]:
+	var walkable_list: Array[Dictionary] = []
 	var chunk_offset: Vector3i = chunk.position * Chunk.SIZE
 	
-	# ==========================================================================
-	# PASS 1: SCAN AND SOW WALKABLE NODES (With Shelter Detection)
-	# Registers 3D coordinate nodes that possess a solid standing floor and head clearance.
-	# ==========================================================================
 	for x: int in range(Chunk.SIZE):
 		for y: int in range(Chunk.SIZE):
 			for z: int in range(Chunk.SIZE):
 				var global_pos := chunk_offset + Vector3i(x, y, z)
 				
 				if _is_node_walkable(global_pos, world_state):
-					var is_roofed: bool = _check_is_roofed(global_pos, world_state)
-					nav_service.add_navigation_node(global_pos, is_roofed)
+					var is_roofed := _check_is_roofed(global_pos, world_state)
+					walkable_list.append({
+						"pos": global_pos,
+						"is_roofed": is_roofed
+					})
 					
-	# ==========================================================================
-	# PASS 2: CONNECT ADJACENT GRAPH NODES
-	# Dynamically links adjacent nodes to support flat walking and stair step-ups/downs.
-	# ==========================================================================
-	for x: int in range(Chunk.SIZE):
-		for y: int in range(Chunk.SIZE):
-			for z: int in range(Chunk.SIZE):
-				var global_pos := chunk_offset + Vector3i(x, y, z)
-				
-				# Connect neighboring vectors only if this node itself is registered
-				if nav_service._coord_to_id.has(global_pos):
-					_connect_walkable_neighbors(global_pos, world_state, nav_service)
+	return walkable_list
 
+
+# ==============================================================================
+# RAPID SYNCHRONOUS REGISTRATION STAGE (Runs on the Main Thread)
+# ==============================================================================
+
+## Binds the pre-filtered, background-compiled navigation nodes directly to 
+## the global AStar navigation graph without performing expensive chunk-wide scans.
+static func register_compiled_nodes_synchronous(walkable_nodes: Array[Dictionary], world_state: WorldState, nav_service: VoxelNavigationService) -> void:
+	if nav_service == null or walkable_nodes.is_empty():
+		return
+		
+	# 1. Register pre-filtered nodes instantly into the navigation graph
+	for node: Dictionary in walkable_nodes:
+		var pos: Vector3i = node["pos"] as Vector3i
+		var is_roofed: bool = node["is_roofed"] as bool
+		nav_service.add_navigation_node(pos, is_roofed)
+		
+	# 2. Connect neighboring coordinates smoothly (Supports flat walking & step climbs)
+	for node: Dictionary in walkable_nodes:
+		var pos: Vector3i = node["pos"] as Vector3i
+		_connect_walkable_neighbors(pos, world_state, nav_service)
+
+
+# ==============================================================================
+# PRIVATE SPATIAL SCANNING METHODS (SRP Compliant)
+# ==============================================================================
 
 ## Evaluates if a specific global coordinate coordinate has solid ground and sufficient standing clearance
 static func _is_node_walkable(pos: Vector3i, world_state: WorldState) -> bool:

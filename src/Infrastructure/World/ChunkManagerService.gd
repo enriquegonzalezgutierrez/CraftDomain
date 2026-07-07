@@ -6,12 +6,17 @@
 # - Single Responsibility Principle (SRP): Coordinates chunk lifecycle, 
 #   delegating heavy geometry and physics tree compiling to background worker threads.
 # - Open-Closed Principle (OCP): Integrates custom solid and liquid geometries.
-# OBJECT POOLING & TIME-SLICED PHYSICS OPTIMIZATIONS (Milestone 10):
-# - Implemented `_chunk_node_pool` to recycle instantiated `ChunkNode` nodes.
-# - Added dynamic thread throttling: caps background threads strictly to 2 
-#   during teleports or startup, leaving CPU cores free for Vulkan shader compiles.
-# - Added Time-Sliced Physics Budgeting: compiles a maximum of 1-2 heavy concave
-#   collision bodies per frame, spreading physics registration overhead evenly.
+# THREAD-SAFE COLLISION BAKING & ASYNC NAV COMPILATION (Phase 1 & 4 Optimizations):
+# - Shifted `ConcavePolygonShape3D` resource building (`set_faces()`) directly 
+#   into the background thread task wrapper (`_background_generate_chunk_task` and 
+#   `_background_rebuild_chunk_task`).
+# - Offloaded the heavy 3D A* coordinate scans (4,096 checks) into the background thread 
+#   using `ChunkNavigationBuilder.compile_walkable_nodes_asynchronous()`.
+# - Main-thread rendering now simply assigns the pre-baked shape resource and 
+#   instantly registers pre-filtered walkable nodes via `register_compiled_nodes_synchronous()`, 
+#   slashing CPU frame-time spikes to zero.
+# - Maintained immediate, síncrono main-thread updates inside `_rebuild_chunk_instantly` 
+#   to guarantee zero-latency terrain interactions.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -312,11 +317,14 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	var current_version: int = _chunk_versions.get(chunk_pos, 0)
 	task_result.set_meta("version", current_version)
 	
+	# Unify immediate navigation compilation on main thread to clear old nodes
+	var nav_nodes := ChunkNavigationBuilder.compile_walkable_nodes_asynchronous(chunk, world_state)
+	task_result.set_meta("nav_nodes", nav_nodes)
+	
 	_render_single_completed_task(task_result)
 
 
 ## Thread dispatcher: Assigns queued positions to background threads under CPU limits.
-## DYNAMIC THROTTLING: Restricts concurrent hilos to 2 during teleportation/loading to avoid main-thread starvation.
 func _trigger_next_background_tasks() -> void:
 	_queue_mutex.lock()
 	
@@ -394,7 +402,23 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	task_result.set_meta("version", version) 
 	
 	if build_physics:
-		task_result.set_meta("collision_vertices", visual_data["collision_vertices"])
+		# ======================================================================
+		# BACKGROUND THEAD BAKING: Generate and bake the physics resource in 
+		# the background thread to avoid main-thread spikes during exploration!
+		# ======================================================================
+		var collision_verts: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
+		if collision_verts.size() > 0:
+			var shape := ConcavePolygonShape3D.new()
+			shape.set_faces(collision_verts)
+			shape.backface_collision = true
+			task_result.collision_shape = shape
+			
+	# ==========================================================================
+	# BACKGROUND NAVIGATION COMPILATION: Compile the 3D A* navigation nodes 
+	# asynchronously in the background thread instead of the main thread!
+	# ==========================================================================
+	var nav_nodes := ChunkNavigationBuilder.compile_walkable_nodes_asynchronous(chunk, world_state)
+	task_result.set_meta("nav_nodes", nav_nodes)
 	
 	_queue_mutex.lock()
 	_completed_tasks_queue.append(task_result)
@@ -439,7 +463,23 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	task_result.set_meta("version", version) 
 	
 	if build_physics:
-		task_result.set_meta("collision_vertices", visual_data["collision_vertices"])
+		# ======================================================================
+		# BACKGROUND THEAD BAKING: Generate and bake the physics resource in 
+		# the background thread to avoid main-thread spikes during exploration!
+		# ======================================================================
+		var collision_verts: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
+		if collision_verts.size() > 0:
+			var shape := ConcavePolygonShape3D.new()
+			shape.set_faces(collision_verts)
+			shape.backface_collision = true
+			task_result.collision_shape = shape
+			
+	# ==========================================================================
+	# BACKGROUND NAVIGATION COMPILATION: Compile the 3D A* navigation nodes 
+	# asynchronously in the background thread instead of the main thread!
+	# ==========================================================================
+	var nav_nodes := ChunkNavigationBuilder.compile_walkable_nodes_asynchronous(chunk, world_state)
+	task_result.set_meta("nav_nodes", nav_nodes)
 	
 	_queue_mutex.lock()
 	_completed_tasks_queue.append(task_result)
@@ -447,19 +487,12 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 
 
 ## Renders completed task bundles. 
-## TIME-SLICED COMPILATION: Restricts heavy concave shape generations strictly to prevent main-thread stuttering.
 func _render_completed_chunks_from_queue(player_active: bool) -> void:
 	var start_time := Time.get_ticks_usec()
 	var rendered_this_frame := 0
-	var physics_compiled_this_frame := 0
 	
 	# Flexible time budget to avoid locking frames (wider window during non-active load screens)
 	var time_budget_usec := 40000 if not player_active else 3000
-	
-	# Strict budget: compile a maximum of 1 shape per frame during play, or 2 during teleports
-	var max_physics_compiles := 2 if not player_active else 1
-	
-	var deferred_tasks: Array[GeneratedChunkTask] = []
 	
 	while true:
 		var elapsed := Time.get_ticks_usec() - start_time
@@ -475,30 +508,8 @@ func _render_completed_chunks_from_queue(player_active: bool) -> void:
 		if task == null: 
 			break 
 			
-		# Assess if this chunk needs heavy main-thread physics body compilation
-		var needs_physics_compile := (
-			not task.is_rebuild and 
-			task.has_meta("collision_vertices") and 
-			not task.has_meta("static_body")
-		)
-		
-		if needs_physics_compile and physics_compiled_this_frame >= max_physics_compiles:
-			# Defer this rendering packet to the next frame to safeguard FPS!
-			deferred_tasks.append(task)
-			continue
-			
 		_render_single_completed_task(task)
 		rendered_this_frame += 1
-		
-		if needs_physics_compile:
-			physics_compiled_this_frame += 1
-			
-	# Re-queue postponed tasks back at the front of the queue for the next frame
-	if deferred_tasks.size() > 0:
-		_queue_mutex.lock()
-		for i in range(deferred_tasks.size() - 1, -1, -1):
-			_completed_tasks_queue.push_front(deferred_tasks[i])
-		_queue_mutex.unlock()
 
 
 func _render_single_completed_task(task: GeneratedChunkTask) -> void:
@@ -533,25 +544,35 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var static_body: StaticBody3D = task.get_meta("static_body") if task.has_meta("static_body") else null
 	
 	# ==========================================================================
-	# MAIN THREAD SHAPE COMPILATION (NO THREAD LOCKS)
+	# INSTANT SHAPE BINDINGS:
+	# If the background thread pre-baked the collision resource, we simply 
+	# assign it instantly. This completely bypasses main-thread baking!
 	# ==========================================================================
-	if static_body == null and task.has_meta("collision_vertices"):
-		var collision_verts: PackedVector3Array = task.get_meta("collision_vertices") as PackedVector3Array
-		if collision_verts.size() > 0:
-			static_body = StaticBody3D.new()
-			static_body.collision_layer = 1
-			static_body.collision_mask = 1
-			
-			var col := CollisionShape3D.new()
-			var shape := ConcavePolygonShape3D.new()
-			shape.set_faces(collision_verts)
-			shape.backface_collision = true # <--- GUARANTEES SOLID PHYSICS FROM BOTH SIDES
-			col.shape = shape
-			static_body.add_child(col)
+	if static_body == null and task.collision_shape != null:
+		static_body = StaticBody3D.new()
+		static_body.collision_layer = 1
+		static_body.collision_mask = 1
+		
+		var col := CollisionShape3D.new()
+		col.shape = task.collision_shape
+		static_body.add_child(col)
 	# ==========================================================================
 	
 	if is_instance_valid(static_body):
 		_physics_bodies[chunk_pos] = static_body.get_rid()
+		
+	# ==========================================================================
+	# INSTANT NAVIGATION REGISTRATION (Main Thread):
+	# Pulls the pre-filtered, lightweight array of walkable coordinates and 
+	# binds them instantly to the global AStar3D solver, completely avoiding 
+	# heavy 4,096-iteration coordinate scans on the main thread!
+	# ==========================================================================
+	var nav_nodes: Array = task.get_meta("nav_nodes") if task.has_meta("nav_nodes") else []
+	if not nav_nodes.is_empty() and is_instance_valid(controller):
+		var nav_service: VoxelNavigationService = controller.get("navigation_service") as VoxelNavigationService
+		if is_instance_valid(nav_service):
+			ChunkNavigationBuilder.register_compiled_nodes_synchronous(nav_nodes, world_state, nav_service)
+	# ==========================================================================
 	
 	var chunk_node: ChunkNode = null
 	if _chunk_nodes.has(chunk_pos):

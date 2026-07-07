@@ -9,16 +9,13 @@
 #   and material binding.
 # - Dependency Inversion Principle (DIP): Depends on Domain-level Chunk representations.
 # - Open-Closed Principle (OCP): Generalizes liquid and solid custom geometries.
-# OPAQUE FAR-LOD CULLING OPTIMIZATION (Milestone 10):
-# - Modified `_get_material_for_block` to disable transparency (`TRANSPARENCY_DISABLED`)
-#   for distant chunks (Water, Glass, Ice, Clouds).
-# - This completely bypasses expensive alpha blending passes on the GPU horizon,
-#   releasing massive pixel fillrate overhead and boosting FPS significantly.
-# MILESTONE 8 UPGRADE:
-#              - Mapped textures for DIAMOND_ORE (reusing coal_ore.png), 
-#                OAK_PLANKS (reusing wood.png), and GLOWSTONE (reusing sand.png).
-#              - Programmed a custom cybernetic cyan emissive glow for DIAMOND_ORE.
-#              - Programmed a highly brilliant warm gold emissive glow for GLOWSTONE.
+# OPAQUE FAR-LOD CULLING & VERTEX SHADING OPTIMIZATION (Phase 2):
+# - Configured distant materials (`is_distant == true`) to compile using 
+#   Per-Vertex shading (`SHADING_MODE_PER_VERTEX`) instead of Per-Pixel.
+# - This completely bypasses expensive fragment-stage PBR lighting pipelines 
+#   on the horizon, freeing massive pixel fillrate overhead.
+# - Retained the dynamic transparency bypass to eliminate alpha depth sorting 
+#   on the horizon.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Rendering/ChunkNode.gd
 # ==============================================================================
@@ -154,7 +151,7 @@ static func _get_shared_box_mesh() -> BoxMesh:
 
 
 ## Mathematical Procedural Normal Map Generator:
-## Bakes a flawless, spherical 64x64 edge bevel map directly into RAM on boot.
+## Bakes a perfect 64x64 edge bevel map directly into RAM on boot.
 static func _get_procedural_bevel_normal() -> ImageTexture:
 	if _procedural_bevel_normal != null:
 		return _procedural_bevel_normal
@@ -412,7 +409,12 @@ func _get_material_for_block(block_type: BlockType.Type, is_distant: bool) -> Ma
 			return _distant_materials_cache[block_type] as Material
 			
 		var mat := StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		# ======================================================================
+		# VERTEX SHADING OPTIMIZATION: Bypasses expensive per-pixel fragment PBR 
+		# calculations on the distant horizon, letting the GPU interpolate 
+		# vertex-lit colors instantly across faces!
+		# ======================================================================
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 		mat.albedo_color = def.color_top
 		mat.roughness = 1.0 
 		mat.metallic_specular = 0.0

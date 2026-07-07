@@ -13,29 +13,11 @@
 #   services without modifying core coordination loops.
 # - Domain-Driven Design (DDD): Defers player spawn height calculations
 #   strictly to the WorldState Domain Aggregate.
-# MILESTONE 8 UPGRADE:
-#              - Integrated FluidSimulationService into the main delta loop.
-#              - Added immediate fluid registration for player-placed liquids.
-#              - Optimized Main Thread: Removed heavy loop scans from 
-#                spawn_entities_for_chunk() to completely preserve locked 120 FPS.
-#              - Fixed circular parser locks by typing nested adapters cleanly as Node3D.
-# PROCEDURAL BLOCK-SUPPORT GRAVITY ENGINE (STRICT TYPED FIX):
-#              - Added `_check_and_resolve_floating_props` to simulate gravity.
-#              - Resolved the type-inference compilation warnings by casting 
-#                generic nodes to static `StaticBody3D` and explicitly typing positions/flags.
-#              - Destructible props (barrels, chests, fires) shatter and drop loot on block break.
-#              - Heavy structural props (wells, lamps) slide down smoothly with elastic bounces.
-# 120 FPS MINING HYBRID OPTIMIZATION (CRASH RESOLUTION):
-#              - Implemented a dual-pipeline update system. The modified chunk is rebuilt 
-#                instantly on the main thread for 0-latency physical/visual feedback.
-#              - RESTORED: Added back the crucial `set_block_globally()` method which coordinates 
-#                block writes, versioning, immediate updates, and fluid simulations.
-#              - Boundary neighboring chunks are offloaded asynchronously to the background 
-#                WorkerThreadPool, preventing main thread stalls and completely avoiding queue thrashing.
-# NAVIGATION SERVICE PROVISIONING (Phase 4):
-#              - Declared, initialized, and exposed `navigation_service` globally.
-#              - Automatically compiles 3D chunk navigation meshes dynamically when chunks 
-#                render on the main thread during `spawn_entities_for_chunk()`.
+# NAVIGATION DECOUPLING (Phase 4):
+# - Removed the synchronous 3D A* coordinate scanning (`build_navigation_for_chunk()`) 
+#   from `spawn_entities_for_chunk()`.
+# - Navigation registration is now handled completely within the ChunkManagerService 
+#   rendering pipeline, making entity spawning highly decoupled and lightweight.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -395,13 +377,8 @@ func save_all() -> void:
 
 ## Proxy helper allowing ChunkManager to trigger procedural entity spawning (mobs + props)
 ## SOLID SRP COMPLIANCE: Gathers and merges both living beings and scenery decorations.
-## NAVIGATION COMPILATION: Spawns the 3D A* navigation grid dynamically upon chunk rendering.
 func spawn_entities_for_chunk(chunk: Chunk) -> Array[Node]:
 	var spawned_nodes: Array[Node] = []
-	
-	# Compile 3D A* Navigation graph nodes for this chunk dynamically on the main thread (0.05ms)
-	if is_instance_valid(navigation_service):
-		ChunkNavigationBuilder.build_navigation_for_chunk(chunk, world_state, navigation_service)
 	
 	if _mob_spawning_service != null:
 		spawned_nodes.append_array(_mob_spawning_service.spawn_mobs_for_chunk(chunk, self, world_state))

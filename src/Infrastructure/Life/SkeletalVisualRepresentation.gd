@@ -9,10 +9,12 @@
 #              - Open-Closed Principle (OCP): Fully generic. Any new character model 
 #                (Zombie, Citizen, Knight) can be configured purely by instantiating 
 #                this Strategy resource with custom paths on disk.
-#              JUMP ANIMATION INTEGRATION:
-#              - Added dynamic binding and loading support for the `jump` track.
-#              - Configured the state blending priority tree to check for `is_on_floor` 
-#                and play the `jump` animation cleanly with linear crossfades.
+# VELOCITY-DRIVEN ANIMATION SCALING (Foot-Sliding Fix):
+# - Dynamically computes the physical velocity vector length relative to the 
+#   base speed baseline (1.3m/s) to dynamically scale the AnimationPlayer's 
+#   `speed_scale` in real-time.
+# - This mathematically guarantees that leg-movement speed matches physical 
+#   travel speed, completely eliminating the "moonwalk" sliding effect!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd
 # ==============================================================================
@@ -34,7 +36,7 @@ extends IEntityVisualRepresentation
 @export var anim_walk_path: String = ""
 @export var anim_attack_path: String = ""
 @export var anim_panic_path: String = ""
-@export var anim_jump_path: String = "" # <-- Added for jump animation track
+@export var anim_jump_path: String = "" 
 
 
 # Internal state tracking
@@ -83,7 +85,16 @@ func animate_movement(velocity_flat: Vector2, is_on_floor: bool, delta: float) -
 	var _d := delta
 	
 	var is_moving := velocity_flat.length_squared() > 0.1
+	var dynamic_speed_scale := 1.0
 	
+	# ==========================================================================
+	# DYNAMIC VELOCITY SCALING: Calculates speed ratio relative to 1.3m/s baseline
+	# ==========================================================================
+	if is_moving:
+		var actual_speed := velocity_flat.length()
+		# Clampf protects against extreme speed scales when close to 0 or during physics glitches
+		dynamic_speed_scale = clampf(actual_speed / 1.3, 0.35, 3.0) 
+
 	# Detect if the host is actively attacking (reading cooldown state if exposed)
 	var is_attacking := false
 	if "_attack_cooldown_timer" in _host:
@@ -95,24 +106,18 @@ func animate_movement(velocity_flat: Vector2, is_on_floor: bool, delta: float) -
 	if is_instance_valid(ai_comp):
 		is_panicking = ai_comp.current_task == NPCAIComponent.TaskState.PANIC
 		
-	# ==========================================================================
-	# STATE BLENDING PRIORITY TREE (With Jump support)
-	# ==========================================================================
+	# State blending priority checks (with synchronized dynamic scaling)
 	if is_attacking:
 		_play_animation_safe("attack", 1.0)
-	elif not is_on_floor: # <-- High priority jump check when airborne
-		if _anim_player.has_animation("jump"):
-			_play_animation_safe("jump", 1.0)
-		else:
-			_play_animation_safe("idle", 1.0)
+	elif not is_on_floor: 
+		_play_animation_safe("jump", 1.0)
 	elif is_panicking and is_moving:
 		if _anim_player.has_animation("panic"):
-			_play_animation_safe("panic", 1.0)
+			_play_animation_safe("panic", dynamic_speed_scale)
 		else:
-			# Fallback: Sprinting at 1.8x playback speed
-			_play_animation_safe("walk", 1.8)
+			_play_animation_safe("walk", dynamic_speed_scale)
 	elif is_moving and is_on_floor:
-		_play_animation_safe("walk", 1.0)
+		_play_animation_safe("walk", dynamic_speed_scale)
 	else:
 		_play_animation_safe("idle", 1.0)
 
@@ -122,7 +127,6 @@ func trigger_attack_visuals() -> void:
 	if is_instance_valid(_anim_player) and _anim_player.has_animation("attack"):
 		_play_animation_safe("attack", 1.0)
 	else:
-		# Trigger high-impact procedural lunge Tween!
 		_execute_procedural_attack_lunge()
 
 
@@ -145,7 +149,6 @@ func _play_animation_safe(anim_name: String, speed: float = 1.0) -> void:
 		
 	var target_anim := anim_name
 	
-	# Fallback: If bite/attack is missing, play idle and lean forward procedurally!
 	if target_anim == "attack" and not _anim_player.has_animation("attack"):
 		target_anim = "idle"
 		_execute_procedural_attack_lunge()
@@ -155,7 +158,6 @@ func _play_animation_safe(anim_name: String, speed: float = 1.0) -> void:
 	if _anim_player.has_animation(target_anim):
 		_anim_player.speed_scale = speed
 		if _anim_player.current_animation != target_anim:
-			# Execute a 0.25s smooth crossfade blend to prevent bone snapping!
 			_anim_player.play(target_anim, 0.25)
 
 
@@ -166,11 +168,8 @@ func _execute_procedural_attack_lunge() -> void:
 	_is_lunging = true
 	
 	var tween := _model_node.create_tween()
-	# Step 1: Lean forward (Tilt X-rotation 20 degrees down)
 	tween.tween_property(_model_node, "rotation_degrees:x", 20.0, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	# Step 2: Recover back to upright pose
 	tween.chain().tween_property(_model_node, "rotation_degrees:x", 0.0, 0.20).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	
 	tween.chain().tween_callback(func() -> void: _is_lunging = false)
 
 
@@ -186,7 +185,7 @@ func _load_external_fbx_animations() -> void:
 		"walk": anim_walk_path,
 		"attack": anim_attack_path,
 		"panic": anim_panic_path,
-		"jump": anim_jump_path # <-- Sourced dynamically from disc!
+		"jump": anim_jump_path 
 	}
 	
 	for anim_name: String in anim_sources.keys():
@@ -201,11 +200,10 @@ func _load_external_fbx_animations() -> void:
 					var raw_name := temp_player.get_animation_list()[0]
 					var animation_resource := temp_player.get_animation(raw_name)
 					
-					# Force loop mode on idle, walk, and panic tracks
 					if anim_name == "idle" or anim_name == "walk" or anim_name == "panic":
 						animation_resource.loop_mode = Animation.LOOP_LINEAR
 					elif anim_name == "jump":
-						animation_resource.loop_mode = Animation.LOOP_NONE # Jump doesn't loop
+						animation_resource.loop_mode = Animation.LOOP_NONE
 						
 					anim_library.add_animation(anim_name, animation_resource)
 					print("  [SkeletalVisual] Bound dynamic FBX animation: '", anim_name, "' from ", path)

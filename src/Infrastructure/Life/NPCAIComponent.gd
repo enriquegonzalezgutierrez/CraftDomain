@@ -6,15 +6,15 @@
 # - Single Responsibility Principle (SRP): Extricates decision-making 
 #   and scanning logic from the physical and visual entity wrapper.
 # - Open-Closed Principle (OCP): Completely eliminated all hardcoded string checks 
-#   (`name.contains`) and `is Entity` chains. Behavior is now resolved purely 
+#   (`name.contains`) and `is_entity` chains. Behavior is now resolved purely 
 #   through polymorphic virtual contracts (`_get_habitat`, `_has_ui_decorations`, 
 #   and `_get_humanoid_role`).
 # - Dependency Inversion Principle (DIP): Controls movements on 
 #   general CharacterBody3D hosts using abstract vectors.
-# HIGH PERFORMANCE AI UPGRADE (120 FPS STABILIZATION):
-# - DYNAMIC GROUP INDEXING: Target threat scans query Godot's optimized C++ group tables.
-# - ASYNCHRONOUS TACTICAL SCANNING: Threat and social evaluations are throttled to 4Hz.
-# - DYNAMIC AI TICK THROTTLING (LOD AI): Far-away mobs throttle logical updates to 0.5Hz.
+# PHYSICAL WALL BOUNCING (LSP):
+# - Refactored `_process_movement_avoidance()` to read the physical `wall_normal` 
+#   upon collision. Instantly bounces the passive wander vector away from the 
+#   surface, permanently preventing frozen corner and fence traps.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/NPCAIComponent.gd
 # ==============================================================================
@@ -118,6 +118,9 @@ func process_ai(delta: float) -> void:
 		
 	_ai_tick_timer -= delta
 	if _ai_tick_timer > 0.0:
+		# Throttle state: Skip heavy sweeps (A* paths, threat checks, jobs)
+		# but still process physics continuation and local stuck-jumps!
+		
 		# Real-time boundary check even in throttled frames to prevent falling
 		if current_task == TaskState.WANDERING or current_task == TaskState.PANIC:
 			if not _is_direction_safe(wander_direction):
@@ -129,7 +132,7 @@ func process_ai(delta: float) -> void:
 		_apply_movement_vectors()
 		return
 		
-	_ai_tick_timer = tick_interval 
+	_ai_tick_timer = tick_interval # Reset timer based on distance LOD
 
 	# ==========================================================================
 	# TACTICAL PROXIMITY SCAN (Throttled for Performance)
@@ -164,7 +167,6 @@ func process_ai(delta: float) -> void:
 				is_storming = (current_weather == 1 or current_weather == 2)
 				
 		# OCP CIVILIAN RESOLUTION:
-		# A civilian is a humanoid (role >= 0) that is NOT a Guard (2) and NOT a Golem (6)
 		var is_civilian := false
 		if _host.has_method("_get_humanoid_role"):
 			var role: int = _host.call("_get_humanoid_role")
@@ -190,6 +192,7 @@ func process_ai(delta: float) -> void:
 				_apply_movement_vectors()
 				return
 			else:
+				# Check Peer Social proximity
 				var closest_peer := _detect_closest_peer_npc()
 				if closest_peer != null:
 					current_task = TaskState.CHATTIING
@@ -207,6 +210,7 @@ func process_ai(delta: float) -> void:
 	if task_timer <= 0.0:
 		_select_next_random_task()
 		
+	# Real-time boundary check: Halt immediately if we are about to step into danger!
 	if current_task == TaskState.WANDERING or current_task == TaskState.PANIC:
 		if not _is_direction_safe(wander_direction):
 			_active_path.clear()
@@ -283,7 +287,7 @@ func _apply_movement_vectors() -> void:
 			_host.velocity.x = wander_direction.x * base_speed * speed_mult
 			_host.velocity.z = wander_direction.z * base_speed * speed_mult
 			
-			# OCP TETHERING FIX: Anchor community NPCs so they never wander away from spawn villages
+			# OCP TETHERING FIX
 			var is_tethered_npc: bool = _host.has_method("_has_ui_decorations") and _host.call("_has_ui_decorations") as bool
 			if is_tethered_npc:
 				if _host.global_position.distance_squared_to(_spawn_point) > 144.0: 
@@ -303,10 +307,19 @@ func _process_movement_avoidance(delta: float) -> void:
 			_host.velocity.y = jump_vel
 			
 		stuck_timer += delta
-		if stuck_timer > 0.2: 
+		# ======================================================================
+		# INSTANT NORMAL BOUNCING: 
+		# If a civil NPC hits a wall/fence, we instantly read the physics normal 
+		# and bounce its wander vector outwards. This completely prevents 
+		# running against fences and corner traps!
+		# ======================================================================
+		if stuck_timer > 0.12: 
 			stuck_timer = 0.0
-			_active_path.clear()
-			_select_next_random_task() 
+			var wall_normal := _host.get_wall_normal()
+			var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+			if flat_normal != Vector3.ZERO:
+				wander_direction = wander_direction.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
+				_active_path.clear()
 	else:
 		stuck_timer = 0.0
 
@@ -382,7 +395,7 @@ func _is_direction_safe(dir: Vector3) -> bool:
 	var block_at := ws.get_block(block_at_coord)
 	
 	# ==========================================================================
-	# OCP HABITAT RESOLUTION: Queries the polymorphic _get_habitat if available
+	# OCP HABITAT RESOLUTION
 	# ==========================================================================
 	var habitat: MobRegistry.Habitat = MobRegistry.Habitat.TERRESTRIAL
 	if _host.has_method("_get_habitat"):

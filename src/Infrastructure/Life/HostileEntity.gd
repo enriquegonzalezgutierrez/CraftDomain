@@ -4,18 +4,23 @@
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates hostile AI behaviors,
 #                chase tracking, and combat cooldowns.
-#              - Liskov Substitution Principle (LSP): Now inherits cleanly from 
-#                PassiveEntity to share physics, colliders, and death sequences, 
-#                but safely disables the passive AI component in _ready().
-#              - Dependency Inversion Principle (DIP): Uses the modular 
-#                SkeletalVisualRepresentation strategy to load and animate GLBs, 
-#                eliminating hundreds of lines of duplicated material-pruning code.
-# HABITAT-DRIVEN SPAWNING (DDD Compliance):
-#              - Overrides `_get_habitat()` to return TERRESTRIAL, ensuring it 
-#                never spawns in the ocean.
-# JUMP ANIMATION & RED NAMEPLATE INTEGRATION:
-#              - Injects the `jump` track seamlessly into the visual strategy.
-#              - Modulates the inherited floating nameplate to Crimson Red.
+#              - Liskov Substitution Principle (LSP): Extends PassiveEntity cleanly 
+#                and satisfies base physics and signal contracts, disabling passive AI.
+#              - Dependency Inversion Principle (DIP): Visual structures are completely 
+#                delegated to the injected `IEntityVisualRepresentation` strategy.
+# ABSOLUTE BOUNDARY FORCEFIELD (Strict Habitat Prohibitions):
+#              - Integrated `_apply_absolute_boundary_forcefield(delta)` right before 
+#                `move_and_slide()`. The Zombie now bounces off shoreline water/lava blocks 
+#                as if they were solid stone walls, preventing accidental drowning.
+# WALL STEERING EVASION ENGINE (Intelligence Upgrade):
+#              - Refactored `_process_ai_intelligence()` wall collision. 
+#              - If the Zombie hits a wall while actively chasing the player, 
+#                the code projects its chase vector perpendicular to the `get_wall_normal()`.
+#              - This allows the Zombie to automatically slide sideways and skirt 
+#                around corners and obstacles to reach the player, instead of getting stuck!
+# COMPILER CLASH RESOLUTION:
+#              - Removed duplicated `ANIM_DIR` and `JUMP_VELOCITY` constants to 
+#                prevent GDScript parent-member redefinition compile errors.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -40,9 +45,12 @@ var _is_wandering: bool = false
 var _attack_cooldown_timer: float = 0.0
 var _stuck_timer: float = 0.0
 
+# UI elements
+var _quest_bubble: Node3D
+
 
 func _init(spawn_pos: Vector3) -> void:
-	# Hostiles spawn with 3 Hearts of health (6 HP)
+	# Initialize with 3 Hearts of health (6 HP)
 	super(spawn_pos, 6)
 	name = "Entity_ZOMBIE"
 
@@ -61,9 +69,10 @@ func _ready() -> void:
 		
 	# Paint the inherited nameplate in Warning Crimson Red!
 	if is_instance_valid(_nameplate):
-		_nameplate.modulate = Color(1.0, 0.15, 0.15) 
+		_nameplate.modulate = Color(1.0, 0.15, 0.15)
 		
 	_locate_player()
+	_setup_quest_bubble()
 
 
 # ==============================================================================
@@ -75,19 +84,19 @@ func _get_habitat() -> MobRegistry.Habitat:
 
 
 func _has_ui_decorations() -> bool:
-	return true # We force it true to ensure the red nameplate and quest markers spawn!
+	return true # We force it true to ensure the red nameplate spawns!
 
 
-func _setup_floating_bubble() -> void:
-	# Spawns a floating warning objective if the Plains Defender quest is active
+func _setup_quest_bubble() -> void:
 	var active_q := QuestService.get_active_quest()
 	if active_q != null and active_q.quest_id == "plains_defender":
 		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
 		if sb_script != null:
-			_bubble = sb_script.new() as Node3D
-			_bubble.name = "QuestBubble"
-			add_child(_bubble)
-			_bubble.call("set_text", tr("BUBBLE_TARGET_MONSTER"))
+			_quest_bubble = sb_script.new() as Node3D
+			_quest_bubble.name = "QuestBubble"
+			add_child(_quest_bubble)
+			_quest_bubble.call("set_text", tr("BUBBLE_TARGET_MONSTER"))
+			_quest_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0) # Lifted to clear nameplate
 
 
 ## Concrete Implementation (DIP): Instantiates and injects the Mixamo Strategy dynamically
@@ -104,7 +113,7 @@ func _build_visual_representation() -> void:
 	strategy.collision_size = Vector3(0.6, 1.8, 0.6)
 	strategy.collision_position = Vector3(0.0, 0.9, 0.0)
 	
-	# External Animation Tracks
+	# External Animation Tracks (Using inherited constant ANIM_DIR)
 	strategy.anim_idle_path = ANIM_DIR + "zombie/zombie_idle.fbx"
 	strategy.anim_walk_path = ANIM_DIR + "zombie/zombie_walk.fbx"
 	strategy.anim_attack_path = ANIM_DIR + "zombie/zombie_attack.fbx"
@@ -166,6 +175,9 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(visual_representation):
 		var flat_velocity := Vector2(velocity.x, velocity.z)
 		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)
+		
+	# Apply the physical absolute habitat barrier boundary check before moving!
+	_apply_absolute_boundary_forcefield(delta)
 	
 	move_and_slide()
 
@@ -206,7 +218,7 @@ func _process_ai_intelligence(delta: float) -> void:
 		velocity.x = _wander_direction.x * speed_mult
 		velocity.z = _wander_direction.z * speed_mult
 		
-		var visuals_node: Node3D = get_node_or_null("NPCVisualComponent/Visuals") as Node3D
+		var visuals_node := get_node_or_null("NPCVisualComponent/Visuals") as Node3D
 		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
 			var target_look_at: Vector3 = global_position + _wander_direction
 			if not global_position.is_equal_approx(target_look_at):
@@ -218,14 +230,29 @@ func _process_ai_intelligence(delta: float) -> void:
 		
 		if is_on_wall():
 			if is_on_floor():
-				velocity.y = JUMP_VELOCITY
+				velocity.y = JUMP_VELOCITY # Uses inherited JUMP_VELOCITY cleanly
 				
 			_stuck_timer += delta
 			var patience := 1.0 if is_player_trackable else 0.4 
 			
 			if _stuck_timer > patience:
 				_stuck_timer = 0.0
-				if not is_player_trackable:
+				# ======================================================================
+				# FLANKING WALL STEERING:
+				# If chasing the player and hitting a wall, mathematically project the 
+				# desired chase vector perpendicular to the wall's normal plane.
+				# This lets the Zombie slide sideways and navigate around obstacles 
+				# dynamically, rather than getting stuck!
+				# ======================================================================
+				if is_player_trackable:
+					var wall_normal := get_wall_normal()
+					var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+					if flat_normal != Vector3.ZERO:
+						var slide_dir := (_wander_direction - flat_normal * (_wander_direction.dot(flat_normal))).normalized()
+						if slide_dir != Vector3.ZERO:
+							_wander_direction = slide_dir
+				else:
+					# Standard non-chasing random wall bounce
 					var wall_normal := get_wall_normal()
 					var flat_normal := Vector3(wall_normal.x, 0, wall_normal.z).normalized()
 					if flat_normal != Vector3.ZERO:
