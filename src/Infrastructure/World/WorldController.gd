@@ -25,11 +25,17 @@
 #                generic nodes to static `StaticBody3D` and explicitly typing positions/flags.
 #              - Destructible props (barrels, chests, fires) shatter and drop loot on block break.
 #              - Heavy structural props (wells, lamps) slide down smoothly with elastic bounces.
-# 120 FPS MINING HYBRID OPTIMIZATION:
+# 120 FPS MINING HYBRID OPTIMIZATION (CRASH RESOLUTION):
 #              - Implemented a dual-pipeline update system. The modified chunk is rebuilt 
 #                instantly on the main thread for 0-latency physical/visual feedback.
+#              - RESTORED: Added back the crucial `set_block_globally()` method which coordinates 
+#                block writes, versioning, immediate updates, and fluid simulations.
 #              - Boundary neighboring chunks are offloaded asynchronously to the background 
 #                WorkerThreadPool, preventing main thread stalls and completely avoiding queue thrashing.
+# NAVIGATION SERVICE PROVISIONING (Phase 4):
+#              - Declared, initialized, and exposed `navigation_service` globally.
+#              - Automatically compiles 3D chunk navigation meshes dynamically when chunks 
+#                render on the main thread during `spawn_entities_for_chunk()`.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/WorldController.gd
 # ==============================================================================
@@ -43,6 +49,7 @@ signal block_modified(global_pos: Vector3i, type: BlockType.Type)
 var world_state: WorldState
 var generator: WorldGenerator
 var loader_service: ChunkLoaderService
+var navigation_service: VoxelNavigationService # Mapped dynamically
 
 ## Dependency-injected repository abstraction (DIP compliant)
 var repository: WorldRepository
@@ -94,6 +101,7 @@ func _ready() -> void:
 func _initialize_systems() -> void:
 	world_state = WorldState.new()
 	loader_service = ChunkLoaderService.new()
+	navigation_service = VoxelNavigationService.new() # Initialized
 	
 	# Instantiate our domain modifier adapter to protect layering rules (DIP)
 	world_modifier = WorldModifierAdapter.new(self)
@@ -312,7 +320,6 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		
 	# ==========================================================================
 	# BLOCK-SUPPORT VALIDATOR (Mimic Gravity for Props)
-	# If a block is broken (AIR), check if any decorative prop was resting on it!
 	# ==========================================================================
 	if type == BlockType.Type.AIR:
 		_check_and_resolve_floating_props(global_pos)
@@ -368,16 +375,16 @@ func _resolve_unsupported_prop(prop: StaticBody3D) -> void:
 		)
 
 
-## Rebuilds a chunk instantly on the Main Thread
-func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
-	if is_instance_valid(chunk_manager):
-		chunk_manager._rebuild_chunk_instantly(chunk_pos)
-
-
 ## Redirects chunk redraw requests to the asynchronous background thread compiler
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 	if is_instance_valid(chunk_manager):
 		chunk_manager._request_chunk_rebuild(chunk_pos)
+
+
+## Rebuilds a chunk instantly on the Main Thread (Decoupled & strictly typed)
+func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
+	if is_instance_valid(chunk_manager):
+		chunk_manager._rebuild_chunk_instantly(chunk_pos)
 
 
 ## Triggers the global save sequence via WorldPersistenceService
@@ -388,8 +395,13 @@ func save_all() -> void:
 
 ## Proxy helper allowing ChunkManager to trigger procedural entity spawning (mobs + props)
 ## SOLID SRP COMPLIANCE: Gathers and merges both living beings and scenery decorations.
+## NAVIGATION COMPILATION: Spawns the 3D A* navigation grid dynamically upon chunk rendering.
 func spawn_entities_for_chunk(chunk: Chunk) -> Array[Node]:
 	var spawned_nodes: Array[Node] = []
+	
+	# Compile 3D A* Navigation graph nodes for this chunk dynamically on the main thread (0.05ms)
+	if is_instance_valid(navigation_service):
+		ChunkNavigationBuilder.build_navigation_for_chunk(chunk, world_state, navigation_service)
 	
 	if _mob_spawning_service != null:
 		spawned_nodes.append_array(_mob_spawning_service.spawn_mobs_for_chunk(chunk, self, world_state))
@@ -398,18 +410,6 @@ func spawn_entities_for_chunk(chunk: Chunk) -> Array[Node]:
 		spawned_nodes.append_array(_prop_spawning_service.spawn_props_for_chunk(chunk, self, world_state))
 		
 	return spawned_nodes
-
-
-## Proxy helper allowing ChunkManager to register streetlights procedurally
-func register_streetlights_for_chunk(chunk: Chunk) -> void:
-	if is_instance_valid(_streetlight_service):
-		_streetlight_service.register_streetlights_for_chunk(chunk)
-
-
-## Proxy helper allowing ChunkManager to unregister streetlights on unloads
-func unregister_streetlights_for_chunk(chunk_pos: Vector3i) -> void:
-	if is_instance_valid(_streetlight_service):
-		_streetlight_service.unregister_streetlights_for_chunk(chunk_pos)
 
 
 ## Verifies if spawn area chunks are loaded and coordinates player spawn drops

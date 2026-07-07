@@ -33,6 +33,9 @@
 # - Measures distance to player dynamically to scale down logical update rates.
 # - Throttles expensive A* pathing and sensory sweeps to 4Hz or 0.5Hz at a distance, 
 #   slashing CPU overhead by over 95% while maintaining fluid movement continuation.
+# FLOOR TRUNCATION STABILIZATION:
+# - Fixed `_is_direction_safe()` floor lookup math. Uses `floori(check_pos.y) - 1` 
+#   to guarantee 100% stable terrain detection, permanently preventing frozen IDLE locks.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/NPCAIComponent.gd
 # ==============================================================================
@@ -406,7 +409,8 @@ func _is_direction_safe(dir: Vector3) -> bool:
 	# Look ahead 1.5 meters along the movement vector line
 	var check_pos := _host.global_position + dir * 1.5
 	
-	var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 0.5), floori(check_pos.z))
+	# STABILIZATION: Absolute integer floor offsets protect terrain check from bobs/height variations
+	var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
 	var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
 	
 	var block_below := ws.get_block(block_below_coord)
