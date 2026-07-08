@@ -19,7 +19,7 @@ This document details the completed development phases and outlines the future m
 *   **Foliage Wind-Sway:** Implemented a wind-sway displacement shader executing high-frequency sine expansions along normals to simulate organic voxel canopies.
 *   **Voxel Grain Texturing:** Programmed a shared, statically cached high-frequency cellular noise texture applied with `TEXTURE_FILTER_NEAREST` to paint detailed, blocky textures over all animal and NPC meshes with zero performance overhead.
 
-### Milestone 3: Advanced Reactive AI, Pathfinding & variety
+### Milestone 3: Advanced Reactive AI, Pathfinding & Variety
 *   **3D A* Pathfinding (Phase 1):** Designed the data-oriented **`VoxelNavigationService`** leveraging Godot's C++ `AStar3D` solver, completely decoupled from the SceneTree. Built a spatial **`ChunkNavigationBuilder`** to compile walkable, stair-climb, and drop-down coordinates dynamically as chunks render on the main thread.
 *   **Day/Night & Storm Shelter Schedules (Phase 2):** Refactored **`NPCAIComponent.gd`** to execute real-time schedules. At sunset or during storms, civilian NPCs dynamically cancel tasks, locate the closest cached indoor shelter node, and route an A* path straight to it.
 *   **3D Floating Nameplates & LSP Compliance:** Added native `Label3D` billboarding nameplates. Resolved scene-tree name-collisions polimorphically by evaluating the class type (`self is ClassType`) rather than reading node names. Excluded wild animals from carrying civilian conversation nodes via `_has_ui_decorations()`.
@@ -66,6 +66,17 @@ This document details the completed development phases and outlines the future m
 *   **Voxel-Support Block Gravity:** Added support checking. Broken blocks supporting a Barrel, Chest, or Campfire cause the prop to shatter and drop loot, while heavy Wishing Wells and Streetlights slide down smoothly with elastic bouncing Tweens.
 *   **Harvesting Bugs Resolved:** Reclassified leaves as solid so they can be mined. Mining Ice (in glaciers) and Mud (in swamps) now correctly yields clean Water blocks.
 
+### 🌟 Milestone 15: Foundational Narrative Campaign & Lore Synchronization
+*   **Lore Bible Compilation:** Established the complete cosmology, space-time mechanics, character profiles, and faction ideologies inside [docs/lore/00_MASTER_BIBLE.md](docs/lore/00_MASTER_BIBLE.md).
+*   **Act I Script Completed:** Designed Chapters I through IV inside [docs/lore/01_ACT_I_DAWN.md](docs/lore/01_ACT_I_DAWN.md), mapping the shipwreck, Maelor's dialogue, Valerius's alchemical chicken story, and Golem Aethelgard's activation.
+*   **Act II Script Completed:** Compiled the search for the relics inside [docs/lore/02_ACT_II_RELICS.md](docs/lore/02_ACT_II_RELICS.md), including canyon glider mechanics, redwood Sages, and Neon Ruins hacking consoles.
+*   **Act III Script Completed:** Fleshed out the swamp alchemy, Nether fortress siege, tattered throne keep defense, and Void rift dimensions inside [docs/lore/03_ACT_III_SHADOW.md](docs/lore/03_ACT_III_SHADOW.md).
+*   **Act IV Script Completed:** Outlined the glitched stratosphere climb, Cloud Kingdom, Malakor's multi-phase boss fight, and the player's heroic farewell inside [docs/lore/04_ACT_IV_ASCENSION.md](docs/lore/04_ACT_IV_ASCENSION.md).
+*   **Side Quests Guild System:** Formulated non-linear side stories for Barnaby, Druid Fawns, and the Great White Shark hunt inside [docs/lore/05_SIDE_QUESTS.md](docs/lore/05_SIDE_QUESTS.md).
+*   **Bestiary and Habitat Rules:** Compiled technical AI routines, cylinder physical bounds, and strengths/weaknesses inside [docs/lore/06_BESTIARY_COMPENDIUM.md](docs/lore/06_BESTIARY_COMPENDIUM.md).
+*   **Voxel Metaphysics and Crafting:** Documented the block composition states and alchemical transmutation recipes inside [docs/lore/07_ALCHEMY_CRAFTING.md](docs/lore/07_ALCHEMY_CRAFTING.md).
+*   **Branching Dialogues and Economy:** Mapped situational civilian greetings, guard warnings, and reputation merchant discounts inside [docs/lore/08_DIALOGUE_GRIMOIRE.md](docs/lore/08_DIALOGUE_GRIMOIRE.md).
+
 ---
 
 ## 🔮 Future Milestones (Backlog)
@@ -93,4 +104,8 @@ This document details the completed development phases and outlines the future m
 *   **External JSON Mod Loader:** Open up the `CampaignRegistry`, `RecipeRegistry`, and `BlockLibrary` to scan and merge external JSON files from an isolated `user://mods/` directory on startup.
 *   **Isolated Strategy Plugin Loader:** Architect a sandboxed script-loader utilizing Godot's built-in `Plugin` or isolated `GDScript` loaders to allow modders to register custom block strategies and biome routing entirely without modifying the engine's source code.
 
-----
+### 🏹 Milestone 16: Campaign Integration & Advanced Narrative Mechanics
+*   **Voxel Glider Flight Controller:** Develop a high-altitude aerodynamic controller inside `PlayerController.gd` to translate vertical kinetic energy into smooth horizontal soaring.
+*   **Temporal Chrono-Shift Engine:** Implement a chunk-wide historical snapshot loader allowing the player to swap voxel terrains to past timelines during Act II puzzle resolutions.
+*   **Silicon Terminal Hacking Minigame:** Program a modular, graph-based overlapping node UI enabling cyber-hacking mechanics within the Neon Ruins.
+*   **Multi-Phase Boss Battles:** Design state machine AI patterns for the Lithic Lurker (Act I), the Obsidian Colossus (Act III), and the reality-mutating Weaver Malakor (Act IV).
