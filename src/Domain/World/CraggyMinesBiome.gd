@@ -1,5 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Pure Business Logic / Biomes)
 # Description: Concrete Biome Strategy implementing the geographic and visual 
 #              rules for the high stone mountains and subterranean cave structures
 #              (Craggy Peaks & Caves).
@@ -7,9 +8,8 @@
 #              - Liskov Substitution Principle (LSP): Fully implements IBiome.
 #              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
 #                spawn livestock, deep coal veins, nocturnal Gargoyles (12), 
-#                and sneaky, rapid-trotting Goblins (13) in mountain caves.
-#              - i18n Localization: Added `tr()` wrapper to the biome name 
-#                to ensure dynamic translation parsing across the GPS HUD.
+#                and sneaky, rapid-trotting Goblins (13), and scatters active
+#                geothermal magma vents across mountain summits.
 # GEOGRAPHICAL SENSING (Phase 4):
 #              - Implements `is_coordinate_inside()` to encapsulate its own 
 #                spawning boundaries (polar angle slice between -2.748 and -1.963 rad).
@@ -47,7 +47,15 @@ func get_block_for_depth(_y: int, _base_height: int) -> BlockType.Type:
 ## Concrete Implementation: Evaluates peaks for mine support pillars structures
 func get_landmark_type(spawn_hash: int, _base_height: int) -> int:
 	if spawn_hash % 160 == 7:
-		return 4
+		return 4 # Mine support pillar (ID 4)
+	return 0
+
+
+## Concrete Override: Organically scatters active Geothermal Magma Vents (ID 16)
+## across peaks as rare, spectacular landmarks.
+func get_scatter_blueprint_id(scatter_hash: int) -> int:
+	if scatter_hash % 180 == 13:
+		return 16 # Steaming Geothermal Magma Vent (Case C)
 	return 0
 
 

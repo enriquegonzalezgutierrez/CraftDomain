@@ -9,9 +9,9 @@
 #   and local blueprint instantiation.
 # - Open-Closed Principle (OCP): Integrates a hybrid loading pipeline. 
 #   * Artificial POIs are kept as data-driven JSON templates (Pipes, Piers, Cabins).
-#   * Natural flora and ruins are registered as high-performance individual procedural 
-#     blueprint strategies, completely closing existing code to modifications 
-#     when adding new biological or architectural species!
+#   * Natural flora, ruins, and geothermal geysers are registered as high-performance 
+#     individual procedural blueprint strategies, completely closing existing code 
+#     to modifications when adding new biological, geological, or architectural species!
 # - Dependency Inversion Principle (DIP): Communicates with abstract blueprints
 #   inheriting `IStructureBlueprint`, keeping the registry closed to code modifications.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -49,7 +49,12 @@ static func initialize_structures() -> void:
 	# ==========================================================================
 	# CASE B: ADAPTIVE/PROCEDURAL SHRINES & RUINS STRATEGY
 	# ==========================================================================
-	register_blueprint(DecayedTempleBlueprint.new()) # ID 15: Adaptive Ruins
+	register_blueprint(DecayedTempleBlueprint.new())  # ID 15: Adaptive Ruins
+	
+	# ==========================================================================
+	# CASE C: GEOTHERMAL STEAMING VENTS STRATEGY
+	# ==========================================================================
+	register_blueprint(GeothermalVentBlueprint.new()) # ID 16: Volcanic Magma Vents
 	
 	# ==========================================================================
 	# 2. MANUFACTURED TEMPLATE REGISTRY (Data-Driven JSON Layouts)
