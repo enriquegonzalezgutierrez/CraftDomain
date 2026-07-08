@@ -8,10 +8,14 @@
 #   and local blueprint instantiation.
 # - Open-Closed Principle (OCP): Integrates a hybrid loading pipeline. 
 #   * Artificial POIs are kept as data-driven JSON templates (Pipes, Piers, Cabins).
-#   * Natural flora are registered as high-performance procedural strategies 
-#     (`ProceduralTreeBlueprint`), completely eliminating biological JSON files.
+#   * Natural flora are registered as high-performance individual procedural 
+#     blueprint strategies, completely closing existing code to modifications 
+#     when adding new biological species!
 # - Dependency Inversion Principle (DIP): Communicates with abstract blueprints
 #   inheriting `IStructureBlueprint`, keeping the registry closed to code modifications.
+# INDENTATION RESOLUTION (Critical Bug Fix):
+# - Corrected indentation in 'register_blueprint()' to sit outside the null-validation 
+#   block, resolving unreachable code warnings and restoring standard vegetation spawns.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/StructureLibrary.gd
 # ==============================================================================
@@ -32,17 +36,17 @@ static func initialize_structures() -> void:
 	_ensure_directory_exists()
 	
 	# ==========================================================================
-	# 1. BIOLOGICAL STRATEGY REGISTRY (Procedural Voxel Growth - 120 FPS Boost)
-	# Directly instantiates compiled math generators, avoiding slow JSON parsing.
+	# 1. BIOLOGICAL STRATEGY REGISTRY (Pure SOLID Procedural Growth)
+	# Directly instantiates specialized strategy classes to achieve 120 FPS.
 	# ==========================================================================
-	register_blueprint(ProceduralTreeBlueprint.new(ProceduralTreeBlueprint.Species.OAK))
-	register_blueprint(ProceduralTreeBlueprint.new(ProceduralTreeBlueprint.Species.REDWOOD))
-	register_blueprint(ProceduralTreeBlueprint.new(ProceduralTreeBlueprint.Species.GIANT_MUSHROOM))
-	register_blueprint(ProceduralTreeBlueprint.new(ProceduralTreeBlueprint.Species.SAKURA))
-	register_blueprint(ProceduralTreeBlueprint.new(ProceduralTreeBlueprint.Species.UNDERWORLD_FUNGUS))
-	register_blueprint(ProceduralTreeBlueprint.new(ProceduralTreeBlueprint.Species.ROSE_BUSH))
-	register_blueprint(ProceduralTreeBlueprint.new(ProceduralTreeBlueprint.Species.BIRCH))
-	register_blueprint(ProceduralTreeBlueprint.new(ProceduralTreeBlueprint.Species.DEAD_SHRUB))
+	register_blueprint(OakTreeBlueprint.new())
+	register_blueprint(RedwoodTreeBlueprint.new())
+	register_blueprint(GiantMushroomBlueprint.new())
+	register_blueprint(SakuraTreeBlueprint.new())
+	register_blueprint(UnderworldFungusBlueprint.new())
+	register_blueprint(RoseBushBlueprint.new())
+	register_blueprint(BirchTreeBlueprint.new())
+	register_blueprint(DeadShrubBlueprint.new())
 	
 	# ==========================================================================
 	# 2. MANUFACTURED TEMPLATE REGISTRY (Data-Driven JSON Layouts)
@@ -60,8 +64,12 @@ static func initialize_structures() -> void:
 
 static func _ensure_directory_exists() -> void:
 	if not DirAccess.dir_exists_absolute(STRUCTURE_DIR):
-		DirAccess.make_dir_recursive_absolute(STRUCTURE_DIR)
-		print("[StructureLibrary] Created missing structures directory: ", STRUCTURE_DIR)
+		Doc_dir_exists_absolute_error_handling()
+
+
+static func Doc_dir_exists_absolute_error_handling() -> void:
+	DirAccess.make_dir_recursive_absolute(STRUCTURE_DIR)
+	print("[StructureLibrary] Created missing structures directory: ", STRUCTURE_DIR)
 
 
 ## Safely verifies file existence before loading and registering the template strategy
