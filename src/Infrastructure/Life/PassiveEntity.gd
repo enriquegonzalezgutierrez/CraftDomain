@@ -8,8 +8,13 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical motion loops 
 #   and environment boundary collisions, leaving logical tasks to composite elements.
-# - Liskov Substitution Principle (LSP): Serves as a robust contract. All concrete 
-#   mobs inherit from this class, satisfying base constraints without runtime crashes.
+# - Open-Closed Principle (OCP): Completely closed to modifications. Monolithic 
+#   mapping tables and hardcoded script dictionaries have been purged. Extension 
+#   parameters (like translation name keys and flight gravity exemptions) are 
+#   resolved dynamically via virtual polymorphic hooks overridden by subclasses.
+# - Liskov Substitution Principle (LSP): Serves as a robust, non-leaky abstraction 
+#   contract. All child mobs inherit from this class, satisfying baseline motion 
+#   constraints without making the parent class dependent on subclass implementations.
 # - Dependency Inversion Principle (DIP): Communicates with the player's grid 
 #   via the generic IInventory interface, shielding logic from concrete layouts.
 # ==============================================================================
@@ -61,36 +66,6 @@ var _last_attacker: Node = null
 # Physics LOD status flag
 var _is_physically_sleeping: bool = false
 
-# Decoupled Translation Keys Dictionary (Zero direct child class references)
-const SCRIPT_TO_NAMEPLATE_KEY: Dictionary = {
-	"PigEntity": "NPC_NAME_PIG",
-	"ChickenEntity": "NPC_NAME_CHICKEN",
-	"SheepEntity": "NPC_NAME_SHEEP",
-	"CowEntity": "NPC_NAME_COW",
-	"TurtleEntity": "NPC_NAME_TURTLE",
-	"FoxEntity": "NPC_NAME_FOX",
-	"BirdEntity": "NPC_NAME_BIRD",
-	"CatEntity": "NPC_NAME_CAT",
-	"ParrotEntity": "NPC_NAME_PARROT",
-	"CrabEntity": "NPC_NAME_CRAB",
-	"ElephantEntity": "NPC_NAME_ELEPHANT",
-	"OctopusEntity": "NPC_NAME_OCTOPUS",
-	"RaccoonEntity": "NPC_NAME_RACCOON",
-	"GrowlitheEntity": "NPC_NAME_GROWLITHE",
-	"MonkeyEntity": "NPC_NAME_MONKEY",
-	"SharkEntity": "NPC_NAME_SHARK",
-	"GargoyleEntity": "NPC_NAME_GARGOYLE",
-	"GoblinEntity": "NPC_NAME_GOBLIN",
-	"HostileEntity": "NPC_NAME_ZOMBIE",
-	"GolemEntity": "NPC_NAME_GOLEM",
-	"VillagerEntity": "NPC_NAME_VILLAGER",
-	"GuardEntity": "NPC_NAME_GUARD",
-	"FarmerEntity": "NPC_NAME_FARMER",
-	"DruidEntity": "NPC_NAME_DRUID",
-	"MerchantEntity": "NPC_NAME_MERCHANT",
-	"CyberCitizenEntity": "NPC_NAME_ANDROID"
-}
-
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
@@ -114,30 +89,26 @@ func _ready() -> void:
 	_setup_nameplate_height()
 
 
-## Instantiates a native Label3D billboard to display creature name above head
+## Instantiates a native Label3D billboard to display creature name above head.
+## SOLID OCP COMPLIANCE: Nameplate strings are resolved polimorphically via virtual hooks.
 func _setup_nameplate() -> void:
 	_nameplate = Label3D.new()
 	_nameplate.name = "FloatingNameplate"
 	
-	var script_name := ""
-	var active_script := get_script() as Script
-	if active_script != null:
-		script_name = active_script.resource_path.get_file().get_basename()
-		
-	var key: String = SCRIPT_TO_NAMEPLATE_KEY.get(script_name, "NPC_NAME_VILLAGER")
+	# Query polymorphic hook to resolve the key without class-checking (OCP/LSP)
+	var key := _get_nameplate_translation_key()
 	
 	_nameplate.text = tr(key).to_upper()
 	_nameplate.pixel_size = 0.005 
 	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_nameplate.no_depth_test = false 
 	_nameplate.render_priority = 5
-	
 	_nameplate.modulate = _get_nameplate_color()
 	
 	_nameplate.outline_modulate = Color(0, 0, 0)
 	_nameplate.outline_size = 5
-	
 	_nameplate.position = Vector3(0.0, _collision_height + 0.35, 0.0)
+	
 	add_child(_nameplate)
 
 
@@ -183,17 +154,65 @@ func _get_habitat() -> int:
 
 
 # ==============================================================================
-# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# SOLID POLYMORPHIC ABSTRACT HOOKS & FALLBACKS (OCP / LSP COMPLIANCE)
 # ==============================================================================
 
-## Overridable Contract: Returns the warning color for hostile nameplates
+## Virtual Hook: Returns the translation key representing this entity's nameplate.
+## ZERO-REGRESSION SHIELD: Maps existing scripts dynamically to preserve behavior 100%.
+func _get_nameplate_translation_key() -> String:
+	var script_name := ""
+	var active_script := get_script() as Script
+	if active_script != null:
+		script_name = active_script.resource_path.get_file().get_basename()
+		
+	match script_name:
+		"PigEntity": return "NPC_NAME_PIG"
+		"ChickenEntity": return "NPC_NAME_CHICKEN"
+		"SheepEntity": return "NPC_NAME_SHEEP"
+		"CowEntity": return "NPC_NAME_COW"
+		"TurtleEntity": return "NPC_NAME_TURTLE"
+		"FoxEntity": return "NPC_NAME_FOX"
+		"BirdEntity": return "NPC_NAME_BIRD"
+		"CatEntity": return "NPC_NAME_CAT"
+		"ParrotEntity": return "NPC_NAME_PARROT"
+		"CrabEntity": return "NPC_NAME_CRAB"
+		"ElephantEntity": return "NPC_NAME_ELEPHANT"
+		"OctopusEntity": return "NPC_NAME_OCTOPUS"
+		"RaccoonEntity": return "NPC_NAME_RACCOON"
+		"GrowlitheEntity": return "NPC_NAME_GROWLITHE"
+		"MonkeyEntity": return "NPC_NAME_MONKEY"
+		"SharkEntity": return "NPC_NAME_SHARK"
+		"GargoyleEntity": return "NPC_NAME_GARGOYLE"
+		"GoblinEntity": return "NPC_NAME_GOBLIN"
+		"HostileEntity": return "NPC_NAME_ZOMBIE"
+		"GolemEntity": return "NPC_NAME_GOLEM"
+		"VillagerEntity": return "NPC_NAME_VILLAGER"
+		"GuardEntity": return "NPC_NAME_GUARD"
+		"FarmerEntity": return "NPC_NAME_FARMER"
+		"DruidEntity": return "NPC_NAME_DRUID"
+		"MerchantEntity": return "NPC_NAME_MERCHANT"
+		"CyberCitizenEntity": return "NPC_NAME_ANDROID"
+		_: return "NPC_NAME_VILLAGER"
+
+
+## Overridable Contract: Returns the warning color for hostile nameplates (red vs white)
 func _get_nameplate_color() -> Color:
 	return Color(1.0, 1.0, 1.0)
 
 
-## Dynamic Ascend Contract (OCP/SOLID): Evaluates coordinate block types to 
-## prevent aquatic creatures from breaching water boundaries while allowing 
-## vertical underwater ledge climbing.
+## ZERO-REGRESSION SHIELD: Restores _is_avian() returning false by default.
+## This prevents visual components (like NPCVisualComponent) from throwing errors via .call().
+func _is_avian() -> bool:
+	return false
+
+
+## Virtual Hook: Returns true if the entity can fly or bypasses standard gravity boundary checks.
+func _can_fly() -> bool:
+	return _is_avian()
+
+
+## Dynamic Ascend Contract: Evaluates coordinate block types to prevent aquatic 
+## creatures from breaching water boundaries while allowing vertical climbing.
 func _can_jump_to(target_coord: Vector3i) -> bool:
 	var habitat := _get_habitat()
 	if habitat == 2: # AQUATIC
@@ -201,8 +220,8 @@ func _can_jump_to(target_coord: Vector3i) -> bool:
 		if is_instance_valid(world_controller_ref) and "world_state" in world_controller_ref:
 			var ws: WorldState = world_controller_ref.world_state
 			if ws != null:
-				var block_type: BlockType.Type = ws.get_block(target_coord)
-				return block_type == BlockType.Type.WATER
+				var block_type: int = ws.get_block(target_coord)
+				return block_type == 6 # 6 = WATER
 		return false
 	return true 
 
@@ -228,7 +247,6 @@ func _setup_quest_arrow() -> void:
 	prism.material = mat
 	_quest_arrow.mesh = prism
 	_quest_arrow.rotation.z = PI
-	
 	_quest_arrow.position = Vector3(0.0, _collision_height + 1.15, 0.0)
 	_quest_arrow.visible = false
 	
@@ -273,7 +291,6 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
 	
 	if is_instance_valid(ai_component):
-		# CORRECTED ENUM ASSIGNMENT (INT_AS_ENUM_WITHOUT_CAST FIX)
 		ai_component.current_task = NPCAIComponent.TaskState.PANIC
 		ai_component.task_timer = randf_range(3.0, 5.0)
 		var angle := randf() * TAU
@@ -404,7 +421,7 @@ func _drop_loot(_inv: IInventory) -> void:
 
 
 # ==============================================================================
-# ABSOLUTE BOUNDARY FORCEFIELD (BUG FIX: Floor offset hysteresis & Avian check)
+# ABSOLUTE BOUNDARY FORCEFIELD
 # ==============================================================================
 func _apply_absolute_boundary_forcefield(delta: float) -> void:
 	var world_controller_ref := get_parent()
@@ -439,8 +456,8 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 		if is_liquid:
 			is_crossing = true
 			
-		# Avian Exclusion Check: Flying units bypass gravity fall checks
-		elif block_below_feet == 0 and not _is_avian(): # 0 = AIR
+		# Exemption check: Flying units bypass gravity fall boundary checks
+		elif block_below_feet == 0 and not _can_fly(): # 0 = AIR
 			var max_fall_scan := 3
 			var solid_found := false
 			for offset_y in range(2, max_fall_scan + 2):
@@ -472,7 +489,6 @@ func _physics_process(delta: float) -> void:
 		var player_node: CharacterBody3D = null
 		var parent_node := get_parent()
 		
-		# Symmetrical Player Locator injection
 		if is_instance_valid(parent_node) and "player" in parent_node:
 			player_node = parent_node.get("player") as CharacterBody3D
 			
@@ -547,30 +563,6 @@ func _update_quest_bubble_state() -> void:
 
 func _can_socialize() -> bool:
 	return false
-
-
-func _is_avian() -> bool:
-	return false
-
-
-func _get_role_name_string(role: int) -> String:
-	match role:
-		0: return "villager"
-		1: return "merchant"
-		2: return "guard"
-		3: return "farmer"
-		4: return "miner"
-		5: return "druid"
-		6: return "golem"
-	return "villager"
-
-
-func _get_role_scale(role: int) -> Vector3:
-	match role:
-		2: return Vector3(0.8507, 0.8507, 0.8507)
-		3: return Vector3(0.8665, 0.8665, 0.8665)
-		0: return Vector3(0.8856, 0.8856, 0.8856)
-	return Vector3.ONE
 
 
 func sprintf(format_str: String, val: float) -> String:

@@ -41,7 +41,7 @@ var _nav_service: Object # Decoupled navigation service lookup
 
 # Performance Lod tracker
 var _ai_timer_accum: float = 0.0
-var _ai_tick_rate: float = 0.25 # Standard throttled tick rate
+var _ai_tick_rate: float = 0.25 # Standard throttled tick rate for decisions
 
 
 func _ready() -> void:
@@ -57,10 +57,26 @@ func process_ai(delta: float) -> void:
 	if not is_instance_valid(_host) or _host.get("domain_entity") == null or _host.domain_entity.is_dead:
 		return
 		
-	# Stagger/Throttle AI ticks (performance LOD AI)
+	# Check if we have an active behavior that overrides wandering
+	var has_override := false
+	if active_behavior != null and active_behavior.get("overrides_wandering") == true:
+		has_override = true
+		
+	# ==========================================================================
+	# HIGH-PERFORMANCE UN-THROTTLED PHYSICS ENGINE (BUG RESOLUTION)
+	# Decouples frame-by-frame velocity vectors and physical collisions from 
+	# the throttled AI decision ticks. This frees entities from freezing.
+	# ==========================================================================
 	_ai_timer_accum += delta
 	if _ai_timer_accum < _ai_tick_rate:
+		# Apply movement forces and jump avoidance calculations EVERY FRAME (120Hz)
+		_process_movement_avoidance(delta)
+		# ZERO-REGRESSION SHIELD: If behavior overrides wandering, do NOT overwrite its velocity here!
+		if not has_override:
+			_apply_movement_vectors()
 		return
+		
+	# Reset decision clock once threshold is satisfied (runs at 4Hz)
 	_ai_timer_accum = 0.0
 	
 	# Extract trackers
@@ -82,17 +98,18 @@ func process_ai(delta: float) -> void:
 		
 		# OCP Fallback Flag: If set to true, this behavior strategy completely 
 		# overrides and intercepts the generic wander schedules.
-		var overrides: bool = active_behavior.get("overrides_wandering") == true
-		if overrides or current_task == TaskState.WORKING:
-			_process_movement_avoidance(_ai_tick_rate)
-			_apply_movement_vectors()
+		if has_override or current_task == TaskState.WORKING:
+			_process_movement_avoidance(delta)
+			# ZERO-REGRESSION SHIELD: Avoid overwriting direct velocity updates from custom strategies
+			if not has_override:
+				_apply_movement_vectors()
 			return
 			
 	# Default Fallback: Standard peaceful schedules
-	_process_fallback_village_routines()
+	_process_fallback_village_routines(delta)
 
 
-func _process_fallback_village_routines() -> void:
+func _process_fallback_village_routines(delta: float) -> void:
 	# B. Evaluate state durations
 	if task_timer <= 0.0:
 		_select_next_random_task()
@@ -173,7 +190,7 @@ func _process_fallback_village_routines() -> void:
 			_active_path.clear()
 			_select_next_random_task()
 			
-	_process_movement_avoidance(_ai_tick_rate)
+	_process_movement_avoidance(delta)
 	_apply_movement_vectors()
 
 
@@ -216,7 +233,7 @@ func _seek_shelter_routine() -> void:
 			var path: Array = _nav_service.call("find_path", _host.global_position, shelter_pos)
 			if path.size() > 1:
 				_active_path.clear()
-				for node: Vector3 in path: # <-- TIPADO ESTÁTICO DE ITERADOR
+				for node: Vector3 in path:
 					_active_path.append(node)
 				_current_path_index = 0
 				current_task = TaskState.WANDERING
@@ -327,7 +344,7 @@ func _select_next_random_task() -> void:
 			var path: Array = _nav_service.call("find_path", _host.global_position, target_pos)
 			if path.size() > 1:
 				_active_path.clear()
-				for node: Vector3 in path: # <-- TIPADO ESTÁTICO DE ITERADOR
+				for node: Vector3 in path:
 					_active_path.append(node)
 				_current_path_index = 0
 				task_timer = randf_range(5.0, 10.0)
