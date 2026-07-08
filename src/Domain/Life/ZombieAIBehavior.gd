@@ -7,6 +7,7 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively manages the hostile pursuit 
 #   and combat logic, isolating decision trees from physical simulation layers.
+#   All raw physical wall-climbing and jump physics are delegated to Infrastructure.
 # - Open-Closed Principle (OCP): Extends IAIBehavior. Custom offensive movesets, 
 #   rage triggers, or target-scanning limits can be added here without editing entities.
 # - Liskov Substitution Principle (LSP): Adheres fully to the base contract, 
@@ -84,10 +85,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 					if slide_dir != Vector3.ZERO:
 						wander_dir = slide_dir
 						
-			# Jump over obstacle seams
-			if host.call("is_on_wall") and host.call("is_on_floor"):
-				velocity.y = 5.0
-				host.set("velocity", velocity)
+			# NOTE: Wall physical step-climbing is handled centrally by NPCAIComponent.gd
 				
 			# Attack Trigger
 			if dist_sq <= RANGE_ATTACK_SQ:
@@ -119,12 +117,8 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		host.set_meta(META_WANDER_TIMER, wander_timer)
 		host.set_meta(META_WANDER_DIR, wander_dir)
 		
-		# Obstacle jump handling
+		# Obstacle wall slide-bounce checks
 		if wander_dir != Vector3.ZERO and host.call("is_on_wall"):
-			if host.call("is_on_floor"):
-				velocity.y = 5.0
-				host.set("velocity", velocity)
-				
 			stuck_timer += delta
 			if stuck_timer > 0.4:
 				stuck_timer = 0.0

@@ -7,6 +7,7 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates grazing and 
 #   evasion decision trees, isolating animal instincts from physical entity nodes.
+#   All raw physical wall-climbing and jump physics are delegated to Infrastructure.
 # - Open-Closed Principle (OCP): Extends IAIBehavior. Species-specific parameters 
 #   (such as crawling speed dampening or flight heights) are managed dynamically.
 # - Liskov Substitution Principle (LSP): Fully interchangeable with all behaviors, 
@@ -97,20 +98,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		host.set_meta(META_WANDER_TIMER, wander_timer)
 		host.set_meta(META_WANDER_DIR, wander_dir)
 		
-		# Jump over block obstacles frantically
-		if host.call("is_on_wall") and host.call("is_on_floor"):
-			var step_dir := wander_dir.normalized()
-			var host_pos: Vector3 = host.get("global_position")
-			var projected_pos := host_pos + step_dir * 0.8
-			var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
-			
-			var is_jump_capable := true
-			if host.has_method("_can_jump_to"):
-				is_jump_capable = host.call("_can_jump_to", target_coord) as bool
-				
-			if is_jump_capable:
-				velocity.y = 5.0
-				host.set("velocity", velocity)
+		# NOTE: Wall physical step-climbing is handled centrally by NPCAIComponent.gd
 			
 	# 3. RUN COZY GRAZING / ROAMING ACTION
 	else:
@@ -137,22 +125,8 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		host.set_meta(META_WANDER_TIMER, wander_timer)
 		host.set_meta(META_WANDER_DIR, wander_dir)
 		
-		# Climb stairs/blocks slowly
+		# Climb and collide re-direction checks
 		if wander_dir != Vector3.ZERO and host.call("is_on_wall"):
-			if host.call("is_on_floor"):
-				var step_dir := wander_dir.normalized()
-				var host_pos: Vector3 = host.get("global_position")
-				var projected_pos := host_pos + step_dir * 0.8
-				var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
-				
-				var is_jump_capable := true
-				if host.has_method("_can_jump_to"):
-					is_jump_capable = host.call("_can_jump_to", target_coord) as bool
-					
-				if is_jump_capable:
-					velocity.y = 5.0
-					host.set("velocity", velocity)
-					
 			stuck_timer += delta
 			if stuck_timer > 0.4:
 				stuck_timer = 0.0

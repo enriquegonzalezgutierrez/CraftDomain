@@ -7,7 +7,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Acts strictly as the task timer and 
 #   coordination hub, delegating domain-specific decision trees to the injected 
-#   IAIBehavior strategy.
+#   IAIBehavior strategy. Centralizes physical jump and step-climb calculations 
+#   away from the Domain behaviors.
 # - Open-Closed Principle (OCP): Distinguishes task behaviors dynamically and 
 #   delegates execution to the active strategy cleanly.
 # - Liskov Substitution Principle (LSP): Works transparently across all 
@@ -295,29 +296,48 @@ func _apply_movement_vectors() -> void:
 					wander_direction.y = 0
 
 
-func _process_movement_avoidance(delta: float) -> void:
-	if current_task != TaskState.WANDERING and current_task != TaskState.PANIC:
+# ==============================================================================
+# CENTRALIZED STEP-CLIMB JUMP SOLVER (SRP Compliant)
+# ==============================================================================
+func _process_movement_avoidance(_delta: float) -> void:
+	# Only execute jumping checks if the entity is actually trying to traverse coordinates
+	if current_task != TaskState.WANDERING and current_task != TaskState.PANIC and current_task != TaskState.WORKING:
 		return
 		
 	if _host.is_on_wall():
 		if _host.is_on_floor():
-			var jump_vel: float = 5.0
-			if "JUMP_VELOCITY" in _host:
-				jump_vel = _host.get("JUMP_VELOCITY")
-				
-			var wall_normal := _host.get_wall_normal()
-			var step_dir := -wall_normal 
-			var projected_pos := _host.global_position + step_dir * 0.8
-			var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
+			# 1. OBSTRUCTION SPEED CHECK: Prevent jumping if we are sliding along 
+			# the side of a block smoothly. Only jump if progress drops below 0.35m/s (blocked!)
+			var flat_vel := Vector2(_host.velocity.x, _host.velocity.z)
+			var speed := flat_vel.length()
+			var is_physically_blocked := speed < 0.35
 			
-			var is_jump_capable := true
-			if _host.has_method("_can_jump_to"):
-				is_jump_capable = _host.call("_can_jump_to", target_coord) as bool
+			# 2. ENFRIAMIENTO (COOLDOWN) HYSTERESIS: Require 0.4 seconds between jumps
+			var last_jump: float = _host.get_meta("last_jump_time") if _host.has_meta("last_jump_time") else 0.0
+			var current_time := Time.get_ticks_msec() / 1000.0
+			var can_jump := (current_time - last_jump) > 0.4
+			
+			if is_physically_blocked and can_jump:
+				var jump_vel: float = 5.0
+				if "JUMP_VELOCITY" in _host:
+					jump_vel = _host.get("JUMP_VELOCITY")
+					
+				var wall_normal := _host.get_wall_normal()
+				var step_dir := -wall_normal 
+				var projected_pos := _host.global_position + step_dir * 0.8
+				var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
 				
-			if is_jump_capable:
-				_host.velocity.y = jump_vel
-				
-		stuck_timer += delta
+				var is_jump_capable := true
+				if _host.has_method("_can_jump_to"):
+					is_jump_capable = _host.call("_can_jump_to", target_coord) as bool
+					
+				if is_jump_capable:
+					# Trigger centralized vertical jump!
+					_host.velocity.y = jump_vel
+					_host.set_meta("last_jump_time", current_time)
+					
+		# Stuck timers updates
+		stuck_timer += _delta
 		if stuck_timer > 0.12: 
 			stuck_timer = 0.0
 			var wall_normal := _host.get_wall_normal()

@@ -6,7 +6,8 @@
 #              including threat scanning, alarm intercepts, and physical strikes.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates protective overwatch 
-#   and combat logic, isolating security routines from the character mesh.
+#   and combat logic, isolating security routines from physical movement mechanics.
+#   All raw physical wall-climbing and jump physics are delegated to Infrastructure.
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. Patrol vectors and 
 #   shield-blocking stance triggers can be added without modifying physics layers.
 # - Liskov Substitution Principle (LSP): Fully interchangeable with other behaviors, 
@@ -103,10 +104,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 			host.set("velocity", velocity)
 			ai.set("wander_direction", chase_dir)
 			
-			# Jump over blocks while chasing
-			if host.call("is_on_wall") and host.call("is_on_floor"):
-				velocity.y = 5.0
-				host.set("velocity", velocity)
+			# NOTE: Wall physical step-climbing is handled centrally by NPCAIComponent.gd
 		else:
 			# Target within range: halt movement and strike
 			velocity.x = 0.0

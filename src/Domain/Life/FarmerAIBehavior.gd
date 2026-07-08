@@ -7,6 +7,7 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively manages the agricultural 
 #   decision-making state machine, completely isolated from physics and visuals.
+#   All raw physical wall-climbing and jump physics are delegated to Infrastructure.
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. New crops or farming 
 #   actions can be extended here without modifying standard entity nodes.
 # - Liskov Substitution Principle (LSP): Adheres fully to the base contract, 
@@ -145,13 +146,7 @@ func _execute_crop_harvesting(host: Object, ai: Object, delta: float) -> void:
 		host.set("velocity", velocity)
 		ai.set("wander_direction", wander_dir)
 		
-		# Jump over short visual obstructions
-		if host.call("is_on_wall") and host.call("is_on_floor"):
-			var jump_vel: float = 5.0
-			if "JUMP_VELOCITY" in host:
-				jump_vel = host.get("JUMP_VELOCITY")
-			velocity.y = jump_vel
-			host.set("velocity", velocity)
+		# NOTE: Wall physical step-climbing is handled centraly by NPCAIComponent.gd
 	else:
 		# Target Reached: Halt coordinates and execute swing timers
 		velocity.x = 0.0
