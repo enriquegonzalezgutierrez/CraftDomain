@@ -47,11 +47,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 	var cooldown: float = float(host.get_meta(META_COOLDOWN, 0.0))
 	var scan_timer: float = float(host.get_meta(META_SCAN_TIMER, SCAN_INTERVAL_SEC))
 	
-	# ==========================================================================
-	# OBJECT DIRECT ASSIGNMENT (INVALID CAST FIXED)
-	# Direct assignment to Object variable inside the typeof block completely 
-	# bypasses and resolves the static casting exceptions of the 'as' operator.
-	# ==========================================================================
 	var combat_target: CharacterBody3D = null
 	if host.has_meta(META_TARGET):
 		var target_val: Variant = host.get_meta(META_TARGET)
@@ -71,13 +66,7 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 		
 		# Locate closest threat if currently unengaged or target has died
 		if not is_instance_valid(combat_target) or combat_target.get("domain_entity").is_dead:
-			var previous_target := combat_target
 			combat_target = _scan_for_active_zombie_target(host)
-			
-			if combat_target != null and combat_target != previous_target:
-				print("[AI DEBUG] [", host.name, "] OVERWATCH ALERT: New target locked: ", combat_target.name)
-			elif previous_target != null and combat_target == null:
-				print("[AI DEBUG] [", host.name, "] Overwatch: Previous threat cleared. Resuming default patrol.")
 				
 		host.set_meta(META_SCAN_TIMER, scan_timer)
 		
@@ -138,8 +127,6 @@ func _initialize_metadata_if_missing(host: CharacterBody3D) -> void:
 
 
 func _reset_guard_state(host: CharacterBody3D, ai: NPCAIComponent) -> void:
-	if ai.current_task == NPCAIComponent.TaskState.WORKING:
-		print("[AI DEBUG] [", host.name, "] Dialog lock interrupted active overwatch pursuit.")
 	ai.current_task = NPCAIComponent.TaskState.IDLE
 	ai.wander_direction = Vector3.ZERO
 	host.set_meta(META_TARGET, "")
@@ -166,7 +153,6 @@ func _scan_for_active_zombie_target(host: CharacterBody3D) -> CharacterBody3D:
 					if dist_sq_p < min_dist_sq:
 						min_dist_sq = dist_sq_p
 						closest_target = player_node
-						print("[AI DEBUG] [", host.name, "] DETECTED WANTED OUTLAW! Aggro set to Player. Dist: ", sprintf("%.1f", sqrt(dist_sq_p)), "m")
 						
 	# Check traditional hostile group targets (Zombies)
 	var hostiles := host.get_tree().get_nodes_in_group("hostiles")
@@ -193,7 +179,6 @@ func _strike_target(host: CharacterBody3D, target: CharacterBody3D) -> void:
 	
 	if target.has_method("take_damage"):
 		target.call("take_damage", 1, knockback, host)
-		print("[AI DEBUG] [", host.name, "] COMBAT ACTION: Sword strike connected with: ", target.name, "! Handed 1 HP Damage.")
 
 
 func sprintf(format_str: String, val: float) -> String:

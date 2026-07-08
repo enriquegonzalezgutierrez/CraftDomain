@@ -203,10 +203,9 @@ func _can_jump_to(target_coord: Vector3i) -> bool:
 			var ws: WorldState = world_controller_ref.world_state
 			if ws != null:
 				var block_type: BlockType.Type = ws.get_block(target_coord)
-				# Only permit step climbs if the destination voxel is confirmed to be water
 				return block_type == BlockType.Type.WATER
 		return false
-	return true # Terrestrial and Amphibious entities are allowed to jump into air blocks
+	return true 
 
 
 ## Programmatically constructs the 3D rotating quest arrow (PrismMesh)
@@ -457,9 +456,6 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 				is_crossing = true
 		
 	if is_crossing:
-		# Centralized telemetry logging for boundary halts (throttled to avoid frame drops)
-		if Engine.get_physics_frames() % 30 == 0:
-			print("[PHYSICS DEBUG] [", name, "] Forcefield BLOCKED movement! Feet Block ID: ", block_at_feet, " (", feet_coord, "), Below Block ID: ", block_below_feet)
 		velocity.x = 0.0
 		velocity.z = 0.0
 
@@ -486,7 +482,6 @@ func _physics_process(delta: float) -> void:
 			
 			if sleep_state != _is_physically_sleeping:
 				_is_physically_sleeping = sleep_state
-				print("[PHYSICS DEBUG] [", name, "] LOD sleep transition: Sleeping = ", _is_physically_sleeping, " (Distance: ", sprintf("%.1f", sqrt(dist_sq)), "m)")
 		else:
 			_is_physically_sleeping = false
 			
@@ -511,10 +506,6 @@ func _physics_process(delta: float) -> void:
 	_apply_absolute_boundary_forcefield(delta)
 
 	var flat_velocity := Vector2(velocity.x, velocity.z)
-	
-	# Slidings telemetry output: logs physical velocities every 60 frames (0.5s)
-	if Engine.get_physics_frames() % 60 == 0 and flat_velocity.length_squared() > 0.01:
-		print("[PHYSICS DEBUG] [", name, "] slide tick: Velocity Flat = ", flat_velocity, " | On Floor = ", is_on_floor())
 
 	if is_instance_valid(visual_representation):
 		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)

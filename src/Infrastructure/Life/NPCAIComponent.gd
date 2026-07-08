@@ -3,7 +3,7 @@
 # Layer: Infrastructure (AI Logic)
 # Class: NPCAIComponent
 # Description: Refactored AI component managing task timers, obstacle avoidance, 
-#              and dynamic behavior delegation with a dual patrol-strategy engine.
+#              and dynamic behavior delegation with high-performance execution.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Acts strictly as the task timer and 
 #   coordination hub, delegating domain-specific decision trees to the injected 
@@ -72,7 +72,6 @@ func _ready() -> void:
 	if is_instance_valid(_host):
 		_spawn_point = _host.global_position
 		_stagger_and_setup()
-		print("[AI DEBUG] NPCAIComponent successfully attached to host: ", _host.name, " [Seed: ", _host.get("npc_seed"), "]")
 
 
 ## Staggers updates and queries WorldController for the shared navigation map
@@ -85,19 +84,16 @@ func _stagger_and_setup() -> void:
 			if is_instance_valid(world_ctrl) and "chunk_manager" in world_ctrl:
 				if "navigation_service" in world_ctrl:
 					_nav_service = world_ctrl.get("navigation_service") as VoxelNavigationService
-					print("[AI DEBUG] ", _host.name, " successfully linked to global navigation service.")
 	, CONNECT_ONE_SHOT)
 
 
-## Core AI state-machine tick.
+## Core AI state-machine tick
 func process_ai(delta: float) -> void:
 	if not is_instance_valid(_host):
 		return
 		
 	# Skip standard state-machine calculations if the NPC is locked in dialog
 	if _host.get("is_talking") == true:
-		if current_task != TaskState.IDLE:
-			print("[AI DEBUG] ", _host.name, " dialog lock activated, forcing IDLE state.")
 		current_task = TaskState.IDLE
 		wander_direction = Vector3.ZERO
 		stuck_timer = 0.0
@@ -150,7 +146,6 @@ func process_ai(delta: float) -> void:
 	if _ai_tick_timer > 0.0:
 		if current_task == TaskState.WANDERING or current_task == TaskState.PANIC:
 			if not _is_direction_safe(wander_direction):
-				print("[AI DEBUG] ", _host.name, " predicted path is unsafe during throttle, resetting path.")
 				_active_path.clear()
 				wander_direction = Vector3.ZERO
 				task_timer = 0.0 
@@ -174,7 +169,6 @@ func process_ai(delta: float) -> void:
 			escape_dir.y = 0.0
 			
 			if _is_direction_safe(escape_dir):
-				print("[AI DEBUG] ", _host.name, " detected threat: ", closest_hostile.name, "! Triggering escape PANIC.")
 				current_task = TaskState.PANIC
 				_active_path.clear() 
 				wander_direction = escape_dir
@@ -216,7 +210,6 @@ func process_ai(delta: float) -> void:
 			if is_instance_valid(actual_player):
 				var dist_p_sq := _host.global_position.distance_squared_to(actual_player.global_position)
 				if dist_p_sq <= GREET_DISTANCE_SQ: 
-					print("[AI DEBUG] ", _host.name, " proximity greeting triggered with Player.")
 					current_task = TaskState.GREETING
 					_active_path.clear()
 					var look_dir := (actual_player.global_position - _host.global_position).normalized()
@@ -229,7 +222,6 @@ func process_ai(delta: float) -> void:
 			var closest_peer := _detect_closest_peer_npc()
 			if closest_peer != null:
 				if randf() < 0.15:
-					print("[AI DEBUG] ", _host.name, " proximity chatter triggered with peer: ", closest_peer.name)
 					current_task = TaskState.CHATTIING
 					_active_path.clear()
 					var look_dir := (closest_peer.global_position - _host.global_position).normalized()
@@ -241,7 +233,6 @@ func process_ai(delta: float) -> void:
 
 	if current_task == TaskState.WANDERING or current_task == TaskState.PANIC:
 		if not _is_direction_safe(wander_direction):
-			print("[AI DEBUG] ", _host.name, " dynamic path obstructed, changing direction.")
 			_active_path.clear()
 			_select_next_random_task()
 		
@@ -264,7 +255,6 @@ func _seek_shelter_routine() -> void:
 		if shelter_pos != Vector3.ZERO:
 			var path := _nav_service.find_path(_host.global_position, shelter_pos)
 			if path.size() > 1:
-				print("[AI DEBUG] ", _host.name, " evening/storm routine: Routing AStar path to shelter at: ", shelter_pos)
 				_active_path = path
 				_current_path_index = 0
 				current_task = TaskState.WANDERING
@@ -312,7 +302,6 @@ func _apply_movement_vectors() -> void:
 						
 					wander_direction = diff.normalized()
 				else:
-					print("[AI DEBUG] ", _host.name, " successfully reached targeted AStar path node destination.")
 					_active_path.clear()
 					current_task = TaskState.IDLE
 					task_timer = randf_range(0.4, 1.2) # Short rest interval for high dynamism
@@ -328,7 +317,6 @@ func _apply_movement_vectors() -> void:
 			var is_tethered_npc: bool = _host.has_method("_has_ui_decorations") and _host.call("_has_ui_decorations") as bool
 			if is_tethered_npc:
 				if _host.global_position.distance_squared_to(_spawn_point) > 144.0: 
-					print("[AI DEBUG] ", _host.name, " exceeded maximum spawn tether distance, routing back home.")
 					_active_path.clear()
 					wander_direction = (_spawn_point - _host.global_position).normalized()
 					wander_direction.y = 0
@@ -346,13 +334,9 @@ func _process_movement_avoidance(delta: float) -> void:
 				var jv: Variant = _host.get("JUMP_VELOCITY")
 				if jv != null: jump_vel = float(jv)
 				
-			# ==================================================================
 			# COORDINATE-BASED JUMP EVALUATION (BUG FIX / LSP)
-			# Calculate exact destination voxel above the wall we are hitting 
-			# to prevent aquatic breaching while enabling underwater step climbs.
-			# ==================================================================
 			var wall_normal := _host.get_wall_normal()
-			var step_dir := -wall_normal # Vector direction towards the block face
+			var step_dir := -wall_normal 
 			var projected_pos := _host.global_position + step_dir * 0.8
 			var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
 			
@@ -362,9 +346,6 @@ func _process_movement_avoidance(delta: float) -> void:
 				
 			if is_jump_capable:
 				_host.velocity.y = jump_vel
-				print("[AI DEBUG] [", _host.name, "] climbing wall obstacle cleanly towards coordinate: ", target_coord)
-			else:
-				print("[AI DEBUG] [", _host.name, "] climb BLOCKED: Target coordinate ", target_coord, " violates habitat rules.")
 			
 		stuck_timer += delta
 		if stuck_timer > 0.12: 
@@ -372,17 +353,15 @@ func _process_movement_avoidance(delta: float) -> void:
 			var wall_normal := _host.get_wall_normal()
 			var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
 			if flat_normal != Vector3.ZERO:
-				print("[AI DEBUG] ", _host.name, " wall collision detected, executing bounce course-correction.")
 				wander_direction = wander_direction.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
 				_active_path.clear()
 	else:
 		stuck_timer = 0.0
 
 
-## Smart-Checking Wandering (BUG FIX: Re-balanced active weights for maximum dynamism)
+## Smart-Checking Wandering
 func _select_next_random_task() -> void:
 	var roll := randf()
-	var old_task := current_task
 	
 	if roll < 0.70: # 70% chance to WALK actively
 		current_task = TaskState.WANDERING
@@ -398,7 +377,6 @@ func _select_next_random_task() -> void:
 				_active_path = path
 				_current_path_index = 0
 				task_timer = randf_range(5.0, 10.0)
-				print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> WANDERING (AStar Route locked to: ", target_pos, ")")
 				return
 				
 		var angle := randf() * TAU
@@ -417,23 +395,19 @@ func _select_next_random_task() -> void:
 			current_task = TaskState.IDLE
 			wander_direction = Vector3.ZERO
 			task_timer = randf_range(0.4, 1.2) # Short rest interval
-			print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> IDLE (No safe directions found during wander scan)")
 			return
 			
 		task_timer = randf_range(3.0, 7.0)
-		print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> WANDERING (Fallback flat direction: ", wander_direction, ")")
 	elif roll < 0.85: # 15% chance to pause and EXAMINE surroundings
 		current_task = TaskState.EXAMINING 
 		_active_path.clear()
 		var angle := randf() * TAU
 		wander_direction = Vector3(cos(angle), 0, sin(angle))
 		task_timer = randf_range(1.0, 2.5) # Fast analysis interval
-		print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> EXAMINING (Analyzing heading: ", wander_direction, ")")
 	else: # 15% chance of short peaceful rest in place (IDLE)
 		current_task = TaskState.IDLE
 		_active_path.clear()
 		task_timer = randf_range(0.4, 1.2) # Short resting interval
-		print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> IDLE (Resting and breathing in place)")
 
 
 ## Look-Ahead Validator: Protects land mobs from drowning and constrains aquatic species

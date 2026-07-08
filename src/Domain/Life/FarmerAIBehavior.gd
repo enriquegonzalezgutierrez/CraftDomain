@@ -53,7 +53,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 				target_crop = found_crop
 				harvest_timer = HARVEST_DURATION_SEC
 				ai.current_task = NPCAIComponent.TaskState.WORKING
-				print("[AI DEBUG] [", host.name, "] Scanning complete: detected mature wheat at: ", target_crop)
 				
 		host.set_meta(META_SCAN_TIMER, scan_timer)
 		host.set_meta(META_TARGET_CROP, target_crop)
@@ -73,8 +72,6 @@ func _initialize_metadata_if_missing(host: CharacterBody3D) -> void:
 
 
 func _reset_farmer_state(host: CharacterBody3D, ai: NPCAIComponent) -> void:
-	if ai.current_task == NPCAIComponent.TaskState.WORKING:
-		print("[AI DEBUG] [", host.name, "] Dialog lock interrupted active crop harvesting.")
 	ai.current_task = NPCAIComponent.TaskState.IDLE
 	ai.wander_direction = Vector3.ZERO
 	host.set_meta(META_TARGET_CROP, Vector3i(0, -999, 0))
@@ -144,8 +141,6 @@ func _execute_crop_harvesting(host: CharacterBody3D, ai: NPCAIComponent, delta: 
 		var harvest_timer: float = host.get_meta(META_HARVEST_TIMER)
 		harvest_timer -= delta
 		
-		print("[AI DEBUG] [", host.name, "] Actively cutting crop at ", target_crop, ": ", sprintf("%.1f", harvest_timer), "s remaining")
-		
 		if harvest_timer <= 0.0:
 			# Execute Block-Overwrites across the coordinate system
 			var world_node := host.get_parent()
@@ -154,7 +149,6 @@ func _execute_crop_harvesting(host: CharacterBody3D, ai: NPCAIComponent, delta: 
 				world_node.call("set_block_globally", target_crop, BlockType.Type.CROP_SEED)
 				
 				_spawn_replant_particles_synchronous(world_node, Vector3(target_crop))
-				print("[AI DEBUG] [", host.name, "] Crop cut finished successfully! Replanted seed at: ", target_crop)
 				
 			host.velocity.y = 5.0 # Hop with joy
 			target_crop = Vector3i(0, -999, 0)

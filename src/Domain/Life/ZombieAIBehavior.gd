@@ -68,8 +68,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 			to_player.y = 0.0
 			wander_dir = to_player
 			
-			print("[AI DEBUG] [", host.name, "] Scent locked: Pursuing Player! Distance is: ", sprintf("%.1f", sqrt(dist_sq)), "m")
-			
 			# Flanking Wall Steering
 			if host.is_on_wall():
 				var wall_normal := host.get_wall_normal()
@@ -78,7 +76,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 					var slide_dir := (wander_dir - flat_normal * (wander_dir.dot(flat_normal))).normalized()
 					if slide_dir != Vector3.ZERO:
 						wander_dir = slide_dir
-						print("[AI DEBUG] [", host.name, "] Obstructed by wall. Calculating flanking slide vector: ", wander_dir)
 						
 			# Jump over obstacle seams
 			if host.is_on_wall() and host.is_on_floor():
@@ -106,11 +103,9 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 				var angle := randf() * TAU
 				wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 				wander_timer = randf_range(2.0, 5.0)
-				print("[AI DEBUG] [", host.name, "] Wandering to random heading: ", wander_dir)
 			else:
 				wander_dir = Vector3.ZERO
 				wander_timer = randf_range(1.0, 3.0)
-				print("[AI DEBUG] [", host.name, "] Resting in place.")
 				
 		host.set_meta(META_WANDER_TIMER, wander_timer)
 		host.set_meta(META_WANDER_DIR, wander_dir)
@@ -128,7 +123,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 				if flat_normal != Vector3.ZERO:
 					wander_dir = wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
 					host.set_meta(META_WANDER_DIR, wander_dir)
-					print("[AI DEBUG] [", host.name, "] Stuck while wandering. Executing path bounce: ", wander_dir)
 				else:
 					var angle := randf() * TAU
 					wander_dir = Vector3(cos(angle), 0.0, sin(angle))
@@ -139,7 +133,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 			host.set_meta(META_STUCK_TIMER, stuck_timer)
 
 	# 3. APPLY DISPATCHED VELOCITY VECTORS AND AI COMPONENT UPDATE
-	# Decoupled visual mesh rotations are managed cleanly inside NPCVisualComponent.gd
 	if wander_dir != Vector3.ZERO:
 		var active_speed := SPEED_CHASE if is_tracking else SPEED_WANDER
 		host.velocity.x = wander_dir.x * active_speed
@@ -167,7 +160,6 @@ func _bite_player(host: CharacterBody3D, player_node: CharacterBody3D) -> void:
 	var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
 	if player_node.has_method("take_damage"):
 		player_node.call("take_damage", 1, knockback)
-		print("[AI DEBUG] [", host.name, "] COMBAT ACTION: Bite successfully landed on player! Applying knockback.")
 
 
 func sprintf(format_str: String, val: float) -> String:

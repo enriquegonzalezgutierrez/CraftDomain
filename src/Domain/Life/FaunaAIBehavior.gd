@@ -3,7 +3,7 @@
 # Layer: Domain (Behavior Strategies)
 # Class: FaunaAIBehavior
 # Description: Concrete AI behavior strategy implementing standard wildlife routines,
-#              including peaceful grazing, threat avoidance, and panic-flight with logs.
+#              including peaceful grazing, threat avoidance, and panic-flight.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates grazing and 
 #   evasion decision trees, isolating animal instincts from physical entity nodes.
@@ -68,7 +68,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 			
 			host.set_meta(META_PANIC_TIMER, panic_timer)
 			host.set_meta(META_WANDER_DIR, wander_dir)
-			print("[AI DEBUG] [", host.name, "] SENSORY SHIELD: Spied close-range hostile monster: ", closest_threat.name, "! Scurrying away in panic!")
 			
 	# 2. RUN PANIC ACTION FLIGHT
 	if is_panicking:
@@ -87,8 +86,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 		host.set_meta(META_WANDER_TIMER, wander_timer)
 		host.set_meta(META_WANDER_DIR, wander_dir)
 		
-		print("[AI DEBUG] [", host.name, "] Scurrying frantically! Time remaining in panic: ", sprintf("%.1f", panic_timer), "s")
-		
 		# Jump over block obstacles frantically
 		if host.is_on_wall() and host.is_on_floor():
 			var step_dir := wander_dir.normalized()
@@ -101,7 +98,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 				
 			if is_jump_capable:
 				host.velocity.y = 5.0
-				print("[AI DEBUG] [", host.name, "] Panic wall leap triggered cleanly towards: ", target_coord)
 			
 	# 3. RUN COZY GRAZING / ROAMING ACTION
 	else:
@@ -117,7 +113,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 				
 				if _is_direction_safe_fauna(host, target_dir):
 					wander_dir = target_dir
-					print("[AI DEBUG] [", host.name, "] Grazing action: walking slowly to heading vector: ", wander_dir)
 				else:
 					wander_dir = Vector3.ZERO
 				wander_timer = randf_range(2.0, 5.0)
@@ -125,7 +120,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 				# Rest in place
 				wander_dir = Vector3.ZERO
 				wander_timer = randf_range(1.5, 4.0)
-				print("[AI DEBUG] [", host.name, "] Grazing action: Sniffing the grass in place.")
 				
 		host.set_meta(META_WANDER_TIMER, wander_timer)
 		host.set_meta(META_WANDER_DIR, wander_dir)
@@ -133,10 +127,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 		# Climb stairs/blocks slowly
 		if wander_dir != Vector3.ZERO and host.is_on_wall():
 			if host.is_on_floor():
-				# ==============================================================
-				# DYNAMIC JUMP TARGET EVALUATION (OCP / LSP)
-				# Only trigger step climb jumps if target destination is valid
-				# ==============================================================
 				var step_dir := wander_dir.normalized()
 				var projected_pos := host.global_position + step_dir * 0.8
 				var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
@@ -147,9 +137,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 					
 				if is_jump_capable:
 					host.velocity.y = 5.0
-					print("[AI DEBUG] [", host.name, "] Climbing step block towards: ", target_coord)
-				else:
-					print("[AI DEBUG] [", host.name, "] Climb BLOCKED: Destination ", target_coord, " violates habitat rules.")
 					
 			stuck_timer += delta
 			if stuck_timer > 0.4:
@@ -159,7 +146,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 				if flat_normal != Vector3.ZERO:
 					wander_dir = wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
 					host.set_meta(META_WANDER_DIR, wander_dir)
-					print("[AI DEBUG] [", host.name, "] Path collided, calculated bounce graze trajectory: ", wander_dir)
 			host.set_meta(META_STUCK_TIMER, stuck_timer)
 		else:
 			stuck_timer = 0.0
@@ -169,7 +155,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 	if wander_dir != Vector3.ZERO:
 		var speed_coef := SPEED_PANIC if is_panicking else SPEED_GRAZE
 		
-		# Apply a crawl dampening modifier if the host is a slow sea turtle on sand
 		if host.name.contains("TURTLE") and host.is_on_floor():
 			speed_coef *= 0.5
 			
@@ -185,10 +170,6 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 				var current_rot_x := visuals_node.rotation.x
 				var current_rot_z := visuals_node.rotation.z
 				visuals_node.look_at(target_look, Vector3.UP)
-				# ==============================================================
-				# ROLE-BASED ORIENTATION BYPASS (OCP SHIELD)
-				# Animals already face -Z naturally. They skip rotate_y(PI).
-				# ==============================================================
 				visuals_node.rotation.x = current_rot_x
 				visuals_node.rotation.z = current_rot_z
 	else:
