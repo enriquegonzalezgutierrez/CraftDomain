@@ -19,6 +19,13 @@
 class_name IAIBehavior
 extends Resource
 
+## OCP Fallback Flag: If set to true (e.g. Zombies, Wildlife), this behavior 
+## strategy completely overrides and intercepts the generic wander schedules.
+## If false (e.g. Guards, Farmers in repose), the AI Component is allowed 
+## to run standard fallback village routines in between work cycles.
+@export var overrides_wandering: bool = false
+
+
 ## Contract: Evaluates environmental states and executes specialized logical 
 ## routines for the host character.
 ## [param host]: The physical character controller node of the entity.

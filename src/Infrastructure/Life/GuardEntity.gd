@@ -20,6 +20,13 @@ extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/guard/guard_base.fbx"
 
+# ==============================================================================
+# MIXAMO ORIENTATION COMPENSATOR (OCP SHIELD)
+# Compensates for this specific FBX skeleton export direction by adding 180 degrees
+# of offset, aligning his face directly with his walking velocity.
+# ==============================================================================
+var gaze_rotation_offset: float = PI
+
 # Sibling node references
 var player: CharacterBody3D
 
@@ -62,7 +69,7 @@ func _setup_graphics_representation() -> void:
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
 	strategy.set("scale_multiplier", Vector3(0.8507, 0.8507, 0.8507))
-	strategy.set("position_offset", Vector3.ZERO)
+	strategy.set("position_offset", Vector3(0, 0, 0))
 	strategy.set("rotation_offset", Vector3(0, 180, 0))
 	
 	# Load concrete animation tracks
@@ -85,13 +92,14 @@ func _has_ui_decorations() -> bool:
 
 
 func _can_socialize() -> bool:
-	# ==========================================================================
-	# UNTYPED DECLARATION WARNING RESOLUTION
-	# Explicitly initialized with null and typecast metadata outputs statically
-	# ==========================================================================
 	var combat_target: CharacterBody3D = null
 	if has_meta(GuardAIBehavior.META_TARGET):
-		combat_target = get_meta(GuardAIBehavior.META_TARGET) as CharacterBody3D
+		var target_val: Variant = get_meta(GuardAIBehavior.META_TARGET)
+		if typeof(target_val) == TYPE_OBJECT:
+			var target_obj: Object = target_val
+			if is_instance_valid(target_obj) and target_obj is CharacterBody3D:
+				combat_target = target_obj as CharacterBody3D
+				
 	return combat_target == null
 
 

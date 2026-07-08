@@ -8,9 +8,9 @@
 # - Single Responsibility Principle (SRP): Centralizes all visual mesh rotations 
 #   and joint translations, keeping AI strategies completely free of rendering code.
 # - Open-Closed Principle (OCP): Distinguishes humanoids from fauna dynamically 
-#   using role codes, applying corrections selectively without modifying scene files.
+#   and supports custom rotation offsets per entity, preventing mesh-alignment conflicts.
 # - Liskov Substitution Principle (LSP): Works transparently across all 
-#   scene-based or procedurally chiseled passive/hostile hosts.
+#   scene-based or procedurally chiseled passive hosts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name NPCVisualComponent
@@ -192,37 +192,45 @@ func _process_procedural_animations(delta: float) -> void:
 	var wander_dir := Vector3.ZERO
 	var is_talking: bool = _host.get("is_talking") == true
 	
-	# ==========================================================================
-	# CENTRALIZED DIRECTION CALCULATOR (SRP COMPLIANCE)
-	# Extracts look vectors from active conversational locks or AI movement components
-	# ==========================================================================
+	# Determine logical direction or use the real velocity of the physics frame
 	if is_talking and is_instance_valid(_host.get("_talking_partner")):
 		var partner: CharacterBody3D = _host.get("_talking_partner") as CharacterBody3D
 		if is_instance_valid(partner):
 			wander_dir = (partner.global_position - _host.global_position).normalized()
-	elif is_instance_valid(_ai_component):
-		wander_dir = _ai_component.wander_direction
-		
-	wander_dir.y = 0.0 # Restrict vertical tilting during rotations
+	else:
+		var flat_velocity := Vector2(_host.velocity.x, _host.velocity.z)
+		if flat_velocity.length_squared() > 0.05:
+			wander_dir = Vector3(flat_velocity.x, 0.0, flat_velocity.y).normalized()
+		elif is_instance_valid(_ai_component):
+			wander_dir = _ai_component.wander_direction
+			
+		if is_instance_valid(_ai_component):
+			active_task = _ai_component.current_task
+			
+	wander_dir.y = 0.0 # Maintain vertical orientation
 	var is_moving: bool = wander_dir.length_squared() > 0.01
 	
 	# ==========================================================================
-	# SMOOTH ROTATION ENGINE with ROLE-BASED OCP SHIELD
-	# Humanoids rotate and apply a 180 Y offset to align Mixamo Z-Forward skeletons.
-	# Quadrupeds and marine fauna rotate natively, bypassing the PI offset.
+	# SMOOTH LERP ROTATION ENGINE (lerp_angle)
 	# ==========================================================================
 	if is_instance_valid(visual_root) and is_moving:
-		var target_look := _host.global_position + wander_dir.normalized()
-		visual_root.look_at(target_look, Vector3.UP)
+		var target_angle := atan2(wander_dir.x, wander_dir.z)
 		
-		# ======================================================================
-		# STRICT STATIC TYPE DECLARATION (TYPE INFERENCE RESOLUTION)
-		# Explicitly declared as boolean and cast the dynamic return to integer
-		# ======================================================================
+		# Humanoids have a 180 Y offset due to Mixamo imports facing +Z
 		var is_humanoid: bool = _host.has_method("_get_humanoid_role") and int(_host.call("_get_humanoid_role")) >= 0
 		if is_humanoid:
-			visual_root.rotate_y(PI)
+			target_angle += PI
 			
+		# ======================================================================
+		# DYNAMIC OVERRIDE EXTRACTION (OCP SHIELD)
+		# Checks if the host entity script defines a custom model Y-axis offset,
+		# allowing unique Mixamo imports to calibrate orientation seamlessly.
+		# ======================================================================
+		if "gaze_rotation_offset" in _host:
+			target_angle += float(_host.get("gaze_rotation_offset"))
+			
+		# Interpolate angle smoothly
+		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, target_angle, delta * 12.0)
 		visual_root.rotation.x = 0.0
 		visual_root.rotation.z = 0.0
 		

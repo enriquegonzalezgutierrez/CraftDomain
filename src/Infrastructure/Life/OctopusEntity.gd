@@ -1,28 +1,26 @@
 # ==============================================================================
 # Project: CraftDomain
 # Layer: Infrastructure (Physics & Presentation)
-# Description: Physics controller for the strictly aquatic Deep-water Octopus,
-#              designed to be attached to a '.tscn' scene file.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively physical
-#                aquatic movement loops and life-signals, delegating visual
-#                and collision parameters to the Godot Editor.
-#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity
-#                and satisfies the base contracts without code-based instantiation.
-#              CIRCULAR DEPENDENCY SHIELD:
-#              - Changed '_get_habitat()' return signature to 'int' to safely break
-#                the GDScript compilation lock with MobRegistry class name.
-#              STABILIZATION:
-#              - Removed redundant signal connections already handled in parent class.
+# Class: OctopusEntity
+# Description: Physical character controller representing a passive aquatic Octopus.
+#              Schedules animation rigging, handles water bounds, and registers its 
+#              specialized FaunaAIBehavior strategy dynamically on ready.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively physical body 
+#   water translations and target visual attachments, delegating movement and 
+#   swim logic to the injected FaunaAIBehavior.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   parent class, utilizing its base physics processes and gravity vectors transparently.
+# - Dependency Inversion Principle (DIP): Receives its behavioral decision tree 
+#   via dynamic strategy injection on startup.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/OctopusEntity.gd
 # ==============================================================================
 class_name OctopusEntity
 extends PassiveEntity
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Octopuses spawn with 3 Hearts of health (6 HP)
+	# Octopus spawns with 3 Hearts of health (6 HP)
 	super(spawn_pos, 6)
 	name = "Entity_OCTOPUS"
 
@@ -32,11 +30,22 @@ func _ready() -> void:
 	add_to_group("passives")
 	
 	# Cache component references pre-configured in the scene
-	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
 	# Fetch nameplate configurations if available
 	_setup_nameplate_height()
+	
+	# ==========================================================================
+	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
+	# Programmatically instantiates NPCAIComponent if missing from old scenes
+	# ==========================================================================
+	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
+	if not is_instance_valid(ai_component):
+		ai_component = NPCAIComponent.new()
+		add_child(ai_component)
+		
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = FaunaAIBehavior.new()
 
 
 ## Bypasses old procedural representation compiling
@@ -53,26 +62,21 @@ func _setup_nameplate_height() -> void:
 		
 	_setup_nameplate()
 	
-	# Aligns nameplate correctly above the visual model
 	if is_instance_valid(_nameplate):
 		_nameplate.position.y = _collision_height + 0.35
 
 
-# ==============================================================================
-# CIRCULAR SHIELD: Return int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
-# This perfectly complies with LSP overrides and stops circular import compilation deadlocks.
-# ==============================================================================
 func _get_habitat() -> int:
-	return 2 # Equivalent to MobRegistry.Habitat.AQUATIC
+	return 2 # AQUATIC
 
 
 func _drop_loot(inv: IInventory) -> void:
-	# Item ID 7: Sand Block (acting as sea-debris loot)
+	# Drops 1x Sand Block
 	inv.add_item(7, 1)
 
 
 func _is_avian() -> bool:
-	return true # Activates slight swimming tilts
+	return true # Activates slight procedural swim/crawl tilts
 
 
 func _can_socialize() -> bool:

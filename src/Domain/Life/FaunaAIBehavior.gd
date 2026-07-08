@@ -27,6 +27,14 @@ const META_PANIC_TIMER := "fauna_panic_timer"
 const META_STUCK_TIMER := "fauna_stuck_timer"
 
 
+func _init() -> void:
+	# ==========================================================================
+	# OCP FORCEFIELD OVERRIDE
+	# Wildlife completely intercepts movement, bypassing civilian schedules
+	# ==========================================================================
+	overrides_wandering = true
+
+
 ## Concrete Implementation: Controls wildlife grazing and high-frequency panic paths
 func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: float) -> void:
 	var ai := ai_component as NPCAIComponent

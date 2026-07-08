@@ -3,15 +3,15 @@
 # Layer: Infrastructure (AI Logic)
 # Class: NPCAIComponent
 # Description: Refactored AI component managing task timers, obstacle avoidance, 
-#              and dynamic behavior delegation with an accelerated activity engine.
+#              and dynamic behavior delegation with inertia dampening.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Acts strictly as the task timer and 
 #   coordination hub, delegating domain-specific decision trees to the injected 
 #   IAIBehavior strategy.
 # - Open-Closed Principle (OCP): Open for extension by accepting any subclass of 
 #   IAIBehavior dynamically, while remaining closed to direct modifications.
-# - Liskov Substitution Principle (LSP): Fully supports a default fallback behavior 
-#   loop if no strategy is injected, ensuring uniform state-machine safety.
+# - Liskov Substitution Principle (LSP): Dynamically falls back to standard village 
+#   social and wandering routines if the active strategy is currently in repose.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name NPCAIComponent
@@ -94,7 +94,10 @@ func process_ai(delta: float) -> void:
 	if not is_instance_valid(_host):
 		return
 		
-	# Skip standard state-machine calculations if the NPC is locked in dialog
+	# ==========================================================================
+	# DIALOG LOCK INERTIA DAMPENING (BUG FIX)
+	# Explicitly halts physical movement vectors when locked in conversational states
+	# ==========================================================================
 	if _host.get("is_talking") == true:
 		if current_task != TaskState.IDLE:
 			print("[AI DEBUG] ", _host.name, " dialog lock activated, forcing IDLE state.")
@@ -102,6 +105,8 @@ func process_ai(delta: float) -> void:
 		wander_direction = Vector3.ZERO
 		stuck_timer = 0.0
 		_active_path.clear()
+		_host.velocity.x = 0.0
+		_host.velocity.z = 0.0
 		return
 
 	# Always tick timers continuously in real-time
@@ -122,7 +127,13 @@ func process_ai(delta: float) -> void:
 	# ==========================================================================
 	if active_behavior != null:
 		active_behavior.evaluate_and_execute(_host, self, delta)
-		return
+		
+		# DYNAMIC DELEGATION SHIELD
+		var overrides: bool = active_behavior.get("overrides_wandering") == true
+		if overrides or current_task == TaskState.WORKING:
+			_process_movement_avoidance(delta)
+			_apply_movement_vectors()
+			return
 
 	# ==========================================================================
 	# 3. DYNAMIC AI TICK THROTTLING FOR FALLBACK BEHAVIOR (LOD AI)
@@ -199,31 +210,41 @@ func process_ai(delta: float) -> void:
 		# C. Check Player and Peer Social Interaction with cooldown limits (Hysteresis)
 		var can_socialize: bool = _host.has_method("_can_socialize") and _host.call("_can_socialize") as bool
 		
+		# Dynamic compositions locator: safely fetch player via parent coordinator
+		var actual_player: CharacterBody3D = null
+		if is_instance_valid(world_node) and "player" in world_node:
+			actual_player = world_node.get("player") as CharacterBody3D
+			
 		if can_socialize and social_cooldown <= 0.0 and current_task != TaskState.PANIC and current_task != TaskState.GREETING and current_task != TaskState.CHATTIING:
-			if dist_sq <= GREET_DISTANCE_SQ: 
-				if randf() < 0.25:
+			if is_instance_valid(actual_player):
+				var dist_p_sq := _host.global_position.distance_squared_to(actual_player.global_position)
+				if dist_p_sq <= GREET_DISTANCE_SQ: 
 					print("[AI DEBUG] ", _host.name, " proximity greeting triggered with Player.")
 					current_task = TaskState.GREETING
 					_active_path.clear()
-					var look_dir := (player_node.global_position - _host.global_position).normalized()
+					var look_dir := (actual_player.global_position - _host.global_position).normalized()
 					look_dir.y = 0
 					if look_dir != Vector3.ZERO:
 						wander_direction = look_dir
 					task_timer = randf_range(2.0, 4.0)
 					social_cooldown = SOCIAL_COOLDOWN_INTERVAL
-			else:
-				var closest_peer := _detect_closest_peer_npc()
-				if closest_peer != null:
-					if randf() < 0.15:
-						print("[AI DEBUG] ", _host.name, " proximity chatter triggered with peer: ", closest_peer.name)
-						current_task = TaskState.CHATTIING
-						_active_path.clear()
-						var look_dir := (closest_peer.global_position - _host.global_position).normalized()
-						look_dir.y = 0
-						if look_dir != Vector3.ZERO:
-							wander_direction = look_dir
-						task_timer = randf_range(2.0, 4.0)
-						social_cooldown = SOCIAL_COOLDOWN_INTERVAL
+					# ==========================================================
+					# GREETING DE-ACCELERATION FIX
+					# Removed return to allow the tick flow to run and stop motion
+					# ==========================================================
+					
+			var closest_peer := _detect_closest_peer_npc()
+			if closest_peer != null:
+				if randf() < 0.15:
+					print("[AI DEBUG] ", _host.name, " proximity chatter triggered with peer: ", closest_peer.name)
+					current_task = TaskState.CHATTIING
+					_active_path.clear()
+					var look_dir := (closest_peer.global_position - _host.global_position).normalized()
+					look_dir.y = 0
+					if look_dir != Vector3.ZERO:
+						wander_direction = look_dir
+					task_timer = randf_range(2.0, 4.0)
+					social_cooldown = SOCIAL_COOLDOWN_INTERVAL
 
 	if current_task == TaskState.WANDERING or current_task == TaskState.PANIC:
 		if not _is_direction_safe(wander_direction):
@@ -351,11 +372,6 @@ func _select_next_random_task() -> void:
 	var roll := randf()
 	var old_task := current_task
 	
-	# ==========================================================================
-	# DYNAMIC ACTIVITY BALANCE (UX ENHANCEMENT)
-	# WANDERING increased to 70% to guarantee continuous village activity.
-	# IDLE and EXAMINING are shortened significantly to prevent static freeze loops.
-	# ==========================================================================
 	if roll < 0.70: # 70% chance to WALK actively
 		current_task = TaskState.WANDERING
 		_active_path.clear()

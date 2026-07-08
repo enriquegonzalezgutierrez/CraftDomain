@@ -1,27 +1,25 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure UI controller representing an interactive, 
-#              glassmorphic bottom-docked dialogue overlay with branching options.
+# Layer: Infrastructure (User Interface / Dialogs)
+# Class: DialogueOverlay
+# Description: Bottom-docked dialogue overlay with branching choice buttons, 
+#              responsive grids, and key-close signal bindings.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Responsible only for
-#   laying out, styling, and rendering dialogue choices.
-# - Open-Closed Principle (OCP) & i18n: Uses Godot's tr() lookup 
-#   on all name labels, speech text, and option texts to support 
-#   seamless multi-language localization.
-# - Dependency Inversion Principle (DIP) & Strict Typing:
-#   * Completely removed loose dynamic `.get()` lookups. Operates strictly on 
-#     safely cast `DialogueNode` and `DialogueChoice` classes to guarantee 
-#     compile-time type checking and zero dynamic Variant warnings.
+# - Single Responsibility Principle (SRP): Handles exclusively dialogue layout 
+#   renderings, delegating state management and transactions to DialogueManager.
+# - Open-Closed Principle (OCP): i18n localized text lines automatically query 
+#   translation dictionaries without hardcoding strings.
+# - Liskov Substitution Principle (LSP): Inherits cleanly from Godot Panel Control, 
+#   satisfying focus and viewport boundaries natively.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/DialogueOverlay.gd
 # ==============================================================================
 class_name DialogueOverlay
 extends Panel
 
-## Emitted when the player clicks an option to navigate to a new node.
+## Emitted when the player clicks an option to navigate to a new node
 signal choice_selected(target_node_id: String)
 
-## Emitted when the dialogue sequence ends and closes.
+## Emitted when the dialogue sequence ends and closes
 signal dialogue_closed
 
 var _panel_container: Panel
@@ -40,7 +38,7 @@ func _ready() -> void:
 	_setup_dialogue_ui()
 
 
-## Programmatically sets up the dialogue panel card layout.
+## Programmatically sets up the dialogue panel card layout
 func _setup_dialogue_ui() -> void:
 	_panel_container = Panel.new()
 	_panel_container.name = "DialogueCard"
@@ -126,7 +124,7 @@ func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 		push_error("[DialogueOverlay ERROR] Passed resource is not a valid DialogueNode instance.")
 		return
 		
-	# --- PLAY DIALOGUE CHIRP SFX OBSERVER (Milestone 10) ---
+	# Play dynamic audio chirp
 	AudioService.play_sfx_static("npc_chat")
 		
 	# Update text fields (running speaker and text through tr() lookup)
@@ -139,7 +137,6 @@ func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 		
 	# Dynamically populate option buttons extracting values safely with strict typing
 	if typed_node.choices.size() > 0:
-		# FIX: Added explicit static typing `Resource` to loop iterator
 		for choice_res: Resource in typed_node.choices:
 			var choice := choice_res as DialogueChoice
 			if choice != null:
@@ -156,7 +153,7 @@ func load_dialogue_node(node: Resource, speaker_name: String) -> void:
 		_choices_container.add_child(close_btn)
 
 
-## Builds and configures a responsive choice button.
+## Builds and configures a responsive choice button
 func _create_choice_button(choice: DialogueChoice) -> Button:
 	var btn := Button.new()
 	
@@ -181,7 +178,7 @@ func _create_choice_button(choice: DialogueChoice) -> Button:
 	return btn
 
 
-## Configures tactile button animations and custom styling.
+## Configures tactile button animations and custom styling
 func _setup_button_style(btn: Button) -> void:
 	var style_normal := StyleBoxFlat.new()
 	style_normal.bg_color = Color(0.12, 0.12, 0.15, 0.7)
@@ -221,3 +218,17 @@ func _create_spacer(height: int) -> Control:
 	var s := Control.new()
 	s.custom_minimum_size = Vector2(0, height)
 	return s
+
+
+# ==============================================================================
+# VIEWPORT INPUT HANDLING (BUG FIX)
+# Captures standard cancel commands and safely triggers dialogue closed signals
+# ==============================================================================
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		# ======================================================================
+		# DIALOGUE RELEASE SIGNAL (BUG FIX)
+		# Corrected target signal to dialogue_closed to release NPC gaze locks
+		# ======================================================================
+		dialogue_closed.emit()

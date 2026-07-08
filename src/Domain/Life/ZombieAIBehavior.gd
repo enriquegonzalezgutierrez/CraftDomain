@@ -30,6 +30,14 @@ const META_COOLDOWN := "zombie_attack_cooldown"
 const META_STUCK_TIMER := "zombie_stuck_timer"
 
 
+func _init() -> void:
+	# ==========================================================================
+	# OCP FORCEFIELD OVERRIDE
+	# Hostiles completely intercept movement, bypassing generic civilian schedules
+	# ==========================================================================
+	overrides_wandering = true
+
+
 ## Concrete Implementation: Evaluates scent boundaries and drives aggressive pursuit
 func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: float) -> void:
 	var ai := ai_component as NPCAIComponent
@@ -130,11 +138,8 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 			stuck_timer = 0.0
 			host.set_meta(META_STUCK_TIMER, stuck_timer)
 
-	# ==========================================================================
-	# 3. APPLY DISPATCHED VELOCITY VECTORS (SRP MOVEMENT SEPARATION)
-	# Conflicting local look_at and rotate_y blocks have been pruned completely,
-	# offloading all visual alignments to the specialized presentation layer.
-	# ==========================================================================
+	# 3. APPLY DISPATCHED VELOCITY VECTORS AND AI COMPONENT UPDATE
+	# Decoupled visual mesh rotations are managed cleanly inside NPCVisualComponent.gd
 	if wander_dir != Vector3.ZERO:
 		var active_speed := SPEED_CHASE if is_tracking else SPEED_WANDER
 		host.velocity.x = wander_dir.x * active_speed
