@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://cowshcdd2ok63"]
+
+[ext_resource type="Script" uid="uid://byy621b8vwf30" path="res://src/Infrastructure/Life/GolemEntity.gd" id="1_golem"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://d75qu4hhrwmh" path="res://assets/models/mobs/golem.glb" id="4_glb"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_golem"]
+height = 3.4873047
+radius = 1.0668945
+
+[node name="GolemEntity" type="CharacterBody3D" unique_id=1050850655]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("1_golem")
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=479006488]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7563477, 0)
+shape = SubResource("CylinderShape3D_golem")
+
+[node name="NPCAIComponent" type="Node" parent="." unique_id=408930700]
+script = ExtResource("2_ai")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=1614283184]
+script = ExtResource("3_vis")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1153690745]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=334047307]
+
+[node name="golem" parent="Visuals/BodyBobJoint" unique_id=728753064 instance=ExtResource("4_glb")]
+transform = Transform3D(-1.7516, 0, -1.53133e-07, 0, 1.7516, 0, 1.53133e-07, 0, -1.7516, 0, 1.7509, 0)

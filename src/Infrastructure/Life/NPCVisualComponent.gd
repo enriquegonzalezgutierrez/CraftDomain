@@ -1,16 +1,17 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Presentation Component responsible for rendering voxel shapes, 
-#              eye-blinking cycles, and high-fidelity walk bobbing animations.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Isolates graphics and 
-#                procedural cosmetic calculations from physical and behavioral AI.
-#              GROUND CLIPPING FIXES:
-#              - Added a 2 cm baseline offset to `visual_root.position.y` to offset
-#                physics-body `safe_margin` indentation.
-#              - Shuffled the idle breathing sine wave to remain strictly non-negative.
+# Layer: Infrastructure (Presentation / Rigging)
+# Class: NPCVisualComponent
+# Description: Rigging component managing visual joints, parent bobbing, 
+#              gaze slerping, and role-based 180-degree rotation compensations.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Centralizes all visual mesh rotations 
+#   and joint translations, keeping AI strategies completely free of rendering code.
+# - Open-Closed Principle (OCP): Distinguishes humanoids from fauna dynamically 
+#   using role codes, applying corrections selectively without modifying scene files.
+# - Liskov Substitution Principle (LSP): Works transparently across all 
+#   scene-based or procedurally chiseled passive/hostile hosts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/NPCVisualComponent.gd
 # ==============================================================================
 class_name NPCVisualComponent
 extends Node
@@ -39,7 +40,7 @@ var _animation_time: float = 0.0
 var _host: CharacterBody3D
 var _ai_component: NPCAIComponent
 
-# STATIC VISUAL CACHE: Shared high-frequency pixel grain textures (Prevents lag)
+# Static visual cache for shared high-frequency pixel grain textures
 static var _shared_grain_texture: NoiseTexture2D = null
 
 
@@ -54,14 +55,28 @@ func _ready() -> void:
 
 
 func _setup_joints() -> void:
+	if is_instance_valid(_host):
+		if _host.has_node("Visuals"):
+			visual_root = _host.get_node("Visuals") as Node3D
+			if visual_root.has_node("BodyBobJoint"):
+				body_bob_node = visual_root.get_node("BodyBobJoint") as Node3D
+				
+				if body_bob_node.has_node("HumanHead"):
+					head_node = body_bob_node.get_node("HumanHead") as Node3D
+				elif body_bob_node.has_node("SheepHead"):
+					head_node = body_bob_node.get_node("SheepHead") as Node3D
+				elif body_bob_node.has_node("CowHead"):
+					head_node = body_bob_node.get_node("CowHead") as Node3D
+					
+				if is_instance_valid(head_node):
+					left_eye = head_node.get_node_or_null("LeftEye") as MeshInstance3D
+					right_eye = head_node.get_node_or_null("RightEye") as MeshInstance3D
+				return 
+
+	# Fallback: Create programmatically for procedural voxel villagers
 	visual_root = Node3D.new()
 	visual_root.name = "Visuals"
 	_host.add_child(visual_root)
-	
-	# Root-scaling based on the height variant
-	visual_root.scale = Vector3(1.0, variant_height_scale, 1.0)
-	
-	# GROUND CLIPPING OFFSET: Elevate the mesh by 2cm to clear the physics safe_margin
 	visual_root.position.y = 0.02
 	
 	body_bob_node = Node3D.new()
@@ -77,46 +92,39 @@ func _process(delta: float) -> void:
 	_process_procedural_animations(delta)
 
 
-## Generates a unique, stable color palette using the deterministic coordinate seed.
 func _generate_procedural_variant_palette() -> void:
 	var npc_seed: int = _host.get("npc_seed") if "npc_seed" in _host else 0
 	var generator := RandomNumberGenerator.new()
 	generator.seed = npc_seed
 	
-	# 1. Procedural Skin Tones
 	var skins := [
-		Color(0.95, 0.75, 0.65), # Peach
-		Color(0.85, 0.65, 0.55), # Tanned
-		Color(0.92, 0.70, 0.58), # Light olive
-		Color(0.65, 0.45, 0.35)  # Brown
+		Color(0.95, 0.75, 0.65),
+		Color(0.85, 0.65, 0.55),
+		Color(0.92, 0.70, 0.58),
+		Color(0.65, 0.45, 0.35)
 	]
 	variant_skin_color = skins[generator.randi() % skins.size()]
 	
-	# 2. Procedural Clothing Tones
 	var clothes := [
-		Color(0.35, 0.22, 0.15), # Classic Brown
-		Color(0.20, 0.32, 0.45), # Slate Blue
-		Color(0.25, 0.45, 0.28), # Forest Green
-		Color(0.50, 0.22, 0.20), # Crimson
-		Color(0.42, 0.32, 0.48)  # Purple
+		Color(0.35, 0.22, 0.15),
+		Color(0.20, 0.32, 0.45),
+		Color(0.25, 0.45, 0.28),
+		Color(0.50, 0.22, 0.20),
+		Color(0.42, 0.32, 0.48)
 	]
 	variant_clothing_color = clothes[generator.randi() % clothes.size()]
 	
-	# 3. Procedural Hair Tones
 	var hairs := [
-		Color(0.18, 0.12, 0.08), # Dark Brown
-		Color(0.08, 0.08, 0.08), # Charcoal Black
-		Color(0.82, 0.68, 0.32), # Golden Blonde
-		Color(0.72, 0.35, 0.12)  # Ginger Red
+		Color(0.18, 0.12, 0.08),
+		Color(0.08, 0.08, 0.08),
+		Color(0.82, 0.68, 0.32),
+		Color(0.72, 0.35, 0.12)
 	]
 	variant_hair_color = hairs[generator.randi() % hairs.size()]
 	
-	# 4. Height scaling variance
 	variant_height_scale = generator.randf_range(0.92, 1.08)
 
 
-## Compiles and caches a tiny, high-frequency simplex noise grain texture 
-## once to establish unified voxel texturing without overhead.
 func _preload_shared_grain_texture() -> void:
 	if _shared_grain_texture != null:
 		return
@@ -133,7 +141,6 @@ func _preload_shared_grain_texture() -> void:
 	_shared_grain_texture.noise = noise
 
 
-## Instantiates, styles, and textures a 3D box programmatically.
 func create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -148,7 +155,7 @@ func create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> 
 	
 	if _shared_grain_texture != null:
 		mat.albedo_texture = _shared_grain_texture
-		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST # Pixelated retro look
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 		mat.albedo_texture_force_srgb = true
 		
 	mesh_instance.material_override = mat
@@ -178,36 +185,46 @@ func _set_eyes_vertical_scale(y_scale: float) -> void:
 		right_eye.scale.y = y_scale
 
 
-## Procedural Animating Cycle (Decoupled from standard Physics Process)
 func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
 	
 	var active_task: int = NPCAIComponent.TaskState.IDLE
 	var wander_dir := Vector3.ZERO
-	if is_instance_valid(_ai_component):
-		active_task = _ai_component.current_task
+	var is_talking: bool = _host.get("is_talking") == true
+	
+	# ==========================================================================
+	# CENTRALIZED DIRECTION CALCULATOR (SRP COMPLIANCE)
+	# Extracts look vectors from active conversational locks or AI movement components
+	# ==========================================================================
+	if is_talking and is_instance_valid(_host.get("_talking_partner")):
+		var partner: CharacterBody3D = _host.get("_talking_partner") as CharacterBody3D
+		if is_instance_valid(partner):
+			wander_dir = (partner.global_position - _host.global_position).normalized()
+	elif is_instance_valid(_ai_component):
 		wander_dir = _ai_component.wander_direction
 		
-	var is_talking: bool = _host.get("is_talking") == true
-	var is_moving: bool = (active_task == NPCAIComponent.TaskState.WANDERING or 
-							active_task == NPCAIComponent.TaskState.PANIC or 
-							active_task == NPCAIComponent.TaskState.WORKING)
+	wander_dir.y = 0.0 # Restrict vertical tilting during rotations
+	var is_moving: bool = wander_dir.length_squared() > 0.01
 	
-	# A. Gaze Look Lock Rotation slerping
-	if is_talking and is_instance_valid(_host.get("_talking_partner")):
-		var partner: CharacterBody3D = _host.get("_talking_partner")
-		var look_dir := (partner.global_position - _host.global_position).normalized()
-		look_dir.y = 0.0
-		if look_dir.length_squared() > 0.01:
-			var target_look := _host.global_position + look_dir
-			visual_root.look_at(target_look, Vector3.UP)
-			visual_root.rotation.x = 0
-			visual_root.rotation.z = 0
-	elif is_instance_valid(visual_root) and wander_dir.length_squared() > 0.05:
-		var target_look := _host.global_position + wander_dir
+	# ==========================================================================
+	# SMOOTH ROTATION ENGINE with ROLE-BASED OCP SHIELD
+	# Humanoids rotate and apply a 180 Y offset to align Mixamo Z-Forward skeletons.
+	# Quadrupeds and marine fauna rotate natively, bypassing the PI offset.
+	# ==========================================================================
+	if is_instance_valid(visual_root) and is_moving:
+		var target_look := _host.global_position + wander_dir.normalized()
 		visual_root.look_at(target_look, Vector3.UP)
-		visual_root.rotation.x = 0
-		visual_root.rotation.z = 0
+		
+		# ======================================================================
+		# STRICT STATIC TYPE DECLARATION (TYPE INFERENCE RESOLUTION)
+		# Explicitly declared as boolean and cast the dynamic return to integer
+		# ======================================================================
+		var is_humanoid: bool = _host.has_method("_get_humanoid_role") and int(_host.call("_get_humanoid_role")) >= 0
+		if is_humanoid:
+			visual_root.rotate_y(PI)
+			
+		visual_root.rotation.x = 0.0
+		visual_root.rotation.z = 0.0
 		
 	# B. Body Bouncing Bobbing Calculations
 	if is_instance_valid(body_bob_node):
@@ -216,14 +233,13 @@ func _process_procedural_animations(delta: float) -> void:
 			var bounce_height := 0.05 if _host.call("_is_avian") else 0.035
 			body_bob_node.position.y = abs(sin(_animation_time * speed_mult)) * bounce_height
 		else:
-			# Shift the sine wave up so it oscillates between 0.0 and +1.5cm, preventing ground clipping
 			var breathe_offset: float = (sin(_animation_time * 2.0) + 1.0) * 0.0075
 			body_bob_node.position.y = lerp(body_bob_node.position.y, breathe_offset, delta * 5.0)
 			
 	# C. Specialized Joint Sways (Head & Arms)
 	if active_task == NPCAIComponent.TaskState.GREETING or active_task == NPCAIComponent.TaskState.CHATTIING or is_talking:
 		if is_instance_valid(head_node):
-			head_node.rotation.x = sin(_animation_time * 6.0) * 0.15 # Node Nods head
+			head_node.rotation.x = sin(_animation_time * 6.0) * 0.15
 			head_node.rotation.y = 0.0
 		if is_instance_valid(arms_node):
 			arms_node.rotation.x = 0.0

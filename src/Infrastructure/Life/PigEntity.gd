@@ -1,69 +1,63 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a passive Pig.
-#              SOLID COMPLIANCE: 
-#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity, 
-#                matching the base collision, gravity, and lifecycle contracts.
-#              - Single Responsibility Principle (SRP): Delegates visual rendering 
-#                and skeletal animations entirely to the FaunaVisualRepresentation strategy.
-#              - Dependency Inversion Principle (DIP): Independent of physical rendering,
-#                binding visuals purely to the IEntityVisualRepresentation abstraction.
-# ROTATION CALIBRATION (LSP Fix):
-#              - Corrected 'rotation_offset' from Y=-90 to Y=90 to rotate the visual 
-#                mesh exactly 180 degrees, ensuring the pig faces and walks forward!
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/PigEntity.gd
+# Layer: Infrastructure (Physics & Presentation)
+# Description: Physics controller for the passive Pig, designed to be attached
+#              to a '.tscn' scene file.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Handles exclusively physical
+#                movement loops and life-signals, delegating visual design and
+#                collision parameters to the Godot Editor.
+#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity
+#                and satisfies the base contracts without code-based instantiation.
+#              STABILIZATION:
+#              - Removed redundant signal connections already handled in parent class.
 # ==============================================================================
 class_name PigEntity
 extends PassiveEntity
 
-const MODEL_PATH := "res://assets/models/mobs/pig.glb"
 
-
-func _init(spawn_pos: Vector3) -> void:
+func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	# Pigs spawn with 2 Hearts of health (4 HP)
 	super(spawn_pos, 4)
 	name = "Entity_PIG"
 
 
-# ==============================================================================
-# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
-# ==============================================================================
+func _ready() -> void:
+	# HIGH PERFORMANCE: Register in the passive group for target lookups
+	add_to_group("passives")
+	
+	# Cache component references pre-configured in the scene
+	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
+	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
+	
+	# Fetch nameplate configurations if available
+	_setup_nameplate_height()
 
-## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
+
+## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
-	var strategy := FaunaVisualRepresentation.new()
-	strategy.model_path = MODEL_PATH
-	
-	# Scale and position offsets calculated via GLB Analyzer V5
-	strategy.scale_multiplier = Vector3(9.4485, 9.4485, 9.4485)
-	strategy.position_offset = Vector3(0.0, 0.0102, 0.0)
-	strategy.rotation_offset = Vector3(0, 90, 0) # Corrected Y-rotation so the pig faces forward
-	
-	# Physical collision dimensions (0.75m height)
-	strategy.collision_size = Vector3(0.6, 0.75, 0.65)
-	strategy.collision_position = Vector3(0.0, 0.375, 0.0)
-	
-	# Baked built-in animation track names inside pig.glb
-	strategy.anim_idle_name = "idle"
-	strategy.anim_walk_name = "walk"
-	
-	# Inject strategy into parent coordinator
-	visual_representation = strategy
-	visual_representation.build_representation(self, visual_component.body_bob_node)
+	pass
 
 
-# ==============================================================================
-# COMBAT & LOOT LOGIC
-# ==============================================================================
+## Decoupled height calculation sourcing boundaries directly from the scene setup
+func _setup_nameplate_height() -> void:
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
+	if is_instance_valid(col) and col.shape is CylinderShape3D:
+		var cylinder := col.shape as CylinderShape3D
+		_collision_height = cylinder.height
+		
+	_setup_nameplate()
+	
+	# Aligns nameplate correctly above the visual model
+	if is_instance_valid(_nameplate):
+		_nameplate.position.y = _collision_height + 0.35
 
-## Override: Drops 1x Fried Chicken (Meat proxy) on death
+
 func _drop_loot(inv: IInventory) -> void:
 	# Item ID 16: Fried Chicken
 	inv.add_item(16, 1)
 
 
-## Flag used by the animation ticker to configure bouncy walks (Disabled for quadrupeds)
 func _is_avian() -> bool:
 	return false
 

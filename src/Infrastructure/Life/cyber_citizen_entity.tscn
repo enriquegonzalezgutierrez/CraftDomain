@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://4b255x7twh8e"]
+
+[ext_resource type="Script" uid="uid://bp4mrbhf6ctlm" path="res://src/Infrastructure/Life/CyberCitizenEntity.gd" id="1_cyber"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="2_vis"]
+[ext_resource type="PackedScene" uid="uid://b0oh45rlyjwi" path="res://assets/models/mobs/cyber/cyber_base.fbx" id="3_fbx"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_cyber"]
+height = 1.6307617
+radius = 0.22558594
+
+[node name="CyberCitizenEntity" type="CharacterBody3D" unique_id=1160171945]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("1_cyber")
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=72811319]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8289551, 0)
+shape = SubResource("CylinderShape3D_cyber")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=1123433806]
+script = ExtResource("2_vis")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=545754684]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1800702999]
+
+[node name="cyber_base" parent="Visuals/BodyBobJoint" unique_id=2098929567 instance=ExtResource("3_fbx")]
+transform = Transform3D(-0.8856, 0, -7.74209e-08, 0, 0.8856, 0, 7.74209e-08, 0, -0.8856, 0, 0, 0)

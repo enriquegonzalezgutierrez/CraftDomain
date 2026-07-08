@@ -1,42 +1,23 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Abstract base class representing a physics-bound passive entity (NPC/Fauna).
-#              Schedules procedural walk cycles, spatial state-machines, and variety.
+# Layer: Infrastructure (Physics & Presentation Base)
+# Class: PassiveEntity
+# Description: Abstract base class representing physical entities. Manages movement 
+#              vectors, gravity calculations, safe boundary checks, 
+#              and dynamic nameplate/quest-arrow UI attachments with verbose logs.
 # SOLID COMPLIANCE:
-# - Liskov Substitution Principle (LSP): Serves as a robust base 
-#   contract with safe default virtual values for subclasses. 
-#   * RESOLVED FAUNA OVERHEAD: Added `_has_ui_decorations()` contract to prevent 
-#     wild animals from carrying or executing civilian dialogue/quest UI routines.
-# - Single Responsibility Principle (SRP): Decoupled into specialized 
-#   components, leaving this class strictly in charge of sliding physics.
-# - Dependency Inversion Principle (DIP): Visual structures are completely 
-#   delegated to the injected `IEntityVisualRepresentation` strategy resource.
-# PHYSICS LOD & SLEEP ENGINE (Phase 5 Optimization):
-# - Implemented a time-sliced proximity sweep that checks the distance to the player 
-#   only once every 15 physics frames (60 FPS / 15 = 4 times per second).
-# - If the entity is further than 40 meters, it enters a physical sleep state, 
-#   bypassing Godot's heavy `move_and_slide()` solver and AI updates entirely.
-# - Added an immediate wake-up lock in `take_damage()` to prevent desync during combat.
-# GEOMETRIC & I18N NAMEPLATE BINDINGS:
-# - Added class-matching hooks inside `_setup_nameplate()` for newly unified hostiles 
-#   (Shark, Zombie, Goblin, Gargoyle) to bind them to their correct translation keys.
-# - Upgraded height formula: Sourced directly from the absolute world physical size 
-#   (`box_shape.size.y`) combined with positive visual displacements, completely 
-#   avoiding "double-dipping" scaling bugs on models with massive visual scaling factors (like the Pig).
-# ABSOLUTE BOUNDARY FORCEFIELD WITH VERTICAL COLUMN SCANNING:
-# - Implemented `_apply_absolute_boundary_forcefield(delta)` to project the 
-#   next immediate frame position of the mob.
-# - If a terrestrial mob is about to step off a cliff into AIR, the code performs 
-#   a fast downward vertical column scan.
-# - If liquid WATER or LAVA is detected at any height below before hitting solid ground, 
-#   the step is flagged as a boundary violation and horizontal velocity is nullified.
+# - Single Responsibility Principle (SRP): Handles exclusively physical motion loops 
+#   and environment boundary collisions, leaving logical tasks to composite elements.
+# - Liskov Substitution Principle (LSP): Serves as a robust contract. All concrete 
+#   mobs inherit from this class, satisfying base constraints without runtime crashes.
+# - Dependency Inversion Principle (DIP): Communicates with the player's grid 
+#   via the generic IInventory interface, shielding logic from concrete layouts.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/PassiveEntity.gd
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
 
-# Base physics movement constants
+# Base physical movement constants
 const BASE_SPEED: float = 1.3
 const JUMP_VELOCITY: float = 5.0
 
@@ -47,11 +28,11 @@ const ANIM_DIR := "res://assets/models/mobs/"
 var ai_component: NPCAIComponent
 var visual_component: NPCVisualComponent
 
-# Domain Model Composition (DDD)
+# Domain Model Composition (DDD Compliance)
 var domain_entity: VoxelEntity
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
-# original Spawn Point used to anchor human NPCs so they never get lost (Tethering)
+# Original Spawn Point used to anchor human NPCs so they never get lost (Tethering)
 var _spawn_point: Vector3
 
 # Dynamic floating Speech Bubble & Nameplate references
@@ -71,9 +52,7 @@ var visual_representation: IEntityVisualRepresentation
 # Cached height tracker for dynamic UI positioning
 var _collision_height: float = 1.5
 
-# ==============================================================================
-# CONVERSATION STATE MACHINE: Dynamic player gaze-lock variables
-# ==============================================================================
+# Conversation State Machine: Dynamic player gaze-lock variables
 var is_talking: bool = false
 var _talking_partner: CharacterBody3D = null
 
@@ -83,12 +62,42 @@ var _last_attacker: Node = null
 # Physics LOD status flag
 var _is_physically_sleeping: bool = false
 
+# Decoupled Translation Keys Dictionary (Zero direct child class references)
+const SCRIPT_TO_NAMEPLATE_KEY: Dictionary = {
+	"PigEntity": "NPC_NAME_PIG",
+	"ChickenEntity": "NPC_NAME_CHICKEN",
+	"SheepEntity": "NPC_NAME_SHEEP",
+	"CowEntity": "NPC_NAME_COW",
+	"TurtleEntity": "NPC_NAME_TURTLE",
+	"FoxEntity": "NPC_NAME_FOX",
+	"BirdEntity": "NPC_NAME_BIRD",
+	"CatEntity": "NPC_NAME_CAT",
+	"ParrotEntity": "NPC_NAME_PARROT",
+	"CrabEntity": "NPC_NAME_CRAB",
+	"ElephantEntity": "NPC_NAME_ELEPHANT",
+	"OctopusEntity": "NPC_NAME_OCTOPUS",
+	"RaccoonEntity": "NPC_NAME_RACCOON",
+	"GrowlitheEntity": "NPC_NAME_GROWLITHE",
+	"MonkeyEntity": "NPC_NAME_MONKEY",
+	"SharkEntity": "NPC_NAME_SHARK",
+	"GargoyleEntity": "NPC_NAME_GARGOYLE",
+	"GoblinEntity": "NPC_NAME_GOBLIN",
+	"HostileEntity": "NPC_NAME_ZOMBIE",
+	"GolemEntity": "NPC_NAME_GOLEM",
+	"VillagerEntity": "NPC_NAME_VILLAGER",
+	"GuardEntity": "NPC_NAME_GUARD",
+	"FarmerEntity": "NPC_NAME_FARMER",
+	"DruidEntity": "NPC_NAME_DRUID",
+	"MerchantEntity": "NPC_NAME_MERCHANT",
+	"CyberCitizenEntity": "NPC_NAME_ANDROID"
+}
+
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
 	_spawn_point = spawn_pos
 	
-	# Compute a deterministic seed based on coordinate hashes (stable on reloading)
+	# Compute a deterministic seed based on coordinate hashes
 	npc_seed = abs(int(spawn_pos.x * 73856093) ^ int(spawn_pos.z * 19349663))
 	
 	# Pure Domain Model initialization and signals binding
@@ -98,179 +107,55 @@ func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the passive group for O(1) targeting lookups
 	add_to_group("passives")
 	
-	# Programmatic component compositions (Decoupling God files)
-	ai_component = NPCAIComponent.new()
-	add_child(ai_component)
+	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
+	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
-	visual_component = NPCVisualComponent.new()
-	add_child(visual_component)
-	
-	# ==========================================================================
-	# DYNAMIC STRATEGY INJECTION & SOLID SEGREGATION (LSP COMPLIANCE)
-	# Speech bubbles and quest indicators are strictly reserved for civilians/protectors.
-	# ==========================================================================
-	var role := _get_humanoid_role()
-	
-	if role >= 0:
-		_setup_dynamic_visual_strategy(role)
-	else:
-		# Fallback for animals (Fauna)
-		_build_visual_representation()
-		
-	if _has_ui_decorations():
-		_setup_floating_bubble()
-		_setup_quest_arrow()
-		
-	# Setup physics Cylinder collision shape (OCP Wall Sliding Solution)
-	var col := CollisionShape3D.new()
-	col.name = "EntityCollider"
-	var cylinder_shape := CylinderShape3D.new()
-	
-	var size_scale := Vector3(1.0, visual_component.variant_height_scale, 1.0)
-	
-	# Query dynamic bounds from the injected strategy
-	var col_size := Vector3(0.6, 0.8, 0.6) # Fallback
-	var col_pos := Vector3(0.0, 0.4, 0.0) # Fallback
-	
-	if is_instance_valid(visual_representation):
-		col_size = visual_representation.get_collision_box_size()
-		col_pos = visual_representation.get_collision_box_position()
-	else:
-		col_size = _get_collision_box_size()
-		col_pos = _get_collision_box_position()
-		
-	# ==========================================================================
-	# UNIFIED PHYSICAL SCALING (OCP/LSP compliant):
-	# Collision sizes are now defined as absolute world-space physical bounds 
-	# within entity files, completely uncoupled from model scale multipliers.
-	# This protects smaller animals (like Pigs, Cats) from double-dipping scaling bugs.
-	# ==========================================================================
-	cylinder_shape.height = col_size.y * size_scale.y
-	cylinder_shape.radius = maxf(col_size.x, col_size.z) * 0.5 * size_scale.x
-	col.shape = cylinder_shape
-	
-	# ---> COLLISION CUSHION HOOK <---
-	var target_pos := col_pos * size_scale
-	target_pos.y -= 0.06 * size_scale.y
-	col.position = target_pos
-	
-	add_child(col)
-	
-	# ==========================================================================
-	# DYNAMIC COLLISION-AWARE ELEVATION & NAMEPLATE PIPELINE
-	# Combines physical cylinder height with positive visual Y-axis displacements, 
-	# preventing negative offsets (like Shark's -0.53m) from sinking the nameplate.
-	# ==========================================================================
-	var visual_offset_y := 0.0
-	if is_instance_valid(visual_representation) and "position_offset" in visual_representation:
-		visual_offset_y = visual_representation.position_offset.y
-		
-	_collision_height = (cylinder_shape.height + maxf(0.0, visual_offset_y))
-	_setup_nameplate() # Instantiate the nameplate above head
-	
-	# Symmetrical Stacking Offset Heights to prevent overlaps (only if UI is active)
-	if is_instance_valid(_bubble):
-		_bubble.position = Vector3(0.0, _collision_height + 0.45, 0.0) # Lifted to clear nameplate
-		
-	if is_instance_valid(_quest_arrow):
-		_quest_arrow.position = Vector3(0.0, _collision_height + 0.85, 0.0) # Lifted to clear bubble
-	# ==========================================================================
+	_setup_nameplate_height()
 
 
-## Sets up and injects the correct visual strategy based on disk file existence
-func _setup_dynamic_visual_strategy(role: int) -> void:
-	var role_name := _get_role_name_string(role)
-	var fbx_path := "res://assets/models/mobs/" + role_name + "/" + role_name + "_base.fbx"
-	
-	if FileAccess.file_exists(fbx_path):
-		# Instantiate and configure Skeletal Mixamo Strategy
-		var strategy := SkeletalVisualRepresentation.new()
-		strategy.base_model_path = fbx_path
-		strategy.scale_multiplier = _get_role_scale(role)
-		strategy.position_offset = Vector3(0.0, 0.0, 0.0)
-		strategy.rotation_offset = Vector3(0, 180, 0)
-		
-		# Asset paths mapped dynamically including the newly added jump track
-		strategy.anim_idle_path = ANIM_DIR + role_name + "/" + role_name + "_idle.fbx"
-		strategy.anim_walk_path = ANIM_DIR + role_name + "/" + role_name + "_walk.fbx"
-		strategy.anim_attack_path = ANIM_DIR + role_name + "/" + role_name + "_attack.fbx"
-		strategy.anim_panic_path = ANIM_DIR + role_name + "/" + role_name + "_panic.fbx"
-		strategy.anim_jump_path = ANIM_DIR + role_name + "/" + role_name + "_jump.fbx"
-		
-		visual_representation = strategy
-	else:
-		# Instantiate and configure Procedural Voxel Strategy
-		var strategy := ProceduralVoxelRepresentation.new()
-		strategy.role_type = role as ProceduralVoxelRepresentation.RoleType
-		visual_representation = strategy
-		
-	# Build the representation
-	if is_instance_valid(visual_representation):
-		visual_representation.build_representation(self, visual_component.body_bob_node)
-
-
-## Instantiates a native, high-performance Label3D billboard to display creature name
+## Instantiates a native Label3D billboard to display creature name above head
 func _setup_nameplate() -> void:
 	_nameplate = Label3D.new()
 	_nameplate.name = "FloatingNameplate"
 	
-	# ==========================================================================
-	# POLYMORPHIC TYPE PATTERN RESOLUTION
-	# Maps class patterns directly to stable translations keys to bypass scene-tree name-collisions.
-	# ==========================================================================
-	var key := "NPC_NAME_VILLAGER" # Default Fallback
-	
-	if self is VillagerEntity: key = "NPC_NAME_VILLAGER"
-	elif self is MerchantEntity: key = "NPC_NAME_MERCHANT"
-	elif self is GuardEntity: key = "NPC_NAME_GUARD"
-	elif self is FarmerEntity: key = "NPC_NAME_FARMER"
-	elif self is MinerEntity: key = "NPC_NAME_MINER"
-	elif self is DruidEntity: key = "NPC_NAME_DRUID"
-	elif self is CyberCitizenEntity: key = "NPC_NAME_ANDROID"
-	elif self is GolemEntity: key = "NPC_NAME_GOLEM"
-	elif self is PigEntity: key = "NPC_NAME_PIG"
-	elif self is ChickenEntity: key = "NPC_NAME_CHICKEN"
-	elif self is SheepEntity: key = "NPC_NAME_SHEEP"
-	elif self is CowEntity: key = "NPC_NAME_COW"
-	elif self is TurtleEntity: key = "NPC_NAME_TURTLE"
-	elif self is FoxEntity: key = "NPC_NAME_FOX"
-	elif self is BirdEntity: key = "NPC_NAME_BIRD"
-	elif self is CatEntity: key = "NPC_NAME_CAT"
-	elif self is ParrotEntity: key = "NPC_NAME_PARROT"
-	elif self is CrabEntity: key = "NPC_NAME_CRAB"
-	elif self is ElephantEntity: key = "NPC_NAME_ELEPHANT"
-	elif self is OctopusEntity: key = "NPC_NAME_OCTOPUS"
-	elif self is RaccoonEntity: key = "NPC_NAME_RACCOON"
-	elif self is GrowlitheEntity: key = "NPC_NAME_GROWLITHE"
-	elif self is MonkeyEntity: key = "NPC_NAME_MONKEY"
-	
-	# Newly refactored hostile subclasses bindings
-	elif self is SharkEntity: key = "NPC_NAME_SHARK"
-	elif self is GargoyleEntity: key = "NPC_NAME_GARGOYLE"
-	elif self is GoblinEntity: key = "NPC_NAME_GOBLIN"
-	elif self is HostileEntity: key = "NPC_NAME_ZOMBIE"
+	var script_name := ""
+	var active_script := get_script() as Script
+	if active_script != null:
+		script_name = active_script.resource_path.get_file().get_basename()
+		
+	var key: String = SCRIPT_TO_NAMEPLATE_KEY.get(script_name, "NPC_NAME_VILLAGER")
 	
 	_nameplate.text = tr(key).to_upper()
-	_nameplate.pixel_size = 0.005 # Crisp, matching speech bubble sizing scale
+	_nameplate.pixel_size = 0.005 
 	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_nameplate.no_depth_test = false # Occluded by solid blocks
+	_nameplate.no_depth_test = false 
 	_nameplate.render_priority = 5
 	
-	# Text styling and high-contrast outline
 	_nameplate.modulate = Color(1.0, 1.0, 1.0)
 	_nameplate.outline_modulate = Color(0, 0, 0)
 	_nameplate.outline_size = 5
 	
-	# Set position right above the model head (with a comfortable 35cm safety margin)
 	_nameplate.position = Vector3(0.0, _collision_height + 0.35, 0.0)
 	add_child(_nameplate)
 
 
+## Decoupled height calculation sourcing boundaries directly from the scene setup
+func _setup_nameplate_height() -> void:
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
+	if is_instance_valid(col) and col.shape is CylinderShape3D:
+		var cylinder := col.shape as CylinderShape3D
+		_collision_height = cylinder.height
+		
+	_setup_nameplate()
+	
+	if is_instance_valid(_nameplate):
+		_nameplate.position.y = _collision_height + 0.35
+
+
 func _build_visual_representation() -> void:
-	assert(false, "[PassiveEntity] _build_visual_representation() must be implemented by concrete subclass.")
+	pass
 
 
 func _get_collision_box_size() -> Vector3:
@@ -285,10 +170,6 @@ func _setup_floating_bubble() -> void:
 	pass
 
 
-# ==============================================================================
-# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
-# ==============================================================================
-
 func _get_humanoid_role() -> int:
 	return -1
 
@@ -297,13 +178,11 @@ func _has_ui_decorations() -> bool:
 	return _get_humanoid_role() >= 0
 
 
-func _get_habitat() -> MobRegistry.Habitat:
-	return MobRegistry.Habitat.TERRESTRIAL
+func _get_habitat() -> int:
+	return 0
 
 
-# ==============================================================================
-
-## Programmatically constructs and styles the 3D rotating quest arrow (PrismMesh)
+## Programmatically constructs the 3D rotating quest arrow (PrismMesh)
 func _setup_quest_arrow() -> void:
 	_quest_arrow = MeshInstance3D.new()
 	_quest_arrow.name = "FloatingQuestArrow"
@@ -312,7 +191,7 @@ func _setup_quest_arrow() -> void:
 	prism.size = Vector3(0.35, 0.45, 0.22)
 	
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.85, 0.2) # Golden Yellow
+	mat.albedo_color = Color(1.0, 0.85, 0.2)
 	mat.roughness = 0.1
 	mat.emission_enabled = true
 	mat.emission = Color(1.0, 0.85, 0.2)
@@ -325,9 +204,8 @@ func _setup_quest_arrow() -> void:
 	_quest_arrow.mesh = prism
 	_quest_arrow.rotation.z = PI
 	
-	# Default fallback height (will be overwritten dynamically in _ready())
 	_quest_arrow.position = Vector3(0.0, _collision_height + 1.15, 0.0)
-	_quest_arrow.visible = false # Hidden by default
+	_quest_arrow.visible = false
 	
 	add_child(_quest_arrow)
 
@@ -349,7 +227,7 @@ func stop_talking() -> void:
 		ai_component.task_timer = 1.0
 
 
-## Modified take_damage signature to track and remember the direct attacker Node
+## Tracks the direct attacker Node for karma deductions
 func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -> void:
 	if domain_entity.is_dead: 
 		return
@@ -359,7 +237,7 @@ func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -
 	if is_instance_valid(attacker):
 		_last_attacker = attacker
 		
-	# FORCE WAKE UP: Wakes up instantly on receiving damage or knockback
+	# Force LOD wake up on combat hit
 	_is_physically_sleeping = false
 		
 	velocity += knockback_force
@@ -369,36 +247,20 @@ func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
 	
-	# Force Panic state override on taking damage
 	if is_instance_valid(ai_component):
 		ai_component.current_task = NPCAIComponent.TaskState.PANIC
 		ai_component.task_timer = randf_range(3.0, 5.0)
 		var angle := randf() * TAU
 		ai_component.wander_direction = Vector3(cos(angle), 0, sin(angle))
 		
-	# Determine if the victim is a civilian to deduct reputation points
-	var is_civilian: bool = (
-		self is VillagerEntity or 
-		self is MerchantEntity or 
-		self is FarmerEntity or 
-		self is MinerEntity or 
-		self is DruidEntity or 
-		self is CyberCitizenEntity
-	)
+	var role := _get_humanoid_role()
+	var is_civilian: bool = (role == 0 or role == 1 or role == 3 or role == 4 or role == 5)
 	
-	# ==========================================================================
-	# PLAYER KARMA PUNISHMENT: DEDUCT ON DAMAGE (Phase 4)
-	# Hitting peaceful civilians deducts -15 points of reputation instantly
-	# ==========================================================================
 	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
 		var rep := VillageReputationService.instance
 		if is_instance_valid(rep):
 			rep.modify_reputation(-15)
 		
-	# ==========================================================================
-	# PROACTIVE COMBAT ALARM BROADCAST (Phase 3)
-	# Locate closest attacking zombie and notify nearby defenders through network
-	# ==========================================================================
 	var closest_attacker := _find_closest_hostile_threat()
 	if is_instance_valid(closest_attacker):
 		AlertNetworkService.broadcast_alarm(closest_attacker, global_position)
@@ -411,7 +273,7 @@ func _find_closest_hostile_threat() -> CharacterBody3D:
 		
 	var hostiles := get_tree().get_nodes_in_group("hostiles")
 	var closest: CharacterBody3D = null
-	var min_dist_sq := 64.0 # 8 meters squared sight limit
+	var min_dist_sq := 64.0
 	
 	for child: Node in hostiles:
 		if is_instance_valid(child) and child is CharacterBody3D:
@@ -430,11 +292,8 @@ func _find_closest_hostile_threat() -> CharacterBody3D:
 # ==============================================================================
 func _on_domain_entity_died() -> void:
 	_try_drop_player_loot()
-	
-	# HIGH PERFORMANCE: Unregister instantly from group on death
 	remove_from_group("passives")
 	
-	# 1. Disable physics and interactions instantly
 	set_physics_process(false)
 	var col := get_node_or_null("EntityCollider") as CollisionShape3D
 	if is_instance_valid(col):
@@ -446,38 +305,25 @@ func _on_domain_entity_died() -> void:
 	if is_instance_valid(_nameplate):
 		_nameplate.queue_free()
 		
-	# Unregister from active alert pools on death
 	var alert_net := AlertNetworkService.instance
 	if is_instance_valid(alert_net):
 		alert_net.unregister_defender(self)
 		
-	# ==========================================================================
-	# PLAYER KARMA PUNISHMENT: DEDUCT ON MURDER (Phase 4)
-	# Killing peaceful civilians deducts an additional -35 points (total -50)
-	# ==========================================================================
-	var is_civilian: bool = (
-		self is VillagerEntity or 
-		self is MerchantEntity or 
-		self is FarmerEntity or 
-		self is MinerEntity or 
-		self is DruidEntity or 
-		self is CyberCitizenEntity
-	)
+	var role := _get_humanoid_role()
+	var is_civilian: bool = (role == 0 or role == 1 or role == 3 or role == 4 or role == 5)
+	
 	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
 		var rep := VillageReputationService.instance
 		if is_instance_valid(rep):
 			rep.modify_reputation(-35)
 		
-	# 2. Spawn death particles (Smoke puff)
 	_spawn_death_particles()
 	
-	# 3. Animate visual components shrinking and spinning into oblivion
 	var death_tween := create_tween().set_parallel(true)
 	if is_instance_valid(visual_component) and is_instance_valid(visual_component.visual_root):
 		death_tween.tween_property(visual_component.visual_root, "scale", Vector3.ZERO, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 		death_tween.tween_property(visual_component.visual_root, "rotation:y", deg_to_rad(180), 0.25).set_trans(Tween.TRANS_SINE)
 		
-	# 4. Erase entity safely from memory
 	death_tween.chain().tween_callback(queue_free)
 
 
@@ -504,7 +350,7 @@ func _spawn_death_particles() -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.15, 0.15, 0.15)
 	var mat := ORMMaterial3D.new()
-	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8) # Smoke grey
+	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh.material = mat
 	particles.draw_pass_1 = mesh
@@ -527,17 +373,13 @@ func _try_drop_player_loot() -> void:
 				_drop_loot(inv)
 
 
-## Virtual Method (LSP): Subclasses override this to implement concrete drops.
 func _drop_loot(_inv: IInventory) -> void:
 	pass
 
 
 # ==============================================================================
-# ABSOLUTE BOUNDARY FORCEFIELD (Strict Habitat Prohibitions)
+# ABSOLUTE BOUNDARY FORCEFIELD (BUG FIX: Floor offset hysteresis & Avian check)
 # ==============================================================================
-
-## Symmetrical physical forcefield that cancels horizontal velocities 
-## if the next immediate projected position crosses habitat boundaries.
 func _apply_absolute_boundary_forcefield(delta: float) -> void:
 	var world_controller_ref := get_parent()
 	if not is_instance_valid(world_controller_ref) or not "world_state" in world_controller_ref:
@@ -547,84 +389,89 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 	if ws == null:
 		return
 		
-	# Project future step position
 	var next_pos := global_position + velocity * delta
-	var next_coord := Vector3i(floori(next_pos.x), floori(next_pos.y), floori(next_pos.z))
-	var next_block_below := ws.get_block(next_coord + Vector3i(0, -1, 0))
-	var next_block_at := ws.get_block(next_coord)
+	
+	# Floating Point Hysteresis Bias compensation (+0.1 Y)
+	var feet_coord := Vector3i(floori(next_pos.x), floori(next_pos.y + 0.1), floori(next_pos.z))
+	
+	var block_at_feet := ws.get_block(feet_coord)
+	var block_below_feet := ws.get_block(feet_coord + Vector3i(0, -1, 0))
 	
 	var habitat := _get_habitat()
 	var is_crossing := false
 	
-	if habitat == MobRegistry.Habitat.AQUATIC:
-		# Pure aquatic cannot leave water blocks
-		is_crossing = (next_block_below != BlockType.Type.WATER and next_block_at != BlockType.Type.WATER)
-	elif habitat == MobRegistry.Habitat.TERRESTRIAL:
-		# Pure terrestrial cannot step into water or lava blocks
-		var next_is_water := (
-			next_block_below == BlockType.Type.WATER or 
-			next_block_below == BlockType.Type.LAVA or 
-			next_block_at == BlockType.Type.WATER or 
-			next_block_at == BlockType.Type.LAVA
+	if habitat == 2: # AQUATIC
+		is_crossing = (block_at_feet != BlockType.Type.WATER and block_below_feet != BlockType.Type.WATER)
+	elif habitat == 0: # TERRESTRIAL
+		var is_liquid := (
+			block_at_feet == BlockType.Type.WATER or 
+			block_at_feet == BlockType.Type.LAVA or 
+			block_below_feet == BlockType.Type.WATER or 
+			block_below_feet == BlockType.Type.LAVA
 		)
 		
-		if next_is_water:
+		if is_liquid:
 			is_crossing = true
-		elif next_block_below == BlockType.Type.AIR:
-			# ==================================================================
-			# VERTICAL COLUMN LEDGE-SCANNING (CLIFF PREVENTER):
-			# If a land mob walks off a cliff edge into AIR, we scan downwards.
-			# If WATER or LAVA is detected at any height below, we flag this 
-			# as an absolute boundary crossing and nullify their velocity, 
-			# physically preventing them from ever falling off into water!
-			# ==================================================================
-			for check_y in range(next_coord.y - 1, -1, -1):
-				var block_type := ws.get_block(Vector3i(next_coord.x, check_y, next_coord.z))
-				if block_type == BlockType.Type.WATER or block_type == BlockType.Type.LAVA:
-					is_crossing = true
+			
+		# Avian Exclusion Check: Flying units bypass gravity fall checks
+		elif block_below_feet == BlockType.Type.AIR and not _is_avian():
+			var max_fall_scan := 3
+			var solid_found := false
+			for offset_y in range(2, max_fall_scan + 2):
+				var check_y := feet_coord.y - offset_y
+				if check_y < 0:
 					break
-				elif block_type != BlockType.Type.AIR:
-					break # Safe land drop found first, let them step and fall
+				var block_type := ws.get_block(Vector3i(feet_coord.x, check_y, feet_coord.z))
+				if block_type != BlockType.Type.AIR:
+					solid_found = true
+					break
+			
+			if not solid_found:
+				is_crossing = true
 		
 	if is_crossing:
-		# Symmetrical constraint: Cancel horizontal speeds, acting as an invisible solid wall!
+		# Centralized telemetry logging for boundary halts (throttled to avoid frame drops)
+		if Engine.get_physics_frames() % 30 == 0:
+			print("[PHYSICS DEBUG] [", name, "] Forcefield BLOCKED movement! Feet Block ID: ", block_at_feet, " (", feet_coord, "), Below Block ID: ", block_below_feet)
 		velocity.x = 0.0
 		velocity.z = 0.0
 
 
 # ==============================================================================
-# MAIN PHYSICS CALCULATIONS & ANIMAITONS
+# MAIN PHYSICS CALCULATIONS & ANIMATIONS
 # ==============================================================================
-
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
 		
-	# ==========================================================================
-	# PHYSICS LOD & SLEEP ENGINE (Phase 5):
-	# Time-sliced distance sweeps: checks distance to player every 15 frames.
-	# If > 40m away, we bypass heavy move_and_slide() and AI, freezing 
-	# physical updates completely to preserve locked CPU frame-rates.
-	# ==========================================================================
+	# Physics LOD check every 15 frames
 	if Engine.get_physics_frames() % 15 == 0:
-		var player_node := get_parent().get_node_or_null("Player") as CharacterBody3D
+		var player_node: CharacterBody3D = null
+		var parent_node := get_parent()
+		
+		# Symmetrical Player Locator injection
+		if is_instance_valid(parent_node) and "player" in parent_node:
+			player_node = parent_node.get("player") as CharacterBody3D
+			
 		if is_instance_valid(player_node):
 			var dist_sq := global_position.distance_squared_to(player_node.global_position)
-			_is_physically_sleeping = dist_sq > 1600.0 # 40 meters squared
+			var sleep_state := dist_sq > 1600.0
+			
+			if sleep_state != _is_physically_sleeping:
+				_is_physically_sleeping = sleep_state
+				print("[PHYSICS DEBUG] [", name, "] LOD sleep transition: Sleeping = ", _is_physically_sleeping, " (Distance: ", sprintf("%.1f", sqrt(dist_sq)), "m)")
+		else:
+			_is_physically_sleeping = false
 			
 	if _is_physically_sleeping:
-		# Sleep: Apply zero velocities, skip AI, and bypass move_and_slide()
 		velocity = Vector3.ZERO
 		return
-	# ==========================================================================
 		
-	# Apply downward gravity conditionally
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 	else:
 		velocity.y = -0.1
 
-	# Process AI component decision tree calculations
 	if is_instance_valid(ai_component):
 		ai_component.process_ai(delta)
 	
@@ -633,20 +480,15 @@ func _physics_process(delta: float) -> void:
 		_quest_check_timer = 0.5
 		_update_quest_bubble_state()
 
-	# Only process quest evaluations if the entity is a civilian (LSP Compliance!)
-	if _has_ui_decorations():
-		# ANIMATE QUEST ARROW (Rotation on Y axis & float bounce up/down)
-		if is_instance_valid(_quest_arrow) and _quest_arrow.visible:
-			_quest_arrow.rotate_y(delta * 2.5) # Spin
-			var bounce := sin(Time.get_ticks_msec() / 250.0) * 0.12
-			_quest_arrow.position.y = _collision_height + 1.15 + bounce
-
-	# Apply the physical absolute habitat barrier boundary check before moving!
 	_apply_absolute_boundary_forcefield(delta)
 
-	# Delegate dynamic skeletal movements to the injected strategy
+	var flat_velocity := Vector2(velocity.x, velocity.z)
+	
+	# Slidings telemetry output: logs physical velocities every 60 frames (0.5s)
+	if Engine.get_physics_frames() % 60 == 0 and flat_velocity.length_squared() > 0.01:
+		print("[PHYSICS DEBUG] [", name, "] slide tick: Velocity Flat = ", flat_velocity, " | On Floor = ", is_on_floor())
+
 	if is_instance_valid(visual_representation):
-		var flat_velocity := Vector2(velocity.x, velocity.z)
 		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)
 
 	move_and_slide()
@@ -664,7 +506,6 @@ func _update_quest_bubble_state() -> void:
 		elif active_q.quest_id == "plains_defender" and name.contains("GUARD"):
 			is_target = true
 
-	# Toggle the 3D glowing arrow visibility dynamically
 	if is_instance_valid(_quest_arrow):
 		_quest_arrow.visible = is_target
 
@@ -693,10 +534,6 @@ func _is_avian() -> bool:
 	return false
 
 
-# ==============================================================================
-# STRATEGY SELECTION UTILITIES (OCP/DIP Helper mappings)
-# ==============================================================================
-
 func _get_role_name_string(role: int) -> String:
 	match role:
 		0: return "villager"
@@ -711,7 +548,11 @@ func _get_role_name_string(role: int) -> String:
 
 func _get_role_scale(role: int) -> Vector3:
 	match role:
-		2: return Vector3(0.8507, 0.8507, 0.8507) # Guard perfect scale
-		3: return Vector3(0.8665, 0.8665, 0.8665) # Farmer perfect scale
-		0: return Vector3(0.8856, 0.8856, 0.8856) # Villager perfect scale
+		2: return Vector3(0.8507, 0.8507, 0.8507)
+		3: return Vector3(0.8665, 0.8665, 0.8665)
+		0: return Vector3(0.8856, 0.8856, 0.8856)
 	return Vector3.ONE
+
+
+func sprintf(format_str: String, val: float) -> String:
+	return format_str % val

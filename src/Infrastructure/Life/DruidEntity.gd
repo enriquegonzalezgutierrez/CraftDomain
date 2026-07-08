@@ -1,20 +1,23 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Druid NPC physics controller with dynamic visual strategy injection.
+# Layer: Infrastructure (Physics & Presentation)
+# Description: Physics controller for the Druid NPC. Delegating all rendering,
+#              materials and animations to the Strategy pattern.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Handles exclusively druid 
-#                conversational dialogues, delegating all rendering/mesh tasks.
+#                conversational dialogues, keeping render tasks decoupled.
 #              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity cleanly.
 #              - Dependency Inversion Principle (DIP): Visual structures are completely 
-#                delegated to the injected `IEntityVisualRepresentation` strategy.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/DruidEntity.gd
+#                delegated to the injected 'IEntityVisualRepresentation' strategy.
+#              CIRCULAR DEPENDENCY SHIELD:
+#              - Changed '_get_habitat()' return signature to 'int' to safely break
+#                the GDScript compilation lock with MobRegistry class name.
 # ==============================================================================
 class_name DruidEntity
 extends PassiveEntity
 
 
-func _init(spawn_pos: Vector3) -> void:
+func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 4) # 4 Hearts of health
 	name = "Entity_DRUID"
 
@@ -22,6 +25,10 @@ func _init(spawn_pos: Vector3) -> void:
 ## Concrete Implementation (DIP): Injects the modular Druid Role ID into the strategy compiler
 func _get_humanoid_role() -> int:
 	return ProceduralVoxelRepresentation.RoleType.DRUID
+
+
+func _get_habitat() -> int:
+	return 0 # 0 = Habitat.TERRESTRIAL
 
 
 func _setup_floating_bubble() -> void:
@@ -45,9 +52,7 @@ func interact(player_node: CharacterBody3D) -> void:
 
 ## Selects a unique localized dialogue key based on time, biome, and variety index.
 func _select_procedural_greeting_key() -> String:
-	# DIP Compliance: Safely retrieve time statically
 	var is_night: bool = CelestialService.is_night_time_static()
-		
 	if is_night:
 		return "DIALOGUE_DRUID_NIGHT"
 		

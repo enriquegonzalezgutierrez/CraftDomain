@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://d18mou14m22b7"]
+
+[ext_resource type="Script" uid="uid://bvamhr0du2q7b" path="res://src/Infrastructure/Life/ChickenEntity.gd" id="1_chicken"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://b7ir5q7y1mdy6" path="res://assets/models/mobs/chicken.glb" id="4_glb"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_chicken"]
+height = 0.35780275
+radius = 0.18408203
+
+[node name="ChickenEntity" type="CharacterBody3D" unique_id=804207531]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("1_chicken")
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1278241671]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1943115, 0)
+shape = SubResource("CylinderShape3D_chicken")
+
+[node name="NPCAIComponent" type="Node" parent="." unique_id=669975077]
+script = ExtResource("2_ai")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=1697307716]
+script = ExtResource("3_vis")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=810581175]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1469672213]
+
+[node name="chicken" parent="Visuals/BodyBobJoint" unique_id=2104602204 instance=ExtResource("4_glb")]
+transform = Transform3D(-4.6922, 0, 0, 0, 4.6922, 0, 0, 0, -4.6922, 0, 0, 0)

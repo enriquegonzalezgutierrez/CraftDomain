@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://bsp2mlh1xiqja"]
+
+[ext_resource type="Script" uid="uid://doqsyhm3blpmf" path="res://src/Infrastructure/Life/HostileEntity.gd" id="1_zombie"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="2_vis"]
+[ext_resource type="PackedScene" uid="uid://3wkbpeeebjaq" path="res://assets/models/mobs/zombie/zombie_base.fbx" id="3_fbx"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_zombie"]
+height = 3.523047
+radius = 0.57421875
+
+[node name="HostileEntity" type="CharacterBody3D" unique_id=1711330125]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("1_zombie")
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1807752840]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7615235, 0)
+shape = SubResource("CylinderShape3D_zombie")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=420106088]
+script = ExtResource("2_vis")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1785919255]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=894020813]
+
+[node name="zombie_base" parent="Visuals/BodyBobJoint" unique_id=1951391980 instance=ExtResource("3_fbx")]
+transform = Transform3D(-1.6635, 0, -1.45426e-07, 0, 1.6635, 0, 1.45426e-07, 0, -1.6635, 0, 0, 0)

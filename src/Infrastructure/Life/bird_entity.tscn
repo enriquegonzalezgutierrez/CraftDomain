@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://ca8eucptdvt7"]
+
+[ext_resource type="Script" uid="uid://b2k4as1rpndrn" path="res://src/Infrastructure/Life/BirdEntity.gd" id="1_bird"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://lhvivyop82ip" path="res://assets/models/mobs/yellow_bird.glb" id="4_glb"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_bird"]
+height = 0.35
+radius = 0.15
+
+[node name="BirdEntity" type="CharacterBody3D" unique_id=1045926448]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("1_bird")
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=374574006]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.175, 0)
+shape = SubResource("CylinderShape3D_bird")
+
+[node name="NPCAIComponent" type="Node" parent="." unique_id=294316656]
+script = ExtResource("2_ai")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=738294684]
+script = ExtResource("3_vis")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1510095576]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1727239445]
+
+[node name="yellow_bird" parent="Visuals/BodyBobJoint" unique_id=2037144196 instance=ExtResource("4_glb")]
+transform = Transform3D(-0.05, 0, 0, 0, 0.05, 0, 0, 0, -0.05, 0, 2.4549, 0)

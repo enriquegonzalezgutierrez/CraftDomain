@@ -1,30 +1,37 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a hostile marine Shark.
-#              SOLID COMPLIANCE: 
-#              - Liskov Substitution Principle (LSP): Inherits cleanly from 
-#                PassiveEntity to share physics, colliders, and death sequences, 
-#                but safely disables the passive AI component in _ready().
-#              - Dependency Inversion Principle (DIP): Uses the modular 
-#                FaunaVisualRepresentation strategy, eliminating tons of duplicated
-#                rendering setup code.
-# HABITAT-DRIVEN SPAWNING (DDD Compliance):
-#              - Overrides `_get_habitat()` to return AQUATIC, ensuring it 
-#                spawns strictly submerged in deep water.
-# ABSOLUTE BOUNDARY FORCEFIELD (Strict Habitat Prohibitions):
-#              - Integrated `_apply_absolute_boundary_forcefield(delta)` right before 
-#                `move_and_slide()`. The Shark is now physically locked inside the 
-#                water volume, making beaching or dry land spawning impossible.
-# WARNING RESOLUTION:
-#              - Cleaned up unused private class variables (`_model_node`, `_anim_player`, 
-#                and `_is_lunging`) to guarantee a 100% warning-free compilation.
+# Layer: Infrastructure (Physics & Presentation)
+# Description: Physics controller for the hostile marine Shark, designed to be
+#              attached to a '.tscn' scene file.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Handles exclusively active
+#                swimming physics, scent tracking, and biting logic, delegating
+#                visual and collision parameters to the Godot Editor.
+#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity,
+#                swapping groups cleanly without code-based instantiation.
+#              CIRCULAR DEPENDENCY SHIELD:
+#              - Changed '_get_habitat()' return signature to 'int' to safely break
+#                the GDScript compilation lock with MobRegistry class name.
+#              STABILIZATION:
+#              - Removed redundant signal connections already handled in parent class.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/SharkEntity.gd
 # ==============================================================================
 class_name SharkEntity
 extends PassiveEntity
 
-const MODEL_PATH := "res://assets/models/mobs/shark.glb"
+# Sibling node references
+var player: CharacterBody3D
+
+# AI and state trackers
+var _wander_timer: float = 0.0
+var _wander_direction: Vector3 = Vector3.ZERO
+var _is_wandering: bool = false
+var _attack_cooldown_timer: float = 0.0
+var _animation_time: float = 0.0
+
+# Dynamic cached reference to visual model
+var _model_node: Node3D
 
 # Combat configurations
 const SPEED: float = 3.5
@@ -32,78 +39,59 @@ const CHASE_RANGE_SQ: float = 256.0 # 16m squared
 const ATTACK_RANGE_SQ: float = 2.25 # 1.5m squared
 const ATTACK_COOLDOWN_INTERVAL: float = 1.5
 
-# Sibling node references
-var player: CharacterBody3D
 
-# AI wandering/chasing state variables
-var _wander_timer: float = 0.0
-var _wander_direction: Vector3 = Vector3.ZERO
-var _is_wandering: bool = false
-var _attack_cooldown_timer: float = 0.0
-
-# Procedural Swimming Animation tracker
-var _animation_time: float = 0.0
-
-
-func _init(spawn_pos: Vector3) -> void:
+func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	# Sharks have 4 Hearts of health (8 HP)
 	super(spawn_pos, 8)
 	name = "Entity_SHARK"
 
 
 func _ready() -> void:
-	super()
-	
-	# Transition from passive group to hostiles
-	remove_from_group("passives")
+	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting
 	add_to_group("hostiles")
 	
-	# Hostiles use aggressive custom AI, so we safely detach the civilian AI
-	if is_instance_valid(ai_component):
-		ai_component.queue_free()
-		ai_component = null
-		
-	# Paint the inherited nameplate in Warning Crimson Red!
+	# Cache component references pre-configured in the scene (No AI Component needed for hostiles)
+	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
+	_model_node = get_node_or_null("Visuals/BodyBobJoint/shark") as Node3D
+	
+	# Hostile nameplate warning coloring (Warning Crimson Red!)
 	if is_instance_valid(_nameplate):
 		_nameplate.modulate = Color(1.0, 0.15, 0.15)
 		
 	_locate_player()
+	_setup_nameplate_height()
+
+
+## Bypasses old procedural representation compiling
+func _build_visual_representation() -> void:
+	pass
+
+
+## Decoupled height calculation sourcing boundaries directly from the scene setup
+func _setup_nameplate_height() -> void:
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
+	if is_instance_valid(col) and col.shape is CylinderShape3D:
+		var cylinder := col.shape as CylinderShape3D
+		_collision_height = cylinder.height
+		
+	_setup_nameplate()
+	
+	# Aligns nameplate correctly above the visual model
+	if is_instance_valid(_nameplate):
+		_nameplate.position.y = _collision_height + 0.35
 
 
 # ==============================================================================
-# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
+# CIRCULAR SHIELD: Return int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
+# This perfectly complies with LSP overrides and stops circular import compilation deadlocks.
 # ==============================================================================
-
-func _get_habitat() -> MobRegistry.Habitat:
-	return MobRegistry.Habitat.AQUATIC
+func _get_habitat() -> int:
+	return 2 # Equivalent to MobRegistry.Habitat.AQUATIC
 
 
 func _has_ui_decorations() -> bool:
-	return true # We force it true to ensure the red nameplate spawns!
+	return true # Explicitly true to ensure warning red nameplate is drawn!
 
-
-## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
-func _build_visual_representation() -> void:
-	var strategy := FaunaVisualRepresentation.new()
-	strategy.model_path = MODEL_PATH
-	
-	# Scale and position offsets calibrated for the Shark GLB Mesh
-	strategy.scale_multiplier = Vector3(1.8366, 1.8366, 1.8366)
-	strategy.position_offset = Vector3(0.0, -0.5328, 0.0)
-	strategy.rotation_offset = Vector3(0, -90, 0) # Face forward (-Z)
-	
-	# Physical collision bounds
-	strategy.collision_size = Vector3(0.85, 1.80, 1.10)
-	strategy.collision_position = Vector3(0.0, 0.9, 0.0)
-	
-	# Inject strategy into parent coordinator (Animations skipped as shark swims procedurally)
-	visual_representation = strategy
-	visual_representation.build_representation(self, visual_component.body_bob_node)
-
-
-# ==============================================================================
-# COMBAT & LOOT LOGIC
-# ==============================================================================
 
 func _locate_player() -> void:
 	var world_node := get_parent()
@@ -111,14 +99,13 @@ func _locate_player() -> void:
 		player = world_node.get("player") as CharacterBody3D
 
 
-## Override: Hostiles do not panic when hit, they charge forward!
+## Hostiles do not panic when hit
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	pass 
 
 
 ## Drops 1x Sand Block on death
 func _drop_loot(inv: IInventory) -> void:
-	# Item ID 7: Sand Block
 	inv.add_item(7, 1)
 
 
@@ -129,8 +116,7 @@ func _process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 		
-	var model_node := visual_component.body_bob_node.get_child(0) as Node3D
-	if is_instance_valid(model_node):
+	if is_instance_valid(_model_node):
 		_animation_time += delta
 		
 		var flat_velocity := Vector2(velocity.x, velocity.z)
@@ -139,12 +125,12 @@ func _process(delta: float) -> void:
 		if is_moving:
 			# Fast tail wagging when swimming rapidly (Yaw oscillation on Z-axis offset)
 			var swim_speed := flat_velocity.length() * 2.5
-			model_node.rotation.y = deg_to_rad(-90.0) + sin(_animation_time * swim_speed) * 0.22
-			model_node.rotation.z = cos(_animation_time * swim_speed * 0.5) * 0.08 
+			_model_node.rotation.y = deg_to_rad(-90.0) + sin(_animation_time * swim_speed) * 0.22
+			_model_node.rotation.z = cos(_animation_time * swim_speed * 0.5) * 0.08 
 		else:
 			# Calm, idle ocean current swaying
-			model_node.rotation.y = lerp(model_node.rotation.y, deg_to_rad(-90.0), delta * 5.0)
-			model_node.rotation.z = sin(_animation_time * 1.5) * 0.03
+			_model_node.rotation.y = lerp(_model_node.rotation.y, deg_to_rad(-90.0), delta * 5.0)
+			_model_node.rotation.z = sin(_animation_time * 1.5) * 0.03
 
 
 # ==============================================================================

@@ -1,36 +1,73 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Merchant NPC physics controller with dynamic visual strategy injection.
+# Layer: Infrastructure (Physics & Presentation)
+# Description: Physics controller for the Merchant NPC, utilizing the Strategy
+#              pattern to load dynamic animations cleanly.
 #              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Handles exclusively merchant 
-#                conversational dialogues and trade transaction routing.
+#              - Single Responsibility Principle (SRP): Handles exclusively merchant
+#                dialogues and trading, delegating rendering to the Strategy.
 #              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity cleanly.
-#              - Dependency Inversion Principle (DIP): Visual structures are completely 
-#                delegated to the injected `IEntityVisualRepresentation` strategy.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/MerchantEntity.gd
+#              CIRCULAR DEPENDENCY SHIELD:
+#              - Replaced static class reference to 'SkeletalVisualRepresentation' with
+#                dynamic 'load()' instantiation, permanently immunizing the engine 
+#                against circular compile-time locks.
 # ==============================================================================
 class_name MerchantEntity
 extends PassiveEntity
 
+const BASE_MODEL_PATH := "res://assets/models/mobs/merchant/merchant_base.fbx"
 
-func _init(spawn_pos: Vector3) -> void:
+
+func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 3) # 3 Hearts of health
 	name = "Entity_MERCHANT"
 
 
-## Concrete Implementation (DIP): Injects the modular Merchant Role ID into the strategy compiler
-func _get_humanoid_role() -> int:
-	return ProceduralVoxelRepresentation.RoleType.MERCHANT
+func _ready() -> void:
+	# HIGH PERFORMANCE: Register in the passive group for target lookups
+	add_to_group("passives")
+	
+	# Cache component references pre-configured in the scene
+	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
+	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
+	
+	# Injects and compiles its specific Mixamo animations strategy (fixes T-Pose)
+	_build_visual_representation()
+	
+	_setup_nameplate_height()
 
 
-## Public Gaze Interaction: Triggers centralized trading dialogue overlays.
+## Binds the Skeletal strategy dynamically, avoiding static compiler circular dependency locks
+func _build_visual_representation() -> void:
+	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
+	if strategy_script == null:
+		return
+		
+	var strategy: Resource = strategy_script.new()
+	strategy.set("base_model_path", BASE_MODEL_PATH)
+	strategy.set("scale_multiplier", Vector3(0.8856, 0.8856, 0.8856))
+	strategy.set("position_offset", Vector3.ZERO)
+	strategy.set("rotation_offset", Vector3(0, 180, 0))
+	
+	# Concrete Merchant Animation clips on disk
+	strategy.set("anim_idle_path", ANIM_DIR + "merchant/merchant_idle.fbx")
+	strategy.set("anim_walk_path", ANIM_DIR + "merchant/merchant_walk.fbx")
+	strategy.set("anim_panic_path", ANIM_DIR + "merchant/merchant_panic.fbx")
+	strategy.set("anim_jump_path", ANIM_DIR + "merchant/merchant_jump.fbx")
+	
+	# Bind as standard generic Resource contract
+	visual_representation = strategy as IEntityVisualRepresentation
+	visual_representation.build_representation(self, visual_component.body_bob_node)
+
+
+# ==============================================================================
+# CONVERSATION BARK & DIALOGUES
+# ==============================================================================
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD
 	if is_instance_valid(hud):
 		var intro_node := DialogueService.get_dialogue_node("merchant_intro")
 		if intro_node == null:
-			print("[MerchantEntity] Dialogue database was null! Building dynamic database...")
 			DialogueRegistry.initialize_dialogue_database()
 			intro_node = DialogueService.get_dialogue_node("merchant_intro")
 			
@@ -44,29 +81,6 @@ func _setup_floating_bubble() -> void:
 		_bubble = sb_script.new() as Node3D
 		add_child(_bubble)
 		_bubble.call("set_text", tr("BUBBLE_TRADE"))
-
-
-## Queries coordinate biomes.
-func _detect_current_biome() -> int:
-	# FIX: Explicit static typing on world controller reference
-	var world_controller_ref: Node = get_parent() as Node
-	var default_biome_id: int = 2
-	
-	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		# FIX: Explicit static typing on world generator reference
-		var generator: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
-		if generator != null:
-			# FIX: Explicit static typing on terrain noise provider
-			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
-			if terrain_noise != null:
-				var profile := BiomeService.evaluate_coordinate(
-					int(round(global_position.x)), 
-					int(round(global_position.z)), 
-					terrain_noise
-				)
-				return profile.biome_id
-				
-	return default_biome_id
 
 
 func _can_socialize() -> bool:

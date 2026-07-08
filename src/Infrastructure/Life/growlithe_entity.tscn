@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://duvfpge4imxy1"]
+
+[ext_resource type="Script" uid="uid://cw53fmqb8l3h8" path="res://src/Infrastructure/Life/GrowlitheEntity.gd" id="1_growlithe"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://0jt23bg8hwcr" path="res://assets/models/mobs/growlithe.glb" id="4_glb"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_growlithe"]
+height = 0.9279785
+radius = 0.21289063
+
+[node name="GrowlitheEntity" type="CharacterBody3D" unique_id=657819694]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("1_growlithe")
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1801402479]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4761963, 0)
+shape = SubResource("CylinderShape3D_growlithe")
+
+[node name="NPCAIComponent" type="Node" parent="." unique_id=610911647]
+script = ExtResource("2_ai")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=760756280]
+script = ExtResource("3_vis")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1482573444]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=935271538]
+
+[node name="growlithe" parent="Visuals/BodyBobJoint" unique_id=1124338160 instance=ExtResource("4_glb")]
+transform = Transform3D(-0.114, 0, -1.72083e-08, 0, 0.114, 0, 1.72083e-08, 0, -0.114, 0, 0, 0)

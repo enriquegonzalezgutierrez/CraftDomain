@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://g2a5l82lgglu"]
+
+[ext_resource type="Script" uid="uid://b2k8buhmof83" path="res://src/Infrastructure/Life/CatEntity.gd" id="1_cat"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://cxh8jqgtqe1vb" path="res://assets/models/mobs/cat.glb" id="4_glb"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_cat"]
+height = 0.36
+radius = 0.079589844
+
+[node name="CatEntity" type="CharacterBody3D" unique_id=1774184488]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("1_cat")
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=2042458840]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, 0)
+shape = SubResource("CylinderShape3D_cat")
+
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1179284481]
+script = ExtResource("2_ai")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=48898497]
+script = ExtResource("3_vis")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=254685920]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1862616390]
+
+[node name="cat" parent="Visuals/BodyBobJoint" unique_id=1190464672 instance=ExtResource("4_glb")]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 0, 0)

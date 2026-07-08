@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://q1s4s4qkoi23"]
+
+[ext_resource type="Script" uid="uid://bamn1ythn2keg" path="res://src/Infrastructure/Life/TurtleEntity.gd" id="1_turtle"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://b53w1pekdv7wu" path="res://assets/models/mobs/turtle.glb" id="4_glb"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_turtle"]
+height = 0.34921876
+radius = 0.15185547
+
+[node name="TurtleEntity" type="CharacterBody3D" unique_id=1385184284]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("1_turtle")
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1256879904]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18945311, 0)
+shape = SubResource("CylinderShape3D_turtle")
+
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1007958759]
+script = ExtResource("2_ai")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=1251061634]
+script = ExtResource("3_vis")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1114658008]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1474115088]
+
+[node name="turtle" parent="Visuals/BodyBobJoint" unique_id=815521553 instance=ExtResource("4_glb")]
+transform = Transform3D(-0.057, 0, 0, 0, 0.057, 0, 0, 0, -0.057, 0, 0, 0)

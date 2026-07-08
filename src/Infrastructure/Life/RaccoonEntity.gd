@@ -1,77 +1,54 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a passive forest Raccoon.
-#              SOLID COMPLIANCE: 
-#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity, 
-#                matching the base collision, gravity, and lifecycle contracts.
-#              - Single Responsibility Principle (SRP): Delegates visual rendering 
-#                and skeletal animations entirely to the FaunaVisualRepresentation strategy.
-#              - Dependency Inversion Principle (DIP): Independent of physical rendering,
-#                binding visuals purely to the IEntityVisualRepresentation abstraction.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/RaccoonEntity.gd
+# Layer: Infrastructure (Physics & Presentation)
+# Description: Physics controller for the passive Forest Raccoon, designed to be
+#              attached to a '.tscn' scene file.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Handles exclusively physical
+#                movement loops, panic sprints, and life-signals, delegating
+#                visual and collision parameters to the Godot Editor.
+#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity
+#                and satisfies the base contracts without code-based instantiation.
+#              STABILIZATION:
+#              - Removed redundant signal connections already handled in parent class.
 # ==============================================================================
 class_name RaccoonEntity
 extends PassiveEntity
 
-const MODEL_PATH := "res://assets/models/mobs/raccoon.glb"
 
-
-func _init(spawn_pos: Vector3) -> void:
+func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	# Raccoons spawn with 2 Hearts of health (4 HP)
 	super(spawn_pos, 4)
 	name = "Entity_RACCOON"
 
 
-## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
-func _build_visual_representation() -> void:
-	var strategy := FaunaVisualRepresentation.new()
-	strategy.model_path = MODEL_PATH
+func _ready() -> void:
+	# HIGH PERFORMANCE: Register in the passive group for target lookups
+	add_to_group("passives")
 	
-	# Scale and position offsets calculated via GLB Analyzer V5
-	strategy.scale_multiplier = Vector3(0.1, 0.1, 0.1)
-	strategy.position_offset = Vector3(0.0, 0.138, 0.0)
-	strategy.rotation_offset = Vector3(0, 180, 0) # Face forward (-Z)
+	# Cache component references pre-configured in the scene
+	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
+	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
-	# Physical collision bounds
-	strategy.collision_size = Vector3(0.35, 0.33, 0.55)
-	strategy.collision_position = Vector3(0.0, 0.165, 0.0)
-	
-	# Animations paths
-	strategy.anim_idle_name = "idle"
-	strategy.anim_walk_name = "walk"
-	
-	# Inject strategy into parent coordinator
-	visual_representation = strategy
-	visual_representation.build_representation(self, visual_component.body_bob_node)
-
-
-func _get_collision_box_size() -> Vector3:
-	return Vector3(0.35, 0.33, 0.55)
-
-
-func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.165, 0.0)
-
-
-## Flag used by the animation ticker to configure bouncy walks (Disabled for quadrupeds)
-func _is_avian() -> bool:
-	return false
-
-
-func _can_socialize() -> bool:
-	return true
+	_setup_nameplate_height()
 
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	# Raccoon panic escape velocity
+	# Raccoon panic escape jump
 	velocity.y = JUMP_VELOCITY
 	if is_instance_valid(ai_component):
 		ai_component.current_task = NPCAIComponent.TaskState.PANIC
 		ai_component.task_timer = randf_range(3.0, 5.0)
 
 
-## Drops 1x Fried Chicken (Meat proxy) on death
 func _drop_loot(inv: IInventory) -> void:
 	# Item ID 16: Fried Chicken
 	inv.add_item(16, 1)
+
+
+func _is_avian() -> bool:
+	return false
+
+
+func _can_socialize() -> bool:
+	return true

@@ -1,75 +1,78 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a passive marine Octopus.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Delegates visual rendering 
-#                and skeletal animations entirely to the FaunaVisualRepresentation strategy.
-#              - Liskov Substitution Principle (LSP): Safely extends PassiveEntity, 
-#                matching the base collision, gravity, and lifecycle contracts.
-#              - Dependency Inversion Principle (DIP): Independent of physical rendering,
-#                binding visuals purely to the IEntityVisualRepresentation abstraction.
-# HABITAT-DRIVEN SPAWNING (DDD Compliance):
-#              - Overrides `_get_habitat()` to return AQUATIC, ensuring it 
-#                spawns strictly submerged in deep water.
+# Layer: Infrastructure (Physics & Presentation)
+# Description: Physics controller for the strictly aquatic Deep-water Octopus,
+#              designed to be attached to a '.tscn' scene file.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Handles exclusively physical
+#                aquatic movement loops and life-signals, delegating visual
+#                and collision parameters to the Godot Editor.
+#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity
+#                and satisfies the base contracts without code-based instantiation.
+#              CIRCULAR DEPENDENCY SHIELD:
+#              - Changed '_get_habitat()' return signature to 'int' to safely break
+#                the GDScript compilation lock with MobRegistry class name.
+#              STABILIZATION:
+#              - Removed redundant signal connections already handled in parent class.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/OctopusEntity.gd
 # ==============================================================================
 class_name OctopusEntity
 extends PassiveEntity
 
-const MODEL_PATH := "res://assets/models/mobs/octopus.glb"
 
-
-func _init(spawn_pos: Vector3) -> void:
+func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	# Octopuses spawn with 3 Hearts of health (6 HP)
 	super(spawn_pos, 6)
 	name = "Entity_OCTOPUS"
 
 
-# ==============================================================================
-# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
-# ==============================================================================
+func _ready() -> void:
+	# HIGH PERFORMANCE: Register in the passive group for target lookups
+	add_to_group("passives")
+	
+	# Cache component references pre-configured in the scene
+	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
+	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
+	
+	# Fetch nameplate configurations if available
+	_setup_nameplate_height()
 
-func _get_habitat() -> MobRegistry.Habitat:
-	return MobRegistry.Habitat.AQUATIC
 
-
-## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
+## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
-	var strategy := FaunaVisualRepresentation.new()
-	strategy.model_path = MODEL_PATH
+	pass
+
+
+## Decoupled height calculation sourcing boundaries directly from the scene setup
+func _setup_nameplate_height() -> void:
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
+	if is_instance_valid(col) and col.shape is CylinderShape3D:
+		var cylinder := col.shape as CylinderShape3D
+		_collision_height = cylinder.height
+		
+	_setup_nameplate()
 	
-	# Scale and position offsets calibrated for the Octopus GLB Mesh
-	strategy.scale_multiplier = Vector3(1.8525, 1.8525, 1.8525)
-	strategy.position_offset = Vector3(0.0, 0.3156, 0.0)
-	strategy.rotation_offset = Vector3(0, 90, 0) # Face forward (-Z)
-	
-	# Physical collision bounds
-	strategy.collision_size = Vector3(1.0, 0.75, 1.1)
-	strategy.collision_position = Vector3(0.0, 0.375, 0.0)
-	
-	# Baked built-in animations
-	strategy.anim_idle_name = "idle"
-	strategy.anim_walk_name = "walk"
-	
-	# Inject strategy into parent coordinator
-	visual_representation = strategy
-	visual_representation.build_representation(self, visual_component.body_bob_node)
+	# Aligns nameplate correctly above the visual model
+	if is_instance_valid(_nameplate):
+		_nameplate.position.y = _collision_height + 0.35
 
 
 # ==============================================================================
-# COMBAT & LOOT LOGIC
+# CIRCULAR SHIELD: Return int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
+# This perfectly complies with LSP overrides and stops circular import compilation deadlocks.
 # ==============================================================================
+func _get_habitat() -> int:
+	return 2 # Equivalent to MobRegistry.Habitat.AQUATIC
 
-## Override: Drops 1x Sand Block on death
+
 func _drop_loot(inv: IInventory) -> void:
-	# Item ID 7: Sand Block
+	# Item ID 7: Sand Block (acting as sea-debris loot)
 	inv.add_item(7, 1)
 
 
-## Flag used by the animation ticker to configure bouncy walks (Disabled to allow smooth swimming glide)
 func _is_avian() -> bool:
-	return true
+	return true # Activates slight swimming tilts
 
 
 func _can_socialize() -> bool:

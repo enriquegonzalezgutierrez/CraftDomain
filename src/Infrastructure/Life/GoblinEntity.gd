@@ -1,20 +1,24 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a hostile Goblin.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Isolates hostile AI behaviors,
-#                chase tracking, and combat cooldowns.
-#              - Liskov Substitution Principle (LSP): Extends PassiveEntity cleanly 
-#                and satisfies base physics and signal contracts, disabling passive AI.
-#              - Dependency Inversion Principle (DIP): Uses the dynamic 
-#                FaunaVisualRepresentation strategy, eliminating GLB-loading code.
+# Layer: Infrastructure (Physics & Presentation)
+# Description: Physics controller for the hostile skirmisher Goblin, designed to
+#              be attached to a '.tscn' scene file.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Handles exclusively rapid
+#                skirmishing AI, alarm networking, and escape routing, delegating
+#                visual and collision parameters to the Godot Editor.
+#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity,
+#                swapping groups cleanly without code-based instantiation.
+#              CIRCULAR DEPENDENCY SHIELD:
+#              - Changed '_get_habitat()' return signature to 'int' to safely break
+#                the GDScript compilation lock with MobRegistry class name.
+#              STABILIZATION:
+#              - Removed redundant signal connections already handled in parent class.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GoblinEntity.gd
 # ==============================================================================
 class_name GoblinEntity
 extends PassiveEntity
-
-const BASE_MODEL_PATH := "res://assets/models/mobs/goblin.glb"
 
 # Combat configurations (Fast, fragile skirmisher)
 const SPEED: float = 3.5
@@ -33,67 +37,57 @@ var _attack_cooldown_timer: float = 0.0
 var _stuck_timer: float = 0.0
 
 
-func _init(spawn_pos: Vector3) -> void:
+func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	# Goblins spawn with 2 Hearts of health (4 HP, fragile)
 	super(spawn_pos, 4)
 	name = "Entity_GOBLIN"
 
 
 func _ready() -> void:
-	super()
-	
-	# Transition from passive group to hostiles
-	remove_from_group("passives")
+	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting
 	add_to_group("hostiles")
 	
-	# Hostiles use aggressive custom AI, so we safely detach the civilian AI
-	if is_instance_valid(ai_component):
-		ai_component.queue_free()
-		ai_component = null
-		
-	# Paint the inherited nameplate in Warning Crimson Red!
+	# Cache component references pre-configured in the scene
+	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
+	
+	# Hostile nameplate warning coloring (Warning Crimson Red!)
 	if is_instance_valid(_nameplate):
 		_nameplate.modulate = Color(1.0, 0.15, 0.15)
 		
 	_locate_player()
+	_setup_nameplate_height()
+
+
+## Bypasses old procedural representation compiling
+func _build_visual_representation() -> void:
+	pass
+
+
+## Decoupled height calculation sourcing boundaries directly from the scene setup
+func _setup_nameplate_height() -> void:
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
+	if is_instance_valid(col) and col.shape is CylinderShape3D:
+		var cylinder := col.shape as CylinderShape3D
+		_collision_height = cylinder.height
+		
+	_setup_nameplate()
+	
+	# Aligns nameplate correctly above the visual model
+	if is_instance_valid(_nameplate):
+		_nameplate.position.y = _collision_height + 0.35
 
 
 # ==============================================================================
-# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
+# CIRCULAR SHIELD: Return int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
+# This perfectly complies with LSP overrides and stops circular import compilation deadlocks.
 # ==============================================================================
-
-func _get_habitat() -> MobRegistry.Habitat:
-	return MobRegistry.Habitat.TERRESTRIAL
+func _get_habitat() -> int:
+	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
 
 
 func _has_ui_decorations() -> bool:
-	return true # We force it true to ensure the red nameplate spawns!
+	return true # Explicitly true to ensure warning red nameplate is drawn!
 
-
-## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
-func _build_visual_representation() -> void:
-	var strategy := FaunaVisualRepresentation.new()
-	strategy.model_path = BASE_MODEL_PATH
-	
-	# Scale and position offsets calibrated for the Goblin GLB Mesh
-	strategy.scale_multiplier = Vector3(0.75, 0.75, 0.75)
-	strategy.position_offset = Vector3(0.0, 0.50, 0.0)
-	strategy.rotation_offset = Vector3(0, 90, 0)
-	
-	# Physical collision bounds
-	strategy.collision_size = Vector3(0.5, 0.75, 0.5)
-	strategy.collision_position = Vector3(0.0, 0.375, 0.0)
-	strategy.anim_idle_name = "idle"
-	strategy.anim_walk_name = "walk"
-	
-	# Inject strategy into parent coordinator
-	visual_representation = strategy
-	visual_representation.build_representation(self, visual_component.body_bob_node)
-
-
-# ==============================================================================
-# COMBAT & LOOT LOGIC
-# ==============================================================================
 
 func _locate_player() -> void:
 	var world_node := get_parent()
@@ -101,7 +95,7 @@ func _locate_player() -> void:
 		player = world_node.get("player") as CharacterBody3D
 
 
-## Override: Hostiles do not panic when hit, they charge forward!
+## Hostiles do not panic when hit, they charge forward!
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	pass 
 
@@ -114,7 +108,6 @@ func _drop_loot(inv: IInventory) -> void:
 # ==============================================================================
 # MAIN HOSTILE PHYSICS & AI CALCULATIONS
 # ==============================================================================
-
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
@@ -131,11 +124,6 @@ func _physics_process(delta: float) -> void:
 		_locate_player()
 
 	_process_ai_intelligence(delta)
-	
-	# Delegate dynamic skeletal movements to the injected strategy
-	if is_instance_valid(visual_representation):
-		var flat_velocity := Vector2(velocity.x, velocity.z)
-		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)
 	
 	move_and_slide()
 
@@ -165,6 +153,7 @@ func _process_ai_intelligence(delta: float) -> void:
 				if _attack_cooldown_timer <= 0.0:
 					_bite_player()
 					_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL
+					# Trigger local visual attack if strategy is setup
 					if is_instance_valid(visual_representation):
 						visual_representation.trigger_attack_visuals()
 				

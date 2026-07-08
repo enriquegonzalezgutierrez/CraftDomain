@@ -1,23 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure UI controller representing the main menu overlay.
-#              COMMERCIAL UI OVERHAUL (TACTILE DESIGN & 100% RESPONSIVE):
-#              - Margin Paddings: Implemented strict content_margin values on 
-#                all StyleBoxes. Text will never hug or overflow borders again.
-#              - Dynamic PanelContainers: Replaced rigid Panel nodes with 
-#                PanelContainers. The UI now auto-expands elegantly to fit 
-#                lengthy i18n translation texts (e.g. Spanish modal warnings).
-#              - Elastic Modal Animations: Modal pop-ins now scale the card 
-#                itself from the center, rather than scaling the entire screen.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Handles exclusively 
-#                main menu presentation and overlay transitions.
-#              - Open-Closed Principle (OCP): Dynamically instantiates the 
-#                Model Showcase overlay on-demand without circular locks.
-#              - i18n Localization: All texts now use the `tr()` function to 
-#                support dynamic language switching.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/MainMenu.gd
+# Layer: Infrastructure (UI / Main Menu)
+# Description: Main Menu overlay with glassmorphic tactile buttons and elastic 
+#              scale animations.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Handles exclusively
+#                main menu presentation and transitions.
+#              - YAGNI & CLEAN CODE CLEANUP:
+#                - Completely removed all references, variables, buttons, and
+#                  methods pointing to the obsolete ModelShowcase showroom.
 # ==============================================================================
 class_name MainMenu
 extends Control
@@ -27,14 +18,12 @@ signal play_pressed
 
 # References to sub-overlays
 var _settings_overlay: SettingsMenu
-var _showcase_overlay: ModelShowcase
 var _title_label: Label
 var _time_passed: float = 0.0
 
 # Dynamic button references for locale refreshes
 var _play_continue_btn: Button
 var _reset_btn: Button
-var _showcase_btn: Button
 var _settings_btn: Button
 var _exit_btn: Button
 
@@ -83,7 +72,7 @@ func _ready() -> void:
 	_master_vbox.add_theme_constant_override("separation", 35) 
 	center_container.add_child(_master_vbox)
 	
-	# 4. Game Title (Localized dynamically)
+	# 4. Game Title
 	_title_label = Label.new()
 	_title_label.name = "GameTitle"
 	_title_label.text = tr("MENU_GAME_TITLE").to_upper()
@@ -146,13 +135,6 @@ func _ready() -> void:
 		_reset_btn.pressed.connect(_on_new_game_clicked_with_save)
 		box.add_child(_reset_btn)
 		
-	# ==========================================================================
-	# DIAGNOSTIC PIPELINE SHOWCASE SHORTCUT
-	# ==========================================================================
-	_showcase_btn = _create_tactile_button(Color(0.12, 0.55, 0.82, 1.0)) # Cyan Tonal Button
-	_showcase_btn.pressed.connect(_on_showcase_pressed)
-	box.add_child(_showcase_btn)
-		
 	_settings_btn = _create_tactile_button(default_color)
 	_settings_btn.pressed.connect(_on_settings_pressed)
 	box.add_child(_settings_btn)
@@ -214,8 +196,6 @@ func _refresh_localized_text() -> void:
 		if is_instance_valid(_play_continue_btn):
 			_play_continue_btn.text = tr("MENU_PLAY_WORLD")
 			
-	if is_instance_valid(_showcase_btn):
-		_showcase_btn.text = tr("MENU_ASSET_SHOWCASE").to_upper()
 	if is_instance_valid(_settings_btn):
 		_settings_btn.text = tr("MENU_SETTINGS")
 	if is_instance_valid(_exit_btn):
@@ -419,29 +399,6 @@ func _on_settings_pressed() -> void:
 func _on_settings_closed() -> void:
 	if is_instance_valid(_settings_overlay):
 		_settings_overlay.queue_free()
-
-
-## Programmatically instantiates and transitions to the decoupled Model Showcase overlay on-press
-func _on_showcase_pressed() -> void:
-	if is_instance_valid(_showcase_overlay):
-		return
-		
-	_showcase_overlay = ModelShowcase.new()
-	_showcase_overlay.closed.connect(_on_showcase_closed)
-	add_child(_showcase_overlay)
-	
-	# Transition: Scale the menu card down while fading in the Showcase
-	_menu_card.visible = false
-	_title_label.visible = false
-
-
-func _on_showcase_closed() -> void:
-	if is_instance_valid(_showcase_overlay):
-		_showcase_overlay.queue_free()
-		_showcase_overlay = null
-		
-	_menu_card.visible = true
-	_title_label.visible = true
 
 
 func _on_exit_pressed() -> void:

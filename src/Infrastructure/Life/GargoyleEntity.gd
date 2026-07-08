@@ -1,38 +1,24 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure physics controller node representing a hostile Gargoyle.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Isolates hostile AI, 
-#                chase tracking, and day/night state transitions.
-#              - Liskov Substitution Principle (LSP): Extends PassiveEntity cleanly 
-#                and satisfies base physics and signal contracts.
-#              - Dependency Inversion Principle (DIP): Uses the FaunaVisualRepresentation
-#                strategy to instantiate GLB assets, eliminating duplicated node-pruning.
-# NOCTURNAL BEHAVIOR ENGINE (V5 Telemetry):
-#              - Daytime (STONE): AI freezes, gravity drops model flat on ground level.
-#              - Nighttime (AWAKE): Awakens, hovers at +2.5m using active 
-#                procedural flight sways, and aggressively pursues the player.
-#              - Upon death, polymorphically drops 1x Stone Block (ID 1).
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/GargoyleEntity.gd
+# Layer: Infrastructure (Physics & Presentation)
+# Description: Physics controller for the hostile nocturnal Gargoyle, designed
+#              to be attached to a '.tscn' scene file.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Handles exclusively active
+#                flight/statue state machines, chasing physics, and bite attacks,
+#                delegating visual and collision parameters to the Godot Editor.
+#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity,
+#                swapping groups cleanly without code-based instantiation.
 # ==============================================================================
 class_name GargoyleEntity
 extends PassiveEntity
 
-const MODEL_PATH := "res://assets/models/mobs/gargoyle.glb"
-
 enum State { STONE, AWAKE }
-
-# Combat and physics configurations
-const SPEED: float = 3.0
-const CHASE_RANGE_SQ: float = 256.0 # 16m squared
-const ATTACK_RANGE_SQ: float = 3.0
-const ATTACK_COOLDOWN_INTERVAL: float = 1.5
 
 # Sibling node references
 var player: CharacterBody3D
 
-# AI and state variables
+# AI and state trackers
 var current_state: State = State.STONE
 var _wander_timer: float = 0.0
 var _wander_direction: Vector3 = Vector3.ZERO
@@ -40,68 +26,72 @@ var _is_wandering: bool = false
 var _attack_cooldown_timer: float = 0.0
 var _animation_time: float = 0.0
 
+# Dynamic cached reference to visual model
+var _model_node: Node3D
 
-func _init(spawn_pos: Vector3) -> void:
-	# Gargoyles spawn with 6 Hearts of health (high stone defense)
-	super(spawn_pos, 12) 
+# Combat configurations
+const SPEED: float = 3.0
+const CHASE_RANGE_SQ: float = 256.0 # 16m squared
+const ATTACK_RANGE_SQ: float = 3.0
+const ATTACK_COOLDOWN_INTERVAL: float = 1.5
+
+
+func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
+	# Gargoyles spawn with 6 Hearts of health (high stone defense: 12 HP)
+	super(spawn_pos, 12)
 	name = "Entity_GARGOYLE"
 
 
 func _ready() -> void:
-	super()
-	
-	# Transition from passive group to hostiles
-	remove_from_group("passives")
+	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting
 	add_to_group("hostiles")
 	
-	# Hostiles use aggressive custom AI, so we safely detach the civilian AI
-	if is_instance_valid(ai_component):
-		ai_component.queue_free()
-		ai_component = null
-		
-	# Paint the inherited nameplate in Warning Crimson Red!
+	# Bind pure Domain Model signals
+	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
+	domain_entity.died.connect(_on_domain_entity_died)
+	
+	# Cache component references pre-configured in the scene
+	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
+	_model_node = get_node_or_null("Visuals/BodyBobJoint/gargoyle") as Node3D
+	
+	# Hostile nameplate warning coloring (Warning Crimson Red!)
 	if is_instance_valid(_nameplate):
 		_nameplate.modulate = Color(1.0, 0.15, 0.15)
 		
 	_locate_player()
+	_setup_nameplate_height()
+	
+	# Symmetrical initial check to set the gargoyle to stone if spawned during daytime
+	var is_night := CelestialService.is_night_time_static()
+	_update_nocturnal_state(is_night)
 
 
-# ==============================================================================
-# POLYMORPHIC DOMAIN CONTRACTS (LSP/OCP COMPLIANCE)
-# ==============================================================================
+## Bypasses old procedural representation compiling
+func _build_visual_representation() -> void:
+	pass
+
+
+## Decoupled height calculation sourcing boundaries directly from the scene setup
+func _setup_nameplate_height() -> void:
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
+	if is_instance_valid(col) and col.shape is CylinderShape3D:
+		var cylinder := col.shape as CylinderShape3D
+		_collision_height = cylinder.height
+		
+	_setup_nameplate()
+	
+	# Aligns nameplate correctly above the visual model
+	if is_instance_valid(_nameplate):
+		_nameplate.position.y = _collision_height + 0.35
+
 
 func _get_habitat() -> MobRegistry.Habitat:
 	return MobRegistry.Habitat.TERRESTRIAL
 
 
 func _has_ui_decorations() -> bool:
-	return true # We force it true to ensure the red nameplate spawns!
+	return true # Explicitly true to ensure warning red nameplate is drawn!
 
-
-## Concrete Implementation (DIP): Instantiates and injects the Fauna Strategy dynamically
-func _build_visual_representation() -> void:
-	var strategy := FaunaVisualRepresentation.new()
-	strategy.model_path = MODEL_PATH
-	
-	# Scale and position offsets calibrated for the Gargoyle GLB Mesh
-	strategy.scale_multiplier = Vector3(2.3504, 2.3504, 2.3504)
-	strategy.position_offset = Vector3(0.0, 0.8982, 0.0)
-	strategy.rotation_offset = Vector3(0, 90, 0) # Face forward (-Z after rotation)
-	
-	# Physical collision bounds
-	strategy.collision_size = Vector3(2.35, 1.80, 1.1)
-	strategy.collision_position = Vector3(0.0, 0.8, 0.0)
-	strategy.anim_idle_name = "idle"
-	strategy.anim_walk_name = "walk"
-	
-	# Inject strategy into parent coordinator
-	visual_representation = strategy
-	visual_representation.build_representation(self, visual_component.body_bob_node)
-
-
-# ==============================================================================
-# COMBAT & STATE LOGIC
-# ==============================================================================
 
 func _locate_player() -> void:
 	var world_node := get_parent()
@@ -109,7 +99,7 @@ func _locate_player() -> void:
 		player = world_node.get("player") as CharacterBody3D
 
 
-## Override: Hostiles do not panic when hit
+## Hostiles do not panic when hit
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	pass 
 
@@ -121,7 +111,8 @@ func _drop_loot(inv: IInventory) -> void:
 
 ## Symmetrical transition updating stone shaders/emission visual overlays
 func _set_gargoyle_stone_appearance(is_stone: bool) -> void:
-	_traverse_and_apply_stone_appearance(visual_component.body_bob_node, is_stone)
+	if is_instance_valid(_model_node):
+		_traverse_and_apply_stone_appearance(_model_node, is_stone)
 
 
 func _traverse_and_apply_stone_appearance(node: Node, is_stone: bool) -> void:
@@ -132,8 +123,7 @@ func _traverse_and_apply_stone_appearance(node: Node, is_stone: bool) -> void:
 				mat.albedo_color = Color(0.48, 0.48, 0.50) # Solid grey statue
 				mat.roughness = 1.0
 			else:
-				# Restore dynamic albedo textures when awakened
-				mat.albedo_color = Color(1.0, 1.0, 1.0)
+				mat.albedo_color = Color(1.0, 1.0, 1.0) # Restored textures
 				mat.roughness = 0.5
 				
 	for child in node.get_children():
@@ -143,13 +133,11 @@ func _traverse_and_apply_stone_appearance(node: Node, is_stone: bool) -> void:
 # ==============================================================================
 # MAIN HOSTILE PHYSICS & AI CALCULATIONS
 # ==============================================================================
-
 func _process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 		
-	var model_node := visual_component.body_bob_node.get_child(0) as Node3D
-	if is_instance_valid(model_node):
+	if is_instance_valid(_model_node):
 		_animation_time += delta
 		
 		if current_state == State.AWAKE:
@@ -158,23 +146,23 @@ func _process(delta: float) -> void:
 			
 			# 1. Thermal Hover Bobbing (Smooth vertical sine wave)
 			var hover_bob := sin(_animation_time * 5.0) * 0.25
-			model_node.position.y = 2.5 + hover_bob
+			_model_node.position.y = 2.5 + hover_bob
 			
 			# 2. Wing-Flap tilting
 			if is_moving:
-				model_node.rotation.z = sin(_animation_time * 14.0) * 0.18
-				model_node.rotation.x = deg_to_rad(15.0) # Pitch forward
+				_model_node.rotation.z = sin(_animation_time * 14.0) * 0.18
+				_model_node.rotation.x = deg_to_rad(15.0) # Pitch forward
 			else:
-				model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
-				model_node.rotation.x = 0.0
+				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
+				_model_node.rotation.x = 0.0
 		else:
 			# Daytime (STONE): Lerp back to solid ground position and 90° rotation
-			model_node.position.y = lerp(model_node.position.y, 0.8982, delta * 5.0)
-			model_node.rotation = lerp(model_node.rotation, Vector3(0.0, deg_to_rad(90.0), 0.0), delta * 5.0)
+			_model_node.position.y = lerp(_model_node.position.y, 0.8982, delta * 5.0)
+			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(90.0), 0.0), delta * 5.0)
 			
 		# Synchronize Nameplate's height dynamically with flight bobbing sways!
 		if is_instance_valid(_nameplate):
-			_nameplate.position.y = model_node.position.y + 1.05
+			_nameplate.position.y = _model_node.position.y + 1.05
 
 
 func _physics_process(delta: float) -> void:
@@ -219,9 +207,9 @@ func _update_nocturnal_state(is_night: bool) -> void:
 		_set_gargoyle_stone_appearance(true)
 
 
-func _process_ai_intelligence(delta: float) -> void:
+func _process_ai_intelligence(_delta: float) -> void:
 	var _wander_direction_tmp: Vector3 = Vector3.ZERO
-	_wander_timer -= delta
+	_wander_timer -= _delta
 	if _wander_timer <= 0:
 		_is_wandering = randf() > 0.4
 		if _is_wandering:

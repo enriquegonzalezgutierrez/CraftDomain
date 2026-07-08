@@ -1,38 +1,34 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Isolated Actor Component managing AI decision-making loops, 
-#              threat detection, social wandering, and obstacle avoidance.
-# SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Extricates decision-making 
-#   and scanning logic from the physical and visual entity wrapper.
-# - Open-Closed Principle (OCP): Completely eliminated all hardcoded string checks 
-#   (`name.contains`) and `is_entity` chains. Behavior is now resolved purely 
-#   through polymorphic virtual contracts (`_get_habitat`, `_has_ui_decorations`, 
-#   and `_get_humanoid_role`).
-# - Dependency Inversion Principle (DIP): Controls movements on 
-#   general CharacterBody3D hosts using abstract vectors.
-# PHYSICAL WALL BOUNCING (LSP):
-# - Refactored `_process_movement_avoidance()` to read the physical `wall_normal` 
-#   upon collision. Instantly bounces the passive wander vector away from the 
-#   surface, permanently preventing frozen corner and fence traps.
+# Layer: Infrastructure (AI Logic)
+# Class: NPCAIComponent
+# Description: Refactored AI component managing task timers, obstacle avoidance, 
+#              and dynamic behavior delegation with an accelerated activity engine.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Acts strictly as the task timer and 
+#   coordination hub, delegating domain-specific decision trees to the injected 
+#   IAIBehavior strategy.
+# - Open-Closed Principle (OCP): Open for extension by accepting any subclass of 
+#   IAIBehavior dynamically, while remaining closed to direct modifications.
+# - Liskov Substitution Principle (LSP): Fully supports a default fallback behavior 
+#   loop if no strategy is injected, ensuring uniform state-machine safety.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/NPCAIComponent.gd
 # ==============================================================================
 class_name NPCAIComponent
 extends Node
 
 ## AI Behavioral States
 enum TaskState {
-	IDLE,       # Resting in place
-	WANDERING,  # Walking randomly
-	EXAMINING,  # Performing a slow local inspection loop
-	GREETING,   # Facing and greeting the nearby player
-	CHATTIING,  # Socializing with a nearby peer NPC
-	PANIC,      # Fleeing rapidly away from nearby hostile threats
-	WORKING     # Performing custom sub-class tasks (e.g. harvesting)
+	IDLE,       
+	WANDERING,  
+	EXAMINING,  
+	GREETING,   
+	CHATTIING,  
+	PANIC,      
+	WORKING     
 }
 
-# AI Settings
+# AI Constants
 const SIGHT_RANGE: float = 8.0
 const SIGHT_RANGE_SQ: float = 64.0  
 const SOCIAL_RANGE: float = 3.0
@@ -46,15 +42,22 @@ var task_timer: float = 2.0
 var wander_direction: Vector3 = Vector3.ZERO
 var stuck_timer: float = 0.0
 
+# Social Cooldown Timer to resolve social freezes and infinite greeting loops
+var social_cooldown: float = 0.0
+const SOCIAL_COOLDOWN_INTERVAL: float = 8.0
+
+# Injected Behavioral Strategy (OCP/SOLID compliant)
+var active_behavior: IAIBehavior = null
+
 # Asynchronous Scan Throttling Timer
 var _tactical_scan_timer: float = 0.0
-const SCAN_INTERVAL: float = 0.25 # 4 times per second
+const SCAN_INTERVAL: float = 0.25 
 
 # Reference to the controlled physical entity parent and spawn anchors
 var _host: CharacterBody3D
 var _spawn_point: Vector3
 
-# Dynamic 3D Path-following parameters Sourced from VoxelNavigationService
+# Dynamic 3D Path-following parameters
 var _nav_service: VoxelNavigationService = null
 var _active_path: Array[Vector3] = []
 var _current_path_index: int = 0
@@ -69,6 +72,7 @@ func _ready() -> void:
 	if is_instance_valid(_host):
 		_spawn_point = _host.global_position
 		_stagger_and_setup()
+		print("[AI DEBUG] NPCAIComponent successfully attached to host: ", _host.name, " [Seed: ", _host.get("npc_seed"), "]")
 
 
 ## Staggers updates and queries WorldController for the shared navigation map
@@ -81,7 +85,7 @@ func _stagger_and_setup() -> void:
 			if is_instance_valid(world_ctrl) and "chunk_manager" in world_ctrl:
 				if "navigation_service" in world_ctrl:
 					_nav_service = world_ctrl.get("navigation_service") as VoxelNavigationService
-					print("[NPCAI] Successfully linked to the shared VoxelNavigationService.")
+					print("[AI DEBUG] ", _host.name, " successfully linked to global navigation service.")
 	, CONNECT_ONE_SHOT)
 
 
@@ -92,38 +96,53 @@ func process_ai(delta: float) -> void:
 		
 	# Skip standard state-machine calculations if the NPC is locked in dialog
 	if _host.get("is_talking") == true:
+		if current_task != TaskState.IDLE:
+			print("[AI DEBUG] ", _host.name, " dialog lock activated, forcing IDLE state.")
 		current_task = TaskState.IDLE
 		wander_direction = Vector3.ZERO
 		stuck_timer = 0.0
 		_active_path.clear()
 		return
 
-	# Always tick timers in real-time to prevent time-dilation
+	# Always tick timers continuously in real-time
 	task_timer -= delta
 	_tactical_scan_timer -= delta
+	if social_cooldown > 0.0:
+		social_cooldown -= delta
 
 	# ==========================================================================
-	# DYNAMIC AI TICK THROTTLING (LOD AI - Phase 5)
+	# 1. EVALUATE TASK TRANSITIONS UNTHROTTLED (BUG FIX)
+	# This guarantees task expiration is evaluated even if tick rates are throttled.
+	# ==========================================================================
+	if task_timer <= 0.0:
+		_select_next_random_task()
+
+	# ==========================================================================
+	# 2. RUN POLYMORPHIC STRATEGY IF DELEGATED (OCP COMPLIANCE)
+	# ==========================================================================
+	if active_behavior != null:
+		active_behavior.evaluate_and_execute(_host, self, delta)
+		return
+
+	# ==========================================================================
+	# 3. DYNAMIC AI TICK THROTTLING FOR FALLBACK BEHAVIOR (LOD AI)
 	# ==========================================================================
 	var player_node := _host.get_parent().get_node_or_null("Player") as CharacterBody3D
 	var dist_sq := 999999.0
 	if is_instance_valid(player_node):
 		dist_sq = _host.global_position.distance_squared_to(player_node.global_position)
 		
-	var tick_interval := 0.05 # Close Range (<15m): 20Hz updates
-	if dist_sq > 1225.0:      # Far Range (>35m): 0.5Hz updates
+	var tick_interval := 0.05 
+	if dist_sq > 1225.0:      
 		tick_interval = 2.0
-	elif dist_sq > 225.0:     # Mid Range (15m to 35m): 4Hz updates
+	elif dist_sq > 225.0:     
 		tick_interval = 0.25
 		
 	_ai_tick_timer -= delta
 	if _ai_tick_timer > 0.0:
-		# Throttle state: Skip heavy sweeps (A* paths, threat checks, jobs)
-		# but still process physics continuation and local stuck-jumps!
-		
-		# Real-time boundary check even in throttled frames to prevent falling
 		if current_task == TaskState.WANDERING or current_task == TaskState.PANIC:
 			if not _is_direction_safe(wander_direction):
+				print("[AI DEBUG] ", _host.name, " predicted path is unsafe during throttle, resetting path.")
 				_active_path.clear()
 				wander_direction = Vector3.ZERO
 				task_timer = 0.0 
@@ -132,21 +151,22 @@ func process_ai(delta: float) -> void:
 		_apply_movement_vectors()
 		return
 		
-	_ai_tick_timer = tick_interval # Reset timer based on distance LOD
+	_ai_tick_timer = tick_interval 
 
 	# ==========================================================================
-	# TACTICAL PROXIMITY SCAN (Throttled for Performance)
+	# 4. TACTICAL PROXIMITY SCAN FOR FALLBACK BEHAVIOR
 	# ==========================================================================
 	if _tactical_scan_timer <= 0.0:
 		_tactical_scan_timer = SCAN_INTERVAL
 		
-		# 1. Threat Detection (Highest priority state override: PANIC)
+		# A. Threat Detection
 		var closest_hostile := _detect_closest_zombie_threat()
 		if closest_hostile != null:
 			var escape_dir := (_host.global_position - closest_hostile.global_position).normalized()
 			escape_dir.y = 0.0
 			
 			if _is_direction_safe(escape_dir):
+				print("[AI DEBUG] ", _host.name, " detected threat: ", closest_hostile.name, "! Triggering escape PANIC.")
 				current_task = TaskState.PANIC
 				_active_path.clear() 
 				wander_direction = escape_dir
@@ -155,7 +175,7 @@ func process_ai(delta: float) -> void:
 				_apply_movement_vectors()
 				return
 		
-		# 2. Check Environmental & Time Schedule (Day/Night & Storm Sheltering)
+		# B. Check Environmental and Time Schedule
 		var is_night: bool = CelestialService.is_night_time_static()
 		var is_storming := false
 		
@@ -166,53 +186,48 @@ func process_ai(delta: float) -> void:
 				var current_weather: int = int(weather_node.get("current_weather"))
 				is_storming = (current_weather == 1 or current_weather == 2)
 				
-		# OCP CIVILIAN RESOLUTION:
 		var is_civilian := false
 		if _host.has_method("_get_humanoid_role"):
 			var role: int = _host.call("_get_humanoid_role")
 			is_civilian = (role >= 0 and role != 2 and role != 6)
 		
-		# If night or storm occurs, civilians cancel work/walks and seek shelter
 		if (is_night or is_storming) and is_civilian:
 			_seek_shelter_routine()
 			_apply_movement_vectors()
 			return
 		
-		# 3. Check Player Greeting Proximity
+		# C. Check Player and Peer Social Interaction with cooldown limits (Hysteresis)
 		var can_socialize: bool = _host.has_method("_can_socialize") and _host.call("_can_socialize") as bool
 		
-		if can_socialize and current_task != TaskState.PANIC:
+		if can_socialize and social_cooldown <= 0.0 and current_task != TaskState.PANIC and current_task != TaskState.GREETING and current_task != TaskState.CHATTIING:
 			if dist_sq <= GREET_DISTANCE_SQ: 
-				current_task = TaskState.GREETING
-				_active_path.clear()
-				var look_dir := (player_node.global_position - _host.global_position).normalized()
-				look_dir.y = 0
-				if look_dir != Vector3.ZERO:
-					wander_direction = look_dir
-				_apply_movement_vectors()
-				return
-			else:
-				# Check Peer Social proximity
-				var closest_peer := _detect_closest_peer_npc()
-				if closest_peer != null:
-					current_task = TaskState.CHATTIING
+				if randf() < 0.25:
+					print("[AI DEBUG] ", _host.name, " proximity greeting triggered with Player.")
+					current_task = TaskState.GREETING
 					_active_path.clear()
-					var look_dir := (closest_peer.global_position - _host.global_position).normalized()
+					var look_dir := (player_node.global_position - _host.global_position).normalized()
 					look_dir.y = 0
 					if look_dir != Vector3.ZERO:
 						wander_direction = look_dir
-					_apply_movement_vectors()
-					return
+					task_timer = randf_range(2.0, 4.0)
+					social_cooldown = SOCIAL_COOLDOWN_INTERVAL
+			else:
+				var closest_peer := _detect_closest_peer_npc()
+				if closest_peer != null:
+					if randf() < 0.15:
+						print("[AI DEBUG] ", _host.name, " proximity chatter triggered with peer: ", closest_peer.name)
+						current_task = TaskState.CHATTIING
+						_active_path.clear()
+						var look_dir := (closest_peer.global_position - _host.global_position).normalized()
+						look_dir.y = 0
+						if look_dir != Vector3.ZERO:
+							wander_direction = look_dir
+						task_timer = randf_range(2.0, 4.0)
+						social_cooldown = SOCIAL_COOLDOWN_INTERVAL
 
-	# ==========================================================================
-	# PROCESS STANDARD TIMEOUTS & STATE CHANGES
-	# ==========================================================================
-	if task_timer <= 0.0:
-		_select_next_random_task()
-		
-	# Real-time boundary check: Halt immediately if we are about to step into danger!
 	if current_task == TaskState.WANDERING or current_task == TaskState.PANIC:
 		if not _is_direction_safe(wander_direction):
+			print("[AI DEBUG] ", _host.name, " dynamic path obstructed, changing direction.")
 			_active_path.clear()
 			_select_next_random_task()
 		
@@ -235,6 +250,7 @@ func _seek_shelter_routine() -> void:
 		if shelter_pos != Vector3.ZERO:
 			var path := _nav_service.find_path(_host.global_position, shelter_pos)
 			if path.size() > 1:
+				print("[AI DEBUG] ", _host.name, " evening/storm routine: Routing AStar path to shelter at: ", shelter_pos)
 				_active_path = path
 				_current_path_index = 0
 				current_task = TaskState.WANDERING
@@ -246,9 +262,16 @@ func _seek_shelter_routine() -> void:
 	task_timer = randf_range(1.5, 3.0)
 
 
-## Evasion: Calculates and applies velocities to the parent host based on task states.
+## Calculates and applies velocities to the parent host based on task states
 func _apply_movement_vectors() -> void:
-	var base_speed: float = _host.get("BASE_SPEED") as float if "BASE_SPEED" in _host else 1.3
+	var base_speed: float = 1.3
+	
+	if "SPEED" in _host:
+		var raw_s: Variant = _host.get("SPEED")
+		if raw_s != null: base_speed = float(raw_s)
+	elif "BASE_SPEED" in _host:
+		var raw_bs: Variant = _host.get("BASE_SPEED")
+		if raw_bs != null: base_speed = float(raw_bs)
 	
 	match current_task:
 		TaskState.IDLE, TaskState.GREETING, TaskState.CHATTIING:
@@ -275,9 +298,10 @@ func _apply_movement_vectors() -> void:
 						
 					wander_direction = diff.normalized()
 				else:
+					print("[AI DEBUG] ", _host.name, " successfully reached targeted AStar path node destination.")
 					_active_path.clear()
 					current_task = TaskState.IDLE
-					task_timer = randf_range(1.5, 3.5)
+					task_timer = randf_range(0.4, 1.2) # Short rest interval for high dynamism
 					_host.velocity.x = 0.0
 					_host.velocity.z = 0.0
 					stuck_timer = 0.0
@@ -287,47 +311,52 @@ func _apply_movement_vectors() -> void:
 			_host.velocity.x = wander_direction.x * base_speed * speed_mult
 			_host.velocity.z = wander_direction.z * base_speed * speed_mult
 			
-			# OCP TETHERING FIX
 			var is_tethered_npc: bool = _host.has_method("_has_ui_decorations") and _host.call("_has_ui_decorations") as bool
 			if is_tethered_npc:
 				if _host.global_position.distance_squared_to(_spawn_point) > 144.0: 
+					print("[AI DEBUG] ", _host.name, " exceeded maximum spawn tether distance, routing back home.")
 					_active_path.clear()
 					wander_direction = (_spawn_point - _host.global_position).normalized()
 					wander_direction.y = 0
 
 
-## AI Pathfinding Avoidance: Jumps over wall collisions or recalculates paths.
+## Jumps over wall collisions or recalculates path trajectories
 func _process_movement_avoidance(delta: float) -> void:
 	if current_task != TaskState.WANDERING and current_task != TaskState.PANIC:
 		return
 		
 	if _host.is_on_wall():
 		if _host.is_on_floor():
-			var jump_vel: float = _host.get("JUMP_VELOCITY") as float if "JUMP_VELOCITY" in _host else 5.0
+			var jump_vel: float = 5.0
+			if "JUMP_VELOCITY" in _host:
+				var jv: Variant = _host.get("JUMP_VELOCITY")
+				if jv != null: jump_vel = float(jv)
 			_host.velocity.y = jump_vel
 			
 		stuck_timer += delta
-		# ======================================================================
-		# INSTANT NORMAL BOUNCING: 
-		# If a civil NPC hits a wall/fence, we instantly read the physics normal 
-		# and bounce its wander vector outwards. This completely prevents 
-		# running against fences and corner traps!
-		# ======================================================================
 		if stuck_timer > 0.12: 
 			stuck_timer = 0.0
 			var wall_normal := _host.get_wall_normal()
 			var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
 			if flat_normal != Vector3.ZERO:
+				print("[AI DEBUG] ", _host.name, " wall collision detected, executing bounce course-correction.")
 				wander_direction = wander_direction.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
 				_active_path.clear()
 	else:
 		stuck_timer = 0.0
 
 
-## Smart-Checking Wandering: Scans directions and picks a safe heading
+## Smart-Checking Wandering (BUG FIX: Re-balanced active weights for maximum dynamism)
 func _select_next_random_task() -> void:
 	var roll := randf()
-	if roll < 0.35:
+	var old_task := current_task
+	
+	# ==========================================================================
+	# DYNAMIC ACTIVITY BALANCE (UX ENHANCEMENT)
+	# WANDERING increased to 70% to guarantee continuous village activity.
+	# IDLE and EXAMINING are shortened significantly to prevent static freeze loops.
+	# ==========================================================================
+	if roll < 0.70: # 70% chance to WALK actively
 		current_task = TaskState.WANDERING
 		_active_path.clear()
 		
@@ -341,6 +370,7 @@ func _select_next_random_task() -> void:
 				_active_path = path
 				_current_path_index = 0
 				task_timer = randf_range(5.0, 10.0)
+				print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> WANDERING (AStar Route locked to: ", target_pos, ")")
 				return
 				
 		var angle := randf() * TAU
@@ -358,20 +388,24 @@ func _select_next_random_task() -> void:
 		if not found_safe:
 			current_task = TaskState.IDLE
 			wander_direction = Vector3.ZERO
-			task_timer = randf_range(1.5, 3.0)
+			task_timer = randf_range(0.4, 1.2) # Short rest interval
+			print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> IDLE (No safe directions found during wander scan)")
 			return
 			
 		task_timer = randf_range(3.0, 7.0)
-	elif roll < 0.70:
+		print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> WANDERING (Fallback flat direction: ", wander_direction, ")")
+	elif roll < 0.85: # 15% chance to pause and EXAMINE surroundings
 		current_task = TaskState.EXAMINING 
 		_active_path.clear()
 		var angle := randf() * TAU
 		wander_direction = Vector3(cos(angle), 0, sin(angle))
-		task_timer = randf_range(2.0, 5.0)
-	else:
+		task_timer = randf_range(1.0, 2.5) # Fast analysis interval
+		print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> EXAMINING (Analyzing heading: ", wander_direction, ")")
+	else: # 15% chance of short peaceful rest in place (IDLE)
 		current_task = TaskState.IDLE
 		_active_path.clear()
-		task_timer = randf_range(1.5, 4.0)
+		task_timer = randf_range(0.4, 1.2) # Short resting interval
+		print("[AI DEBUG] ", _host.name, " State Shift: ", old_task, " -> IDLE (Resting and breathing in place)")
 
 
 ## Look-Ahead Validator: Protects land mobs from drowning and constrains aquatic species
@@ -394,30 +428,20 @@ func _is_direction_safe(dir: Vector3) -> bool:
 	var block_below := ws.get_block(block_below_coord)
 	var block_at := ws.get_block(block_at_coord)
 	
-	# ==========================================================================
-	# OCP HABITAT RESOLUTION
-	# ==========================================================================
-	var habitat: MobRegistry.Habitat = MobRegistry.Habitat.TERRESTRIAL
+	var habitat: int = 0
 	if _host.has_method("_get_habitat"):
-		habitat = _host.call("_get_habitat") as MobRegistry.Habitat
-	else:
-		# Transient safe type-check fallback until all Entity files are updated
-		if _host is SharkEntity or _host is OctopusEntity:
-			habitat = MobRegistry.Habitat.AQUATIC
-		elif _host is TurtleEntity or _host is CrabEntity:
-			habitat = MobRegistry.Habitat.AMPHIBIOUS
+		habitat = _host.call("_get_habitat") as int
 			
-	if habitat == MobRegistry.Habitat.AQUATIC:
+	if habitat == 2: # AQUATIC
 		return block_below == BlockType.Type.WATER or block_at == BlockType.Type.WATER
-	elif habitat == MobRegistry.Habitat.AMPHIBIOUS:
+	elif habitat == 1: # AMPHIBIOUS
 		var is_water: bool = block_below == BlockType.Type.WATER or block_at == BlockType.Type.WATER
 		var is_shore: bool = block_below == BlockType.Type.SAND or block_below == BlockType.Type.MUD
 		return is_water or is_shore
-	else:
+	else: # TERRESTRIAL
 		var is_water: bool = block_below == BlockType.Type.WATER or block_below == BlockType.Type.LAVA or block_at == BlockType.Type.WATER
 		var is_void: bool = block_below == BlockType.Type.AIR
 		
-		# DOWNHILL SLOPE RESOLUTION
 		if is_void:
 			var block_2_below := ws.get_block(block_below_coord + Vector3i(0, -1, 0))
 			if block_2_below != BlockType.Type.AIR and block_2_below != BlockType.Type.WATER and block_2_below != BlockType.Type.LAVA:
