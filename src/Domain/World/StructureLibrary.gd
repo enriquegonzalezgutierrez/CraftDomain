@@ -1,5 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Pure Business Logic)
 # Description: Domain Service acting as a Registry and Router for voxel structure
 #              blueprints. Provides dynamic registration (OCP compliant) and
 #              delegates construction algorithms to concrete strategy classes.
@@ -8,14 +9,11 @@
 #   and local blueprint instantiation.
 # - Open-Closed Principle (OCP): Integrates a hybrid loading pipeline. 
 #   * Artificial POIs are kept as data-driven JSON templates (Pipes, Piers, Cabins).
-#   * Natural flora are registered as high-performance individual procedural 
+#   * Natural flora and ruins are registered as high-performance individual procedural 
 #     blueprint strategies, completely closing existing code to modifications 
-#     when adding new biological species!
+#     when adding new biological or architectural species!
 # - Dependency Inversion Principle (DIP): Communicates with abstract blueprints
 #   inheriting `IStructureBlueprint`, keeping the registry closed to code modifications.
-# INDENTATION RESOLUTION (Critical Bug Fix):
-# - Corrected indentation in 'register_blueprint()' to sit outside the null-validation 
-#   block, resolving unreachable code warnings and restoring standard vegetation spawns.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/StructureLibrary.gd
 # ==============================================================================
@@ -36,7 +34,7 @@ static func initialize_structures() -> void:
 	_ensure_directory_exists()
 	
 	# ==========================================================================
-	# 1. BIOLOGICAL STRATEGY REGISTRY (Pure SOLID Procedural Growth)
+	# 1. BIOLOGICAL & ARCHITECTURAL STRATEGY REGISTRY (Pure SOLID Procedural)
 	# Directly instantiates specialized strategy classes to achieve 120 FPS.
 	# ==========================================================================
 	register_blueprint(OakTreeBlueprint.new())
@@ -47,6 +45,11 @@ static func initialize_structures() -> void:
 	register_blueprint(RoseBushBlueprint.new())
 	register_blueprint(BirchTreeBlueprint.new())
 	register_blueprint(DeadShrubBlueprint.new())
+	
+	# ==========================================================================
+	# CASE B: ADAPTIVE/PROCEDURAL SHRINES & RUINS STRATEGY
+	# ==========================================================================
+	register_blueprint(DecayedTempleBlueprint.new()) # ID 15: Adaptive Ruins
 	
 	# ==========================================================================
 	# 2. MANUFACTURED TEMPLATE REGISTRY (Data-Driven JSON Layouts)

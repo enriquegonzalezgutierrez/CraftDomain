@@ -1,11 +1,12 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Pure Business Logic / Biomes)
 # Description: Concrete Biome Strategy implementing rules for Whispering Redwood Forest.
 #              SOLID COMPLIANCE: 
 #              - Liskov Substitution Principle (LSP): Fully implements IBiome.
-#              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
-#                spawn Foxes (204), Flying Yellow Birds (205), Raccoons (211), 
-#                and climbing Monkeys (213) organically in the woods.
+#              - Open-Closed Principle (OCP): Registers specialized Forest Druids (104) 
+#                and Guards (102) for its outposts, and polymorphically scatters
+#                decayed architectural temple ruins alongside its massive trees.
 # GEOGRAPHICAL SENSING (Phase 4):
 #              - Implements `is_coordinate_inside()` to encapsulate its own 
 #                spawning boundaries (polar angle slice between 0.392 and 1.178 rad).
@@ -44,17 +45,20 @@ func get_block_for_depth(y: int, base_height: int) -> BlockType.Type:
 	return BlockType.Type.DIRT
 
 
-## Concrete Implementation: Natural forest with no structural landmarks
+## Concrete Implementation: Natural forest with no rigid structural landmarks
 func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 	return 0
 
 
-## Concrete Override: Organically scatters common Oak and colossal Redwood trees.
+## Concrete Override: Organically scatters common Oak, colossal Redwood trees,
+## and rare procedural Decayed Temple ruins (ID 15) that adapt to terrain slopes.
 func get_scatter_blueprint_id(scatter_hash: int) -> int:
-	if scatter_hash % 60 == 5:
-		return 1 
+	if scatter_hash % 300 == 15:
+		return 15 # Ancient Decayed Temple Ruin (Adaptive Dungeons - Case B)
+	elif scatter_hash % 60 == 5:
+		return 1  # Oak Tree (ID 1)
 	elif scatter_hash % 120 == 12:
-		return 2 
+		return 2  # Colossal Redwood Conifer (ID 2)
 	return 0
 
 
