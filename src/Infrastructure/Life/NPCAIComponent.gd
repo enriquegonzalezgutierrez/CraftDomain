@@ -3,7 +3,7 @@
 # Layer: Infrastructure (AI Logic)
 # Class: NPCAIComponent
 # Description: Refactored AI component managing task timers, obstacle avoidance, 
-#              and dynamic behavior delegation with inertia dampening.
+#              and dynamic behavior delegation with a dual patrol-strategy engine.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Acts strictly as the task timer and 
 #   coordination hub, delegating domain-specific decision trees to the injected 
@@ -94,10 +94,7 @@ func process_ai(delta: float) -> void:
 	if not is_instance_valid(_host):
 		return
 		
-	# ==========================================================================
-	# DIALOG LOCK INERTIA DAMPENING (BUG FIX)
-	# Explicitly halts physical movement vectors when locked in conversational states
-	# ==========================================================================
+	# Skip standard state-machine calculations if the NPC is locked in dialog
 	if _host.get("is_talking") == true:
 		if current_task != TaskState.IDLE:
 			print("[AI DEBUG] ", _host.name, " dialog lock activated, forcing IDLE state.")
@@ -228,10 +225,6 @@ func process_ai(delta: float) -> void:
 						wander_direction = look_dir
 					task_timer = randf_range(2.0, 4.0)
 					social_cooldown = SOCIAL_COOLDOWN_INTERVAL
-					# ==========================================================
-					# GREETING DE-ACCELERATION FIX
-					# Removed return to allow the tick flow to run and stop motion
-					# ==========================================================
 					
 			var closest_peer := _detect_closest_peer_npc()
 			if closest_peer != null:
@@ -341,7 +334,7 @@ func _apply_movement_vectors() -> void:
 					wander_direction.y = 0
 
 
-## Jumps over wall collisions or recalculates path trajectories
+## Jumps over wall collisions or recalculates path trajectories (OCP Jump Shield)
 func _process_movement_avoidance(delta: float) -> void:
 	if current_task != TaskState.WANDERING and current_task != TaskState.PANIC:
 		return
@@ -352,7 +345,26 @@ func _process_movement_avoidance(delta: float) -> void:
 			if "JUMP_VELOCITY" in _host:
 				var jv: Variant = _host.get("JUMP_VELOCITY")
 				if jv != null: jump_vel = float(jv)
-			_host.velocity.y = jump_vel
+				
+			# ==================================================================
+			# COORDINATE-BASED JUMP EVALUATION (BUG FIX / LSP)
+			# Calculate exact destination voxel above the wall we are hitting 
+			# to prevent aquatic breaching while enabling underwater step climbs.
+			# ==================================================================
+			var wall_normal := _host.get_wall_normal()
+			var step_dir := -wall_normal # Vector direction towards the block face
+			var projected_pos := _host.global_position + step_dir * 0.8
+			var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
+			
+			var is_jump_capable: bool = true
+			if _host.has_method("_can_jump_to"):
+				is_jump_capable = _host.call("_can_jump_to", target_coord) as bool
+				
+			if is_jump_capable:
+				_host.velocity.y = jump_vel
+				print("[AI DEBUG] [", _host.name, "] climbing wall obstacle cleanly towards coordinate: ", target_coord)
+			else:
+				print("[AI DEBUG] [", _host.name, "] climb BLOCKED: Target coordinate ", target_coord, " violates habitat rules.")
 			
 		stuck_timer += delta
 		if stuck_timer > 0.12: 

@@ -3,8 +3,8 @@
 # Layer: Infrastructure (Physics & Presentation)
 # Class: HostileEntity
 # Description: Physical character controller representing a hostile Cave Zombie.
-#              Schedules animation rigging, handles loot drops, and integrates 
-#              the specialized ZombieAIBehavior dynamically on ready.
+#              Schedules animation rigging, handles loot drops, and registers its 
+#              specialized ZombieAIBehavior strategy dynamically on ready.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical body 
 #   movement structures and target visual attachments, delegating pathing and 
@@ -47,8 +47,8 @@ func _ready() -> void:
 	_setup_quest_bubble()
 	
 	# ==========================================================================
-	# AUTOMATED COHESION HOOK (SOLID / LSP COMPLIANCE)
-	# Programmatically instantiates NPCAIComponent if missing from old scene templates
+	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
+	# Programmatically instantiates NPCAIComponent if missing from old scenes
 	# ==========================================================================
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	if not is_instance_valid(ai_component):
@@ -57,10 +57,6 @@ func _ready() -> void:
 		
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = ZombieAIBehavior.new()
-		
-	# Hostile nameplate warning coloring (Crimson Red)
-	if is_instance_valid(_nameplate):
-		_nameplate.modulate = Color(1.0, 0.15, 0.15)
 
 
 ## Determines visual presentation dynamically based on file existence
@@ -100,7 +96,7 @@ func _build_procedural_representation() -> void:
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.16, 0.55, 0.18), Vector3(0.1, 0.275, 0.0), pants_color)
 	visual_component.create_box(visual_component.body_bob_node, Vector3(0.44, 0.75, 0.32), Vector3(0, 0.925, 0), shirt_color)
 	
-	# Head (Zombified skull)
+	# Head (Zombified bald skull)
 	visual_component.head_node = Node3D.new()
 	visual_component.head_node.name = "HumanHead"
 	visual_component.head_node.position = Vector3(0, 1.3, 0)
@@ -119,6 +115,14 @@ func _setup_quest_bubble() -> void:
 			add_child(_quest_bubble)
 			_quest_bubble.call("set_text", tr("BUBBLE_TARGET_MONSTER"))
 			_quest_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
+
+
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# Overrides nameplate color return value to warning crimson red
+# ==============================================================================
+func _get_nameplate_color() -> Color:
+	return Color(1.0, 0.15, 0.15)
 
 
 func _get_habitat() -> int:

@@ -1,21 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
 # Layer: Infrastructure (Physics & Presentation)
-# Description: Physics controller for the hostile skirmisher Goblin, designed to
-#              be attached to a '.tscn' scene file.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively rapid
-#                skirmishing AI, alarm networking, and escape routing, delegating
-#                visual and collision parameters to the Godot Editor.
-#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity,
-#                swapping groups cleanly without code-based instantiation.
-#              CIRCULAR DEPENDENCY SHIELD:
-#              - Changed '_get_habitat()' return signature to 'int' to safely break
-#                the GDScript compilation lock with MobRegistry class name.
-#              STABILIZATION:
-#              - Removed redundant signal connections already handled in parent class.
+# Class: GoblinEntity
+# Description: Physical character controller representing a hostile skirmisher Goblin.
+#              Schedules animation rigging, handles alerts, and overrides its 
+#              nameplate warning color polimorphically.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively active skirmishing 
+#   movement vectors and alerts, delegating nameplate styling to the virtual base contract.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   parent class, utilizing its base physics and save loops transparently.
+# - Dependency Inversion Principle (DIP): Relies on the base class nameplate 
+#   compiler instead of manual script overrides.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/GoblinEntity.gd
 # ==============================================================================
 class_name GoblinEntity
 extends PassiveEntity
@@ -50,10 +47,6 @@ func _ready() -> void:
 	# Cache component references pre-configured in the scene
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
-	# Hostile nameplate warning coloring (Warning Crimson Red!)
-	if is_instance_valid(_nameplate):
-		_nameplate.modulate = Color(1.0, 0.15, 0.15)
-		
 	_locate_player()
 	_setup_nameplate_height()
 
@@ -72,21 +65,24 @@ func _setup_nameplate_height() -> void:
 		
 	_setup_nameplate()
 	
-	# Aligns nameplate correctly above the visual model
 	if is_instance_valid(_nameplate):
 		_nameplate.position.y = _collision_height + 0.35
 
 
 # ==============================================================================
-# CIRCULAR SHIELD: Return int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
-# This perfectly complies with LSP overrides and stops circular import compilation deadlocks.
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# Overrides nameplate color return value to warning crimson red
 # ==============================================================================
+func _get_nameplate_color() -> Color:
+	return Color(1.0, 0.15, 0.15)
+
+
 func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+	return 0 # TERRESTRIAL
 
 
 func _has_ui_decorations() -> bool:
-	return true # Explicitly true to ensure warning red nameplate is drawn!
+	return true
 
 
 func _locate_player() -> void:
@@ -153,7 +149,6 @@ func _process_ai_intelligence(delta: float) -> void:
 				if _attack_cooldown_timer <= 0.0:
 					_bite_player()
 					_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL
-					# Trigger local visual attack if strategy is setup
 					if is_instance_valid(visual_representation):
 						visual_representation.trigger_attack_visuals()
 				

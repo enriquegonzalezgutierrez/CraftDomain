@@ -1,14 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
 # Layer: Infrastructure (Physics & Presentation)
-# Description: Physics controller for the hostile nocturnal Gargoyle, designed
-#              to be attached to a '.tscn' scene file.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively active
-#                flight/statue state machines, chasing physics, and bite attacks,
-#                delegating visual and collision parameters to the Godot Editor.
-#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity,
-#                swapping groups cleanly without code-based instantiation.
+# Class: GargoyleEntity
+# Description: Physical character controller representing a hostile nocturnal Gargoyle.
+#              Schedules animation sways, handles day/night state transforms, 
+#              and overrides its nameplate warning color polimorphically.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively active flight and 
+#   statue transformations, delegating nameplate styling to the virtual base contract.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   parent class, utilizing its base physics and save loops transparently.
+# - Dependency Inversion Principle (DIP): Relies on the base class nameplate 
+#   compiler instead of manual script overrides.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name GargoyleEntity
 extends PassiveEntity
@@ -54,10 +58,6 @@ func _ready() -> void:
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/gargoyle") as Node3D
 	
-	# Hostile nameplate warning coloring (Warning Crimson Red!)
-	if is_instance_valid(_nameplate):
-		_nameplate.modulate = Color(1.0, 0.15, 0.15)
-		
 	_locate_player()
 	_setup_nameplate_height()
 	
@@ -80,17 +80,24 @@ func _setup_nameplate_height() -> void:
 		
 	_setup_nameplate()
 	
-	# Aligns nameplate correctly above the visual model
 	if is_instance_valid(_nameplate):
 		_nameplate.position.y = _collision_height + 0.35
 
 
-func _get_habitat() -> MobRegistry.Habitat:
-	return MobRegistry.Habitat.TERRESTRIAL
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# Overrides nameplate color return value to warning crimson red
+# ==============================================================================
+func _get_nameplate_color() -> Color:
+	return Color(1.0, 0.15, 0.15)
+
+
+func _get_habitat() -> int:
+	return 0 # TERRESTRIAL
 
 
 func _has_ui_decorations() -> bool:
-	return true # Explicitly true to ensure warning red nameplate is drawn!
+	return true
 
 
 func _locate_player() -> void:
@@ -144,19 +151,16 @@ func _process(delta: float) -> void:
 			var flat_velocity := Vector2(velocity.x, velocity.z)
 			var is_moving := flat_velocity.length_squared() > 0.1
 			
-			# 1. Thermal Hover Bobbing (Smooth vertical sine wave)
 			var hover_bob := sin(_animation_time * 5.0) * 0.25
 			_model_node.position.y = 2.5 + hover_bob
 			
-			# 2. Wing-Flap tilting
 			if is_moving:
 				_model_node.rotation.z = sin(_animation_time * 14.0) * 0.18
-				_model_node.rotation.x = deg_to_rad(15.0) # Pitch forward
+				_model_node.rotation.x = deg_to_rad(12.0) # Pitch forward
 			else:
 				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
 				_model_node.rotation.x = 0.0
 		else:
-			# Daytime (STONE): Lerp back to solid ground position and 90° rotation
 			_model_node.position.y = lerp(_model_node.position.y, 0.8982, delta * 5.0)
 			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(90.0), 0.0), delta * 5.0)
 			
@@ -174,7 +178,6 @@ func _physics_process(delta: float) -> void:
 	_update_nocturnal_state(is_night)
 
 	if current_state == State.STONE:
-		# Apply gravity so the stone statue rests firmly on ground
 		if not is_on_floor():
 			velocity.y -= gravity * delta
 		else:
@@ -182,7 +185,6 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0, SPEED * delta)
 		velocity.z = move_toward(velocity.z, 0, SPEED * delta)
 	else:
-		# Nighttime (AWAKE): Float neutrally in the air column (no gravity)
 		velocity.y = move_toward(velocity.y, 0, SPEED * delta)
 		if _attack_cooldown_timer > 0.0:
 			_attack_cooldown_timer -= delta

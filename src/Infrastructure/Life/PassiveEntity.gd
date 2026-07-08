@@ -4,7 +4,7 @@
 # Class: PassiveEntity
 # Description: Abstract base class representing physical entities. Manages movement 
 #              vectors, gravity calculations, safe boundary checks, 
-#              and dynamic nameplate/quest-arrow UI attachments with verbose logs.
+#              and dynamic nameplate/quest-arrow UI attachments.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical motion loops 
 #   and environment boundary collisions, leaving logical tasks to composite elements.
@@ -133,7 +133,8 @@ func _setup_nameplate() -> void:
 	_nameplate.no_depth_test = false 
 	_nameplate.render_priority = 5
 	
-	_nameplate.modulate = Color(1.0, 1.0, 1.0)
+	_nameplate.modulate = _get_nameplate_color()
+	
 	_nameplate.outline_modulate = Color(0, 0, 0)
 	_nameplate.outline_size = 5
 	
@@ -180,6 +181,32 @@ func _has_ui_decorations() -> bool:
 
 func _get_habitat() -> int:
 	return 0
+
+
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
+
+## Overridable Contract: Returns the warning crimson color for hostile nameplates
+func _get_nameplate_color() -> Color:
+	return Color(1.0, 1.0, 1.0)
+
+
+## Dynamic Ascend Contract (OCP/SOLID): Evaluates coordinate block types to 
+## prevent aquatic creatures from breaching water boundaries while allowing 
+## vertical underwater ledge climbing.
+func _can_jump_to(target_coord: Vector3i) -> bool:
+	var habitat := _get_habitat()
+	if habitat == 2: # AQUATIC
+		var world_controller_ref := get_parent()
+		if is_instance_valid(world_controller_ref) and "world_state" in world_controller_ref:
+			var ws: WorldState = world_controller_ref.world_state
+			if ws != null:
+				var block_type: BlockType.Type = ws.get_block(target_coord)
+				# Only permit step climbs if the destination voxel is confirmed to be water
+				return block_type == BlockType.Type.WATER
+		return false
+	return true # Terrestrial and Amphibious entities are allowed to jump into air blocks
 
 
 ## Programmatically constructs the 3D rotating quest arrow (PrismMesh)
@@ -467,7 +494,8 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 		
-	if not is_on_floor():
+	# Habitat-based gravity application override
+	if not is_on_floor() and _get_habitat() != 2: # 2 = AQUATIC
 		velocity.y -= gravity * delta
 	else:
 		velocity.y = -0.1

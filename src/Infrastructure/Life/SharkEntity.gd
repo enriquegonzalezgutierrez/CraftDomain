@@ -39,10 +39,6 @@ func _ready() -> void:
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/shark") as Node3D
 	
-	# Hostile nameplate warning coloring (Warning Crimson Red)
-	if is_instance_valid(_nameplate):
-		_nameplate.modulate = Color(1.0, 0.15, 0.15)
-		
 	_locate_player()
 	_setup_nameplate_height()
 	
@@ -75,6 +71,14 @@ func _setup_nameplate_height() -> void:
 	
 	if is_instance_valid(_nameplate):
 		_nameplate.position.y = _collision_height + 0.35
+
+
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# Overrides nameplate color return value to warning crimson red
+# ==============================================================================
+func _get_nameplate_color() -> Color:
+	return Color(1.0, 0.15, 0.15)
 
 
 func _get_habitat() -> int:
@@ -121,7 +125,7 @@ func _process_procedural_swimming(delta: float) -> void:
 		var is_moving := flat_velocity.length_squared() > 0.1
 		
 		if is_moving:
-			# Tail wagging scales speed dynamically with flat physical velocity
+			# Tail-wagging scales speed dynamically with flat physical velocity
 			var swim_speed := flat_velocity.length() * 2.5
 			_model_node.rotation.y = deg_to_rad(-90.0) + sin(anim_time * swim_speed) * 0.22
 			_model_node.rotation.z = cos(anim_time * swim_speed * 0.5) * 0.08 

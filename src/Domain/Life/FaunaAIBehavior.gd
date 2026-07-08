@@ -91,7 +91,17 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 		
 		# Jump over block obstacles frantically
 		if host.is_on_wall() and host.is_on_floor():
-			host.velocity.y = 5.0
+			var step_dir := wander_dir.normalized()
+			var projected_pos := host.global_position + step_dir * 0.8
+			var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
+			
+			var is_jump_capable: bool = true
+			if host.has_method("_can_jump_to"):
+				is_jump_capable = host.call("_can_jump_to", target_coord) as bool
+				
+			if is_jump_capable:
+				host.velocity.y = 5.0
+				print("[AI DEBUG] [", host.name, "] Panic wall leap triggered cleanly towards: ", target_coord)
 			
 	# 3. RUN COZY GRAZING / ROAMING ACTION
 	else:
@@ -123,8 +133,24 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 		# Climb stairs/blocks slowly
 		if wander_dir != Vector3.ZERO and host.is_on_wall():
 			if host.is_on_floor():
-				host.velocity.y = 5.0
+				# ==============================================================
+				# DYNAMIC JUMP TARGET EVALUATION (OCP / LSP)
+				# Only trigger step climb jumps if target destination is valid
+				# ==============================================================
+				var step_dir := wander_dir.normalized()
+				var projected_pos := host.global_position + step_dir * 0.8
+				var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
 				
+				var is_jump_capable: bool = true
+				if host.has_method("_can_jump_to"):
+					is_jump_capable = host.call("_can_jump_to", target_coord) as bool
+					
+				if is_jump_capable:
+					host.velocity.y = 5.0
+					print("[AI DEBUG] [", host.name, "] Climbing step block towards: ", target_coord)
+				else:
+					print("[AI DEBUG] [", host.name, "] Climb BLOCKED: Destination ", target_coord, " violates habitat rules.")
+					
 			stuck_timer += delta
 			if stuck_timer > 0.4:
 				stuck_timer = 0.0
