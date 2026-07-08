@@ -1,10 +1,13 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Pure Business Logic / World Generation)
 # Description: Domain Generator responsible for procedurally carving chunk block data.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Only handles world carving rules.
-#              - Dependency Inversion Principle (DIP): Integrates paved roads by 
-#                calling the RoadGeneratorService abstraction.
+#              - Open-Closed Principle (OCP): Integrates paved roads by calling the 
+#                RoadGeneratorService abstraction.
+#              - Dependency Inversion (DIP): Spawns underground mineral veins by calling 
+#                the polymorphic IOreVeinBlueprint strategies instead of block-by-block matches.
 #              PHASE 2 CACHE PIPELINE & SEAMLESS SMOOTHING:
 #              - Added `ChunkProfileCache` to store computed heights, biomes, and
 #                road properties, cutting noise query times by up to 60%.
@@ -12,11 +15,11 @@
 #                the shared cache, removing edge line visual seam artifacts.
 #              - Thread Safety: Implemented a static Mutex to protect cache reads/writes
 #                across WorkerThreadPool threads.
-#              MILESTONE 8 UPGRADE (3D CAVES & ORE VEINS):
+#              MILESTONE 8 UPGRADE (3D CAVES, VEINS & CRYSTAL GEODES):
 #              - Added `_cave_noise` (Fractal Ridged 3D noise) to carve interconnected 
 #                subterranean tunnel networks (Spaghetti caves).
-#              - Programmed procedural vein distribution for DIAMOND_ORE (28) and 
-#                COAL_ORE (21) directly along deep cavern walls.
+#              - Integrated the new subterranean polymorphic mineral vein strategy engine
+#                growing realistic chiseled 3D clusters (Coal & glowing Diamond geode chambers).
 #              - Added Deep Lava Pools: Caverns intersecting Y < 4 will automatically 
 #                fill with Lava, creating natural underground danger zones.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -30,7 +33,10 @@ const CHUNK_MASK: int = 15
 
 var _terrain_noise: FastNoiseLite
 var _detail_noise: FastNoiseLite 
-var _cave_noise: FastNoiseLite # NEW: Fractal Ridged 3D noise for cavern generation
+var _cave_noise: FastNoiseLite
+
+# In-memory database of registered mineral vein blueprints
+var _ore_veins: Array[IOreVeinBlueprint] = []
 
 # Maps old Biome landmark IDs to new OCP Structure Blueprint IDs
 const LANDMARK_TO_BLUEPRINT: Dictionary = {
@@ -79,16 +85,19 @@ func _init(p_seed: int = 42) -> void:
 	_detail_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_detail_noise.fractal_octaves = 2
 
-	# ==========================================================================
-	# 3D CAVE NOISE CONFIGURATION
-	# Uses FRACTAL_RIDGED to create interconnected, branching tunnel systems
-	# ==========================================================================
+	# 3D Cave Noise Configuration
 	_cave_noise = FastNoiseLite.new()
 	_cave_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_cave_noise.seed = p_seed + 777
-	_cave_noise.frequency = 0.025 # Controls the thickness and sprawl of the caves
+	_cave_noise.frequency = 0.025
 	_cave_noise.fractal_type = FastNoiseLite.FRACTAL_RIDGED
 	_cave_noise.fractal_octaves = 2
+
+	# ==========================================================================
+	# DIP STRATEGY REGISTER: Append subterranean mineral blueprints
+	# ==========================================================================
+	_ore_veins.append(CoalVeinBlueprint.new())        # Index 0: Coal branching crawler
+	_ore_veins.append(DiamondGeodeBlueprint.new())   # Index 1: Diamond shell geode
 
 
 ## Generates and fills the internal voxel grid of a given Chunk.
@@ -115,11 +124,9 @@ func generate_chunk(chunk: Chunk) -> void:
 					var nz := z + dz
 					
 					var sample_height := 0
-					# Check if within local chunk limits
 					if nx >= 0 and nx < Chunk.SIZE and nz >= 0 and nz < Chunk.SIZE:
 						sample_height = current_profile.heights[nx + Chunk.SIZE * nz]
 					else:
-						# Target pixel crosses into a neighboring chunk border, fetch from the global cache!
 						var neighbor_chunk_x := chunk.position.x
 						var neighbor_chunk_z := chunk.position.z
 						
@@ -131,7 +138,6 @@ func generate_chunk(chunk: Chunk) -> void:
 						
 						var neighbor_profile := _get_or_calculate_chunk_profile(neighbor_chunk_x, neighbor_chunk_z)
 						
-						# Wrap local indices to 0..15 bounds
 						var wrapped_nx: int = nx & CHUNK_MASK
 						var wrapped_nz: int = nz & CHUNK_MASK
 						sample_height = neighbor_profile.heights[wrapped_nx + Chunk.SIZE * wrapped_nz]
@@ -143,13 +149,12 @@ func generate_chunk(chunk: Chunk) -> void:
 			var idx: int = x + Chunk.SIZE * z
 			var b_id: int = current_profile.biomes[idx]
 			
-			# Apply localized smoothing based on biome rules (Mountains & Canyons)
 			if b_id == 3 or b_id == 6 or b_id == 7:
 				smoothed_heights[idx] = int(lerp(float(current_profile.heights[idx]), float(blur_height), 0.40))
 			else:
 				smoothed_heights[idx] = blur_height
 
-	# PASS 3: Sculpt blocks polymorphically and pave roads with bridge pillar foundations
+	# PASS 3: Sculpt blocks polymorphically and pave roads
 	for x in range(Chunk.SIZE):
 		var global_x: int = chunk_offset_x + x
 		for z in range(Chunk.SIZE):
@@ -167,51 +172,39 @@ func generate_chunk(chunk: Chunk) -> void:
 				
 				if global_y <= target_height:
 					if on_road:
-						# Road Pavement styling (Clean ROAD block integration)
 						if global_y == target_height:
-							block_type = BlockType.Type.ROAD   # Dedicated paved road block
+							block_type = BlockType.Type.ROAD
 						elif global_y == target_height - 1:
-							block_type = BlockType.Type.STONE  # Solid sub-base
+							block_type = BlockType.Type.STONE
 						else:
-							# BRIDGE PILLARS: Solidify columns over water/air gaps down to solid ocean bed
 							var natural_block := biome.get_block_for_depth(global_y, target_height)
 							if natural_block == BlockType.Type.WATER or natural_block == BlockType.Type.AIR:
-								block_type = BlockType.Type.STONE # Support pillar column
+								block_type = BlockType.Type.STONE
 							else:
 								block_type = natural_block
 					else:
-						# Natural terrain carving
 						if global_y == target_height:
 							block_type = _determine_surface_block(x, z, global_x, global_z, target_height, biome, biome_id, smoothed_heights)
 						else:
 							block_type = biome.get_block_for_depth(global_y, target_height)
 							
 					# ==========================================================
-					# MILESTONE 8: 3D CAVE CARVING SYSTEM
-					# Carve tunnels only in solid deep stone, keeping the top 4 
-					# layers intact to prevent the surface from looking like Swiss cheese.
+					# MILESTONE 8: 3D CAVE CARVING SYSTEM (RESTRUCTURED)
+					# Only carve tunnels in deep chiseled stone. OCP Compliant:
+					# individual ore roll injections are deleted; replaced 
+					# by the dedicated Pass 4B subterranean strategies below.
 					# ==========================================================
 					if block_type == BlockType.Type.STONE and global_y < target_height - 4 and global_y > 0:
-						# Evaluate 3D Noise density
 						var cave_density := _cave_noise.get_noise_3d(float(global_x), float(global_y * 1.5), float(global_z))
 						
-						# Threshold > 0.45 creates nice winding, continuous tunnels
 						if cave_density > 0.45:
-							# Feature: Deepest caverns (Y < 4) fill with natural Lava!
 							if global_y < 4:
 								block_type = BlockType.Type.LAVA
 							else:
 								block_type = BlockType.Type.AIR
-						else:
-							# If we are NOT in empty cave air, randomly distribute ore veins on solid walls
-							var ore_roll := randf()
-							if ore_roll < 0.015: # 1.5% chance to spawn Coal Ore
-								block_type = BlockType.Type.COAL_ORE
-							elif ore_roll < 0.020 and global_y < 12: # 0.5% chance to spawn glowing Diamond deep underground
-								block_type = BlockType.Type.DIAMOND_ORE
 
 				else:
-					if not on_road: # Roads rise above water level forming beautiful bridge piers
+					if not on_road:
 						if biome_id == 0 and global_y <= 5:
 							block_type = BlockType.Type.WATER
 						elif biome_id == 8 and global_y <= 4:
@@ -232,7 +225,7 @@ func generate_chunk(chunk: Chunk) -> void:
 				
 			var on_road := current_profile.on_road[idx] == 1
 			if on_road:
-				continue # Highways stay completely cleared
+				continue
 				
 			var local_ground_y: int = ground_y - chunk_offset_y
 			
@@ -249,7 +242,39 @@ func generate_chunk(chunk: Chunk) -> void:
 				var blueprint_id: int = int(LANDMARK_TO_BLUEPRINT[l_id])
 				_spawn_blueprint(chunk, x, z, local_ground_y, blueprint_id)
 
+	# ==========================================================================
+	# PASS 4B: SPONTANEOUS SUBTERRANEAN ORE VEIN STRATEGY (DIP COMPLIANT)
+	# Spans branching Coal patterns and glowing Diamond geodes inside the Y=0 layer.
+	# ==========================================================================
+	if chunk.position.y == 0:
+		var vein_rng := RandomNumberGenerator.new()
+		var chunk_hash := abs(chunk.position.x * 73856093 ^ chunk.position.z * 19349663)
+		vein_rng.seed = chunk_hash
+
+		# Decide deterministic cluster counts for this specific chunk column [3 to 6 deposits]
+		var vein_clusters_count := vein_rng.randi_range(3, 6)
+
+		for i in range(vein_clusters_count):
+			var rx := vein_rng.randi() % Chunk.SIZE
+			var rz := vein_rng.randi() % Chunk.SIZE
+			
+			# Start spawning in deep geological stone steps (Y ranges from 2 to 11)
+			var ry := vein_rng.randi_range(2, 11)
+			
+			var spawn_roll := vein_rng.randf()
+			var selected_vein: IOreVeinBlueprint = null
+
+			if spawn_roll < 0.72:
+				selected_vein = _ore_veins[0] # Coal Vein (High-density distribution)
+			elif ry < 8: # Geodes containing precious diamonds only crystallize extremely deep (Y < 8)
+				selected_vein = _ore_veins[1] # Diamond Crystal Geode
+
+			if selected_vein != null:
+				var unique_vein_seed := abs(int(chunk_offset_x + rx) * 3121 ^ int(chunk_offset_z + rz) * 19331 ^ (ry * 777))
+				selected_vein.grow_vein(chunk, rx, ry, rz, unique_vein_seed)
+
 	# PASS 5: OVERWRITE WITH GLOBAL MEGA-STRUCTURES
+	# Applied at the end of generation to prevent veins from destroying castles/walls!
 	MegaStructureService.apply_mega_structures(chunk)
 
 
@@ -264,7 +289,6 @@ func _get_or_calculate_chunk_profile(cx: int, cz: int) -> ChunkProfileCache:
 		return cached
 	_cache_mutex.unlock()
 	
-	# Generate new cache profile
 	var profile := ChunkProfileCache.new()
 	var chunk_offset_x := cx * Chunk.SIZE
 	var chunk_offset_z := cz * Chunk.SIZE
@@ -283,7 +307,7 @@ func _get_or_calculate_chunk_profile(cx: int, cz: int) -> ChunkProfileCache:
 			var on_road := RoadGeneratorService.is_on_road(float(global_x), float(global_z))
 			
 			if on_road and final_height < 6:
-				final_height = 6 # Bridge deck line
+				final_height = 6
 				
 			profile.heights[idx] = final_height
 			profile.biomes[idx] = bio_profile.biome_id
