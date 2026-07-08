@@ -12,7 +12,6 @@
 #   mobs inherit from this class, satisfying base constraints without runtime crashes.
 # - Dependency Inversion Principle (DIP): Communicates with the player's grid 
 #   via the generic IInventory interface, shielding logic from concrete layouts.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
@@ -187,7 +186,7 @@ func _get_habitat() -> int:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-## Overridable Contract: Returns the warning crimson color for hostile nameplates
+## Overridable Contract: Returns the warning color for hostile nameplates
 func _get_nameplate_color() -> Color:
 	return Color(1.0, 1.0, 1.0)
 
@@ -236,7 +235,7 @@ func _setup_quest_arrow() -> void:
 	add_child(_quest_arrow)
 
 
-func interact(_player: CharacterBody3D) -> void:
+func interact(_player_node: CharacterBody3D) -> void:
 	pass
 
 
@@ -274,6 +273,7 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
 	
 	if is_instance_valid(ai_component):
+		# CORRECTED ENUM ASSIGNMENT (INT_AS_ENUM_WITHOUT_CAST FIX)
 		ai_component.current_task = NPCAIComponent.TaskState.PANIC
 		ai_component.task_timer = randf_range(3.0, 5.0)
 		var angle := randf() * TAU
@@ -427,20 +427,20 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 	var is_crossing := false
 	
 	if habitat == 2: # AQUATIC
-		is_crossing = (block_at_feet != BlockType.Type.WATER and block_below_feet != BlockType.Type.WATER)
+		is_crossing = (block_at_feet != 6 and block_below_feet != 6) # 6 = WATER
 	elif habitat == 0: # TERRESTRIAL
 		var is_liquid := (
-			block_at_feet == BlockType.Type.WATER or 
-			block_at_feet == BlockType.Type.LAVA or 
-			block_below_feet == BlockType.Type.WATER or 
-			block_below_feet == BlockType.Type.LAVA
+			block_at_feet == 6 or 
+			block_at_feet == 15 or 
+			block_below_feet == 6 or 
+			block_below_feet == 15 # 15 = LAVA
 		)
 		
 		if is_liquid:
 			is_crossing = true
 			
 		# Avian Exclusion Check: Flying units bypass gravity fall checks
-		elif block_below_feet == BlockType.Type.AIR and not _is_avian():
+		elif block_below_feet == 0 and not _is_avian(): # 0 = AIR
 			var max_fall_scan := 3
 			var solid_found := false
 			for offset_y in range(2, max_fall_scan + 2):
@@ -448,7 +448,7 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 				if check_y < 0:
 					break
 				var block_type := ws.get_block(Vector3i(feet_coord.x, check_y, feet_coord.z))
-				if block_type != BlockType.Type.AIR:
+				if block_type != 0:
 					solid_found = true
 					break
 			

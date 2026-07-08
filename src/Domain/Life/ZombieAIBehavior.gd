@@ -10,8 +10,9 @@
 # - Open-Closed Principle (OCP): Extends IAIBehavior. Custom offensive movesets, 
 #   rage triggers, or target-scanning limits can be added here without editing entities.
 # - Liskov Substitution Principle (LSP): Adheres fully to the base contract, 
-#   supporting uniform execution across all CharacterBody3D node hosts.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+#   supporting uniform execution across all Object context targets.
+# - Dependency Inversion Principle (DIP): Purges concrete framework linkages 
+#   by depending purely on Godot's abstract generic 'Object' class.
 # ==============================================================================
 class_name ZombieAIBehavior
 extends IAIBehavior
@@ -31,17 +32,13 @@ const META_STUCK_TIMER := "zombie_stuck_timer"
 
 
 func _init() -> void:
-	# ==========================================================================
-	# OCP FORCEFIELD OVERRIDE
 	# Hostiles completely intercept movement, bypassing generic civilian schedules
-	# ==========================================================================
 	overrides_wandering = true
 
 
 ## Concrete Implementation: Evaluates scent boundaries and drives aggressive pursuit
-func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: float) -> void:
-	var ai := ai_component as NPCAIComponent
-	if ai == null or not is_instance_valid(host):
+func evaluate_and_execute(host: Object, delta: float) -> void:
+	if not is_instance_valid(host):
 		return
 		
 	_initialize_metadata_if_missing(host)
@@ -56,21 +53,31 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 		cooldown -= delta
 		host.set_meta(META_COOLDOWN, cooldown)
 		
+	var ai: Object = host.get("ai_component")
+	if not is_instance_valid(ai):
+		return
+		
+	# Unify physical velocity reading at top level to avoid local shadowing warnings
+	var velocity: Vector3 = host.get("velocity")
+		
 	# 1. TACTICAL PLAYER PROXIMITY EVALUATION
-	var player_node := host.get_parent().get_node_or_null("Player") as CharacterBody3D
+	var player_node: Object = host.get_parent().call("get_node_or_null", "Player")
 	var is_tracking := false
 	
 	if is_instance_valid(player_node) and player_node.get("is_active") == true:
-		var dist_sq := host.global_position.distance_squared_to(player_node.global_position)
+		var host_pos: Vector3 = host.get("global_position")
+		var player_pos: Vector3 = player_node.get("global_position")
+		var dist_sq := host_pos.distance_squared_to(player_pos)
+		
 		if dist_sq < RANGE_CHASE_SQ:
 			is_tracking = true
-			var to_player := (player_node.global_position - host.global_position).normalized()
+			var to_player := (player_pos - host_pos).normalized()
 			to_player.y = 0.0
 			wander_dir = to_player
 			
 			# Flanking Wall Steering
-			if host.is_on_wall():
-				var wall_normal := host.get_wall_normal()
+			if host.call("is_on_wall"):
+				var wall_normal: Vector3 = host.call("get_wall_normal")
 				var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
 				if flat_normal != Vector3.ZERO:
 					var slide_dir := (wander_dir - flat_normal * (wander_dir.dot(flat_normal))).normalized()
@@ -78,13 +85,15 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 						wander_dir = slide_dir
 						
 			# Jump over obstacle seams
-			if host.is_on_wall() and host.is_on_floor():
-				host.velocity.y = 5.0
+			if host.call("is_on_wall") and host.call("is_on_floor"):
+				velocity.y = 5.0
+				host.set("velocity", velocity)
 				
 			# Attack Trigger
 			if dist_sq <= RANGE_ATTACK_SQ:
-				host.velocity.x = 0.0
-				host.velocity.z = 0.0
+				velocity.x = 0.0
+				velocity.z = 0.0
+				host.set("velocity", velocity)
 				if cooldown <= 0.0:
 					_bite_player(host, player_node)
 					cooldown = COOLDOWN_ATTACK_SEC
@@ -111,14 +120,15 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 		host.set_meta(META_WANDER_DIR, wander_dir)
 		
 		# Obstacle jump handling
-		if wander_dir != Vector3.ZERO and host.is_on_wall():
-			if host.is_on_floor():
-				host.velocity.y = 5.0
+		if wander_dir != Vector3.ZERO and host.call("is_on_wall"):
+			if host.call("is_on_floor"):
+				velocity.y = 5.0
+				host.set("velocity", velocity)
 				
 			stuck_timer += delta
 			if stuck_timer > 0.4:
 				stuck_timer = 0.0
-				var wall_normal := host.get_wall_normal()
+				var wall_normal: Vector3 = host.call("get_wall_normal")
 				var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
 				if flat_normal != Vector3.ZERO:
 					wander_dir = wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
@@ -135,16 +145,18 @@ func evaluate_and_execute(host: CharacterBody3D, ai_component: Node, delta: floa
 	# 3. APPLY DISPATCHED VELOCITY VECTORS AND AI COMPONENT UPDATE
 	if wander_dir != Vector3.ZERO:
 		var active_speed := SPEED_CHASE if is_tracking else SPEED_WANDER
-		host.velocity.x = wander_dir.x * active_speed
-		host.velocity.z = wander_dir.z * active_speed
-		ai.wander_direction = wander_dir
+		velocity.x = wander_dir.x * active_speed
+		velocity.z = wander_dir.z * active_speed
+		host.set("velocity", velocity)
+		ai.set("wander_direction", wander_dir)
 	else:
-		host.velocity.x = move_toward(host.velocity.x, 0.0, SPEED_WANDER)
-		host.velocity.z = move_toward(host.velocity.z, 0.0, SPEED_WANDER)
-		ai.wander_direction = Vector3.ZERO
+		velocity.x = move_toward(velocity.x, 0.0, SPEED_WANDER)
+		velocity.z = move_toward(velocity.z, 0.0, SPEED_WANDER)
+		host.set("velocity", velocity)
+		ai.set("wander_direction", Vector3.ZERO)
 
 
-func _initialize_metadata_if_missing(host: CharacterBody3D) -> void:
+func _initialize_metadata_if_missing(host: Object) -> void:
 	if not host.has_meta(META_WANDER_TIMER):
 		host.set_meta(META_WANDER_TIMER, 0.0)
 	if not host.has_meta(META_WANDER_DIR):
@@ -155,12 +167,10 @@ func _initialize_metadata_if_missing(host: CharacterBody3D) -> void:
 		host.set_meta(META_STUCK_TIMER, 0.0)
 
 
-func _bite_player(host: CharacterBody3D, player_node: CharacterBody3D) -> void:
-	var dir := (player_node.global_position - host.global_position).normalized()
+func _bite_player(host: Object, player_node: Object) -> void:
+	var host_pos: Vector3 = host.get("global_position")
+	var player_pos: Vector3 = player_node.get("global_position")
+	var dir := (player_pos - host_pos).normalized()
 	var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
 	if player_node.has_method("take_damage"):
 		player_node.call("take_damage", 1, knockback)
-
-
-func sprintf(format_str: String, val: float) -> String:
-	return format_str % val
