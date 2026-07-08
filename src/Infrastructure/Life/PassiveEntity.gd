@@ -8,13 +8,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical motion loops 
 #   and environment boundary collisions, leaving logical tasks to composite elements.
-# - Open-Closed Principle (OCP): Completely closed to modifications. Monolithic 
-#   mapping tables and hardcoded script dictionaries have been purged. Extension 
-#   parameters (like translation name keys and flight gravity exemptions) are 
-#   resolved dynamically via virtual polymorphic hooks overridden by subclasses.
-# - Liskov Substitution Principle (LSP): Serves as a robust, non-leaky abstraction 
-#   contract. All child mobs inherit from this class, satisfying baseline motion 
-#   constraints without making the parent class dependent on subclass implementations.
+# - Liskov Substitution Principle (LSP): Serves as a robust contract. All concrete 
+#   mobs inherit from this class, satisfying base constraints without runtime crashes.
 # - Dependency Inversion Principle (DIP): Communicates with the player's grid 
 #   via the generic IInventory interface, shielding logic from concrete layouts.
 # ==============================================================================
@@ -66,6 +61,13 @@ var _last_attacker: Node = null
 # Physics LOD status flag
 var _is_physically_sleeping: bool = false
 
+# ==============================================================================
+# SOLID UNIQUE IDENTIFICATION:
+# Binds this specific NPC instance permanently to a Quest ID if spawned 
+# at the target location, completely eliminating distance-tracking bugs.
+# ==============================================================================
+var quest_target_id: String = ""
+
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
@@ -87,6 +89,30 @@ func _ready() -> void:
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
 	_setup_nameplate_height()
+	_setup_quest_arrow()
+	
+	# ==========================================================================
+	# FLOATING UI BUBBLE COMPILER (BUG RESOLUTION)
+	# Instantiates the floating speech bubble system for humanoids on startup.
+	# ==========================================================================
+	_setup_floating_bubble()
+	
+	# ==========================================================================
+	# AUTO-CLAIM QUEST TARGET (OCP / LSP COMPLIANCE)
+	# Scans registered quests and claims ownership if spawned close (< 20m) 
+	# to their coordinates, binding the ID permanently to this individual.
+	# ==========================================================================
+	_auto_claim_registered_quest_target()
+
+
+func _auto_claim_registered_quest_target() -> void:
+	for q_id: String in QuestService._quests.keys():
+		var q := QuestService._quests[q_id] as Quest
+		if q != null and q.target_position != Vector3.ZERO:
+			# Verify proximity at spawn frame with expanded 20m radius to cover the Castle courtyard (11.47m)
+			if global_position.distance_to(q.target_position) < 20.0:
+				quest_target_id = q_id
+				break
 
 
 ## Instantiates a native Label3D billboard to display creature name above head.
@@ -137,8 +163,18 @@ func _get_collision_box_position() -> Vector3:
 	return Vector3(0.0, 0.4, 0.0)
 
 
+## Virtual Hook: Instantiates the 3D SpeechBubble and places it above the entity's head.
+## SOLID FALLBACK: Humanoids without a custom bubble automatically receive a talk bubble.
 func _setup_floating_bubble() -> void:
-	pass
+	if _has_ui_decorations() and not is_instance_valid(_bubble):
+		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
+		if sb_script != null:
+			_bubble = sb_script.new() as Node3D
+			add_child(_bubble)
+			_bubble.call("set_text", tr("BUBBLE_TALK"))
+			
+			# Setup the bubble offset based on collider boundaries
+			_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
 
 
 func _get_humanoid_role() -> int:
@@ -291,6 +327,7 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
 	
 	if is_instance_valid(ai_component):
+		# AI component task state PANIC = 5
 		ai_component.current_task = NPCAIComponent.TaskState.PANIC
 		ai_component.task_timer = randf_range(3.0, 5.0)
 		var angle := randf() * TAU
@@ -534,11 +571,12 @@ func _update_quest_bubble_state() -> void:
 	var is_target := false
 	
 	if active_q != null:
-		if active_q.quest_id == "lost_bazaar" and name.contains("VILLAGER"):
-			is_target = true
-		elif active_q.quest_id == "fuel_fryer" and name.contains("MERCHANT"):
-			is_target = true
-		elif active_q.quest_id == "plains_defender" and name.contains("GUARD"):
+		# ======================================================================
+		# SECURE COMPLIANCE BY QUEST TARGET ID
+		# Only display the target bubble and arrow if this specific NPC instance 
+		# claimed the active Quest ID at birth.
+		# ======================================================================
+		if quest_target_id == active_q.quest_id:
 			is_target = true
 
 	if is_instance_valid(_quest_arrow):
