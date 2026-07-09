@@ -13,6 +13,10 @@
 #   base contract, relying 100% on the base physics loop for standard translations.
 # - Dependency Inversion Principle (DIP): Injects the MerchantAIBehavior strategy 
 #   during ready state initialization to keep code decoupled.
+# BUG FIX:
+# - Added `_get_humanoid_role()` to map MERCHANT role, and removed the redundant, 
+#   bugged `_setup_floating_bubble()` to allow the base class to render the 
+#   burbuja correctly over his head.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MerchantEntity.gd
 # ==============================================================================
@@ -86,12 +90,8 @@ func interact(player_node: CharacterBody3D) -> void:
 			hud.open_dialogue(intro_node, "NPC_NAME_MERCHANT", self)
 
 
-func _setup_floating_bubble() -> void:
-	var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
-	if sb_script != null:
-		_bubble = sb_script.new() as Node3D
-		add_child(_bubble)
-		_bubble.call("set_text", tr("BUBBLE_TRADE"))
+func _get_humanoid_role() -> int:
+	return 1 # ProceduralVoxelRepresentation.RoleType.MERCHANT
 
 
 func _can_socialize() -> bool:

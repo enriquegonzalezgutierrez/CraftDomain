@@ -11,10 +11,9 @@
 #   movement, custom mesh alignments, and laser scan visual feedback.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, relying 100% on the base physics loop for standard translations.
-# MIXAMO ORIENTATION FIX:
-# - Added `gaze_rotation_offset = PI` to dynamically instruct the NPCVisualComponent 
-#   to rotate the mesh 180 degrees during walking and scanning, correcting 
-#   the backward-facing FBX export glitch.
+# BUG FIX:
+# - Removed redundant `_setup_floating_bubble()` override, resolving the 
+#   "speech bubble at the feet" bug by letting PassiveEntity manage height.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/CyberCitizenEntity.gd
 # ==============================================================================
@@ -110,14 +109,6 @@ func _select_procedural_greeting_key() -> String:
 	if is_night: 
 		return "DIALOGUE_CYBER_NIGHT"
 	return "DIALOGUE_CYBER_PLAINS_A" if (npc_seed % 2 == 0) else "DIALOGUE_CYBER_PLAINS_B"
-
-
-func _setup_floating_bubble() -> void:
-	var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
-	if sb_script != null:
-		_bubble = sb_script.new() as Node3D
-		add_child(_bubble)
-		_bubble.call("set_text", tr("BUBBLE_TALK"))
 
 
 func _can_socialize() -> bool:

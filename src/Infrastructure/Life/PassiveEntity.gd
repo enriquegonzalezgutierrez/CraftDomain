@@ -8,13 +8,15 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical motion loops.
 # - Liskov Substitution Principle (LSP): Serves as a robust contract.
-# SELF-HEALING LIFE-CYCLE (LAZY INITIALIZATION SHIELD):
-# - Bypasses subclass _ready() overrides that omit super() calls. If the engine
-#   skips the initial ready pipeline, the physics thread autokills the drift by 
-#   running a safe manual setup on its first frame.
-# UX COMPLIANCE (NAMEPLATE STARS & X-RAY):
-# - Dynamically appends "⭐" to the NPC's text nameplate and turns it GOLD.
-# - Activates `no_depth_test` so the target's name is visible through solid walls!
+# UX BUG FIXES:
+# - THE "COW" INVISIBLE NAMEPLATE RESOLVED:
+#   * Math Height Solver: Calculates the real local top of any shaped collider 
+#     by compounding shape height, local scaling, and translation offsets. This 
+#     perfectly places UI elements above scaled/offset colliders (like the Cow).
+#   * Uniform Global Text Scale: Added `_apply_uniform_ui_scaling()`, which computes 
+#     the inverse of the entity's global scale (`Vector3.ONE / global_scale`) and 
+#     forces it onto the UI nodes. This guarantees that all text labels and bubbles 
+#     maintain an identical global size, regardless of parent scaling.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name PassiveEntity
@@ -73,7 +75,6 @@ var _is_physically_sleeping: bool = false
 var quest_target_id: String = ""
 
 # LAZY INITIALIZATION ENGINE:
-# Flag tracking if the self-healing routine completed successfully
 var _is_lifecycle_initialized: bool = false
 
 
@@ -125,12 +126,10 @@ func _auto_claim_registered_quest_target() -> void:
 		if q != null and q.target_position != Vector3.ZERO:
 			var dist := global_position.distance_to(q.target_position)
 			
-			# Design radius: 25.0 meters allows claiming from anywhere inside the Castle courtyard
 			if dist <= 25.0:
 				var is_matching_role := false
 				
 				# STRICT NARRATIVE FILTERING:
-				# Ensures only correct role can claim (e.g. preventing the Harbor Merchant from claiming the Bazaar Villager)
 				if q_id == "lost_bazaar" and nameplate_key.contains("VILLAGER"):
 					is_matching_role = true
 				elif q_id == "fuel_fryer" and nameplate_key.contains("MERCHANT"):
@@ -147,7 +146,6 @@ func _auto_claim_registered_quest_target() -> void:
 
 ## Instantiates a native Label3D billboard to display creature name above head.
 func _setup_nameplate() -> void:
-	# Defensive shield to prevent double-creation by subclass ready overrides
 	if is_instance_valid(_nameplate):
 		return 
 		
@@ -167,14 +165,29 @@ func _setup_nameplate() -> void:
 	_nameplate.position = Vector3(0.0, _collision_height + 0.35, 0.0)
 	
 	add_child(_nameplate)
+	_apply_uniform_ui_scaling()
 
 
 ## Decoupled height calculation sourcing boundaries directly from the scene setup
+## COMPUTES TALL DISTORTED COLLIDERS DYNAMICALLY (E.G. THE CLAY COW)
 func _setup_nameplate_height() -> void:
 	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.shape is CylinderShape3D:
-		var cylinder := col.shape as CylinderShape3D
-		_collision_height = cylinder.height
+	if is_instance_valid(col):
+		var shape_height := 1.5
+		if col.shape is CylinderShape3D:
+			shape_height = col.shape.height
+		elif col.shape is BoxShape3D:
+			shape_height = col.shape.size.y
+		elif col.shape is CapsuleShape3D:
+			shape_height = col.shape.height
+			
+		# TRUE LOCAL HEIGHT SOLVER: Position.y + Half of (Raw Height * Local Scale)
+		var local_y_center := col.position.y
+		var scaled_half_height := (shape_height * col.scale.y) / 2.0
+		
+		_collision_height = local_y_center + scaled_half_height
+	else:
+		_collision_height = 1.5
 		
 	_setup_nameplate()
 	
@@ -194,16 +207,66 @@ func _get_collision_box_position() -> Vector3:
 	return Vector3(0.0, 0.4, 0.0)
 
 
+# ==============================================================================
+# UNIFORM SCALE MATRIX NORMALIZER
+# Guarantees all UI elements (Text, Icons, Arrows) render with an identical 
+# global pixel-size regardless of root scale modifications (LSP / SRP compliant).
+# ==============================================================================
+func _apply_uniform_ui_scaling() -> void:
+	var global_scale_vec := global_transform.basis.get_scale()
+	if global_scale_vec.x < 0.001 or global_scale_vec.y < 0.001 or global_scale_vec.z < 0.001:
+		return
+		
+	# Mathematically invert parent scaling matrix to lock global size at 1.0
+	var inverse_scale := Vector3.ONE / global_scale_vec
+	
+	if is_instance_valid(_nameplate):
+		_nameplate.scale = inverse_scale
+		
+	if is_instance_valid(_bubble):
+		_bubble.scale = inverse_scale
+		
+	if is_instance_valid(_quest_arrow):
+		_quest_arrow.scale = inverse_scale
+
+
+# ==============================================================================
+# STRICT CONVERSATIONAL FILTERING (SRP Fix)
+# Ensures non-speaking entities (Monsters, Animals) never spawn dialogue bubbles.
+# ==============================================================================
+func _is_conversational() -> bool:
+	var key := _get_nameplate_translation_key()
+	var talking_npcs: Array[String] = [
+		"NPC_NAME_VILLAGER", 
+		"NPC_NAME_MERCHANT", 
+		"NPC_NAME_GUARD", 
+		"NPC_NAME_FARMER", 
+		"NPC_NAME_MINER", 
+		"NPC_NAME_DRUID", 
+		"NPC_NAME_ANDROID"
+	]
+	return talking_npcs.has(key)
+
+
 ## Virtual Hook: Instantiates the 3D SpeechBubble and places it above the entity's head.
 func _setup_floating_bubble() -> void:
-	if _has_ui_decorations() and not is_instance_valid(_bubble):
+	if _is_conversational() and not is_instance_valid(_bubble):
 		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
 		if sb_script != null:
 			_bubble = sb_script.new() as Node3D
 			add_child(_bubble)
-			_bubble.call("set_text", tr("BUBBLE_TALK"))
 			
+			var key := _get_nameplate_translation_key()
+			if key == "NPC_NAME_MERCHANT":
+				_bubble.call("set_text", tr("BUBBLE_TRADE"))
+			elif key == "NPC_NAME_FARMER":
+				_bubble.call("set_text", tr("BUBBLE_FARMER"))
+			else:
+				_bubble.call("set_text", tr("BUBBLE_TALK"))
+				
+			# GUARANTEED PLACEMENT ABOVE HEAD
 			_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
+			_apply_uniform_ui_scaling()
 
 
 func _get_humanoid_role() -> int:
@@ -287,7 +350,7 @@ func _can_jump_to(target_coord: Vector3i) -> bool:
 ## Programmatically constructs the 3D rotating quest arrow (PrismMesh)
 func _setup_quest_arrow() -> void:
 	if is_instance_valid(_quest_arrow):
-		return # Shield against double instantiation
+		return 
 		
 	_quest_arrow = MeshInstance3D.new()
 	_quest_arrow.name = "FloatingQuestArrow"
@@ -312,6 +375,7 @@ func _setup_quest_arrow() -> void:
 	_quest_arrow.visible = false
 	
 	add_child(_quest_arrow)
+	_apply_uniform_ui_scaling()
 
 
 func interact(_player_node: CharacterBody3D) -> void:
@@ -455,7 +519,7 @@ func _spawn_death_particles() -> void:
 	mesh.size = Vector3(0.15, 0.15, 0.15)
 	var mat := ORMMaterial3D.new()
 	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA # CORRECTED TYPO (TRANSPAREY_ALPHA -> TRANSPARENCY_ALPHA)
 	mesh.material = mat
 	particles.draw_pass_1 = mesh
 	
@@ -544,8 +608,6 @@ func _physics_process(delta: float) -> void:
 		
 	# ==========================================================================
 	# LAZY-INITIALIZATION FALLBACK SHIELD
-	# If a subclass overrides _ready() and skips the parent lifecycle setup,
-	# we manual-initialize here on its first active physics frame.
 	# ==========================================================================
 	if not _is_lifecycle_initialized:
 		_execute_lifecycle_initialization()
@@ -598,9 +660,6 @@ func _update_quest_bubble_state() -> void:
 	var active_q := QuestService.get_active_quest()
 	var is_target := false
 	
-	# O(1) PERFORMANCE SHORT-CIRCUIT:
-	# Avoids costly distance checks on update tick. If we are the designated
-	# target of the active quest, we continuously write our physical coordinate.
 	if active_q != null and quest_target_id == active_q.quest_id:
 		is_target = true
 		active_q.target_position = global_position 
@@ -622,26 +681,22 @@ func _update_quest_bubble_state() -> void:
 			_nameplate.modulate = _get_nameplate_color() 
 			_nameplate.no_depth_test = false
 
+	# Ensures continuous scale normalizations
+	_apply_uniform_ui_scaling()
+
 	if not is_instance_valid(_bubble):
 		return
 			
 	if is_target:
 		_bubble.call("set_text", "⭐ [ " + tr("BUBBLE_ACTIVE_MISSION").to_upper() + " ] ⭐")
 		return
-			
-	if name.contains("VILLAGER"):
-		_bubble.call("set_text", tr("BUBBLE_TALK"))
-	elif name.contains("MERCHANT"):
-		_bubble.call("set_text", tr("BUBBLE_TRADE"))
-	elif name.contains("GUARD"):
-		_bubble.call("set_text", tr("BUBBLE_TALK"))
-	elif name.contains("FARMER"):
-		_bubble.call("set_text", tr("BUBBLE_FARMER"))
-
-
-func _can_socialize() -> bool:
-	return false
-
-
-func sprintf(format_str: String, val: float) -> String:
-	return format_str % val
+		
+	# Dynamic Text Router (OCP/SOLID compliant based on Translation Key matches)
+	var key := _get_nameplate_translation_key()
+	match key:
+		"NPC_NAME_MERCHANT":
+			_bubble.call("set_text", tr("BUBBLE_TRADE"))
+		"NPC_NAME_FARMER":
+			_bubble.call("set_text", tr("BUBBLE_FARMER"))
+		_:
+			_bubble.call("set_text", tr("BUBBLE_TALK"))

@@ -10,7 +10,7 @@ height = 0.34921876
 radius = 0.15185547
 
 [node name="TurtleEntity" type="CharacterBody3D" unique_id=1385184284]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+transform = Transform3D(-2, 0, -3.019916e-07, 0, 2, 0, 3.019916e-07, 0, -2, 0, 0, 0)
 script = ExtResource("1_turtle")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1256879904]

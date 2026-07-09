@@ -10,7 +10,7 @@ height = 0.35
 radius = 0.15
 
 [node name="BirdEntity" type="CharacterBody3D" unique_id=1045926448]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+transform = Transform3D(-2, 0, -3.019916e-07, 0, 2, 0, 3.019916e-07, 0, -2, 0, 0, 0)
 script = ExtResource("1_bird")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=374574006]

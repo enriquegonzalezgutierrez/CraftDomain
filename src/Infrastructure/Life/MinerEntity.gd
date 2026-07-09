@@ -11,10 +11,10 @@
 #   movement, custom mesh alignments, and dialogue tree interactions.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, utilizing its parent physics process and signals.
-# MIXAMO ORIENTATION FIX:
-# - Added `gaze_rotation_offset = PI` to dynamically instruct the NPCVisualComponent 
-#   to rotate the mesh 180 degrees during walking, correcting the backward-facing 
-#   FBX export glitch.
+# BUG FIXES:
+# - Set `_get_humanoid_role()` to return MINER role (4) instead of Villager (0).
+# - Removed redundant `_setup_floating_bubble()` override, resolving the 
+#   "speech bubble at the feet" bug by letting PassiveEntity manage height.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MinerEntity.gd
 # ==============================================================================
@@ -85,7 +85,7 @@ func _setup_graphics_representation() -> void:
 
 
 func _get_humanoid_role() -> int:
-	return 0 # Classified as VILLAGER for schedule loops
+	return 4 # ProceduralVoxelRepresentation.RoleType.MINER
 
 
 func _locate_player() -> void:
@@ -111,14 +111,6 @@ func _select_procedural_greeting_key() -> String:
 	if is_night: 
 		return "DIALOGUE_MINER_NIGHT"
 	return "DIALOGUE_MINER_PLAINS_A" if (npc_seed % 2 == 0) else "DIALOGUE_MINER_PLAINS_B"
-
-
-func _setup_floating_bubble() -> void:
-	var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
-	if sb_script != null:
-		_bubble = sb_script.new() as Node3D
-		add_child(_bubble)
-		_bubble.call("set_text", tr("BUBBLE_TALK"))
 
 
 func _can_socialize() -> bool:

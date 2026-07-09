@@ -10,10 +10,9 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, dialogue trees, and magical visual feedback.
-# MIXAMO ORIENTATION FIX:
-# - Added `gaze_rotation_offset = PI` to dynamically instruct the NPCVisualComponent 
-#   to rotate the mesh 180 degrees during walking, preventing the Druid from 
-#   walking backwards.
+# BUG FIX:
+# - Removed redundant `_setup_floating_bubble()` override, resolving the 
+#   "speech bubble at the feet" bug by letting PassiveEntity manage height.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/DruidEntity.gd
 # ==============================================================================
@@ -84,14 +83,6 @@ func _get_humanoid_role() -> int:
 
 func _get_habitat() -> int:
 	return 0 # 0 = Habitat.TERRESTRIAL
-
-
-func _setup_floating_bubble() -> void:
-	var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
-	if sb_script != null:
-		_bubble = sb_script.new() as Node3D
-		add_child(_bubble)
-		_bubble.call("set_text", tr("BUBBLE_TALK"))
 
 
 # ==============================================================================
