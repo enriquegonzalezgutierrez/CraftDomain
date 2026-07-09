@@ -1,18 +1,17 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation)
+# Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: GargoyleEntity
-# Description: Physical character controller representing a hostile nocturnal Gargoyle.
-#              Schedules animation sways, handles day/night state transforms, 
-#              and overrides its nameplate warning color polimorphically.
+# Description: Nocturnal hostile Gargoyle controller. It features a unique 
+#              Day/Night state machine: turns to indestructible solid stone 
+#              during daytime and awakens as an airborne predator at night.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively active flight and 
-#   statue transformations, delegating nameplate styling to the virtual base contract.
+# - Single Responsibility Principle (SRP): Manages exclusively the daytime/nocturnal 
+#   state transitions and flying physics vectors of the Gargoyle entity.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   parent class, utilizing its base physics and save loops transparently.
-# - Dependency Inversion Principle (DIP): Relies on the base class nameplate 
-#   compiler instead of manual script overrides.
+#   base contracts, utilizing its parent signal connections polymorphically.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/GargoyleEntity.gd
 # ==============================================================================
 class_name GargoyleEntity
 extends PassiveEntity
@@ -50,9 +49,13 @@ func _ready() -> void:
 	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting
 	add_to_group("hostiles")
 	
-	# Bind pure Domain Model signals
-	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
-	domain_entity.died.connect(_on_domain_entity_died)
+	# ==========================================================================
+	# BUG FIX (REDUNDANT SIGNAL CONNECTION REMOVED):
+	# Removed explicit connections to 'took_damage' and 'died' signals in _ready().
+	# These are already set up in the base class PassiveEntity.gd constructor. 
+	# GDScript's built-in polymorphism automatically routes those connected signals 
+	# to the overridden methods in this script without throw errors.
+	# ==========================================================================
 	
 	# Cache component references pre-configured in the scene
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent

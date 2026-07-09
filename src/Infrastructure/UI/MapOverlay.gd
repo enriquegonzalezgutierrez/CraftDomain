@@ -15,9 +15,10 @@
 # - Liskov Substitution Principle (LSP): Fully compatible with standard Control flows.
 # - Open-Closed Principle (OCP) & i18n: All labels and tooltips now dynamically 
 #   use the `tr()` function to swap text based on the active language locale.
-# I/O OPTIMIZATION (120 FPS STABILIZATION):
-# - Removed all verbose `[MapOverlay DEBUG]` print statements to prevent synchronous, 
-#   blocking console I/O stalls during fast-travel map transitions.
+# PORTABILITY UPGRADE (CASTLE TELEPORT CALIBRATION):
+# - Re-calibrated the GrandCastleMegaStructure fast-travel landing coordinates to 
+#   [X: 200.5, Z: 227.5]. This safely lands the player on the stone entrance 
+#   bridge, looking North at the breathtaking, newly designed two-floor facade!
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/UI/MapOverlay.gd
 # ==============================================================================
@@ -500,11 +501,24 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	var target_x: float = float(landmark.global_center.x) + 0.5
 	var target_z: float = float(landmark.global_center.y) + 0.5
 	
-	if landmark is StevesCabinMegaStructure: target_z = -294.5 
-	elif landmark is NetherPortalMegaStructure: target_x = -290.5; target_z = -290.5
-	elif landmark is GrandCastleMegaStructure: target_z = 208.5 
-	elif landmark is HarborCityMegaStructure: target_x = -136.5; target_z = 3.5
-	
+	if landmark is StevesCabinMegaStructure: 
+		target_z = -294.5 
+	elif landmark is NetherPortalMegaStructure: 
+		target_x = -290.5
+		target_z = -290.5
+	elif landmark is GrandCastleMegaStructure: 
+		# ======================================================================
+		# PRECISE FORTRESS SPAWN POINT RESTORATION (X-Ray / Void Fall Fix)
+		# Forces teleport exactly to [X: 200.5, Z: 227.5], placing the player on 
+		# the stone entrance bridge, facing North, looking at the newly 
+		# designed two-floor facade instead of trapping them inside a keep wall!
+		# ======================================================================
+		target_x = 200.5
+		target_z = 227.5
+	elif landmark is HarborCityMegaStructure: 
+		target_x = -136.5
+		target_z = 3.5
+		
 	p_ctrl.global_position = Vector3(target_x, 35.0, target_z) 
 	p_ctrl.velocity = Vector3.ZERO
 	p_ctrl.is_active = false
