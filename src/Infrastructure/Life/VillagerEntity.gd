@@ -1,15 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation)
-# Description: Physics controller for the passive Villager NPC, utilizing the 
-#              Strategy pattern to load dynamic animations cleanly.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Handles exclusively civilian
-#                dialogue, Price scaling, and variety, delegating rendering to strategy.
-#              CIRCULAR DEPENDENCY SHIELD:
-#              - Replaced static class reference to 'SkeletalVisualRepresentation' with
-#                dynamic 'load()' instantiation, permanently immunizing the engine 
-#                against circular compile-time locks.
+# Layer: Infrastructure / Presentation & Physics (Entities)
+# Class: VillagerEntity
+# Description: Physical character controller for the Common Villager NPC.
+#              It delegates all group gossips circles, social chats sways, and 
+#              daytime/nighttime shelter schedules to the decoupled 
+#              VillagerAIBehavior strategy, managing visual chat particles.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
+#   translations, collision shapes, and talking visual chat bubble particles.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   base contract, relying 100% on the base physics loop for standard translations.
+# - Dependency Inversion Principle (DIP): Injects the VillagerAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
 class_name VillagerEntity
 extends PassiveEntity
@@ -18,25 +23,33 @@ const BASE_MODEL_PATH := "res://assets/models/mobs/villager/villager_base.fbx"
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	super(spawn_pos, 3) # 3 Hearts of health
+	# Villagers spawn with 3 Hearts of health (3 HP)
+	super(spawn_pos, 3)
 	name = "Entity_VILLAGER"
 
 
 func _ready() -> void:
+	# HIGH PERFORMANCE: Register in the passive group for target lookups
 	add_to_group("passives")
 	
+	# Cache component references pre-configured in the scene
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
-	# Safe and non-duplicate visual compiling (Strategy Pattern)
-	_setup_graphics_representation()
+	_build_visual_representation()
 	_setup_nameplate_height()
+	
+	# ==========================================================================
+	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
+	# Inject the specialized Villager social AI strategy dynamically on ready,
+	# completely overriding the default generic schedules assigned by Bootstrap.
+	# ==========================================================================
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = VillagerAIBehavior.new()
 
 
-func _setup_graphics_representation() -> void:
-	# ==========================================================================
-	# BULLETPROOF SHIELD: Load Strategy dynamically to avoid static compiler locks
-	# ==========================================================================
+## Bypasses old procedural representation compiling
+func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
 		return
@@ -52,10 +65,14 @@ func _setup_graphics_representation() -> void:
 	strategy.set("anim_panic_path", ANIM_DIR + "villager/villager_panic.fbx")
 	strategy.set("anim_jump_path", ANIM_DIR + "villager/villager_jump.fbx")
 	
+	# Bind as standard generic Resource contract
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
+# ==============================================================================
+# CONVERSATION BARK & DIALOGUES
+# ==============================================================================
 func interact(player_node: CharacterBody3D) -> void:
 	var active_q := QuestService.get_active_quest()
 	if active_q != null and active_q.quest_id == "lost_bazaar":
@@ -92,19 +109,21 @@ func _select_procedural_greeting_key() -> String:
 		9: return "DIALOGUE_VILLAGER_CLOUD"       
 		_:
 			var variety_index := npc_seed % 3
-			match variety_index:
-				0: return "DIALOGUE_VILLAGER_PLAINS_A"
-				1: return "DIALOGUE_VILLAGER_PLAINS_B"
-				_: return "DIALOGUE_VILLAGER_PLAINS_C"
+			if variety_index == 0:
+				return "DIALOGUE_VILLAGER_PLAINS_A"
+			elif variety_index == 1:
+				return "DIALOGUE_VILLAGER_PLAINS_B"
+			else:
+				return "DIALOGUE_VILLAGER_PLAINS_C"
 
 
 func _detect_current_biome() -> int:
 	var world_controller_ref: Node = get_parent() as Node
 	var default_biome_id: int = 2
 	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		var generator: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
-		if generator != null:
-			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
+		var generator_node: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
+		if generator_node != null:
+			var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
 				var profile := BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise)
 				return profile.biome_id
@@ -112,4 +131,61 @@ func _detect_current_biome() -> int:
 
 
 func _can_socialize() -> bool:
-	return true
+	# Socialize is disabled during emergency escapes (night or storms)
+	var is_night: bool = CelestialService.is_night_time_static()
+	return not is_night
+
+
+# ==============================================================================
+# TACTICAL PRESENTATION & CHATTING PARTICLES
+# ==============================================================================
+
+## Visual Gossip: Directs smooth head tilts and triggers talk audio and dialogue particles
+## Note: Invoked via reflective calls by the VillagerAIBehavior strategy
+func _play_gossip_chatter() -> void:
+	if is_instance_valid(visual_component) and is_instance_valid(visual_component.head_node):
+		var chat_tween := create_tween()
+		var original_rot_x: float = visual_component.head_node.rotation.x
+		
+		# Happy head nods
+		chat_tween.tween_property(visual_component.head_node, "rotation:x", original_rot_x + 0.12, 0.15).set_trans(Tween.TRANS_SINE)
+		chat_tween.chain().tween_property(visual_component.head_node, "rotation:x", original_rot_x, 0.15).set_trans(Tween.TRANS_SINE)
+		
+	# Play meow-murmur voice statically (Service Locator)
+	AudioService.play_sfx_static("npc_chat", global_position)
+	
+	# Spawn chatting spheres
+	_spawn_gossip_dialogue_particles()
+
+
+## Spawns tiny unshaded cyan bubble blocks that float upwards (Compile-Free CPU)
+func _spawn_gossip_dialogue_particles() -> void:
+	var particles := CPUParticles3D.new()
+	particles.amount = 4
+	particles.one_shot = true
+	particles.explosiveness = 0.95
+	particles.lifetime = 0.45
+	
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	particles.emission_sphere_radius = 0.1
+	particles.direction = Vector3(0.0, 1.0, 0.0)
+	particles.spread = 20.0
+	particles.initial_velocity_min = 1.0
+	particles.initial_velocity_max = 2.0
+	particles.gravity = Vector3(0.0, 1.0, 0.0) # Float upwards
+	
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.03
+	mesh.height = 0.06
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.3, 0.85, 1.0) # Cozy Cyan bubble chat
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh.material = mat
+	particles.mesh = mesh
+	
+	add_child(particles)
+	particles.position = Vector3(0.0, _collision_height + 0.15, -0.1) # above forehead level
+	particles.emitting = true
+	
+	# Symmetrical memory safe cleanup Direct connection
+	get_tree().create_timer(0.5).timeout.connect(particles.queue_free)
