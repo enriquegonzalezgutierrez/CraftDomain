@@ -74,6 +74,7 @@ When holding a buildable block, a 3D preview box outlines your target:
 4.  **Crop Planting:** Right-Clicking with **Crop Seeds** (ID 18) on top of Grass or Dirt will sow a young sprout that grows over time.
 5.  **Sub-pixel Hermetic Sealing:** Transparent liquid and slab vertices are mathematically scaled outward from their block center by a factor of `1.002` (2 millimeters), tightly overlapping chunk borders to permanently eliminate all Z-fighting and sub-pixel light leaks.
 6.  **Compile-Free Unshaded Particles:** Spawns unshaded `CPUParticles3D` on block breaking, bypassing runtime GPU shader compilations completely and maintaining a solid 120 FPS.
+7.  **Unified Surface Normals Baking:** Slabs and transparent fluids are compiled inside `ChunkMesher` with dynamic normal generation (`generate_normals()`), securing realistic specular lighting highlights and allowing water/lava waves to sway along the custom wind direction correctly.
 
 ---
 
@@ -112,12 +113,19 @@ To keep the game running at a flawless 120 FPS, AI tactical scans are heavily op
 *   **Day/Night & Storm Shelter Schedules:** At sunset or during storms, civilian NPCs (Villagers, Merchants, Farmers, Miners, Druids) cancel their tasks, locate the closest registered indoor shelter (roofed coordinates), and plan an A* path to run inside safely.
 *   **Intelligent Land/Water Boundary checks:** Land-dwelling civilians strictly avoid falling into deep voids (AIR) or walking into liquid Water/Lava, while aquatic species (Turtles) remain constrained to water and sand shores. Bumping against walls instantly triggers course-corrections.
 
-### Specialized Community Roles & Outfits
-NPCs generate stylized outfits tailored to their home coordinates:
-*   **Villagers:** Wear heavy parkas in glaciers, sailor stripes in oceans, and cloud-tunics in the sky.
-*   **Merchants:** Wear silk turbans, glowing jewels, and a persistent 3D leather money pouch hanging off their waist belt.
-*   **Farmers:** Wear wide-brim straw hats and dungarees. They autonomously scan for ripe crops, wander to them, and swing their hoes to harvest and replant seeds!
-*   **Cave Miners:** Wear yellow hard-hats equipped with an active, sweeping 3D Headlamp Spotlight that casts real-time beams into cave shadows.
+### 17+ Specialized Decoupled AI Strategies
+Instead of raw, bulky physics scripts, every entity delegates its decisions to isolated strategy classes in the Domain:
+*   **Gossip Villagers:** Seek nearby peers to stand in gossip circles, chatting and gesticulating while emitting cyan dialogue bubbles.
+*   **Barkeep Merchants:** Tend shopfront stalls by day and retreat to safe village taverns to count their golden coins by night (spawning shiny golden sparks).
+*   **Agricultural Farmers:** Search for mature wheat, walk over, draw a visual hoe to harvest and replant seeds with green particle feedback.
+*   **Industrial Cave Miners:** Scan adjacent coordinates for deep Coal Veins, walk over, draw a visual pickaxe to mine, and replace the coal globally with raw Stone while triggering rocky break particles.
+*   **Forest Sages (Druids):** Patrol redwood glades, meditate near shrines, and channel visual streams of unshaded emerald éter particles to completely heal injured nearby animals.
+*   **Cyber Citizens (Androids):** Align to paved highway roads, walking in strict angles and halting to execute 360-degree security sweeps emitting cyan laser beams.
+*   **Sea Turtles & Beach Crabs:** Unified amphibious strategies. Swim with fluid sinusoid buoyancy sways in deep water and crawl slowly with heavy speed penalties on sandy beach shores.
+*   **Deep-Water Octopuses:** Swim using timed jet propulsion bursts followed by drift gliding, and trigger an emergency siphon spraying a thick black ink cloud when damaged.
+*   **Forest Fox Predators:** Sneak and crawl flatly along the grass to avoid drawing alert, and launch themselves in majestic high-parabola pounce jumps to hunt chickens and birds.
+*   **Colossal Elephants:** March in slow, ponderous stride cycles. Completing a stride triggers a heavy stone thud and a camera shake rumble for nearby players. Immune to push knockbacks due to mass.
+*   **Avian Yellow Birds & Parrots:** Flight height compensated avians. Soar high in wide 3D thermal gliding soar rings, and descend to perch flatly on top of tree canopies.
 
 ### Interactive 3D Loot Chests & Trading
 1.  **Loot Chests:** Right-click a 3D chest in a village. It will pop, play a `chest_open` sound effect, grant you a reward, and vanish safely.
@@ -138,7 +146,7 @@ All hostile entities (Zombies, Goblins, Gargoyles, Sharks) now render with aggre
 Villages are actively protected by tactical defenders (Guards and Golems) which register themselves into a shared **Alert Alarm Network** upon spawning.
 *   **Coordinated Alarm Interceptions:** Struck civilians immediately broadcast a proximity alarm. Nearby protectors within a 30m radius will break their patrols, sprint to the rescue, and intercept the attacker.
 *   **Iron Golems:** Colossal stone giants covered in ivy. If a zombie comes near, they execute a heavy double-arm launch attack, dealing massive damage and throwing the zombie **9.5 meters into the air**.
-*   **Guards:** Armored knights with a sheathed iron sword and wooden shield. They proactively draw their weapons, sprint towards hostiles, and execute coordinated striking cooldowns.
+*   **Guards:** Armored knights with a sheathed iron sword and wooden shield. They proactively draw their weapons, sprint towards hostiles, and execute coordinated striking overwatch cooldowns.
 
 ### Player Combat, Karma & Polymorphic Loot
 1.  Press **Key 8** to hold your **Wooden Sword** (Slot 7).
@@ -185,7 +193,17 @@ Pressing **`C`** opens a dual-pane **Blueprint Taller & Crafting Workshop** over
 
 ---
 
-## 10. The Automated Delta-Save Pipeline
+## 10. Handcrafted Global Mega-Structures (3D Overhaul)
+The world features 5 handcrafted global landmarks, seamlessly integrated with sloped-terrain blending:
+*   **The Grand Castle `[200, 200]`:** A colossal two-story stone fortress featuring a majestic double-height Throne Hall, symmetrical rising double-wing staircases, private chambers (King's bedroom with cloud sheets, Queen's suite, and War Council), a high-security Royal Treasury, and crenellated rooftop battlements. Fast-travel drops are calibrated on the outer stone bridge.
+*   **The Seaport & Galleon `[-150, 0]`:** A coastal port featuring wood-planked boardwalks, stacked cargo, a cozy two-story harbor tavern ("The Salty Sailor Inn" with bar and rooms), and a moored three-deck Galleon Ship containing crew bunks, cargo hold, and a captain's cabin with glass popa windows.
+*   **The Nether Fortress `[-300, -300]`:** A tattered volcanic brick citadel flanked by hot concentric lava canals and stone bridges, guarding a colossal double-height central Portal Sanctuary and an elevated treasure pedestal.
+*   **Steve's Settlement `[300, -300]`:** A playable village spanned by a giant mossy parabolic stone archway, central water fountain, irrigated wheat fields, a two-story log lodge, and a medieval windmill with fully accessible interior floors.
+*   **Desert Oasis Pyramid `[-150, 250]`:** A stepped 10-tier sandstone pyramid built over water, housing a central pharaoh's sarcophagus altar, comfortable side stone stairs, and an elevated treasure vault under a glowing apex lighthouse.
+
+---
+
+## 11. The Automated Delta-Save Pipeline
 
 CraftDomain features a silent, zero-stutter background **Delta-Save** process. You never have to manually click a save button:
 
@@ -195,7 +213,7 @@ CraftDomain features a silent, zero-stutter background **Delta-Save** process. Y
 
 ---
 
-## 11. Dynamic Cursor Release Engine (`Left Alt` Hold)
+## 12. Dynamic Cursor Release Engine (`Left Alt` Hold)
 
 To easily bridge the gap between first-person look controls and HUD-element interactions:
 *   **Holding `Left Alt`:** Freezes camera rotation and reveals the hardware mouse pointer. You can move the pointer freely to click on the HUD shortcut icons (`🎒` to open inventory or `🛠️` to open the crafting workshop).

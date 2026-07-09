@@ -16,7 +16,7 @@ This document details the completed development phases and outlines the future m
 ### Milestone 2: Unified Voxel Rendering & Shaders Overhaul
 *   **Multi-Mesh Partitioning:** Segregated rendering segments by `BlockType` to apply tailored materials (translucent, glossy water, reflective glass, and emissive glowing lava).
 *   **Dynamic Triplanar Shading:** Created an advanced local-space triplanar projection shader that completely eliminates texture sliding, warping, or diagonal stretching during camera movements.
-*   **Foliage Wind-Sway:** Implemented a wind-sway displacement shader executing high-frequency sine expansions along normals to simulate organic voxel canopies.
+*   **Foliage Wind-Sway:** Implemented an external wind-sway displacement shader (`foliage_leaves.gdshader`) executing high-frequency sine expansions along normals to simulate organic voxel canopies.
 *   **Voxel Grain Texturing:** Programmed a shared, statically cached high-frequency cellular noise texture applied with `TEXTURE_FILTER_NEAREST` to paint detailed, blocky textures over all animal and NPC meshes with zero performance overhead.
 
 ### Milestone 3: Advanced Reactive AI, Pathfinding & Variety
@@ -27,21 +27,28 @@ This document details the completed development phases and outlines the future m
 *   **Automated Agricultural Farmers:** Enhanced farmers to scan for mature crops, wander to them, draw their harvesting hoes, and swing them up and down to harvest and replant seeds with green particle feedback.
 
 ### Milestone 4: Symmetrical Localization & Dialogue
-*   **Dialogue Translation Keys:** Refactored all NPC dialogue databases and fallback prompts to consume clean translation keys (e.g. `DIALOGUE_VILLAGER_INTRO`) rather than hardcoded English.
+*   **Dialogue Translation Keys:** Refactored NPC dialogue databases and fallback prompts to consume clean translation keys (e.g. `DIALOGUE_VILLAGER_INTRO`) rather than hardcoded strings.
 *   **Dynamic Greeting Pools:** Integrated coordinate-seeded variety indices inside NPC conversation routers to serve unique situational lines based on time, biomes, or random rolls.
 *   **Symmetrical Language Packs:** Re-aligned both `en.json` and `es.json` to possess the exact same key structures, spacings, and sorting order to prevent parser drift during localization lookups. Corrected all incomplete translations.
 
-### Milestone 5: Procedural Horizons & Biomes Expansion
+### Milestone 5: Procedural Horizons, Structure Blueprints & Mega-Structures
 *   **Horizon Draw Distance:** Quadrupled the active loading radius inside `ChunkLoaderService.gd` to load a 3D 162-chunk grid (9x2x9 chunks), rendering beautiful vistas under Forward+.
 *   **Polymorphic Boundary Sensing:** Removed the hardcoded coordinate angle/sector split calculations inside `BiomeService.gd`. Concrete `IBiome` strategy classes now encapsulate their own territorial boundaries polimorphically using `is_coordinate_inside()`.
 *   **Themed Spawning Outposts:** Updated `MobSpawningService.gd` to inspect the loaded outpost's active Biome ID and dynamically deploy specialized populations (Druids in Redwoods, Miners with active headlamps in mountains, Androids in Cyber ruins).
-*   **Global Mega-Structures:** Engineered massive, multi-chunk architectural POIs (Grand Castle, Nether Outpost, Steve's Cabin) that overwrite procedural terrain at fixed coordinates.
+*   **100% Compiled Structure Registry (OCP/YAGNI Overhaul):** Refactored all data-driven layout JSON templates (`mine_pillar`, `harbor_pier`, `market_cabin`, `ice_temple`, `neon_pyramid`, and `warp_pipe`) into dynamically adapting compiled GDScript blueprints (`IStructureBlueprint.gd`). Completely deleted `TemplateStructureBlueprint.gd` and raw structures assets to achieve pure, zero-I/O RAM-based generation.
+*   **Adaptive Placements:** Enhanced the structural blueprints with vertical column scanning to procedurally build solid foundations down to sloped terrain or seabed depths, preventing floating blocks on hillsides or sea cliffs.
+*   **Playable 3D Handcrafted Mega-Structures:** Completely remodeled fixed multi-chunk Points of Interest (POIs) with playable 3D interiors, multi-floor compartments, and wide, comfortable staircase climbs:
+	*   *The Grand Castle `[200, 200]`:* A colossal two-story fortress containing a cathedral-like double-height Throne Hall, majestic 3-block wide double-rising stairs, upper suites (King's room with cloud bed, Queen's, and War Council), a high-security Royal Treasury with pedestals, and active steps leading to crenellated rooftop battlements. Recalibrated fast travel to land safely on the entrance bridge.
+	*   *The Seaport & Galleon `[-150, 0]`:* Expanded docks with stacked cargo and a 2-story tavern ("The Salty Sailor Inn" with bar counters and stairs), and a moored three-deck Galleon Ship containing crew bunks, cargo hold, and quarterdeck Captain's Cabin with glass popa windows.
+	*   *The Nether Outpost `[-300, -300]`:* A tattered lava citadel flanked by concentric magma canals and bridges, housing a massive double-height Portal Sanctuary and an elevated treasury room.
+	*   *Steve's Cabin `[300, -300]`:* Redesigned into a detailed village spanned by a giant parabolic mossy stone archway, central plaza fountain, tilled wheat plots, a 2-story cozy log lodge, and a towering windmill with fully accessible interior floors.
+	*   *Desert Oasis Pyramid `[-150, 250]`:* An 8-tier stepped sandstone pyramid built over water, housing an ancient Sarcophagus altar, wide side stairs, and an enclosed Pharaoh's Vault containing the Loot Chest sitting on a brick pedestal.
 
 ### Milestone 6: High-Fidelity Graphics & Physics Threading
 *   **Hybrid Instant/Threaded Mesher:** Redesigned block edits to execute a dual-pipeline update. The modified chunk is rebuilt synchronously on the main thread for 0-latency collision, while boundary neighboring chunks are offloaded asynchronously to background hilos, completely eliminating mining stutters.
 *   **Compile-Free Unshaded Particles:** Migrated mining debris generators to use **`CPUParticles3D`** with unshaded materials. This runs entirely on the CPU and completely avoids dynamic Vulkan pipeline compilations on the GPU.
 *   **Group AI Targeting ($O(1)$ complexity):** Replaced slow, high-frequency $O(N)$ child-seeking loops with fast, native Godot group lookups (`"hostiles"` and `"passives"`).
-*   **Procedural Bevel Normal Mapping (Selective):** Programmatically baked a perfect 64x64 bevel normal map in RAM at startup to simulate beautiful rounded corners on building blocks under direct sunlight.
+*   **Procedural Bevel Normal Mapping (Selective):** Programmatically baked a perfect 64x64 bevel normal map in RAM at startup to simulate rounded corners on building blocks under direct sunlight.
 *   **Global Wind Shader System:** Integrated dynamic wind vectors and wind strength as global shader uniforms (`"wind_vector"`), making water waves and leaf sways physically react to storms in complete, zero-cost synchronicity.
 
 ### Milestone 7: Extreme 120 FPS Stabilization & Memory Pooling
@@ -56,7 +63,7 @@ This document details the completed development phases and outlines the future m
 *   **Decoupled Slot Widgets (SRP):** Extracted the `InventorySlotWidget.gd` from the main panel to isolate cell rendering and drag-and-drop operations from layout containers.
 *   **Duplicate Color Map Deletion:** Completely deleted the hardcoded, duplicate `BLOCK_COLORS` map from `HotbarDockWidget.gd` and `InventoryOverlay.gd`. The UI now queries the Domain `BlockLibrary` directly for accurate fallback colors.
 *   **Corrected Checklist Verification:** Re-engineered the crafting checklist. It now queries the player's total cumulative stock of the required item globally using `get_item_total_quantity()` instead of checking slot indexes.
-*   **Sub-pixel Hermetic Sealing:** Mathematically scaled liquid and custom solid (Slab) vertices by `1.002` to perfectly overlap chunk boundaries, permanently fixing Z-fighting and light leaks.
+*   **Sub-pixel Hermetic Sealing:** Mathematically scaled liquid and custom solid (Slab) vertices by `1.002` to perfectly overlap chunk borders, permanently fixing Z-fighting and light leaks.
 
 ### Milestone 9: Observer Audio & Physics Gravity Engine
 *   **Service Locator Pattern:** Implemented `AudioService.instance` for zero-coupling static access, allowing any pure Domain event to trigger sound effects instantly.
@@ -65,6 +72,11 @@ This document details the completed development phases and outlines the future m
 *   **Village Reputation & Karma (Phase 4):** Attacking civilians deducts reputation points. Falling below the outlaw threshold causes protectors to turn hostile, while high reputation grants up to a 30% price discount at Merchant stalls.
 *   **Voxel-Support Block Gravity:** Added support checking. Broken blocks supporting a Barrel, Chest, or Campfire cause the prop to shatter and drop loot, while heavy Wishing Wells and Streetlights slide down smoothly with elastic bouncing Tweens.
 *   **Harvesting Bugs Resolved:** Reclassified leaves as solid so they can be mined. Mining Ice (in glaciers) and Mud (in swamps) now correctly yields clean Water blocks.
+
+### Milestone 11: 3D Cave Carving & Fluid Cellular Automata (Overhaul Completed)
+*   **True 3D Cave Generation:** Programmed 3D Simplex fractal ridged noise (`_cave_noise` inside `WorldGenerator.gd`) to procedurally carve interconnected subterranean cave networks and spaghetti tunnel shafts.
+*   **Fluid Cellular Automata:** Implemented high-performance, queue-based fluid dynamics in `FluidSimulationService.gd` to simulate water and lava gravity flows, lateral spreading, and realistic stone-freezing fusions when opposing fluid blocks intersect.
+*   **Unified CPU Normal Baking:** Restored `generate_normals()` inside `ChunkMesher.gd` before committing custom fluid meshes, correcting PBR speculation and enabling vertex-wave displacement (`NORMAL.y > 0.5`) inside the external water shader (`liquid_water.gdshader`).
 
 ### 🌟 Milestone 15: Foundational Narrative Campaign & Lore Synchronization
 *   **Lore Bible Compilation:** Established the complete cosmology, space-time mechanics, character profiles, and faction ideologies inside [docs/lore/00_MASTER_BIBLE.md](docs/lore/00_MASTER_BIBLE.md).
@@ -77,6 +89,22 @@ This document details the completed development phases and outlines the future m
 *   **Voxel Metaphysics and Crafting:** Documented the block composition states and alchemical transmutation recipes inside [docs/lore/07_ALCHEMY_CRAFTING.md](docs/lore/07_ALCHEMY_CRAFTING.md).
 *   **Branching Dialogues and Economy:** Mapped situational civilian greetings, guard warnings, and reputation merchant discounts inside [docs/lore/08_DIALOGUE_GRIMOIRE.md](docs/lore/08_DIALOGUE_GRIMOIRE.md).
 
+### 🌟 Milestone 17: 100% Decoupled AI Strategy Integration (Backlog Completed)
+*   **AI Strategy Overhaul:** Decoupled 100% of the remaining unique entity and creature behaviors from Infrastructure physical controllers into pure, testable Domain strategy classes (`src/Domain/Life/...`):
+	*   `AmphibiousAIBehavior.gd` (Sea Turtles & Beach Crabs): Coordinates real-time water blocks scanning, swim hover sways, and sand crawl speed penalties.
+	*   `GolemAIBehavior.gd`: Implements pro-active overwatch scanning (targeting zombies or outlaw players) and triggers heavy double-arm launch strikes.
+	*   `CyberCitizenAIBehavior.gd` (Androids): Coordinates paved road alignments and timed 90-degree robotic secure sweeps emitting unshaded cyan lasers.
+	*   `MerchantAIBehavior.gd`: Manages dynamic daily schedules (tending shopfront stalls by day and sitting inside tavern inn shelters to count gold coins by night).
+	*   `RaccoonAIBehavior.gd`: Drives nighttime scavenging, searching for active village Barrels/Chests, scratching them with dynamic wood-chip particles, and procedurally breaking them to steal loot.
+	*   `CanineAIBehavior.gd` (Growlithe): Coordinates volcanic heatseeking near Lava and active flame ember barks.
+	*   `MonkeyAIBehavior.gd`: Manages high-altitude leaves clambering and playful vertical twirl backflips.
+	*   `AvianAIBehavior.gd` (Yellow Birds & Parrots): Coded smooth 3D thermal gliding circle rings and gradual descent perching flatly on top of leaves.
+	*   `OctopusAIBehavior.gd`: Drives pulsing jet-propulsion contractions followed by drift gliding, and sprays a thick black ink cloud when damaged to flee.
+	*   `ElephantAIBehavior.gd`: Coded ponderous slow strides, knockback immunities, and local player camera shake.
+	*   `FoxAIBehavior.gd`: Implements sneaking crouching heights and high parabolic pounce leaps to hunt chickens.
+	*   `VillagerAIBehavior.gd`: Coordinates village social gossip loops (seeking peers to stood in circles emitting cyan dialogue balloons) and A* weather/night shelter retreats.
+*   **Physics Controllers Purification:** Refactored all entity physics scripts to act as pure SRP visual and translation presenters, removing all direct, inline logical variables, redundant signals, and double connections.
+
 ---
 
 ## 🔮 Future Milestones (Backlog)
@@ -85,11 +113,6 @@ This document details the completed development phases and outlines the future m
 *   **Decoupled Network Controllers:** Split local player inputs into independent client-side predict/interpolate networks, supporting server-authoritative command replication.
 *   **High-Frequency Delta Sync:** Serialize and replicate only block modification deltas and active entity positions across the network via ENet or WebSockets to minimize bandwidth consumption.
 *   **Decoupled Chat & Trade Managers:** Adapt the abstract `IInventory` and dialogue systems to support secure, transactional player-to-player trading and chat channels.
-
-### Milestone 11: 3D Cave Carving & Fluid Cellular Automata
-*   **True 3D Cave Generation:** Upgrade the 2D height noise algorithms with 3D Simplex Noise equations to procedurally carve underground tunnels, shafts, and natural cavern hollows.
-*   **Fluid Cellular Automata:** Implement a high-performance, background-threaded cellular automata pipeline to compute natural, flowing fluid dynamics for water and lava.
-*   **Optimized Cubic Chunking:** Transition chunk storage from monolithic columns to vertical cubic segments (16x16x16 blocks) to support infinite building heights up to the stratosphere.
 
 ### Milestone 12: Mobile & Console Porting Optimization
 *   **Controller Mapping Overlay:** Create a modular controller mapping overlay, utilizing Godot's Input Action mappings to support seamless Steam Deck and gamepad navigations.
