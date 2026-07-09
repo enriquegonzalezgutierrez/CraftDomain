@@ -12,12 +12,10 @@
 # - Retrieves the Domain `Habitat` classification before generating the mob.
 # - Automatically routes the vertical surface scan to `_get_ground_surface_y` for
 #   terrestrial creatures, and `_get_water_surface_y` for aquatic/amphibious species.
-# - DENSITY OVERHAUL (Phase 2): Boosted spawning probabilities inside Ocean (ID 0) 
-#   and Swamp (ID 8) biomes to 35% to fill water bodies dynamically with rich 
-#   marine life (Turtles, Sharks, Octopuses).
-# SCOPE RESOLUTION FIX:
-# - Removed the temporary variable `sync_quest_id` entirely to bypass GDScript's 
-#   strict scope parsing limitations inside nested loops, ensuring 100% clean compilation.
+# ARCHITECTURAL CLEANUP (Quest Sync Decoupling):
+# - Removed all hardcoded quest overwrites. The spawner now strictly spawns entities. 
+#   Coordinate tracking and quest ownership is entirely delegated to the entities 
+#   themselves during their initialization to preserve absolute SRP.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -50,18 +48,18 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 	# 1. Procedural Biome-Themed Village Outpost Spawning (OCP / LSP compliant)
 	if is_real_village:
 		# Villager (100) and Merchant (101) spawn in all outposts
-		_spawn_and_register_entity(100, chunk_offset, 7.5, 5.5, world_state, world_node, entities_list, "lost_bazaar")
-		_spawn_and_register_entity(101, chunk_offset, 5.5, 7.5, world_state, world_node, entities_list, "fuel_fryer")
+		_spawn_and_register_entity(100, chunk_offset, 7.5, 5.5, world_state, world_node, entities_list)
+		_spawn_and_register_entity(101, chunk_offset, 5.5, 7.5, world_state, world_node, entities_list)
 		
 		# Dynamic Biome Outpost Spawning: Query population list from active Biome strategy
 		if is_instance_valid(biome):
 			var population := biome.get_outpost_population_ids()
 			if population.size() >= 2:
-				_spawn_and_register_entity(population[0], chunk_offset, 6.5, 6.5, world_state, world_node, entities_list, "")
-				_spawn_and_register_entity(population[1], chunk_offset, 4.5, 4.5, world_state, world_node, entities_list, "")
+				_spawn_and_register_entity(population[0], chunk_offset, 6.5, 6.5, world_state, world_node, entities_list)
+				_spawn_and_register_entity(population[1], chunk_offset, 4.5, 4.5, world_state, world_node, entities_list)
 		
 		# Golem (107) spawns to guard the village
-		_spawn_and_register_entity(107, chunk_offset, 8.5, 3.5, world_state, world_node, entities_list, "")
+		_spawn_and_register_entity(107, chunk_offset, 8.5, 3.5, world_state, world_node, entities_list)
 	else:
 		# 2. Spawning organically in the wilderness (OCP/LSP compliant, zero hardcoding)
 		var roll := randf()
@@ -76,7 +74,7 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 					# Safely select a random animal ID registered for this specific biome
 					var rand_idx := randi() % wildlife_ids.size()
 					var target_animal_id := wildlife_ids[rand_idx]
-					_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list, "")
+					_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
 
 	# 3. Global Mega-Structure spawns (Castle Guards, Harbor Merchants, etc.)
 	var mega_entities := MegaStructureService.get_entities_for_chunk(chunk_pos)
@@ -88,35 +86,19 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			var spawn_pos := exact_pos
 			var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
 			if BlockType.is_solid(block_at_pos):
+				# Ajusta la altura dinámicamente si cae sobre bloques sólidos generados
 				spawn_pos.y = world_state.get_highest_solid_y(floori(spawn_pos.x), floori(spawn_pos.z))
 				
 			var spawn_node := MobRegistry.create_mob(mob_id, spawn_pos)
 			if spawn_node != null:
 				world_node.add_child(spawn_node)
 				entities_list.append(spawn_node)
-				
-				# ======================================================================
-				# DIRECT CAMPAIGN QUEST SYNC (Zero-variable scope bypass):
-				# Directly maps target coordinates to avoid scope-parsing bugs.
-				# ======================================================================
-				if mob_id == 100:
-					var quest: Quest = QuestService.get_quest("lost_bazaar") as Quest
-					if quest != null:
-						quest.target_position = spawn_node.global_position
-				elif mob_id == 101:
-					var quest: Quest = QuestService.get_quest("fuel_fryer") as Quest
-					if quest != null:
-						quest.target_position = spawn_node.global_position
-				elif mob_id == 102:
-					var quest: Quest = QuestService.get_quest("plains_defender") as Quest
-					if quest != null:
-						quest.target_position = spawn_node.global_position
 
 	return entities_list
 
 
 ## Instantiates, places, and anchors a registered dynamic entity based on its Domain Habitat rules.
-func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node], quest_sync_id: String) -> void:
+func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
 	if not MobRegistry.has_mob(spawn_id):
 		return
 		
@@ -145,11 +127,6 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	if mob != null:
 		world_node.add_child(mob)
 		list.append(mob)
-		
-		if quest_sync_id != "":
-			var quest: Quest = QuestService.get_quest(quest_sync_id) as Quest
-			if quest != null:
-				quest.target_position = mob.global_position
 
 
 ## Helper: Scans vertical columns downward to find the topmost solid land block.

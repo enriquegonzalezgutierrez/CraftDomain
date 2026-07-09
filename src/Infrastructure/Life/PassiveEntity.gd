@@ -6,12 +6,16 @@
 #              vectors, gravity calculations, safe boundary checks, 
 #              and dynamic nameplate/quest-arrow UI attachments.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively physical motion loops 
-#   and environment boundary collisions, leaving logical tasks to composite elements.
-# - Liskov Substitution Principle (LSP): Serves as a robust contract. All concrete 
-#   mobs inherit from this class, satisfying base constraints without runtime crashes.
-# - Dependency Inversion Principle (DIP): Communicates with the player's grid 
-#   via the generic IInventory interface, shielding logic from concrete layouts.
+# - Single Responsibility Principle (SRP): Handles exclusively physical motion loops.
+# - Liskov Substitution Principle (LSP): Serves as a robust contract.
+# SELF-HEALING LIFE-CYCLE (LAZY INITIALIZATION SHIELD):
+# - Bypasses subclass _ready() overrides that omit super() calls. If the engine
+#   skips the initial ready pipeline, the physics thread autokills the drift by 
+#   running a safe manual setup on its first frame.
+# UX COMPLIANCE (NAMEPLATE STARS & X-RAY):
+# - Dynamically appends "⭐" to the NPC's text nameplate and turns it GOLD.
+# - Activates `no_depth_test` so the target's name is visible through solid walls!
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
@@ -68,6 +72,10 @@ var _is_physically_sleeping: bool = false
 # ==============================================================================
 var quest_target_id: String = ""
 
+# LAZY INITIALIZATION ENGINE:
+# Flag tracking if the self-healing routine completed successfully
+var _is_lifecycle_initialized: bool = false
+
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
@@ -84,46 +92,69 @@ func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 
 func _ready() -> void:
 	add_to_group("passives")
+	_execute_lifecycle_initialization()
+
+
+## Centralized system setup. Safe to run from _ready() or as a physics fallback.
+func _execute_lifecycle_initialization() -> void:
+	if _is_lifecycle_initialized:
+		return
+	_is_lifecycle_initialized = true
 	
+	# Cache components dynamically
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
 	_setup_nameplate_height()
 	_setup_quest_arrow()
-	
-	# ==========================================================================
-	# FLOATING UI BUBBLE COMPILER (BUG RESOLUTION)
-	# Instantiates the floating speech bubble system for humanoids on startup.
-	# ==========================================================================
 	_setup_floating_bubble()
 	
-	# ==========================================================================
-	# AUTO-CLAIM QUEST TARGET (OCP / LSP COMPLIANCE)
-	# Scans registered quests and claims ownership if spawned close (< 20m) 
-	# to their coordinates, binding the ID permanently to this individual.
-	# ==========================================================================
+	# Scans coordinates to bind to designated campaign quests
 	_auto_claim_registered_quest_target()
 
 
+## Scans static JSON coordinates at birth to permanently claim quest ownership
 func _auto_claim_registered_quest_target() -> void:
+	var nameplate_key := _get_nameplate_translation_key()
+	
+	if QuestService._quests.is_empty():
+		return
+		
 	for q_id: String in QuestService._quests.keys():
 		var q := QuestService._quests[q_id] as Quest
 		if q != null and q.target_position != Vector3.ZERO:
-			# Verify proximity at spawn frame with expanded 20m radius to cover the Castle courtyard (11.47m)
-			if global_position.distance_to(q.target_position) < 20.0:
-				quest_target_id = q_id
-				break
+			var dist := global_position.distance_to(q.target_position)
+			
+			# Design radius: 25.0 meters allows claiming from anywhere inside the Castle courtyard
+			if dist <= 25.0:
+				var is_matching_role := false
+				
+				# STRICT NARRATIVE FILTERING:
+				# Ensures only correct role can claim (e.g. preventing the Harbor Merchant from claiming the Bazaar Villager)
+				if q_id == "lost_bazaar" and nameplate_key.contains("VILLAGER"):
+					is_matching_role = true
+				elif q_id == "fuel_fryer" and nameplate_key.contains("MERCHANT"):
+					is_matching_role = true
+				elif q_id == "plains_defender" and nameplate_key.contains("ZOMBIE"):
+					is_matching_role = true
+				elif q_id == "bazaar_return" and nameplate_key.contains("VILLAGER"):
+					is_matching_role = true
+				
+				if is_matching_role:
+					quest_target_id = q_id
+					break
 
 
 ## Instantiates a native Label3D billboard to display creature name above head.
-## SOLID OCP COMPLIANCE: Nameplate strings are resolved polimorphically via virtual hooks.
 func _setup_nameplate() -> void:
+	# Defensive shield to prevent double-creation by subclass ready overrides
+	if is_instance_valid(_nameplate):
+		return 
+		
 	_nameplate = Label3D.new()
 	_nameplate.name = "FloatingNameplate"
 	
-	# Query polymorphic hook to resolve the key without class-checking (OCP/LSP)
 	var key := _get_nameplate_translation_key()
-	
 	_nameplate.text = tr(key).to_upper()
 	_nameplate.pixel_size = 0.005 
 	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -164,7 +195,6 @@ func _get_collision_box_position() -> Vector3:
 
 
 ## Virtual Hook: Instantiates the 3D SpeechBubble and places it above the entity's head.
-## SOLID FALLBACK: Humanoids without a custom bubble automatically receive a talk bubble.
 func _setup_floating_bubble() -> void:
 	if _has_ui_decorations() and not is_instance_valid(_bubble):
 		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
@@ -173,7 +203,6 @@ func _setup_floating_bubble() -> void:
 			add_child(_bubble)
 			_bubble.call("set_text", tr("BUBBLE_TALK"))
 			
-			# Setup the bubble offset based on collider boundaries
 			_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
 
 
@@ -194,7 +223,6 @@ func _get_habitat() -> int:
 # ==============================================================================
 
 ## Virtual Hook: Returns the translation key representing this entity's nameplate.
-## ZERO-REGRESSION SHIELD: Maps existing scripts dynamically to preserve behavior 100%.
 func _get_nameplate_translation_key() -> String:
 	var script_name := ""
 	var active_script := get_script() as Script
@@ -231,24 +259,18 @@ func _get_nameplate_translation_key() -> String:
 		_: return "NPC_NAME_VILLAGER"
 
 
-## Overridable Contract: Returns the warning color for hostile nameplates (red vs white)
 func _get_nameplate_color() -> Color:
 	return Color(1.0, 1.0, 1.0)
 
 
-## ZERO-REGRESSION SHIELD: Restores _is_avian() returning false by default.
-## This prevents visual components (like NPCVisualComponent) from throwing errors via .call().
 func _is_avian() -> bool:
 	return false
 
 
-## Virtual Hook: Returns true if the entity can fly or bypasses standard gravity boundary checks.
 func _can_fly() -> bool:
 	return _is_avian()
 
 
-## Dynamic Ascend Contract: Evaluates coordinate block types to prevent aquatic 
-## creatures from breaching water boundaries while allowing vertical climbing.
 func _can_jump_to(target_coord: Vector3i) -> bool:
 	var habitat := _get_habitat()
 	if habitat == 2: # AQUATIC
@@ -264,6 +286,9 @@ func _can_jump_to(target_coord: Vector3i) -> bool:
 
 ## Programmatically constructs the 3D rotating quest arrow (PrismMesh)
 func _setup_quest_arrow() -> void:
+	if is_instance_valid(_quest_arrow):
+		return # Shield against double instantiation
+		
 	_quest_arrow = MeshInstance3D.new()
 	_quest_arrow.name = "FloatingQuestArrow"
 	
@@ -277,7 +302,7 @@ func _setup_quest_arrow() -> void:
 	mat.emission = Color(1.0, 0.85, 0.2)
 	mat.emission_energy_multiplier = 2.4
 	
-	mat.no_depth_test = true
+	mat.no_depth_test = true 
 	mat.render_priority = 10
 	
 	prism.material = mat
@@ -316,7 +341,6 @@ func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -
 	if is_instance_valid(attacker):
 		_last_attacker = attacker
 		
-	# Force LOD wake up on combat hit
 	_is_physically_sleeping = false
 		
 	velocity += knockback_force
@@ -470,8 +494,6 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 		return
 		
 	var next_pos := global_position + velocity * delta
-	
-	# Floating Point Hysteresis Bias compensation (+0.1 Y)
 	var feet_coord := Vector3i(floori(next_pos.x), floori(next_pos.y + 0.1), floori(next_pos.z))
 	
 	var block_at_feet := ws.get_block(feet_coord)
@@ -493,7 +515,6 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 		if is_liquid:
 			is_crossing = true
 			
-		# Exemption check: Flying units bypass gravity fall boundary checks
 		elif block_below_feet == 0 and not _can_fly(): # 0 = AIR
 			var max_fall_scan := 3
 			var solid_found := false
@@ -521,7 +542,14 @@ func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
 		
-	# Physics LOD check every 15 frames
+	# ==========================================================================
+	# LAZY-INITIALIZATION FALLBACK SHIELD
+	# If a subclass overrides _ready() and skips the parent lifecycle setup,
+	# we manual-initialize here on its first active physics frame.
+	# ==========================================================================
+	if not _is_lifecycle_initialized:
+		_execute_lifecycle_initialization()
+		
 	if Engine.get_physics_frames() % 15 == 0:
 		var player_node: CharacterBody3D = null
 		var parent_node := get_parent()
@@ -542,7 +570,6 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 		
-	# Habitat-based gravity application override
 	if not is_on_floor() and _get_habitat() != 2: # 2 = AQUATIC
 		velocity.y -= gravity * delta
 	else:
@@ -566,21 +593,34 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
+## Evaluates the active quest state and continuously syncs tracking if this NPC is the target
 func _update_quest_bubble_state() -> void:
 	var active_q := QuestService.get_active_quest()
 	var is_target := false
 	
-	if active_q != null:
-		# ======================================================================
-		# SECURE COMPLIANCE BY QUEST TARGET ID
-		# Only display the target bubble and arrow if this specific NPC instance 
-		# claimed the active Quest ID at birth.
-		# ======================================================================
-		if quest_target_id == active_q.quest_id:
-			is_target = true
+	# O(1) PERFORMANCE SHORT-CIRCUIT:
+	# Avoids costly distance checks on update tick. If we are the designated
+	# target of the active quest, we continuously write our physical coordinate.
+	if active_q != null and quest_target_id == active_q.quest_id:
+		is_target = true
+		active_q.target_position = global_position 
 
 	if is_instance_valid(_quest_arrow):
 		_quest_arrow.visible = is_target
+
+	# ==========================================================================
+	# NAMEPLATE STAR & X-RAY VISION (Always ON for quest targets)
+	# ==========================================================================
+	if is_instance_valid(_nameplate):
+		var base_text := tr(_get_nameplate_translation_key()).to_upper()
+		if is_target:
+			_nameplate.text = "⭐ " + base_text + " ⭐"
+			_nameplate.modulate = Color(1.0, 0.85, 0.2) # Gold Highlight
+			_nameplate.no_depth_test = true
+		else:
+			_nameplate.text = base_text
+			_nameplate.modulate = _get_nameplate_color() 
+			_nameplate.no_depth_test = false
 
 	if not is_instance_valid(_bubble):
 		return
