@@ -1,47 +1,36 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation)
+# Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: GoblinEntity
-# Description: Physical character controller representing a hostile skirmisher Goblin.
-#              Schedules animation rigging, handles alerts, and overrides its 
-#              nameplate warning color polimorphically.
+# Description: Physical character controller for the hostile skirmisher Goblin.
+#              It delegates all decision trees, pursuit vectors, and hit-and-run 
+#              retreat cycles to the decoupled GoblinAIBehavior strategy, relying 
+#              on the base class physics loop for smooth translation vectors.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively active skirmishing 
-#   movement vectors and alerts, delegating nameplate styling to the virtual base contract.
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
+#   translations, collision shapes, and entity nameplate styling.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   parent class, utilizing its base physics and save loops transparently.
-# - Dependency Inversion Principle (DIP): Relies on the base class nameplate 
-#   compiler instead of manual script overrides.
+#   base contract, utilizing its parent physics process and signals.
+# - Dependency Inversion Principle (DIP): Injects the GoblinAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/GoblinEntity.gd
 # ==============================================================================
 class_name GoblinEntity
 extends PassiveEntity
 
-# Combat configurations (Fast, fragile skirmisher)
-const SPEED: float = 3.5
-const CHASE_RANGE: float = 16.0
-const ATTACK_RANGE: float = 1.2
-const ATTACK_COOLDOWN_INTERVAL: float = 1.2
-
 # Sibling node references
 var player: CharacterBody3D
 
-# AI wandering/chasing state variables
-var _wander_timer: float = 0.0
-var _wander_direction: Vector3 = Vector3.ZERO
-var _is_wandering: bool = false
-var _attack_cooldown_timer: float = 0.0
-var _stuck_timer: float = 0.0
-
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Goblins spawn with 2 Hearts of health (4 HP, fragile)
+	# Goblins spawn with 2 Hearts of health (4 HP, fragile skirmisher)
 	super(spawn_pos, 4)
 	name = "Entity_GOBLIN"
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting
+	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
 	
 	# Cache component references pre-configured in the scene
@@ -49,6 +38,14 @@ func _ready() -> void:
 	
 	_locate_player()
 	_setup_nameplate_height()
+	
+	# ==========================================================================
+	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
+	# Inject the specialized Goblin hit-and-run AI strategy dynamically on ready,
+	# completely overriding the default zombie behavior assigned by Bootstrap.
+	# ==========================================================================
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = GoblinAIBehavior.new()
 
 
 ## Bypasses old procedural representation compiling
@@ -71,10 +68,9 @@ func _setup_nameplate_height() -> void:
 
 # ==============================================================================
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
-# Overrides nameplate color return value to warning crimson red
 # ==============================================================================
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 0.15, 0.15)
+	return Color(1.0, 0.15, 0.15) # Red warning nameplate
 
 
 func _get_habitat() -> int:
@@ -101,100 +97,8 @@ func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(1, 1)
 
 
-# ==============================================================================
-# MAIN HOSTILE PHYSICS & AI CALCULATIONS
-# ==============================================================================
-func _physics_process(delta: float) -> void:
-	if domain_entity.is_dead:
-		return
-
-	if not is_on_floor():
-		velocity.y -= gravity * delta
-	else:
-		velocity.y = -0.1
-
-	if _attack_cooldown_timer > 0.0:
-		_attack_cooldown_timer -= delta
-
-	if not is_instance_valid(player):
-		_locate_player()
-
-	_process_ai_intelligence(delta)
-	
-	move_and_slide()
-
-
-func _process_ai_intelligence(delta: float) -> void:
-	var _wander_direction_tmp: Vector3 = Vector3.ZERO
-	_wander_timer -= delta
-	if _wander_timer <= 0:
-		_is_wandering = randf() > 0.4
-		if _is_wandering:
-			var angle := randf() * TAU
-			_wander_direction_tmp = Vector3(cos(angle), 0, sin(angle))
-			_wander_timer = randf_range(2.0, 5.0)
-		else:
-			_wander_direction_tmp = Vector3.ZERO
-			_wander_timer = randf_range(1.0, 3.0)
-			
-	var is_player_trackable: bool = false
-	if is_instance_valid(player) and bool(player.get("is_active")):
-		if global_position.distance_to(player.global_position) < CHASE_RANGE:
-			_is_wandering = true
-			_wander_direction = (player.global_position - global_position).normalized()
-			_wander_direction.y = 0
-			is_player_trackable = true
-			
-			if global_position.distance_to(player.global_position) <= ATTACK_RANGE:
-				if _attack_cooldown_timer <= 0.0:
-					_bite_player()
-					_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL
-					if is_instance_valid(visual_representation):
-						visual_representation.trigger_attack_visuals()
-				
-	if not is_player_trackable and _wander_direction_tmp != Vector3.ZERO:
-		_wander_direction = _wander_direction_tmp
-
-	if _is_wandering:
-		var speed_mult: float = SPEED if is_player_trackable else (SPEED * 0.5)
-		velocity.x = _wander_direction.x * speed_mult
-		velocity.z = _wander_direction.z * speed_mult
-		
-		var visuals_node := get_node_or_null("NPCVisualComponent/Visuals") as Node3D
-		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
-			var target_look_at: Vector3 = global_position + _wander_direction
-			if not global_position.is_equal_approx(target_look_at):
-				var current_rot_x := visuals_node.rotation.x
-				var current_rot_z := visuals_node.rotation.z
-				visuals_node.look_at(target_look_at, Vector3.UP)
-				visuals_node.rotation.x = current_rot_x
-				visuals_node.rotation.z = current_rot_z
-		
-		if is_on_wall():
-			if is_on_floor():
-				velocity.y = JUMP_VELOCITY
-				
-			_stuck_timer += delta
-			var patience := 1.0 if is_player_trackable else 0.4 
-			
-			if _stuck_timer > patience:
-				_stuck_timer = 0.0
-				if not is_player_trackable:
-					var wall_normal := get_wall_normal()
-					var flat_normal := Vector3(wall_normal.x, 0, wall_normal.z).normalized()
-					if flat_normal != Vector3.ZERO:
-						_wander_direction = _wander_direction.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
-					else:
-						var angle := randf() * TAU
-						_wander_direction = Vector3(cos(angle), 0, sin(angle))
-		else:
-			_stuck_timer = 0.0
-			
-	else:
-		velocity.x = move_toward(velocity.x, 0, SPEED)
-		velocity.z = move_toward(velocity.z, 0, SPEED)
-
-
+## Tactical Action bite: Inflicts damage and applies diagonal knockback
+## Note: Invoked via reflective calls by the GoblinAIBehavior strategy
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var dir := (player.global_position - global_position).normalized()

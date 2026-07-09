@@ -1,19 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation)
+# Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: SharkEntity
-# Description: Physical character controller representing a hostile aquatic Shark.
-#              Schedules animation rigging, handles water bounds, and registers its 
-#              specialized FaunaAIBehavior strategy dynamically on ready.
+# Description: Physical character controller for the hostile Great White Shark.
+#              It delegates all coordinate scent tracking, player chase paths, 
+#              and surface leap attacks to the decoupled SharkAIBehavior strategy,
+#              focusing strictly on swimming tail-wag oscillations and damage.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively physical body 
-#   water translations and target visual attachments, delegating movement and 
-#   chase logic to the injected FaunaAIBehavior.
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
+#   translations, collision shapes, and procedural mesh tail-wag animations.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   parent class, utilizing its base physics processes and gravity vectors transparently.
-# - Dependency Inversion Principle (DIP): Receives its behavioral decision tree 
-#   via dynamic strategy injection on startup.
+#   base contract, utilizing its parent physics process and signals.
+# - Dependency Inversion Principle (DIP): Injects the SharkAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/SharkEntity.gd
 # ==============================================================================
 class_name SharkEntity
 extends PassiveEntity
@@ -32,7 +33,7 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the hostile group for target scans
+	# HIGH PERFORMANCE: Register in the hostile group for target lookups
 	add_to_group("hostiles")
 	
 	# Cache component references pre-configured in the scene
@@ -44,15 +45,11 @@ func _ready() -> void:
 	
 	# ==========================================================================
 	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Programmatically instantiates NPCAIComponent if missing from old scenes
+	# Inject the specialized Shark aquatic predator AI strategy dynamically on ready,
+	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
 	# ==========================================================================
-	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
-	if not is_instance_valid(ai_component):
-		ai_component = NPCAIComponent.new()
-		add_child(ai_component)
-		
 	if is_instance_valid(ai_component):
-		ai_component.active_behavior = FaunaAIBehavior.new()
+		ai_component.active_behavior = SharkAIBehavior.new()
 
 
 ## Bypasses old procedural representation compiling
@@ -75,14 +72,13 @@ func _setup_nameplate_height() -> void:
 
 # ==============================================================================
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
-# Overrides nameplate color return value to warning crimson red
 # ==============================================================================
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 0.15, 0.15)
+	return Color(1.0, 0.15, 0.15) # Red warning nameplate
 
 
 func _get_habitat() -> int:
-	return 2 # AQUATIC
+	return 2 # Equivalent to MobRegistry.Habitat.AQUATIC
 
 
 func _has_ui_decorations() -> bool:
@@ -105,15 +101,25 @@ func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(7, 1)
 
 
-# ==============================================================================
-# PHYSICAL LIFE-CYCLE & TAIL-WAG OSCILLATOR
-# ==============================================================================
+## Tactical Action bite: Inflicts heavy damage (1.5 Hearts / 3 HP) and applies knockback
+## Note: Invoked via reflective calls by the SharkAIBehavior strategy
+func _bite_player() -> void:
+	if is_instance_valid(player):
+		var dir := (player.global_position - global_position).normalized()
+		# High vertical-diagonal propulsion to push the player away in water
+		var knockback := Vector3(dir.x * 6.5, 2.5, dir.z * 6.5)
+		if player.has_method("take_damage"):
+			player.call("take_damage", 3, knockback)
 
+
+# ==============================================================================
+# MAIN PHYSICS LOOP & PROCEDURAL TAIL-WAG OSCILLATION
+# ==============================================================================
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 		
-	# Apply tail-wagging visual animations in real-time
+	# Process procedural tail wave animations before standard translations
 	_process_procedural_swimming(delta)
 	super(delta)
 
@@ -125,10 +131,11 @@ func _process_procedural_swimming(delta: float) -> void:
 		var is_moving := flat_velocity.length_squared() > 0.1
 		
 		if is_moving:
-			# Tail-wagging scales speed dynamically with flat physical velocity
+			# Tail-wagging frequency scales dynamically with active movement speed
 			var swim_speed := flat_velocity.length() * 2.5
 			_model_node.rotation.y = deg_to_rad(-90.0) + sin(anim_time * swim_speed) * 0.22
 			_model_node.rotation.z = cos(anim_time * swim_speed * 0.5) * 0.08 
 		else:
+			# Slow resting ocean current sways
 			_model_node.rotation.y = lerp(_model_node.rotation.y, deg_to_rad(-90.0), delta * 5.0)
 			_model_node.rotation.z = sin(anim_time * 1.5) * 0.03

@@ -2,41 +2,32 @@
 # Project: CraftDomain
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: GargoyleEntity
-# Description: Nocturnal hostile Gargoyle controller. It features a unique 
-#              Day/Night state machine: turns to indestructible solid stone 
-#              during daytime and awakens as an airborne predator at night.
+# Description: Physical character controller for the hostile nocturnal Gargoyle.
+#              It delegates all state machine decisions, chasing vectors, and 
+#              attack cooldowns to the decoupled GargoyleAIBehavior strategy, 
+#              focusing strictly on physical translations and visual flight animations.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Manages exclusively the daytime/nocturnal 
-#   state transitions and flying physics vectors of the Gargoyle entity.
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical movement, 
+#   gravity damping during active flight, and visual billboarding.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contracts, utilizing its parent signal connections polymorphically.
+# - Dependency Inversion Principle (DIP): Receives its behavior strategy via 
+#   dependency injection inside _ready(), purging direct inline state machines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GargoyleEntity.gd
 # ==============================================================================
 class_name GargoyleEntity
 extends PassiveEntity
 
-enum State { STONE, AWAKE }
-
 # Sibling node references
 var player: CharacterBody3D
 
-# AI and state trackers
-var current_state: State = State.STONE
-var _wander_timer: float = 0.0
-var _wander_direction: Vector3 = Vector3.ZERO
-var _is_wandering: bool = false
-var _attack_cooldown_timer: float = 0.0
+# Visual animation trackers
 var _animation_time: float = 0.0
-
-# Dynamic cached reference to visual model
 var _model_node: Node3D
 
-# Combat configurations
+# Physical flight configurations (decoupled from decisions)
 const SPEED: float = 3.0
-const CHASE_RANGE_SQ: float = 256.0 # 16m squared
-const ATTACK_RANGE_SQ: float = 3.0
-const ATTACK_COOLDOWN_INTERVAL: float = 1.5
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -49,14 +40,6 @@ func _ready() -> void:
 	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting
 	add_to_group("hostiles")
 	
-	# ==========================================================================
-	# BUG FIX (REDUNDANT SIGNAL CONNECTION REMOVED):
-	# Removed explicit connections to 'took_damage' and 'died' signals in _ready().
-	# These are already set up in the base class PassiveEntity.gd constructor. 
-	# GDScript's built-in polymorphism automatically routes those connected signals 
-	# to the overridden methods in this script without throw errors.
-	# ==========================================================================
-	
 	# Cache component references pre-configured in the scene
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/gargoyle") as Node3D
@@ -64,9 +47,13 @@ func _ready() -> void:
 	_locate_player()
 	_setup_nameplate_height()
 	
-	# Symmetrical initial check to set the gargoyle to stone if spawned during daytime
-	var is_night := CelestialService.is_night_time_static()
-	_update_nocturnal_state(is_night)
+	# ==========================================================================
+	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
+	# Inject the specialized Gargoyle nocturnal AI strategy dynamically on ready,
+	# completely overriding the default zombie behavior assigned by Bootstrap.
+	# ==========================================================================
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = GargoyleAIBehavior.new()
 
 
 ## Bypasses old procedural representation compiling
@@ -89,10 +76,9 @@ func _setup_nameplate_height() -> void:
 
 # ==============================================================================
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
-# Overrides nameplate color return value to warning crimson red
 # ==============================================================================
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 0.15, 0.15)
+	return Color(1.0, 0.15, 0.15) # Red warning nameplate
 
 
 func _get_habitat() -> int:
@@ -120,6 +106,7 @@ func _drop_loot(inv: IInventory) -> void:
 
 
 ## Symmetrical transition updating stone shaders/emission visual overlays
+## Note: Invoked via reflective calls by the GargoyleAIBehavior strategy
 func _set_gargoyle_stone_appearance(is_stone: bool) -> void:
 	if is_instance_valid(_model_node):
 		_traverse_and_apply_stone_appearance(_model_node, is_stone)
@@ -140,8 +127,18 @@ func _traverse_and_apply_stone_appearance(node: Node, is_stone: bool) -> void:
 		_traverse_and_apply_stone_appearance(child, is_stone)
 
 
+## Tactical Action bite: Inflicts damage and applies diagonal knockback
+## Note: Invoked via reflective calls by the GargoyleAIBehavior strategy
+func _bite_player() -> void:
+	if is_instance_valid(player):
+		var dir := (player.global_position - global_position).normalized()
+		var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
+		if player.has_method("take_damage"):
+			player.call("take_damage", 1, knockback)
+
+
 # ==============================================================================
-# MAIN HOSTILE PHYSICS & AI CALCULATIONS
+# MAIN GEOMETRIC PRESENTATION & FLIGHT BOBBING OSCILLATION
 # ==============================================================================
 func _process(delta: float) -> void:
 	if domain_entity.is_dead:
@@ -150,10 +147,16 @@ func _process(delta: float) -> void:
 	if is_instance_valid(_model_node):
 		_animation_time += delta
 		
-		if current_state == State.AWAKE:
+		# Read nocturnal state from metadata safely (DIP)
+		var state: int = 0
+		if has_meta(GargoyleAIBehavior.META_STATE):
+			state = get_meta(GargoyleAIBehavior.META_STATE) as int
+		
+		if state == 1: # AWAKE / FLYING
 			var flat_velocity := Vector2(velocity.x, velocity.z)
 			var is_moving := flat_velocity.length_squared() > 0.1
 			
+			# Smooth hover bobbing oscillation
 			var hover_bob := sin(_animation_time * 5.0) * 0.25
 			_model_node.position.y = 2.5 + hover_bob
 			
@@ -163,107 +166,37 @@ func _process(delta: float) -> void:
 			else:
 				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
 				_model_node.rotation.x = 0.0
-		else:
+		else: # STONE STATUE (Sits flat on floor)
 			_model_node.position.y = lerp(_model_node.position.y, 0.8982, delta * 5.0)
 			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(90.0), 0.0), delta * 5.0)
 			
-		# Synchronize Nameplate's height dynamically with flight bobbing sways!
+		# Synchronize Label3D Nameplate's height dynamically with flight bobbing sways!
 		if is_instance_valid(_nameplate):
 			_nameplate.position.y = _model_node.position.y + 1.05
 
 
+# ==============================================================================
+# UN-THROTTLED PHYSICS ENGINE (GRAVITY AND STEP- avoidance)
+# ==============================================================================
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 
-	# Query Celestial clock statically (DIP compliant)
-	var is_night := CelestialService.is_night_time_static()
-	_update_nocturnal_state(is_night)
+	# Read state from metadata to calculate physical gravity vectors safely
+	var state: int = 0
+	if has_meta(GargoyleAIBehavior.META_STATE):
+		state = get_meta(GargoyleAIBehavior.META_STATE) as int
 
-	if current_state == State.STONE:
+	if state == 0: # STONE (Acts as a heavy brick, falls to ground)
 		if not is_on_floor():
 			velocity.y -= gravity * delta
 		else:
 			velocity.y = -0.1
-		velocity.x = move_toward(velocity.x, 0, SPEED * delta)
-		velocity.z = move_toward(velocity.z, 0, SPEED * delta)
-	else:
-		velocity.y = move_toward(velocity.y, 0, SPEED * delta)
-		if _attack_cooldown_timer > 0.0:
-			_attack_cooldown_timer -= delta
-			
-		if not is_instance_valid(player):
-			_locate_player()
-			
-		_process_ai_intelligence(delta)
+	else: # AWAKE (Active flight neutral Y damping)
+		velocity.y = move_toward(velocity.y, 0.0, SPEED * delta)
+
+	# Execute un-throttled physics translation and step-up checks
+	if is_instance_valid(ai_component):
+		ai_component.process_ai(delta)
 
 	move_and_slide()
-
-
-func _update_nocturnal_state(is_night: bool) -> void:
-	if is_night and current_state == State.STONE:
-		current_state = State.AWAKE
-		print("[Gargoyle] GOTHIC SENTINEL AWAKENS!")
-		_set_gargoyle_stone_appearance(false)
-				
-	elif not is_night and current_state == State.AWAKE:
-		current_state = State.STONE
-		print("[Gargoyle] GOTHIC SENTINEL TURNS TO STONE.")
-		_set_gargoyle_stone_appearance(true)
-
-
-func _process_ai_intelligence(_delta: float) -> void:
-	var _wander_direction_tmp: Vector3 = Vector3.ZERO
-	_wander_timer -= _delta
-	if _wander_timer <= 0:
-		_is_wandering = randf() > 0.4
-		if _is_wandering:
-			var angle := randf() * TAU
-			_wander_direction_tmp = Vector3(cos(angle), 0, sin(angle))
-			_wander_timer = randf_range(2.0, 5.0)
-		else:
-			_wander_direction_tmp = Vector3.ZERO
-			_wander_timer = randf_range(1.0, 3.0)
-			
-	var is_player_trackable: bool = false
-	if is_instance_valid(player) and bool(player.get("is_active")):
-		var dist_sq := global_position.distance_squared_to(player.global_position)
-		if dist_sq < CHASE_RANGE_SQ:
-			_is_wandering = true
-			_wander_direction = (player.global_position - global_position).normalized()
-			_wander_direction.y = 0
-			is_player_trackable = true
-			
-			if dist_sq <= ATTACK_RANGE_SQ:
-				if _attack_cooldown_timer <= 0.0:
-					_bite_player()
-					_attack_cooldown_timer = ATTACK_COOLDOWN_INTERVAL
-				
-	if not is_player_trackable and _wander_direction_tmp != Vector3.ZERO:
-		_wander_direction = _wander_direction_tmp
-
-	if _is_wandering:
-		var speed_mult: float = SPEED if is_player_trackable else (SPEED * 0.5)
-		velocity.x = _wander_direction.x * speed_mult
-		velocity.z = _wander_direction.z * speed_mult
-		
-		var visuals_node := get_node_or_null("NPCVisualComponent/Visuals") as Node3D
-		if is_instance_valid(visuals_node) and _wander_direction.length_squared() > 0.01:
-			var target_look_at: Vector3 = global_position + _wander_direction
-			if not global_position.is_equal_approx(target_look_at):
-				var current_rot_x := visuals_node.rotation.x
-				var current_rot_z := visuals_node.rotation.z
-				visuals_node.look_at(target_look_at, Vector3.UP)
-				visuals_node.rotation.x = current_rot_x
-				visuals_node.rotation.z = current_rot_z
-		else:
-			velocity.x = move_toward(velocity.x, 0, SPEED)
-			velocity.z = move_toward(velocity.z, 0, SPEED)
-
-
-func _bite_player() -> void:
-	if is_instance_valid(player):
-		var dir := (player.global_position - global_position).normalized()
-		var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
-		if player.has_method("take_damage"):
-			player.call("take_damage", 1, knockback)

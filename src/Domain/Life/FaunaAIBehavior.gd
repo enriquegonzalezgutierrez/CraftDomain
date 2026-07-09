@@ -2,19 +2,18 @@
 # Project: CraftDomain
 # Layer: Domain (Behavior Strategies)
 # Class: FaunaAIBehavior
-# Description: Concrete AI behavior strategy implementing standard wildlife routines,
-#              including peaceful grazing, threat avoidance, and panic-flight.
+# Description: Generic AI behavior strategy implementing standard wilderness 
+#              wildlife routines (grazing, peaceful roaming, and active threat 
+#              evasion/panic flight). Fully decoupled from specific species.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates grazing and 
-#   evasion decision trees, isolating animal instincts from physical entity nodes.
-#   All raw physical wall-climbing and jump physics are delegated to Infrastructure.
-# - Open-Closed Principle (OCP): Extends IAIBehavior. Species-specific parameters 
-#   (such as crawling speed dampening or flight heights) are managed dynamically.
-# - Liskov Substitution Principle (LSP): Fully interchangeable with all behaviors, 
-#   operating seamlessly on any valid wildlife character host.
-# - Dependency Inversion Principle (DIP): Communicates strictly via abstract 
-#   generic 'Object' interfaces and mirrored state indicators to completely 
-#   purge Godot framework compilation links from the Domain.
+# - Single Responsibility Principle (SRP): Exclusively coordinates standard 
+#   animal grazing patterns and panic paths.
+# - Open-Closed Principle (OCP): COMPLETELY DECOUPLED. All hardcoded string checks
+#   (like matching the word "TURTLE") have been purged, allowing the class to 
+#   remain strictly closed to modifications when adding new animal species.
+# - Liskov Substitution Principle (LSP): Serves as a reliable, uniform contract.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/Life/FaunaAIBehavior.gd
 # ==============================================================================
 class_name FaunaAIBehavior
 extends IAIBehavior
@@ -46,16 +45,16 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 	_initialize_metadata_if_missing(host)
 	
-	var wander_timer: float = host.get_meta(META_WANDER_TIMER)
-	var wander_dir: Vector3 = host.get_meta(META_WANDER_DIR)
-	var panic_timer: float = host.get_meta(META_PANIC_TIMER)
-	var stuck_timer: float = host.get_meta(META_STUCK_TIMER)
+	var wander_timer: float = host.get_meta(META_WANDER_TIMER) as float
+	var wander_dir: Vector3 = host.get_meta(META_WANDER_DIR) as Vector3
+	var panic_timer: float = host.get_meta(META_PANIC_TIMER) as float
+	var stuck_timer: float = host.get_meta(META_STUCK_TIMER) as float
 	
 	var ai: Object = host.get("ai_component")
 	if not is_instance_valid(ai):
 		return
 		
-	# Unify physical velocity reading at top level to avoid local shadowing warnings
+	# Unify physical velocity reading at top level
 	var velocity: Vector3 = host.get("velocity")
 	
 	# Determine if host is currently panicking due to receiving damage
@@ -67,7 +66,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 	# 1. SCAN FOR PROXIMITY THREATS (Zombies)
 	if not is_panicking:
-		var closest_threat := _scan_for_hostile_monsters(host)
+		var closest_threat: Object = _scan_for_hostile_monsters(host)
 		if closest_threat != null:
 			# Sense threat: Trigger panic escape instantly
 			panic_timer = 4.5
@@ -97,8 +96,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 				
 		host.set_meta(META_WANDER_TIMER, wander_timer)
 		host.set_meta(META_WANDER_DIR, wander_dir)
-		
-		# NOTE: Wall physical step-climbing is handled centrally by NPCAIComponent.gd
 			
 	# 3. RUN COZY GRAZING / ROAMING ACTION
 	else:
@@ -144,10 +141,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	if wander_dir != Vector3.ZERO:
 		var speed_coef := SPEED_PANIC if is_panicking else SPEED_GRAZE
 		
-		var host_name: String = host.get("name")
-		if host_name.contains("TURTLE") and host.call("is_on_floor"):
-			speed_coef *= 0.5
-			
 		velocity.x = wander_dir.x * speed_coef
 		velocity.z = wander_dir.z * speed_coef
 		host.set("velocity", velocity)
