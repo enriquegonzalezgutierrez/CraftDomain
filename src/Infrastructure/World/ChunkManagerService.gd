@@ -15,8 +15,11 @@
 # - Main-thread rendering now simply assigns the pre-baked shape resource and 
 #   instantly registers pre-filtered walkable nodes via `register_compiled_nodes_synchronous()`, 
 #   slashing CPU frame-time spikes to zero.
-# - Maintained immediate, síncrono main-thread updates inside `_rebuild_chunk_instantly` 
+# - Maintained immediate, synchronous main-thread updates inside `_rebuild_chunk_instantly` 
 #   to guarantee zero-latency terrain interactions.
+# REFACTOR FIXES:
+# - Replaced hardcoded geometry loop queries with `ChunkMesher.generate_special_meshes()` 
+#   to dynamically fetch all registered liquids and custom blocks (Slabs) via OCP.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -293,17 +296,7 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 			static_body.add_child(col)
 				
 	# UNIFIED GEOMETRY COMPILE PIPELINE (OCP compliant)
-	var custom_meshes: Dictionary = {}
-	
-	# Compile Liquids
-	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
-		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
-		if l_mesh != null: custom_meshes[l_type] = l_mesh
-		
-	# Compile Custom Solids (Slabs)
-	for s_type: BlockType.Type in [BlockType.Type.STONE_SLAB_BOTTOM, BlockType.Type.STONE_SLAB_TOP]:
-		var s_mesh := ChunkMesher.generate_custom_geometry_mesh(chunk, world_state, s_type) as ArrayMesh
-		if s_mesh != null: custom_meshes[s_type] = s_mesh
+	var custom_meshes: Dictionary = ChunkMesher.generate_special_meshes(chunk, world_state)
 			
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
@@ -383,17 +376,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, build_physics) as Dictionary
 	
 	# UNIFIED ASYNCHRONOUS GEOMETRY COMPILE PIPELINE (OCP compliant)
-	var custom_meshes: Dictionary = {}
-	
-	# Compile Liquids
-	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
-		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
-		if l_mesh != null: custom_meshes[l_type] = l_mesh
-		
-	# Compile Custom Solids (Slabs)
-	for s_type: BlockType.Type in [BlockType.Type.STONE_SLAB_BOTTOM, BlockType.Type.STONE_SLAB_TOP]:
-		var s_mesh := ChunkMesher.generate_custom_geometry_mesh(chunk, world_state, s_type) as ArrayMesh
-		if s_mesh != null: custom_meshes[s_type] = s_mesh
+	var custom_meshes: Dictionary = ChunkMesher.generate_special_meshes(chunk, world_state)
 	
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
@@ -443,17 +426,7 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, build_physics) as Dictionary
 	
 	# UNIFIED ASYNCHRONOUS GEOMETRY COMPILE PIPELINE (OCP compliant)
-	var custom_meshes: Dictionary = {}
-	
-	# Compile Liquids
-	for l_type: BlockType.Type in [BlockType.Type.WATER, BlockType.Type.LAVA]:
-		var l_mesh := ChunkMesher.generate_liquid_mesh(chunk, world_state, l_type) as ArrayMesh
-		if l_mesh != null: custom_meshes[l_type] = l_mesh
-		
-	# Compile Custom Solids (Slabs)
-	for s_type: BlockType.Type in [BlockType.Type.STONE_SLAB_BOTTOM, BlockType.Type.STONE_SLAB_TOP]:
-		var s_mesh := ChunkMesher.generate_custom_geometry_mesh(chunk, world_state, s_type) as ArrayMesh
-		if s_mesh != null: custom_meshes[s_type] = s_mesh
+	var custom_meshes: Dictionary = ChunkMesher.generate_special_meshes(chunk, world_state)
 			
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
@@ -651,9 +624,11 @@ func _recycle_chunk_node(node: ChunkNode) -> void:
 	if is_instance_valid(node):
 		node.visible = false
 		# Clear physics to avoid collision interference while in pool
-		node.set_collision_body(null)
+		if node.has_method("set_collision_body"):
+			node.call("set_collision_body", null)
 		# Reset all GPU buffers and meshes inside the node
-		node.setup_chunk_visuals({}, null, {})
+		if node.has_method("setup_chunk_visuals"):
+			node.call("setup_chunk_visuals", {}, null, {})
 		_chunk_node_pool.append(node)
 
 
@@ -666,11 +641,13 @@ func _execute_lod_scans() -> void:
 			_chunk_lod_states[pos] = is_currently_distant
 			var node: ChunkNode = _chunk_nodes[pos] as ChunkNode
 			if is_instance_valid(node):
-				node.update_lod_materials(is_currently_distant)
+				if node.has_method("update_lod_materials"):
+					node.call("update_lod_materials", is_currently_distant)
 				
 				# Rebuild solid block physics when moving closer
-				if not is_currently_distant and not node.has_collision_body():
-					_request_chunk_rebuild(pos)
+				if not is_currently_distant and node.has_method("has_collision_body"):
+					if not node.call("has_collision_body") as bool:
+						_request_chunk_rebuild(pos)
 
 
 func _calculate_is_chunk_distant(chunk_pos: Vector3i) -> bool:

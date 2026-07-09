@@ -1,63 +1,76 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Domain data structure defining the properties, physical geometry, 
-#              and procedural visual colors of a specific block type.
+# Layer: Domain (Pure Business Logic / Value Objects)
+# Class: BlockDefinition
+# Description: Pure Domain Base Class describing the physical attributes, 
+#              geographical properties, and decoupled visual characteristics 
+#              of a voxel block.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively encapsulates block traits, 
-#   separating immutable value characteristics from meshing or saving logic.
-# - Open-Closed Principle (OCP) & i18n: Replaced hardcoded English string with a 
-#   translation key to strictly adhere to OCP for multi-language support.
-# - Liskov Substitution Principle (LSP): Dynamically falls back to FullCubeGeometry 
-#   if no custom shape is passed, maintaining absolute contract safety.
-# DECOUPLED CONSTRUCTOR UPGRADE:
-# - Updated the constructor signature to accept `p_is_solid` and `p_is_transparent` 
-#   parameters explicitly. This breaks circular compile-time dependency loops with 
-#   `BlockType.gd` and allows parameters to be fully data-driven.
+# - Single Responsibility Principle (SRP): Exclusively encapsulates block metadata.
+# - Open-Closed Principle (OCP): Designed as an abstract template. Subclasses 
+#   override this class to define customized block properties in separate files, 
+#   ensuring no parent code is ever modified to append new voxel materials.
+# - Liskov Substitution Principle (LSP): Subclasses inherit this contract, 
+#   ensuring they can be polymorphically processed by meshing and loading engines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/BlockDefinition.gd
 # ==============================================================================
 class_name BlockDefinition
 extends RefCounted
 
-var type: BlockType.Type
-var translation_key: String # e.g., "BLOCK_STONE"
-var is_solid: bool
-var is_transparent: bool
+# ==============================================================================
+# DOMAIN CORE PROPERTIES (DDD Compliance)
+# ==============================================================================
+## Generic integer mapping for block type. 
+## Set in subclass constructors (e.g. BlockType.Type.STONE).
+var type: int
 
-# Procedural coloring for face composition without external assets
-var color_top: Color
-var color_side: Color
-var color_bottom: Color
+## Translation localization key (e.g., "BLOCK_STONE")
+var translation_key: String
 
-# Pure Domain Geometry Strategy representation
+## Physical collision property: true if block is solid
+var is_solid: bool = true
+
+## Occlusion calculation property: true if block allows light rays or is partially clear
+var is_transparent: bool = false
+
+## Procedural flat fallback colors for mesh-generation without graphics card support
+var color_top: Color = Color.WHITE
+var color_side: Color = Color.WHITE
+var color_bottom: Color = Color.WHITE
+
+## Geometry strategy representation determining custom winding boundaries (Slabs, Steps, Fences)
 var geometry: IVoxelGeometry
 
+# ==============================================================================
+# DECOUPLED VISUAL ATTRIBUTES (DDD Pure Data)
+# Evaluated polymorphically by Infrastructure layers to assemble PBR materials automatically.
+# ==============================================================================
+## Base file name for the albedo map (e.g. "stone.png")
+var texture_file_name: String = ""
 
-func _init(
-	p_type: BlockType.Type, 
-	p_translation_key: String, 
-	p_is_solid: bool, # <-- Added
-	p_is_transparent: bool, # <-- Added
-	p_color_top: Color, 
-	p_color_side: Color, 
-	p_color_bottom: Color,
-	p_geometry: IVoxelGeometry = null
-) -> void:
-	type = p_type
-	translation_key = p_translation_key
-	is_solid = p_is_solid
-	is_transparent = p_is_transparent
-	color_top = p_color_top
-	color_side = p_color_side
-	color_bottom = p_color_bottom
-	
-	# LSP FALLBACK: If no custom geometry is defined, default to a standard 1x1x1 solid cube
-	if p_geometry == null:
-		geometry = FullCubeGeometry.new()
-	else:
-		geometry = p_geometry
+## Base file name for the associated normal map (e.g. "stone_normal.png")
+var normal_file_name: String = ""
+
+## Surface micro-roughness value [0.0 - 1.0] for light scattering calculations
+var roughness: float = 0.85
+
+## Surface metallic reflection value [0.0 - 1.0]
+var metallic: float = 0.0
+
+## Maps material processing groups: "default", "foliage" (wind sway), "liquid_water", "liquid_lava"
+var rendering_type: String = "default"
+
+## High-fidelity cyber glow properties
+var is_emissive: bool = false
+var emission_color: Color = Color.BLACK
+var emission_energy: float = 0.0
 
 
-## Returns the dynamically translated string based on the active OS locale
+func _init() -> void:
+	# Default Fallback: Standard 1x1x1 solid cube
+	geometry = FullCubeGeometry.new()
+
+
+## Returns the dynamically translated block name string based on the active OS locale
 func get_localized_name() -> String:
 	return tr(translation_key)
