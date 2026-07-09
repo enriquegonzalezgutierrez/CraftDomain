@@ -6,9 +6,10 @@
 #              - Single Responsibility Principle (SRP): Handles exclusively the 
 #                GLB scene loading, tangent warning suppression, and built-in 
 #                animation player triggers.
-#              - Open-Closed Principle (OCP): Fully generic. Any new wildlife model 
-#                (Cat, Fox, Shark) can be configured purely by instantiating 
-#                this Strategy resource with custom paths on disk.
+# BUG FIX: TANGENT WARNING SHIELD ENHANCEMENT
+# - Standardized `_register_glb_materials()` to loop through *every* surface index
+#   in the MeshInstance3D. This ensures that wildlife meshes with multiple materials 
+#   correctly strip their normal maps to prevent C++ rendering warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FaunaVisualRepresentation.gd
 # ==============================================================================
@@ -107,24 +108,25 @@ func _play_animation_safe(anim_name: String, speed: float = 1.0) -> void:
 			_anim_player.play(anim_name, 0.20)
 
 
-## Recursively duplicates materials and patches tangent warnings
+## Recursively duplicates materials over ALL mesh surfaces to suppress tangent errors
 func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		var mat: Material = node.get_active_material(0) as Material
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0) as Material
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			
-			# TANGENT WARNING SHIELD
-			new_mat.normal_enabled = false
-			new_mat.anisotropy_enabled = false
-			new_mat.clearcoat_enabled = false
-			new_mat.heightmap_enabled = false
-			
-			node.material_override = new_mat
-			
+	if node is MeshInstance3D and node.mesh != null:
+		for i: int in range(node.mesh.get_surface_count()):
+			var mat: Material = node.get_active_material(i)
+			if mat == null:
+				mat = node.mesh.surface_get_material(i)
+				
+			if mat is BaseMaterial3D:
+				var new_mat := mat.duplicate() as BaseMaterial3D
+				# TANGENT WARNING SHIELD
+				new_mat.normal_enabled = false
+				new_mat.anisotropy_enabled = false
+				new_mat.clearcoat_enabled = false
+				new_mat.heightmap_enabled = false
+				
+				# Explicitly override the matching surface index!
+				node.set_surface_override_material(i, new_mat)
+				
 	for child: Node in node.get_children():
 		_register_glb_materials(child)
 

@@ -4,14 +4,13 @@
 # Class: VillagerAIBehavior
 # Description: Specialized AI behavior strategy implementing social life routines for
 #              the Common Villager NPC. Coordinates real-time group "gossiping" 
-#              (seeking nearby peer villagers to stand and chat in circles), 
 #              and dynamic day/night shelter-seeking scheduling.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly social gossip cycles,
-#   night retreats, and coordinate orientations, keeping physical rigs separated.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. New emotes, tilling, or
-#   village reputation actions can be appended cleanly here.
-# - Liskov Substitution Principle (LSP): Fully compatible with the contract signatures.
+# - Single Responsibility Principle (SRP): Coordinates strictly social gossip cycles.
+# BUG FIX:
+# - Added defensiveness against 'null' values when querying the WeatherService 
+#   for the current weather state, preventing GDScript C++ "Nonexistent int constructor"
+#   crashes during isolated testing without proper service nodes.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Life/VillagerAIBehavior.gd
 # ==============================================================================
@@ -90,8 +89,11 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	if is_instance_valid(parent):
 		var weather_node: Node = parent.get_node_or_null("WeatherService")
 		if is_instance_valid(weather_node):
-			var cur_weather: int = int(weather_node.get("current_weather"))
-			is_storming = (cur_weather == 1 or cur_weather == 2) # Rain or Snow
+			# DEFENSIVE CASTING: Safely extract variant, preventing int(null) crash!
+			var cur_weather: Variant = weather_node.get("current_weather")
+			if cur_weather != null:
+				var w_val: int = int(cur_weather)
+				is_storming = (w_val == 1 or w_val == 2) # Rain or Snow
 
 	if is_night or is_storming:
 		_reset_villager_state(host)
@@ -141,7 +143,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		var target_node := target_ref as Node3D
 		var target_domain: Object = target_node.get("domain_entity")
 		
-		# Cancel chat if peer goes missing/dies
 		if target_domain == null or target_domain.get("is_dead") == true:
 			_reset_villager_state(host)
 			return
@@ -169,12 +170,10 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 			
 			chat_timer -= delta
 			if chat_timer <= 0.0:
-				# Gossip completed! Set long cooldown on next chat
 				host.set_meta(META_COOLDOWN, COOLDOWN_CHAT_SEC)
 				_reset_villager_state(host)
 				return
 				
-			# Trigger verbal chatter murmurs in presenter (cooldown 1s)
 			if int(round(chat_timer * 10.0)) % 15 == 0:
 				if host.has_method("_play_gossip_chatter"):
 					host.call("_play_gossip_chatter")
@@ -244,7 +243,6 @@ func _reset_villager_state(host: Object) -> void:
 	host.set_meta(META_WANDER_TIMER, 1.0)
 
 
-## Proximity Scanner: Scans for active fellow humanoids to chat with
 func _scan_for_nearby_peer(host: Object) -> Node3D:
 	if not host.call("is_inside_tree"):
 		return null
@@ -262,7 +260,6 @@ func _scan_for_nearby_peer(host: Object) -> Node3D:
 	for child: Object in passives:
 		if is_instance_valid(child) and child != host and child is Node3D:
 			var name_str: String = child.get("name")
-			# Checks if fellow target is a compatible talking citizen role
 			if name_str.contains("VILLAGER") or name_str.contains("MERCHANT") or name_str.contains("FARMER") or name_str.contains("MINER") or name_str.contains("DRUID"):
 				var domain: Object = child.get("domain_entity")
 				if domain != null and not domain.get("is_dead"):

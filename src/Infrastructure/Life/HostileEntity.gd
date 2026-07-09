@@ -9,10 +9,11 @@
 # - Single Responsibility Principle (SRP): Handles exclusively physical body 
 #   movement structures and target visual attachments, delegating pathing and 
 #   pursuit routines to the injected ZombieAIBehavior.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   parent class, utilizing its base physics processes and gravity vectors transparently.
-# - Dependency Inversion Principle (DIP): Receives its behavioral decision tree 
-#   via dynamic strategy injection on startup.
+# BUG FIXES:
+# - Re-routed `_build_glb_representation()` to correctly instantiate the 
+#   `SkeletalVisualRepresentation` strategy instead of raw-injecting the node.
+#   This completely resolves the T-Pose bug by ensuring Mixamo animations 
+#   are correctly compiled, linked to the "states" library, and blended.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name HostileEntity
@@ -67,22 +68,28 @@ func _setup_graphics_representation() -> void:
 		_build_procedural_representation()
 
 
+## FIX: Now correctly delegates to SkeletalVisualRepresentation to load animations!
 func _build_glb_representation() -> void:
-	var model_scene := load(BASE_MODEL_PATH) as PackedScene
-	if model_scene == null:
+	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
+	if strategy_script == null:
 		_build_procedural_representation()
 		return
 		
-	var model_node := model_scene.instantiate() as Node3D
-	_prune_extraneous_nodes(model_node)
+	var strategy: Resource = strategy_script.new()
+	strategy.set("base_model_path", BASE_MODEL_PATH)
+	strategy.set("scale_multiplier", Vector3(1.6635, 1.6635, 1.6635))
+	strategy.set("position_offset", Vector3.ZERO)
+	strategy.set("rotation_offset", Vector3(0, 180, 0)) # Face forward along -Z
 	
-	# Calibration calculated via headless model analyzer
-	model_node.scale = Vector3(1.6635, 1.6635, 1.6635)
-	model_node.position = Vector3(0.0, 0.0, 0.0)
-	model_node.rotation_degrees = Vector3(0, 180, 0) # Face forward along -Z
+	# Load concrete animation tracks
+	strategy.set("anim_idle_path", ANIM_DIR + "zombie/zombie_idle.fbx")
+	strategy.set("anim_walk_path", ANIM_DIR + "zombie/zombie_walk.fbx")
+	strategy.set("anim_attack_path", ANIM_DIR + "zombie/zombie_attack.fbx")
+	strategy.set("anim_jump_path", ANIM_DIR + "zombie/zombie_jump.fbx")
 	
-	visual_component.body_bob_node.add_child(model_node)
-	_register_glb_materials(model_node)
+	# Bind as standard visual representation
+	visual_representation = strategy as IEntityVisualRepresentation
+	visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
 ## Symmetrical Fallback: Sculpts custom voxel character out of color boxes
@@ -117,10 +124,6 @@ func _setup_quest_bubble() -> void:
 			_quest_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
 
 
-# ==============================================================================
-# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
-# Overrides nameplate color return value to warning crimson red
-# ==============================================================================
 func _get_nameplate_color() -> Color:
 	return Color(1.0, 0.15, 0.15)
 
@@ -139,50 +142,15 @@ func _locate_player() -> void:
 		player = world_node.get("player") as CharacterBody3D
 
 
-## Hostiles do not panic when hit
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	pass 
 
 
-## Spawns dynamic drops directly into the player's backpack using DIP contracts
 func _drop_loot(inv: IInventory) -> void:
-	inv.consume_item(15, 1) # Deduct 1x Lava Bucket from player
+	inv.consume_item(15, 1) 
 	
 	var active_q := QuestService.get_active_quest()
 	if active_q != null and active_q.quest_id == "plains_defender":
 		var _un := inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
 		if is_instance_valid(player):
 			QuestService.complete_active_quest(player)
-
-
-# ==============================================================================
-# SKELETAL RENDERING UTILITIES
-# ==============================================================================
-
-## Recursively duplicates materials to prevent material-sharing leaks
-func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		var mat := node.get_active_material(0) as Material
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0) as Material
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			new_mat.normal_enabled = false
-			new_mat.anisotropy_enabled = false
-			new_mat.clearcoat_enabled = false
-			new_mat.heightmap_enabled = false
-			node.material_override = new_mat
-			
-	for child: Node in node.get_children():
-		_register_glb_materials(child)
-
-
-## Recursively locates and frees extraneous camera and light nodes
-func _prune_extraneous_nodes(node: Node) -> void:
-	for i in range(node.get_child_count() - 1, -1, -1):
-		var child := node.get_child(i)
-		if "Camera" in child.name or "Light" in child.name:
-			child.free()
-		else:
-			_prune_extraneous_nodes(child)

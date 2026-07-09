@@ -13,6 +13,10 @@
 #   base contract, relying on parent signal connections polymorphically.
 # - Dependency Inversion Principle (DIP): Injects the AvianAIBehavior strategy 
 #   during ready state initialization to keep code decoupled.
+# BUG FIX:
+# - Added `_register_glb_materials()` to strip tangent and normal-map rendering
+#   requirements from the GLB mesh, completely suppressing the Godot C++ shader 
+#   warning spam in the console.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/ParrotEntity.gd
 # ==============================================================================
@@ -41,6 +45,10 @@ func _ready() -> void:
 	# Cache the 3D model child node to apply flight sways in real-time
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/parrot") as Node3D
 	
+	# TANGENT SHIELD FIX: Strip materials of tangent-requiring shaders to avoid C++ warnings
+	if is_instance_valid(_model_node):
+		_register_glb_materials(_model_node)
+	
 	# Fetch nameplate configurations if available
 	_setup_nameplate_height()
 	
@@ -51,6 +59,28 @@ func _ready() -> void:
 	# ==========================================================================
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = AvianAIBehavior.new()
+
+
+## Recursively duplicates materials to prevent material-sharing leaks and tangent errors
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mat: Material = node.get_active_material(0)
+		if mat == null and node.mesh != null:
+			mat = node.mesh.surface_get_material(0)
+			
+		if mat is BaseMaterial3D:
+			var new_mat := mat.duplicate() as BaseMaterial3D
+			
+			# TANGENT WARNING SHIELD
+			new_mat.normal_enabled = false
+			new_mat.anisotropy_enabled = false
+			new_mat.clearcoat_enabled = false
+			new_mat.heightmap_enabled = false
+			
+			node.material_override = new_mat
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
 
 
 ## Bypasses old procedural representation compiling

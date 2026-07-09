@@ -11,8 +11,10 @@
 #   movement, custom mesh alignments, and laser scan visual feedback.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, relying 100% on the base physics loop for standard translations.
-# - Dependency Inversion Principle (DIP): Injects the CyberCitizenAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+# MIXAMO ORIENTATION FIX:
+# - Added `gaze_rotation_offset = PI` to dynamically instruct the NPCVisualComponent 
+#   to rotate the mesh 180 degrees during walking and scanning, correcting 
+#   the backward-facing FBX export glitch.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/CyberCitizenEntity.gd
 # ==============================================================================
@@ -20,6 +22,13 @@ class_name CyberCitizenEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/cyber/cyber_base.fbx"
+
+# ==============================================================================
+# MIXAMO ORIENTATION COMPENSATOR (OCP SHIELD)
+# Compensates for this specific FBX skeleton export direction by adding 180 degrees
+# of offset, aligning his face directly with his walking velocity and lasers.
+# ==============================================================================
+var gaze_rotation_offset: float = PI
 
 # Sibling node references
 var player: CharacterBody3D
@@ -64,7 +73,7 @@ func _setup_graphics_representation() -> void:
 	strategy.set("position_offset", Vector3.ZERO)
 	strategy.set("rotation_offset", Vector3(0, 180, 0))
 	
-	strategy.set("anim_idle_path", ANIM_DIR + "cyber/cyber_base.fbx")
+	strategy.set("anim_idle_path", ANIM_DIR + "cyber/cyber_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "cyber/cyber_walk.fbx")
 	strategy.set("anim_panic_path", ANIM_DIR + "cyber/cyber_panic.fbx")
 	strategy.set("anim_jump_path", ANIM_DIR + "cyber/cyber_jump.fbx")

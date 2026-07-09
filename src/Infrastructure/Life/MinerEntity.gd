@@ -11,8 +11,10 @@
 #   movement, custom mesh alignments, and dialogue tree interactions.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, utilizing its parent physics process and signals.
-# - Dependency Inversion Principle (DIP): Injects the MinerAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+# MIXAMO ORIENTATION FIX:
+# - Added `gaze_rotation_offset = PI` to dynamically instruct the NPCVisualComponent 
+#   to rotate the mesh 180 degrees during walking, correcting the backward-facing 
+#   FBX export glitch.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MinerEntity.gd
 # ==============================================================================
@@ -20,6 +22,13 @@ class_name MinerEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/miner/miner_base.fbx"
+
+# ==============================================================================
+# MIXAMO ORIENTATION COMPENSATOR (OCP SHIELD)
+# Compensates for this specific FBX skeleton export direction by adding 180 degrees
+# of offset, aligning his face directly with his walking velocity.
+# ==============================================================================
+var gaze_rotation_offset: float = PI
 
 # Sibling node references
 var player: CharacterBody3D

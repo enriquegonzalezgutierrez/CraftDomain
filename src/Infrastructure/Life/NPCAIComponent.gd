@@ -6,13 +6,11 @@
 #              and dynamic behavior delegation with high-performance execution.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Acts strictly as the task timer and 
-#   coordination hub, delegating domain-specific decision trees to the injected 
-#   IAIBehavior strategy. Centralizes physical jump and step-climb calculations 
-#   away from the Domain behaviors.
-# - Open-Closed Principle (OCP): Distinguishes task behaviors dynamically and 
-#   delegates execution to the active strategy cleanly.
-# - Liskov Substitution Principle (LSP): Works transparently across all 
-#   scene-based or procedurally chiseled passive hosts.
+#   coordination hub, delegating domain-specific decision trees.
+# BUG FIX:
+# - Weather Node Defensive Parsing: Added strict variant checking (`!= null`)
+#   when pulling weather settings to block the `Nonexistent int constructor` 
+#   GDScript engine crash in generic fallback routines.
 # ==============================================================================
 class_name NPCAIComponent
 extends Node
@@ -101,7 +99,6 @@ func process_ai(delta: float) -> void:
 		# overrides and intercepts the generic wander schedules.
 		if has_override or current_task == TaskState.WORKING:
 			_process_movement_avoidance(delta)
-			# ZERO-REGRESSION SHIELD: Avoid overwriting direct velocity updates from custom strategies
 			if not has_override:
 				_apply_movement_vectors()
 			return
@@ -138,8 +135,11 @@ func _process_fallback_village_routines(delta: float) -> void:
 	if is_instance_valid(world_node):
 		var weather_node := world_node.get_node_or_null("WeatherService")
 		if is_instance_valid(weather_node):
-			var current_weather: int = int(weather_node.get("current_weather"))
-			is_storming = (current_weather == 1 or current_weather == 2)
+			# DEFENSIVE CASTING: Safely extract variant, preventing int(null) crash!
+			var cur_weather: Variant = weather_node.get("current_weather")
+			if cur_weather != null:
+				var w_val: int = int(cur_weather)
+				is_storming = (w_val == 1 or w_val == 2)
 			
 	var is_civilian := false
 	if _host.has_method("_get_humanoid_role"):
@@ -300,19 +300,15 @@ func _apply_movement_vectors() -> void:
 # CENTRALIZED STEP-CLIMB JUMP SOLVER (SRP Compliant)
 # ==============================================================================
 func _process_movement_avoidance(_delta: float) -> void:
-	# Only execute jumping checks if the entity is actually trying to traverse coordinates
 	if current_task != TaskState.WANDERING and current_task != TaskState.PANIC and current_task != TaskState.WORKING:
 		return
 		
 	if _host.is_on_wall():
 		if _host.is_on_floor():
-			# 1. OBSTRUCTION SPEED CHECK: Prevent jumping if we are sliding along 
-			# the side of a block smoothly. Only jump if progress drops below 0.35m/s (blocked!)
 			var flat_vel := Vector2(_host.velocity.x, _host.velocity.z)
 			var speed := flat_vel.length()
 			var is_physically_blocked := speed < 0.35
 			
-			# 2. ENFRIAMIENTO (COOLDOWN) HYSTERESIS: Require 0.4 seconds between jumps
 			var last_jump: float = _host.get_meta("last_jump_time") if _host.has_meta("last_jump_time") else 0.0
 			var current_time := Time.get_ticks_msec() / 1000.0
 			var can_jump := (current_time - last_jump) > 0.4
@@ -332,11 +328,9 @@ func _process_movement_avoidance(_delta: float) -> void:
 					is_jump_capable = _host.call("_can_jump_to", target_coord) as bool
 					
 				if is_jump_capable:
-					# Trigger centralized vertical jump!
 					_host.velocity.y = jump_vel
 					_host.set_meta("last_jump_time", current_time)
 					
-		# Stuck timers updates
 		stuck_timer += _delta
 		if stuck_timer > 0.12: 
 			stuck_timer = 0.0

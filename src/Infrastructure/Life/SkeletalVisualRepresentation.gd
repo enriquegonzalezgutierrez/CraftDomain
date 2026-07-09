@@ -6,13 +6,11 @@
 #              - Single Responsibility Principle (SRP): Handles exclusively the 
 #                FBX scene loading, dynamic animation extraction, skeletal 
 #                blending, and tangent warning suppression.
-#              HYBRID EDITOR FIX (NO DOUBLE MODELS):
-#              - Now searches the target parent for an existing AnimationPlayer 
-#                to recycle pre-placed .tscn FBX nodes instead of duplicating them.
-#              DYNAMIC ANIMATION INJECTION (GODOT 4 T-POSE FIX):
-#              - Imported FBX animations in Godot 4 are Read-Only. We now use
-#                `.duplicate()` to copy the Animation Resource before modifying 
-#                its `loop_mode`, and we store them in a custom `"states"` library.
+# BUG FIX: TANGENT WARNING SHIELD ENHANCEMENT
+# - Standardized `_register_glb_materials()` to loop through *every* surface index
+#   in the MeshInstance3D using `get_surface_count()`. This ensures that complex
+#   humanoid meshes with multiple embedded materials correctly strip their normal maps
+#   and tangent requirements, completely eliminating C++ renderer warnings.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd
 # ==============================================================================
@@ -168,24 +166,31 @@ func _play_animation_safe(anim_name: String, speed: float = 1.0) -> void:
 			_anim_player.play(full_name, 0.20)
 
 
+## Recursively duplicates materials over ALL mesh surfaces to suppress tangent errors
 func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		var mat: Material = node.get_active_material(0) as Material
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0) as Material
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			new_mat.normal_enabled = false
-			new_mat.anisotropy_enabled = false
-			new_mat.clearcoat_enabled = false
-			new_mat.heightmap_enabled = false
-			node.material_override = new_mat
-			
+	if node is MeshInstance3D and node.mesh != null:
+		# Iterate dynamically over every single surface index mapped on the mesh!
+		for i: int in range(node.mesh.get_surface_count()):
+			var mat: Material = node.get_active_material(i)
+			if mat == null:
+				mat = node.mesh.surface_get_material(i)
+				
+			if mat is BaseMaterial3D:
+				var new_mat := mat.duplicate() as BaseMaterial3D
+				# TANGENT WARNING SHIELD
+				new_mat.normal_enabled = false
+				new_mat.anisotropy_enabled = false
+				new_mat.clearcoat_enabled = false
+				new_mat.heightmap_enabled = false
+				
+				# Explicitly override the matching surface index!
+				node.set_surface_override_material(i, new_mat)
+				
 	for child: Node in node.get_children():
 		_register_glb_materials(child)
 
 
+## Recursively locates and frees extraneous camera and light nodes
 func _prune_extraneous_nodes(node: Node) -> void:
 	for i in range(node.get_child_count() - 1, -1, -1):
 		var child := node.get_child(i)

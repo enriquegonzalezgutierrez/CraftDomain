@@ -1,14 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (UI / Main Menu)
-# Description: Main Menu overlay with glassmorphic tactile buttons and elastic 
-#              scale animations.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively
-#                main menu presentation and transitions.
-#              - YAGNI & CLEAN CODE CLEANUP:
-#                - Completely removed all references, variables, buttons, and
-#                  methods pointing to the obsolete ModelShowcase showroom.
+# Layer: Infrastructure / UI (Main Menu Controls)
+# Class: MainMenu
+# Description: Modern, glassmorphic Main Menu controller. It coordinates the 
+#              initial application entry point and binds transitions to launch 
+#              either the infinite sandbox world, the system configuration settings, 
+#              or the developer's dynamic AI Showcase testing Sandbox Laboratory.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively Main Menu visual 
+#   card animations, translation selections, and scenes routing.
+# - Open-Closed Principle (OCP): Dynamic button bindings allow adding new scene 
+#   modes without altering base input loaders.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/UI/MainMenu.gd
 # ==============================================================================
 class_name MainMenu
 extends Control
@@ -24,6 +28,7 @@ var _time_passed: float = 0.0
 # Dynamic button references for locale refreshes
 var _play_continue_btn: Button
 var _reset_btn: Button
+var _showcase_btn: Button # Diagnostic Test Room button
 var _settings_btn: Button
 var _exit_btn: Button
 
@@ -135,6 +140,11 @@ func _ready() -> void:
 		_reset_btn.pressed.connect(_on_new_game_clicked_with_save)
 		box.add_child(_reset_btn)
 		
+	# Restored and bounded diagnostic laboratory button!
+	_showcase_btn = _create_tactile_button(default_color)
+	_showcase_btn.pressed.connect(_on_showcase_pressed)
+	box.add_child(_showcase_btn)
+		
 	_settings_btn = _create_tactile_button(default_color)
 	_settings_btn.pressed.connect(_on_settings_pressed)
 	box.add_child(_settings_btn)
@@ -196,6 +206,8 @@ func _refresh_localized_text() -> void:
 		if is_instance_valid(_play_continue_btn):
 			_play_continue_btn.text = tr("MENU_PLAY_WORLD")
 			
+	if is_instance_valid(_showcase_btn):
+		_showcase_btn.text = tr("MENU_ASSET_SHOWCASE")
 	if is_instance_valid(_settings_btn):
 		_settings_btn.text = tr("MENU_SETTINGS")
 	if is_instance_valid(_exit_btn):
@@ -388,6 +400,19 @@ func _delete_save_files_on_disk() -> void:
 			dir.list_dir_end()
 			
 	print("[MainMenu] Save wiping finished successfully. Ready for a new world!")
+
+
+## Symmetrical transition into the new, fully isolated AIShowcaseRoom testing sandbox!
+func _on_showcase_pressed() -> void:
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(self, "modulate:a", 0.0, 0.20).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	
+	tween.chain().tween_callback(func() -> void:
+		# Direct dynamic instantiation of the diagnostic sandbox room
+		var room := AIShowcaseRoom.new()
+		get_parent().add_child(room)
+		queue_free()
+	)
 
 
 func _on_settings_pressed() -> void:

@@ -10,15 +10,24 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, dialogue trees, and magical visual feedback.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, calling super() on ready to maintain lifecycle setups.
-# - Dependency Inversion Principle (DIP): Injects the DruidAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+# MIXAMO ORIENTATION FIX:
+# - Added `gaze_rotation_offset = PI` to dynamically instruct the NPCVisualComponent 
+#   to rotate the mesh 180 degrees during walking, preventing the Druid from 
+#   walking backwards.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/DruidEntity.gd
 # ==============================================================================
 class_name DruidEntity
 extends PassiveEntity
+
+const BASE_MODEL_PATH := "res://assets/models/mobs/druid/druid_base.fbx"
+
+# ==============================================================================
+# MIXAMO ORIENTATION COMPENSATOR (OCP SHIELD)
+# Compensates for this specific FBX skeleton export direction by adding 180 degrees
+# of offset, aligning his face directly with his walking velocity.
+# ==============================================================================
+var gaze_rotation_offset: float = PI
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -31,18 +40,46 @@ func _ready() -> void:
 	# Run base class ready lifecycle first to register in 'passives' group
 	super()
 	
+	# Cache components dynamically
+	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
+	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
+	
 	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Druid magical overwatch AI strategy dynamically on ready,
-	# completely overriding the default generic civilian schedules.
+	# T-POSE FIX: INYECTAR LAS ANIMACIONES ESQUELÉTICAS DE MIXAMO
 	# ==========================================================================
+	_build_visual_representation()
+	
+	# Inject the specialized Druid magical overwatch AI strategy
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = DruidAIBehavior.new()
 
 
+## Enlaza la estrategia de animación esquelética y carga las pistas FBX
+func _build_visual_representation() -> void:
+	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
+	if strategy_script == null:
+		return
+		
+	var strategy: Resource = strategy_script.new()
+	strategy.set("base_model_path", BASE_MODEL_PATH)
+	strategy.set("scale_multiplier", Vector3(1.0, 1.0, 1.0))
+	strategy.set("position_offset", Vector3.ZERO)
+	strategy.set("rotation_offset", Vector3(0, 180, 0))
+	
+	# Load concrete animation tracks
+	strategy.set("anim_idle_path", ANIM_DIR + "druid/druid_idle.fbx")
+	strategy.set("anim_walk_path", ANIM_DIR + "druid/druid_walk.fbx")
+	strategy.set("anim_jump_path", ANIM_DIR + "druid/druid_jump.fbx")
+	
+	# Bind as standard visual representation
+	visual_representation = strategy as IEntityVisualRepresentation
+	if is_instance_valid(visual_component) and is_instance_valid(visual_component.body_bob_node):
+		visual_representation.build_representation(self, visual_component.body_bob_node)
+
+
 ## Concrete Implementation (DIP): Injects the modular Druid Role ID into the strategy compiler
 func _get_humanoid_role() -> int:
-	return ProceduralVoxelRepresentation.RoleType.DRUID
+	return 5 # Matches ProceduralVoxelRepresentation.RoleType.DRUID
 
 
 func _get_habitat() -> int:

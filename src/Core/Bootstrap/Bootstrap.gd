@@ -9,11 +9,11 @@
 #   application orchestrator, delegating resource registrations 
 #   and visual shader setups to specialized managers.
 # - Open-Closed Principle (OCP): Completely open to extensions. Dynamic scenery 
-#   props and physical entity scene templates are registered dynamically on startup, 
-#   meaning new content is added here declaratively without altering Domain files.
-# - Dependency Inversion Principle (DIP): Resolves abstraction boundaries by 
-#   injecting concrete Infrastructure scenes, assets, and node factories 
-#   into pure Domain Registries (MobRegistry, PropRegistry) upon initialization.
+#   props and physical entity scene templates are registered dynamically on startup.
+# BUG FIX:
+# - Corrected Sheep and Cow registrations. They now correctly use `_register_scene_mob` 
+#   to load their `.tscn` scenes (with colliders!) instead of instantiating raw 
+#   physics scripts, fixing the physics tunneling (falling to the void).
 # ==============================================================================
 class_name Bootstrap
 extends Node
@@ -38,10 +38,7 @@ func _ready() -> void:
 func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application composing root...")
 	
-	# Load and apply user settings first
 	_load_and_apply_user_settings()
-	
-	# Registers programmatically created English & Spanish locales into Godot's TranslationServer
 	TranslationRegistry.initialize_translations()
 	
 	# SOLID COMPLIANCE: Delegate registry startup routines
@@ -59,9 +56,7 @@ func _initialize_application() -> void:
 	StructureLibrary.initialize_structures()
 	MegaStructureService.initialize_megastructures()
 	
-	# ==========================================================================
 	# DIP COMPLIANCE: Inject concrete Infrastructure Mob scenes into pure Domain
-	# ==========================================================================
 	_setup_mob_registry()
 	
 	# DIP COMPLIANCE: Inject concrete Infrastructure prop factories into Domain
@@ -70,10 +65,7 @@ func _initialize_application() -> void:
 	_setup_persistence()
 	_setup_environment()
 	
-	# Load dialogue trees
 	DialogueRegistry.initialize_dialogue_database()
-	
-	# Load dynamic crafting recipes
 	RecipeRegistry.initialize_recipes()
 	
 	_setup_celestial()
@@ -85,13 +77,11 @@ func _initialize_application() -> void:
 func _setup_mob_registry() -> void:
 	print("[Bootstrap] Injecting concrete entity scenes and behaviors into MobRegistry...")
 	
-	# Instantiations of pure Domain behavior strategies to inject along registrations
 	var ai_fauna := FaunaAIBehavior.new()
 	var ai_zombie := ZombieAIBehavior.new()
 	var ai_guard := GuardAIBehavior.new()
 	var ai_farmer := FarmerAIBehavior.new()
 	
-	# Standard Habitats shorthand (mirrors of MobRegistry.Habitat enum)
 	var hab_land: int = MobRegistry.Habitat.TERRESTRIAL
 	var hab_both: int = MobRegistry.Habitat.AMPHIBIOUS
 	var hab_water: int = MobRegistry.Habitat.AQUATIC
@@ -101,6 +91,11 @@ func _setup_mob_registry() -> void:
 	# --------------------------------------------------------------------------
 	_register_scene_mob(0, "pig_entity.tscn", PigEntity, hab_land, ai_fauna)
 	_register_scene_mob(1, "chicken_entity.tscn", ChickenEntity, hab_land, ai_fauna)
+	
+	# FIX: Correctly registered Sheep and Cow to load their .tscn files!
+	_register_scene_mob(2, "sheep_entity.tscn", SheepEntity, hab_land, ai_fauna)
+	_register_scene_mob(3, "cow_entity.tscn", CowEntity, hab_land, ai_fauna)
+	
 	_register_scene_mob(201, "turtle_entity.tscn", TurtleEntity, hab_both, ai_fauna)
 	_register_scene_mob(209, "elephant_entity.tscn", ElephantEntity, hab_land, ai_fauna)
 	_register_scene_mob(204, "fox_entity.tscn", FoxEntity, hab_land, ai_fauna)
@@ -121,24 +116,13 @@ func _setup_mob_registry() -> void:
 	# B. HUMAN NPC CIVILIAN AND DEFENDER POPULATIONS
 	# --------------------------------------------------------------------------
 	_register_scene_mob(107, "golem_entity.tscn", GolemEntity, hab_land, ai_guard)
-	_register_scene_mob(100, "villager_entity.tscn", VillagerEntity, hab_land) # Handled via schedules
+	_register_scene_mob(100, "villager_entity.tscn", VillagerEntity, hab_land) 
 	_register_scene_mob(102, "guard_entity.tscn", GuardEntity, hab_land, ai_guard)
 	_register_scene_mob(103, "farmer_entity.tscn", FarmerEntity, hab_land, ai_farmer)
 	_register_scene_mob(104, "druid_entity.tscn", DruidEntity, hab_land)
 	_register_scene_mob(101, "merchant_entity.tscn", MerchantEntity, hab_land)
 	_register_scene_mob(105, "miner_entity.tscn", MinerEntity, hab_land)
 	_register_scene_mob(106, "cyber_citizen_entity.tscn", CyberCitizenEntity, hab_land)
-	
-	# --------------------------------------------------------------------------
-	# C. PROCEDURAL VOXEL FALLBACKS (Programmatic multi-box meshes)
-	# --------------------------------------------------------------------------
-	MobRegistry.register_mob(2, func(pos: Vector3) -> Node:
-		return SheepEntity.new(pos)
-	, hab_land, ai_fauna)
-	
-	MobRegistry.register_mob(3, func(pos: Vector3) -> Node:
-		return CowEntity.new(pos)
-	, hab_land, ai_fauna)
 
 
 ## Factory Helper: Automates registration of scene templates with custom fallbacks and behaviors
@@ -151,44 +135,32 @@ func _register_scene_mob(spawn_id: int, file_name: String, fallback_class: Varia
 				var inst := scene.instantiate() as CharacterBody3D
 				inst.position = pos
 				return inst
-		# LSP Fallback: programmatic instantiation if scene file is corrupt
 		return fallback_class.new(pos)
 	, habitat, default_behavior)
 
 
-## Composition Root: Registers concrete interactive prop factories into PropRegistry
 func _setup_prop_registry() -> void:
 	print("[Bootstrap] Injecting concrete scenery prop factories into PropRegistry...")
-	
-	# Interactive Loot Chest (ID 200)
 	PropRegistry.register_prop(200, func(pos: Vector3) -> Node:
 		var chest := ChestEntity.new()
 		chest.position = pos
 		return chest
 	)
-	
-	# Light-emitting Streetlight (ID 202)
 	PropRegistry.register_prop(202, func(pos: Vector3) -> Node:
 		var light := StreetlightEntity.new()
 		light.position = pos
 		return light
 	)
-	
-	# Cozy Luminous Campfire (ID 203)
 	PropRegistry.register_prop(203, func(pos: Vector3) -> Node:
 		var campfire := CampfireEntity.new()
 		campfire.position = pos
 		return campfire
 	)
-	
-	# Interactive Wishing Well (ID 213)
 	PropRegistry.register_prop(213, func(pos: Vector3) -> Node:
 		var well := WishingWellEntity.new()
 		well.position = pos
 		return well
 	)
-	
-	# Interactive Breakable Barrel (ID 215)
 	PropRegistry.register_prop(215, func(pos: Vector3) -> Node:
 		var barrel := BarrelEntity.new()
 		barrel.position = pos
@@ -196,18 +168,15 @@ func _setup_prop_registry() -> void:
 	)
 
 
-## Persistent Loader: Queries the Settings Repository and configures system parameters on boot.
 func _load_and_apply_user_settings() -> void:
 	var settings := SettingsRepository.load_settings()
 	if settings.is_empty():
 		return
 		
-	# 1. Apply Persistent Language Locale
 	if settings.has("locale"):
 		var locale: String = settings["locale"]
 		TranslationServer.set_locale(locale)
 		
-	# 2. Apply Persistent Audio Volumes
 	if settings.has("music_volume"):
 		var music_vol: float = settings["music_volume"]
 		var idx := _get_or_create_bus("Music")
@@ -220,11 +189,9 @@ func _load_and_apply_user_settings() -> void:
 		AudioServer.set_bus_volume_db(idx, sfx_vol)
 		AudioServer.set_bus_mute(idx, sfx_vol <= -39.0)
 		
-	# 3. Apply Persistent Chunk Render Distance
 	if settings.has("render_distance"):
 		ChunkLoaderService.global_view_distance = int(settings["render_distance"])
 		
-	# 4. Apply Persistent Window Properties (Skipped in Godot Editor debug run)
 	if not OS.has_feature("editor") and settings.has("window_mode"):
 		var main_window: Window = get_tree().root
 		var mode_val := int(settings["window_mode"])
@@ -329,7 +296,6 @@ func return_to_main_menu() -> void:
 	fade_tween.tween_callback(unload_screen.queue_free)
 
 
-## Generates the unloading black-out cover using dynamic translation keys.
 func _create_unload_loading_screen() -> Panel:
 	var panel := Panel.new()
 	panel.name = "UnloadLoadingScreen"

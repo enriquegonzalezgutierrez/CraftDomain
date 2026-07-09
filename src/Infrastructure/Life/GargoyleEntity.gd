@@ -9,10 +9,11 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical movement, 
 #   gravity damping during active flight, and visual billboarding.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contracts, utilizing its parent signal connections polymorphically.
-# - Dependency Inversion Principle (DIP): Receives its behavior strategy via 
-#   dependency injection inside _ready(), purging direct inline state machines.
+# BUG FIXES:
+# - T-POSE RESOLUTION: Dynamically locates the embedded GLB `AnimationPlayer` and 
+#   plays its primary animation track during the Night (Awake) state, stopping 
+#   it completely during the Day (Stone Statue) state.
+# - TANGENT WARNING SHIELD: Added recursive material override to suppress C++ errors.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GargoyleEntity.gd
 # ==============================================================================
@@ -25,6 +26,7 @@ var player: CharacterBody3D
 # Visual animation trackers
 var _animation_time: float = 0.0
 var _model_node: Node3D
+var _anim_player: AnimationPlayer
 
 # Physical flight configurations (decoupled from decisions)
 const SPEED: float = 3.0
@@ -44,16 +46,39 @@ func _ready() -> void:
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/gargoyle") as Node3D
 	
+	# ==========================================================================
+	# T-POSE & TANGENT FIX: Extract the embedded GLB AnimationPlayer 
+	# and apply the material shield to suppress C++ console errors.
+	# ==========================================================================
+	if is_instance_valid(_model_node):
+		_anim_player = _model_node.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		_register_glb_materials(_model_node)
+	
 	_locate_player()
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Gargoyle nocturnal AI strategy dynamically on ready,
-	# completely overriding the default zombie behavior assigned by Bootstrap.
-	# ==========================================================================
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GargoyleAIBehavior.new()
+
+
+## Recursively duplicates materials to prevent material-sharing leaks and tangent errors
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mat: Material = node.get_active_material(0)
+		if mat == null and node.mesh != null:
+			mat = node.mesh.surface_get_material(0)
+			
+		if mat is BaseMaterial3D:
+			var new_mat := mat.duplicate() as BaseMaterial3D
+			# TANGENT WARNING SHIELD
+			new_mat.normal_enabled = false
+			new_mat.anisotropy_enabled = false
+			new_mat.clearcoat_enabled = false
+			new_mat.heightmap_enabled = false
+			node.material_override = new_mat
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
 
 
 ## Bypasses old procedural representation compiling
@@ -106,7 +131,6 @@ func _drop_loot(inv: IInventory) -> void:
 
 
 ## Symmetrical transition updating stone shaders/emission visual overlays
-## Note: Invoked via reflective calls by the GargoyleAIBehavior strategy
 func _set_gargoyle_stone_appearance(is_stone: bool) -> void:
 	if is_instance_valid(_model_node):
 		_traverse_and_apply_stone_appearance(_model_node, is_stone)
@@ -128,7 +152,6 @@ func _traverse_and_apply_stone_appearance(node: Node, is_stone: bool) -> void:
 
 
 ## Tactical Action bite: Inflicts damage and applies diagonal knockback
-## Note: Invoked via reflective calls by the GargoyleAIBehavior strategy
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var dir := (player.global_position - global_position).normalized()
@@ -153,6 +176,16 @@ func _process(delta: float) -> void:
 			state = get_meta(GargoyleAIBehavior.META_STATE) as int
 		
 		if state == 1: # AWAKE / FLYING
+			# ==================================================================
+			# PLAY FLIGHT ANIMATION
+			# ==================================================================
+			if is_instance_valid(_anim_player):
+				var anims := _anim_player.get_animation_list()
+				if anims.size() > 0:
+					var target_anim := anims[0] # Grab default GLB animation
+					if _anim_player.current_animation != target_anim or not _anim_player.is_playing():
+						_anim_player.play(target_anim)
+						
 			var flat_velocity := Vector2(velocity.x, velocity.z)
 			var is_moving := flat_velocity.length_squared() > 0.1
 			
@@ -167,6 +200,12 @@ func _process(delta: float) -> void:
 				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
 				_model_node.rotation.x = 0.0
 		else: # STONE STATUE (Sits flat on floor)
+			# ==================================================================
+			# FREEZE ANIMATION (Turned into stone!)
+			# ==================================================================
+			if is_instance_valid(_anim_player):
+				_anim_player.stop() 
+				
 			_model_node.position.y = lerp(_model_node.position.y, 0.8982, delta * 5.0)
 			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(90.0), 0.0), delta * 5.0)
 			

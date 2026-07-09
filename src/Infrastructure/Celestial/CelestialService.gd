@@ -5,8 +5,10 @@
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Only manages physical orbits
 #   and day timelines, delegating weather-uniform parameters to the GPU.
-# - Dependency Inversion Principle (DIP): Exposes a static provider interface 
-#   to decouple consumers from SceneTree hierarchy paths.
+# BUG FIX:
+# - Weather Node Defensive Parsing: Added strict variant checking (`!= null`)
+#   when pulling weather settings to block the `Nonexistent int constructor` 
+#   GDScript engine crash in generic fallback routines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Celestial/CelestialService.gd
 # ==============================================================================
@@ -155,9 +157,12 @@ func _process_weather_transitions(delta: float) -> void:
 	var target_storm: float = 0.0
 	
 	if is_instance_valid(weather_node):
-		var w_type: int = int(weather_node.get("current_weather"))
-		if w_type != 0:
-			target_storm = 1.0
+		# DEFENSIVE CASTING: Safely extract variant, preventing int(null) crash!
+		var cur_weather: Variant = weather_node.get("current_weather")
+		if cur_weather != null:
+			var w_type: int = int(cur_weather)
+			if w_type != 0:
+				target_storm = 1.0
 			
 	# Smoothly transition storm overcast weight (lerping toward target)
 	_current_storm_weight = lerp(_current_storm_weight, target_storm, delta * 0.4)

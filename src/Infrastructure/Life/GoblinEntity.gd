@@ -3,16 +3,13 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: GoblinEntity
 # Description: Physical character controller for the hostile skirmisher Goblin.
-#              It delegates all decision trees, pursuit vectors, and hit-and-run 
-#              retreat cycles to the decoupled GoblinAIBehavior strategy, relying 
-#              on the base class physics loop for smooth translation vectors.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, and entity nameplate styling.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing its parent physics process and signals.
-# - Dependency Inversion Principle (DIP): Injects the GoblinAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+# BUG FIX:
+# - Added `_register_glb_materials()` to strip tangent and normal-map rendering
+#   requirements from the GLB mesh, completely suppressing the Godot C++ shader 
+#   warning spam in the console.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GoblinEntity.gd
 # ==============================================================================
@@ -33,27 +30,45 @@ func _ready() -> void:
 	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
 	
-	# Cache component references pre-configured in the scene
+	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
+	
+	# TANGENT SHIELD FIX: Strip materials of tangent-requiring shaders to avoid C++ warnings
+	var model_node := get_node_or_null("Visuals/BodyBobJoint/goblin") as Node3D
+	if is_instance_valid(model_node):
+		_register_glb_materials(model_node)
 	
 	_locate_player()
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Goblin hit-and-run AI strategy dynamically on ready,
-	# completely overriding the default zombie behavior assigned by Bootstrap.
-	# ==========================================================================
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GoblinAIBehavior.new()
 
 
-## Bypasses old procedural representation compiling
+## Recursively duplicates materials to prevent material-sharing leaks and tangent errors
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mat: Material = node.get_active_material(0)
+		if mat == null and node.mesh != null:
+			mat = node.mesh.surface_get_material(0)
+			
+		if mat is BaseMaterial3D:
+			var new_mat := mat.duplicate() as BaseMaterial3D
+			# TANGENT WARNING SHIELD
+			new_mat.normal_enabled = false
+			new_mat.anisotropy_enabled = false
+			new_mat.clearcoat_enabled = false
+			new_mat.heightmap_enabled = false
+			node.material_override = new_mat
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
+
+
 func _build_visual_representation() -> void:
 	pass
 
 
-## Decoupled height calculation sourcing boundaries directly from the scene setup
 func _setup_nameplate_height() -> void:
 	var col := get_node_or_null("EntityCollider") as CollisionShape3D
 	if is_instance_valid(col) and col.shape is CylinderShape3D:
@@ -66,11 +81,8 @@ func _setup_nameplate_height() -> void:
 		_nameplate.position.y = _collision_height + 0.35
 
 
-# ==============================================================================
-# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
-# ==============================================================================
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 0.15, 0.15) # Red warning nameplate
+	return Color(1.0, 0.15, 0.15)
 
 
 func _get_habitat() -> int:
@@ -87,18 +99,14 @@ func _locate_player() -> void:
 		player = world_node.get("player") as CharacterBody3D
 
 
-## Hostiles do not panic when hit, they charge forward!
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	pass 
 
 
-## Drops 1x Stone Block on death
 func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(1, 1)
 
 
-## Tactical Action bite: Inflicts damage and applies diagonal knockback
-## Note: Invoked via reflective calls by the GoblinAIBehavior strategy
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var dir := (player.global_position - global_position).normalized()
