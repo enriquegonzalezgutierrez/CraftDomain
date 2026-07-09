@@ -1,6 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Layer: Domain (Pure Business Logic)
+# Class: StructureLibrary
 # Description: Domain Service acting as a Registry and Router for voxel structure
 #              blueprints. Provides dynamic registration (OCP compliant) and
 #              delegates construction algorithms to concrete strategy classes.
@@ -47,25 +48,21 @@ static func initialize_structures() -> void:
 	register_blueprint(DeadShrubBlueprint.new())
 	
 	# ==========================================================================
-	# CASE B: ADAPTIVE/PROCEDURAL SHRINES & RUINS STRATEGY
+	# CASE B: ADAPTIVE/PROCEDURAL SHRINES, RUINS, PILLARS, PIERS, CABINS & TEMPLES
 	# ==========================================================================
-	register_blueprint(DecayedTempleBlueprint.new())  # ID 15: Adaptive Ruins
-	
-	# ==========================================================================
-	# CASE C: GEOTHERMAL STEAMING VENTS STRATEGY
-	# ==========================================================================
-	register_blueprint(GeothermalVentBlueprint.new()) # ID 16: Volcanic Magma Vents
+	register_blueprint(DecayedTempleBlueprint.new())      # ID 15: Adaptive Dungeon Ruins
+	register_blueprint(GeothermalVentBlueprint.new())     # ID 16: Volcanic Magma Vents
+	register_blueprint(AdaptiveMinePillarBlueprint.new())  # ID 5: OCP Adaptive Support Pillars
+	register_blueprint(DynamicHarborPierBlueprint.new())  # ID 9: OCP Dynamic Harbor Piers
+	register_blueprint(MarketCabinBlueprint.new())        # ID 8: OCP Dynamic Market Cabins
+	register_blueprint(IceTempleBlueprint.new())          # ID 6: OCP Dynamic Ice Temples
+	register_blueprint(NeonPyramidBlueprint.new())        # ID 7: OCP Adaptive Neon Pyramids
 	
 	# ==========================================================================
 	# 2. MANUFACTURED TEMPLATE REGISTRY (Data-Driven JSON Layouts)
 	# Rigid POIs that never change shape remain data-driven for easy designer tuning.
 	# ==========================================================================
 	_register_template_safely(4, "warp_pipe.json")
-	_register_template_safely(5, "mine_pillar.json")
-	_register_template_safely(6, "ice_temple.json")
-	_register_template_safely(7, "neon_pyramid.json")
-	_register_template_safely(8, "market_cabin.json")
-	_register_template_safely(9, "harbor_pier.json")
 	
 	print("[StructureLibrary] Initialization complete. Registered blueprints count: ", _blueprints.size())
 
