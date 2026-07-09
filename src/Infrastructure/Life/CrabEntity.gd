@@ -1,19 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation)
-# Description: Physics controller for the amphibious Beach Crab, designed to be
-#              attached to a '.tscn' scene file.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively physical
-#                movement loops, crawling angles, and life-signals, delegating
-#                visual and collision parameters to the Godot Editor.
-#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity
-#                and satisfies the base contracts without code-based instantiation.
-#              CIRCULAR DEPENDENCY SHIELD:
-#              - Changed '_get_habitat()' return signature to 'int' to safely break
-#                the GDScript compilation lock with MobRegistry class name.
-#              STABILIZATION:
-#              - Removed redundant signal connections already handled in parent class.
+# Layer: Infrastructure / Presentation & Physics (Entities)
+# Class: CrabEntity
+# Description: Physical character controller for the Amphibious Beach Crab.
+#              It delegates all movement decisions, beach scuttling, and water 
+#              swim buoyancy oscillations to the decoupled AmphibiousAIBehavior 
+#              strategy, focusing strictly on physical collision translations and loot.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
+#   translations, collision shapes, and entity nameplate height styling.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   base contract, utilizing its parent physics process and signals.
+# - Dependency Inversion Principle (DIP): Injects the AmphibiousAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/CrabEntity.gd
 # ==============================================================================
@@ -37,6 +36,14 @@ func _ready() -> void:
 	
 	# Fetch nameplate configurations if available
 	_setup_nameplate_height()
+	
+	# ==========================================================================
+	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
+	# Inject the specialized Amphibious AI strategy dynamically on ready,
+	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
+	# ==========================================================================
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = AmphibiousAIBehavior.new()
 
 
 ## Bypasses old procedural representation compiling
@@ -59,20 +66,22 @@ func _setup_nameplate_height() -> void:
 
 
 # ==============================================================================
-# CIRCULAR SHIELD: Return int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
-# This perfectly complies with LSP overrides and stops circular import compilation deadlocks.
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
+
+## Returns int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
+## This perfectly complies with LSP overrides and stops circular import compilation deadlocks.
 func _get_habitat() -> int:
 	return 1 # Equivalent to MobRegistry.Habitat.AMPHIBIOUS
 
 
 func _drop_loot(inv: IInventory) -> void:
-	# Item ID 16: Fried Chicken (acting as crab meat)
+	# Item ID 16: Fried Chicken (acting as soft crab meat proxy)
 	inv.add_item(16, 1)
 
 
 func _is_avian() -> bool:
-	return false
+	return false # Crabs crawl flatly without avian tilts
 
 
 func _can_socialize() -> bool:

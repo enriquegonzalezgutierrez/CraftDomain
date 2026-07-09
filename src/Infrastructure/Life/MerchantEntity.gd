@@ -1,16 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation)
-# Description: Physics controller for the Merchant NPC, utilizing the Strategy
-#              pattern to load dynamic animations cleanly.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Handles exclusively merchant
-#                dialogues and trading, delegating rendering to the Strategy.
-#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity cleanly.
-#              CIRCULAR DEPENDENCY SHIELD:
-#              - Replaced static class reference to 'SkeletalVisualRepresentation' with
-#                dynamic 'load()' instantiation, permanently immunizing the engine 
-#                against circular compile-time locks.
+# Layer: Infrastructure / Presentation & Physics (Entities)
+# Class: MerchantEntity
+# Description: Physical character controller for the Village Merchant NPC.
+#              It delegates all marketplace shop-tending and nighttime shelter
+#              coin counting to the decoupled MerchantAIBehavior strategy,
+#              managing visual glistening metallic gold coin particles on ready.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
+#   translations, custom mesh alignments, and gold coin visual particles.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   base contract, relying 100% on the base physics loop for standard translations.
+# - Dependency Inversion Principle (DIP): Injects the MerchantAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/MerchantEntity.gd
 # ==============================================================================
 class_name MerchantEntity
 extends PassiveEntity
@@ -19,7 +23,8 @@ const BASE_MODEL_PATH := "res://assets/models/mobs/merchant/merchant_base.fbx"
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	super(spawn_pos, 3) # 3 Hearts of health
+	# Merchants spawn with 3 Hearts of health (6 HP)
+	super(spawn_pos, 6)
 	name = "Entity_MERCHANT"
 
 
@@ -33,11 +38,18 @@ func _ready() -> void:
 	
 	# Injects and compiles its specific Mixamo animations strategy (fixes T-Pose)
 	_build_visual_representation()
-	
 	_setup_nameplate_height()
+	
+	# ==========================================================================
+	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
+	# Inject the specialized Merchant business AI strategy dynamically on ready,
+	# completely overriding the default generic civilian schedules.
+	# ==========================================================================
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = MerchantAIBehavior.new()
 
 
-## Binds the Skeletal strategy dynamically, avoiding static compiler circular dependency locks
+## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -49,7 +61,6 @@ func _build_visual_representation() -> void:
 	strategy.set("position_offset", Vector3.ZERO)
 	strategy.set("rotation_offset", Vector3(0, 180, 0))
 	
-	# Concrete Merchant Animation clips on disk
 	strategy.set("anim_idle_path", ANIM_DIR + "merchant/merchant_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "merchant/merchant_walk.fbx")
 	strategy.set("anim_panic_path", ANIM_DIR + "merchant/merchant_panic.fbx")
@@ -84,4 +95,53 @@ func _setup_floating_bubble() -> void:
 
 
 func _can_socialize() -> bool:
-	return true
+	# Socialize is disabled during nighttime accounting counting
+	var is_night: bool = CelestialService.is_night_time_static()
+	return not is_night
+
+
+# ==============================================================================
+# TACTICAL PRESENTATION & COIN COUNTING EFFECTS
+# ==============================================================================
+
+## Visual Gold Counting: Spawns continuous glistening golden spark coins
+## Note: Invoked via reflective calls by the MerchantAIBehavior strategy
+func _play_counting_coins() -> void:
+	_spawn_golden_coin_particles()
+
+
+## Spawns glittering physical-looking gold flakes in front of palms (Compile-Free CPU)
+func _spawn_golden_coin_particles() -> void:
+	var particles := CPUParticles3D.new()
+	particles.amount = 8
+	particles.one_shot = true
+	particles.explosiveness = 0.95
+	particles.lifetime = 0.6
+	
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	particles.emission_box_extents = Vector3(0.12, 0.04, 0.12)
+	particles.direction = Vector3(0.0, 1.0, 0.0)
+	particles.spread = 20.0
+	particles.initial_velocity_min = 2.0
+	particles.initial_velocity_max = 3.5
+	particles.gravity = Vector3(0.0, -9.8, 0.0) # Gravity pulls coins down to palms
+	
+	# Gold color-shards representing coin units
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.04, 0.04, 0.04)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.85, 0.2) # Warm Gold
+	mat.roughness = 0.15 # Metallic specular reflection
+	mat.metallic = 0.9
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.85, 0.2)
+	mat.emission_energy_multiplier = 1.3
+	mesh.material = mat
+	particles.mesh = mesh
+	
+	add_child(particles)
+	particles.position = Vector3(0.0, _collision_height - 0.4, -0.2) # Held right in front of chest
+	particles.emitting = true
+	
+	# Safe memory cleanup direct connection
+	get_tree().create_timer(0.7).timeout.connect(particles.queue_free)
