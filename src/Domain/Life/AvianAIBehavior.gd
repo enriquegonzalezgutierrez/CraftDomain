@@ -8,7 +8,8 @@
 #              immediate panic takeoffs upon zombie threats.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only coordinates flight vectors, 
-#   perching target checks, and takeoff/landing states.
+#   perching target checks, and takeoff/landing states. Restored to be 100% 
+#   independent of presentation audio/vocalization timers.
 # - Open-Closed Principle (OCP): Shared by both Bird and Parrot entities polymorphically.
 # - Liskov Substitution Principle (LSP): Fully compatible with the contract signatures.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>

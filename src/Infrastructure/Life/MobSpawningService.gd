@@ -1,21 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Infrastructure / World Services
+# Class: MobSpawningService
 # Description: Infrastructure Service responsible for calculating and spawning
 #              NPC, Fauna, and hostile dynamic classes inside chunks.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates procedural 
 #   wildlife and living outpost populations.
-# - Open-Closed Principle (OCP): Dynamically queries the biome strategy 
-#   population and wilderness wildlife registries, removing all hardcoded match maps.
+# - Open-Closed Principle (OCP): Dynamically queries biome strategies 
+#   for spawning pools, completely free of hardcoded match tables.
 # - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome strategy.
-# HABITAT-DRIVEN SPAWNING (DDD Compliance):
-# - Retrieves the Domain `Habitat` classification before generating the mob.
-# - Automatically routes the vertical surface scan to `_get_ground_surface_y` for
-#   terrestrial creatures, and `_get_water_surface_y` for aquatic/amphibious species.
-# ARCHITECTURAL CLEANUP (Quest Sync Decoupling):
-# - Removed all hardcoded quest overwrites. The spawner now strictly spawns entities. 
-#   Coordinate tracking and quest ownership is entirely delegated to the entities 
-#   themselves during their initialization to preserve absolute SRP.
+# TRAPPING PREVENTION SYSTEM (Anti-Glitched Spawn):
+# - Implemented an absolute "Sky Line-of-Sight" scan to prevent spawning inside 
+#   closed houses, roofs, or subterranean caverns.
+# - Implemented a real-time Physics Sphere Sweep to prevent entities from 
+#   spawning inside physical scenery props (Wells, farolas, barrels, chests).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -26,8 +25,8 @@ extends RefCounted
 ## Spawns procedural wildlife and themed outpost dynamic entities inside a newly loaded chunk.
 func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
 	var entities_list: Array[Node] = []
-	var chunk_pos := chunk.position
-	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
+	var chunk_pos: Vector3i = chunk.position
+	var chunk_offset: Vector3 = Vector3(chunk_pos * Chunk.SIZE)
 	
 	var is_real_village: bool = false
 	var active_biome_id: int = 2 # Default Golden Bazaar plains
@@ -36,14 +35,14 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 	if is_instance_valid(generator):
 		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if terrain_noise != null:
-			var center_x := chunk_pos.x * Chunk.SIZE + 8
-			var center_z := chunk_pos.z * Chunk.SIZE + 8
+			var center_x: int = chunk_pos.x * Chunk.SIZE + 8
+			var center_z: int = chunk_pos.z * Chunk.SIZE + 8
 			
 			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
 			is_real_village = (profile.landmark_id == 3)
 			active_biome_id = profile.biome_id
 
-	var biome := BiomeService.get_biome(active_biome_id)
+	var biome: IBiome = BiomeService.get_biome(active_biome_id)
 
 	# 1. Procedural Biome-Themed Village Outpost Spawning (OCP / LSP compliant)
 	if is_real_village:
@@ -53,46 +52,50 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 		
 		# Dynamic Biome Outpost Spawning: Query population list from active Biome strategy
 		if is_instance_valid(biome):
-			var population := biome.get_outpost_population_ids()
+			var population: Array = biome.get_outpost_population_ids()
 			if population.size() >= 2:
 				_spawn_and_register_entity(population[0], chunk_offset, 6.5, 6.5, world_state, world_node, entities_list)
 				_spawn_and_register_entity(population[1], chunk_offset, 4.5, 4.5, world_state, world_node, entities_list)
 		
-		# Golem (107) spawns to guard the village
-		_spawn_and_register_entity(107, chunk_offset, 8.5, 3.5, world_state, world_node, entities_list)
+		# FIXED OVERLAP: Moved the Golem (107) coordinate from 8.5, 3.5 (Campfire) to 8.5, 5.5
+		_spawn_and_register_entity(107, chunk_offset, 8.5, 5.5, world_state, world_node, entities_list)
 	else:
 		# 2. Spawning organically in the wilderness (OCP/LSP compliant, zero hardcoding)
-		var roll := randf()
+		var roll: float = randf()
 		# DENSITY OVERHAUL: Boost spawning probability in Ocean (ID 0) and Swamp (ID 8) 
 		# to 35% to fill aquatic horizons beautifully!
-		var spawn_threshold := 0.35 if (active_biome_id == 0 or active_biome_id == 8) else 0.12
+		var spawn_threshold: float = 0.35 if (active_biome_id == 0 or active_biome_id == 8) else 0.12
 		
 		if roll < spawn_threshold:
 			if is_instance_valid(biome):
-				var wildlife_ids := biome.get_wilderness_wildlife_ids()
+				var wildlife_ids: Array = biome.get_wilderness_wildlife_ids()
 				if wildlife_ids.size() > 0:
 					# Safely select a random animal ID registered for this specific biome
-					var rand_idx := randi() % wildlife_ids.size()
-					var target_animal_id := wildlife_ids[rand_idx]
+					var rand_idx: int = randi() % wildlife_ids.size()
+					var target_animal_id: int = int(wildlife_ids[rand_idx])
 					_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
 
 	# 3. Global Mega-Structure spawns (Castle Guards, Harbor Merchants, etc.)
-	var mega_entities := MegaStructureService.get_entities_for_chunk(chunk_pos)
+	var mega_entities: Array = MegaStructureService.get_entities_for_chunk(chunk_pos)
 	for edata: Dictionary in mega_entities:
 		var mob_id: int = edata["mob_id"] as int
 		var exact_pos: Vector3 = edata["pos"] as Vector3
 		
 		if MobRegistry.has_mob(mob_id):
-			var spawn_pos := exact_pos
-			var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
-			if BlockType.is_solid(block_at_pos):
-				# Ajusta la altura dinámicamente si cae sobre bloques sólidos generados
-				spawn_pos.y = world_state.get_highest_solid_y(floori(spawn_pos.x), floori(spawn_pos.z))
-				
-			var spawn_node := MobRegistry.create_mob(mob_id, spawn_pos)
-			if spawn_node != null:
-				world_node.add_child(spawn_node)
-				entities_list.append(spawn_node)
+			var spawn_pos: Vector3 = exact_pos
+			
+			# Verify if space is free of solid blocks and dynamic props before spawning
+			var is_space_free: bool = _is_physics_spawn_space_free(world_node, spawn_pos)
+			
+			if is_space_free:
+				var block_at_pos: BlockType.Type = world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
+				if BlockType.is_solid(block_at_pos):
+					spawn_pos.y = world_state.get_highest_solid_y(floori(spawn_pos.x), floori(spawn_pos.z))
+					
+				var spawn_node: Node = MobRegistry.create_mob(mob_id, spawn_pos)
+				if spawn_node != null:
+					world_node.add_child(spawn_node)
+					entities_list.append(spawn_node)
 
 	return entities_list
 
@@ -102,12 +105,12 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	if not MobRegistry.has_mob(spawn_id):
 		return
 		
-	var global_x := int(offset.x + lx)
-	var global_z := int(offset.z + lz)
+	var global_x: int = int(offset.x + lx)
+	var global_z: int = int(offset.z + lz)
 	
 	# Determine logical habitat dynamically from the Domain Registry
-	var habitat := MobRegistry.get_mob_habitat(spawn_id)
-	var gy := -1.0
+	var habitat: int = MobRegistry.get_mob_habitat(spawn_id)
+	var gy: float = -1.0
 	
 	if habitat == MobRegistry.Habitat.TERRESTRIAL:
 		gy = _get_ground_surface_y(world_state, global_x, global_z)
@@ -120,53 +123,108 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 			gy = _get_ground_surface_y(world_state, global_x, global_z)
 		
 	if gy < 0.0:
-		return # Cancel spawn if no valid habitat block was found in this chunk column!
+		return # Cancel spawn if no valid habitat block was found in this chunk column
 		
-	var pos := offset + Vector3(lx, gy, lz)
-	var mob: Node = MobRegistry.create_mob(spawn_id, pos)
-	if mob != null:
-		world_node.add_child(mob)
-		list.append(mob)
+	var pos: Vector3 = offset + Vector3(lx, gy, lz)
+	
+	# Verify if space is free of physical dynamic props or static walls (DIP query)
+	if _is_physics_spawn_space_free(world_node, pos):
+		var mob: Node = MobRegistry.create_mob(spawn_id, pos)
+		if mob != null:
+			world_node.add_child(mob)
+			list.append(mob)
 
 
-## Helper: Scans vertical columns downward to find the topmost solid land block.
+## Helper: Scans vertical columns downward from absolute sky limit (Y=31) 
+## to find the absolute topmost solid ground block.
 func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
-	for y in range(31, -1, -1):
-		var check_pos := Vector3i(global_x, y, global_z)
-		var block_type := world_state.get_block(check_pos)
+	var hit_y: int = -1
+	
+	# 1. SKY LINE-OF-SIGHT SCAN: Scan downward to find the absolute highest solid voxel
+	for y: int in range(31, -1, -1):
+		var check_pos: Vector3i = Vector3i(global_x, y, global_z)
+		var block_type: BlockType.Type = world_state.get_block(check_pos)
 		
-		var is_valid_surface := (
-			block_type == BlockType.Type.GRASS or 
-			block_type == BlockType.Type.DIRT or 
-			block_type == BlockType.Type.SAND or 
-			block_type == BlockType.Type.RED_SAND or 
-			block_type == BlockType.Type.SNOW or 
-			block_type == BlockType.Type.ICE or 
-			block_type == BlockType.Type.MUD or 
-			block_type == BlockType.Type.ROAD or
-			block_type == BlockType.Type.STONE or   
-			block_type == BlockType.Type.BRICKS
-		)
+		if block_type != BlockType.Type.AIR and block_type != BlockType.Type.WATER:
+			hit_y = y
+			break
+			
+	if hit_y == -1:
+		return -1.0
 		
-		if is_valid_surface:
-			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
-			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
-			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
-				return float(y) + 1.0
-				
+	var surface_block: BlockType.Type = world_state.get_block(Vector3i(global_x, hit_y, global_z))
+	
+	# 2. SOLID TERRAIN VERIFIER:
+	# Humanoids and land fauna must ONLY spawn on natural flat terrain (Grass, Dirt, Road, Sand, Snow).
+	# This prevents spawning on Bricks, Wood Logs, Planks, or Glass, blocking roof/castle traps!
+	var is_natural_terrain: bool = (
+		surface_block == BlockType.Type.GRASS or 
+		surface_block == BlockType.Type.DIRT or 
+		surface_block == BlockType.Type.SAND or 
+		surface_block == BlockType.Type.RED_SAND or 
+		surface_block == BlockType.Type.SNOW or 
+		surface_block == BlockType.Type.MUD or 
+		surface_block == BlockType.Type.ROAD
+	)
+	
+	if not is_natural_terrain:
+		return -1.0
+		
+	# 3. STANDING CLEARANCE VERIFIER:
+	# Ensure the two blocks directly above the ground surface are completely empty AIR.
+	var space_above_1: BlockType.Type = world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
+	var space_above_2: BlockType.Type = world_state.get_block(Vector3i(global_x, hit_y + 2, global_z))
+	if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
+		return float(hit_y) + 1.0
+		
 	return -1.0
 
 
 ## Helper: Scans vertical columns downward specifically seeking the surface of a liquid water body.
 func _get_water_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
-	for y in range(31, -1, -1):
-		var check_pos := Vector3i(global_x, y, global_z)
-		var block_type := world_state.get_block(check_pos)
+	var hit_y: int = -1
+	
+	# 1. SKY LINE-OF-SIGHT SCAN: Find the absolute highest solid voxel
+	for y: int in range(31, -1, -1):
+		var check_pos: Vector3i = Vector3i(global_x, y, global_z)
+		var block_type: BlockType.Type = world_state.get_block(check_pos)
 		
-		if block_type == BlockType.Type.WATER:
-			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
-			# Ensure the creature isn't spawning encased under a solid ice/stone ceiling over the water
-			if not BlockType.is_solid(space_above_1):
-				return float(y) # Submerged exactly at water level (no +1.0 offset!)
-				
+		if block_type != BlockType.Type.AIR:
+			hit_y = y
+			break
+			
+	if hit_y == -1:
+		return -1.0
+		
+	var surface_block: BlockType.Type = world_state.get_block(Vector3i(global_x, hit_y, global_z))
+	if surface_block == BlockType.Type.WATER:
+		# Ensure the creature isn't spawning encased under a solid ceiling
+		var space_above_1: BlockType.Type = world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
+		if not BlockType.is_solid(space_above_1):
+			return float(hit_y) # Submerged exactly at water level (no +1.0 offset!)
+			
 	return -1.0
+
+
+## Performs a quick 3D sphere physics sweep to ensure the spawning coordinate 
+## is not already occupied by static props or solid building walls.
+func _is_physics_spawn_space_free(world_node: Node, spawn_pos: Vector3) -> bool:
+	if not world_node.is_inside_tree():
+		return true
+		
+	# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
+	var space_state: PhysicsDirectSpaceState3D = world_node.get_world_3d().direct_space_state
+	if space_state == null:
+		return true
+		
+	var query: PhysicsShapeQueryParameters3D = PhysicsShapeQueryParameters3D.new()
+	var sphere: SphereShape3D = SphereShape3D.new()
+	sphere.radius = 0.35 # Match basic humanoid thickness
+	query.shape = sphere
+	# Offset the sphere slightly upward to check around the torso/body level (0.4m offset)
+	query.transform = Transform3D(Basis(), spawn_pos + Vector3(0.0, 0.4, 0.0))
+	query.collision_mask = 1 # Collides with static terrain (Layer 1) and active props
+	
+	# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
+	var results: Array = space_state.intersect_shape(query, 1)
+	return results.is_empty()

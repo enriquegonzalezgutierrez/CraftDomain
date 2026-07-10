@@ -2,15 +2,15 @@
 # Project: CraftDomain
 # Layer: Domain (Pure Business Logic / Voxel Definitions)
 # Class: StoneSlabBottomBlock
-# Description: Concrete Domain Definition for the Stone Slab (Bottom half).
+# Description: Concrete Voxel Geometry strategy representing a bottom slab block 
+#              occupying the lower half of a voxel coordinate.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Defines exclusively the physical,
-#   procedural coloring, and custom half-height geometry for the slab.
-# - Open-Closed Principle (OCP): Extends BlockDefinition. By injecting 
-#   'BottomSlabGeometry', the mesher automatically handles the non-cubic shape.
-# - Dependency Inversion Principle (DIP): Depends on the IVoxelGeometry 
-#   interface rather than hardcoded vertex arrays.
+# - Single Responsibility Principle (SRP): Contains exclusively the physical,
+#   procedural coloring, and texture configurations for the Stone Slab (Bottom).
+# - Open-Closed Principle (OCP): Extends BlockDefinition. Configures its 
+#   mining resistance locally to restore gameplay balance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/Blocks/StoneSlabBottomBlock.gd
 # ==============================================================================
 class_name StoneSlabBottomBlock
 extends BlockDefinition
@@ -22,9 +22,11 @@ func _init() -> void:
 	translation_key = "BLOCK_STONE_SLAB_BOTTOM"
 	is_solid = true
 	
-	# OPAQUE CULLING: Slabs are marked as transparent because they do not 
-	# completely fill the voxel volume, allowing neighboring faces to remain visible.
+	# Opaque Culling: Slabs allow adjacent face visibility
 	is_transparent = true 
+	
+	# OCP/SOLID Compliance: Enforce 2 impacts resistance for half-height stone slabs
+	mining_resistance = 2
 	
 	# Procedural stone-grey colors for unshaded fallback rendering
 	color_top = Color(0.55, 0.55, 0.55)
@@ -37,9 +39,6 @@ func _init() -> void:
 	metallic = 0.0
 	rendering_type = "default"
 	
-	# ==========================================================================
-	# CUSTOM GEOMETRY STRATEGY:
 	# Overwrites the default FullCubeGeometry with the half-height 
 	# bottom-aligned slab strategy.
-	# ==========================================================================
 	geometry = BottomSlabGeometry.new()

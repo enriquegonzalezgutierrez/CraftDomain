@@ -1,5 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Infrastructure (World / Chunk Management)
+# Class: ChunkManagerService
 # Description: High-Performance Infrastructure Service responsible for managing 
 #              background chunk generation threads, task caching, and direct RID physics.
 # SOLID COMPLIANCE: 
@@ -20,6 +22,9 @@
 # REFACTOR FIXES:
 # - Replaced hardcoded geometry loop queries with `ChunkMesher.generate_special_meshes()` 
 #   to dynamically fetch all registered liquids and custom blocks (Slabs) via OCP.
+# ADVANCED SLIDE PHYSICS INTEGRATION:
+# - Configured a static, shared, frictionless PhysicsMaterial on all chunk 
+#   colliders. This completely removes wall-friction, enabling smooth entity sliding.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -62,6 +67,21 @@ var _chunk_versions: Dictionary = {}
 # ==============================================================================
 ## In-memory pool keeping track of inactive, pre-allocated chunk rendering nodes
 var _chunk_node_pool: Array[ChunkNode] = []
+
+# ==============================================================================
+# SLIDE PHYSICS: SHARED FRICTIONLESS MATERIAL CACHE
+# ==============================================================================
+static var _frictionless_material: PhysicsMaterial = null
+
+
+## Factory: Instantiates and caches a zero-friction, zero-roughness PhysicsMaterial
+static func _get_frictionless_material() -> PhysicsMaterial:
+	if _frictionless_material == null:
+		_frictionless_material = PhysicsMaterial.new()
+		_frictionless_material.friction = 0.0
+		_frictionless_material.rough = false # FIXED: Godot 4 renamed 'roughness' to 'rough'
+		_frictionless_material.bounce = 0.0
+	return _frictionless_material
 
 
 func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
@@ -287,6 +307,7 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 			static_body = StaticBody3D.new()
 			static_body.collision_layer = 1
 			static_body.collision_mask = 1
+			static_body.physics_material_override = _get_frictionless_material() # Apply frictionless slide material
 			
 			var col := CollisionShape3D.new()
 			var shape := ConcavePolygonShape3D.new()
@@ -525,6 +546,7 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 		static_body = StaticBody3D.new()
 		static_body.collision_layer = 1
 		static_body.collision_mask = 1
+		static_body.physics_material_override = _get_frictionless_material() # Apply frictionless slide material
 		
 		var col := CollisionShape3D.new()
 		col.shape = task.collision_shape

@@ -8,7 +8,9 @@
 #   procedural coloring, and texture configurations for the Stone Block.
 # - Open-Closed Principle (OCP): Inherits from BlockDefinition. Can be safely
 #   added or removed from the project without modifying any central codebases.
+#   Specifies its custom mining resistance locally within its constructor.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/Blocks/StoneBlock.gd
 # ==============================================================================
 class_name StoneBlock
 extends BlockDefinition
@@ -23,6 +25,9 @@ func _init() -> void:
 	translation_key = "BLOCK_STONE"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Enforce 3 impacts resistance specifically for heavy stone
+	mining_resistance = 3
 	
 	# Procedural colors for unshaded rendering falls
 	color_top = Color(0.55, 0.55, 0.55)

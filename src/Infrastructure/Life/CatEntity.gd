@@ -5,19 +5,27 @@
 # Description: Physical character controller for the domestic companion Cat.
 #              Delegates player-following vectors, campfire snuggling loops,
 #              and zombie hiss warnings to the CatAIBehavior strategy,
-#              managing visual exclamation particles and meow audio cues.
+#              managing visual exclamation particles, meow audio cues, and local audio timers.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, collision shapes, and warning visual particles.
+#   translations, collision shapes, local audio vocal timers, and warning visual particles.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing its parent physics process and signals.
+#   base contract, relying 100% on the base physics loop for standard translations.
 # - Dependency Inversion Principle (DIP): Injects the CatAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+#   during ready state initialization and utilizes our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/CatEntity.gd
 # ==============================================================================
 class_name CatEntity
 extends PassiveEntity
+
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Cats meow occasionally to get attention
+const COOLDOWN_MEOW_MIN_SEC: float = 15.0
+const COOLDOWN_MEOW_MAX_SEC: float = 30.0
+
+# Start with a random initial offset on spawn so they don't sync up
+var _meow_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -40,7 +48,7 @@ func _ready() -> void:
 	# ==========================================================================
 	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
 	# Inject the specialized Cat companion AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior.
+	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
 	# ==========================================================================
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = CatAIBehavior.new()
@@ -76,6 +84,14 @@ func _can_socialize() -> bool:
 # ==============================================================================
 # TACTICAL PRESENTATION & SENSORY WARNING ALARM FEEDBACK
 # ==============================================================================
+
+## Visual/Audio Cat Vocalization: Plays the designated 3D spatial cozy meow
+func _play_cat_vocal() -> void:
+	# Plays the dynamic ambient cat meow using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (20m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("cat_meow", global_position)
+
 
 ## Visual Alarm: Instantiates warning alert, locks gaze onto zombie and triggers sparks
 ## Note: Invoked via reflective calls by the CatAIBehavior strategy
@@ -129,3 +145,23 @@ func _spawn_hiss_alert_particles() -> void:
 	add_child(particles)
 	particles.position = Vector3(0.0, _collision_height + 0.1, 0.0)
 	particles.emitting = true
+
+
+func _process(delta: float) -> void:
+	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	if domain_entity.is_dead:
+		return
+		
+	# ==========================================================================
+	# AMBIENT MEOW TIMER (OCP / SRP Compliant)
+	# Processed locally in the presenter to decouple audio from domain walk nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
+		
+	if not is_panicking:
+		_meow_timer -= delta
+		if _meow_timer <= 0.0:
+			_meow_timer = randf_range(COOLDOWN_MEOW_MIN_SEC, COOLDOWN_MEOW_MAX_SEC)
+			_play_cat_vocal()

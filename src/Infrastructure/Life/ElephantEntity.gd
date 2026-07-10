@@ -5,19 +5,27 @@
 # Description: Physical character controller for the Colossal Elephant.
 #              Delegates slow walk cycles, canyon limits, and stomp 
 #              impacts to the decoupled ElephantAIBehavior strategy, managing
-#              knockback immunities and dynamic player camera screen shake.
+#              knockback immunities, dynamic player camera screen shake, and local audio timers.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, heavy box colliders, and ground-thud screen shake feedback.
+#   translations, heavy box colliders, local audio vocal timers, and ground-thud screen shake feedback.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, preserving base damage hooks while enforcing customized weight.
 # - Dependency Inversion Principle (DIP): Injects the ElephantAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+#   during ready state initialization and utilizes our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/ElephantEntity.gd
 # ==============================================================================
 class_name ElephantEntity
 extends PassiveEntity
+
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Colossal elephants trumpet rarely to maintain their majestic silence
+const COOLDOWN_CHAT_MIN_SEC: float = 25.0
+const COOLDOWN_CHAT_MAX_SEC: float = 45.0
+
+# Start with a random initial offset on spawn so they don't sync up
+var _chat_timer: float = randf_range(8.0, 20.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -63,7 +71,7 @@ func take_damage(amount: int, _knockback_force: Vector3, attacker: Node = null) 
 
 ## Reactive callback triggered when the Domain Entity registers a successful hit.
 func _on_domain_entity_took_damage(amount: int) -> void:
-	# 1. Restore the base class signal chains (Alert network and Karma systems)
+	# 1. Restore the base class signal chains (Alert network and Panic logic)
 	super(amount)
 	
 	# 2. Dampen the jump velocity afterward to enforce colossal mass
@@ -71,7 +79,7 @@ func _on_domain_entity_took_damage(amount: int) -> void:
 
 
 func _drop_loot(inv: IInventory) -> void:
-	# Drops 2x Meat rations (ID 16) and 1x Stone Block (acting as ivory tusks, ID 1)
+	# Drops 2x Meat rations (ID 16) and 1x Stone Block (acting as tusk ivory, ID 1)
 	inv.add_item(16, 2)
 	inv.add_item(1, 1)
 
@@ -105,3 +113,31 @@ func _play_heavy_step_impact() -> void:
 				
 	# Play heavy stone footstep sound statically (Service Locator)
 	AudioService.play_sfx_static("footstep_stone", global_position)
+
+
+## Visual/Audio Elephant Trumpet: Plays the designated deep trumpet sound
+func _play_elephant_chatter() -> void:
+	# Plays the dynamic majestic elephant barrito using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (20m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("elephant_chatter", global_position)
+
+
+func _process(delta: float) -> void:
+	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	if domain_entity.is_dead:
+		return
+		
+	# ==========================================================================
+	# AMBIENT TRUMPET TIMER (OCP / SRP Compliant)
+	# Processed locally in the presenter to decouple audio from domain walk nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
+		
+	if not is_panicking:
+		_chat_timer -= delta
+		if _chat_timer <= 0.0:
+			_chat_timer = randf_range(COOLDOWN_CHAT_MIN_SEC, COOLDOWN_CHAT_MAX_SEC)
+			_play_elephant_chatter()

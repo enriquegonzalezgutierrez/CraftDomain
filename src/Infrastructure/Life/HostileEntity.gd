@@ -7,12 +7,12 @@
 #              and registers its specialized ZombieAIBehavior strategy dynamically on ready.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical body 
-#   movement structures and target visual attachments, delegating pathing and 
-#   pursuit routines to the injected ZombieAIBehavior.
+#   movement structures, target visual attachments, local audio vocal timers, 
+#   and quest-state checks.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers.
+#   base contract, utilizing inherited dynamic height solvers without compilation conflicts.
 # - Dependency Inversion Principle (DIP): Injects the ZombieAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+#   during ready state initialization and utilizes our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
@@ -27,6 +27,14 @@ var player: CharacterBody3D
 # UI overlays
 var _quest_bubble: Node3D
 
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Zombies groan often to build terror and suspense in caves and nighttime
+const COOLDOWN_GROAN_MIN_SEC: float = 10.0
+const COOLDOWN_GROAN_MAX_SEC: float = 22.0
+
+# Start with a random initial offset on spawn so they don't sync up
+var _groan_timer: float = randf_range(3.0, 10.0)
+
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	# Initialize with 3 Hearts of health (6 HP)
@@ -35,7 +43,7 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the hostile group for target scans
+	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
 	
 	# Cache components pre-configured in the scene
@@ -151,3 +159,36 @@ func _drop_loot(inv: IInventory) -> void:
 		var _un := inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
 		if is_instance_valid(player):
 			QuestService.complete_active_quest(player)
+
+
+# ==============================================================================
+# TACTICAL AUDIO PRESENTATION
+# ==============================================================================
+
+## Visual/Audio Zombie Groan: Plays the designated spooky ambient groan
+func _play_zombie_groan() -> void:
+	# Plays the dynamic spooky zombie groan using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (20m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("zombie_groan", global_position)
+
+
+func _process(delta: float) -> void:
+	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
+	# This ensures compiling is 100% clean and free of crashes.
+	if domain_entity.is_dead:
+		return
+		
+	# ==========================================================================
+	# AMBIENT GROAN TIMER (OCP / SRP Compliant)
+	# Processed locally in the presenter to decouple audio from domain pathing nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
+		
+	if not is_panicking:
+		_groan_timer -= delta
+		if _groan_timer <= 0.0:
+			_groan_timer = randf_range(COOLDOWN_GROAN_MIN_SEC, COOLDOWN_GROAN_MAX_SEC)
+			_play_zombie_groan()

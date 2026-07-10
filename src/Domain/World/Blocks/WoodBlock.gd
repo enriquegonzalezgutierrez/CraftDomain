@@ -5,10 +5,11 @@
 # Description: Concrete Domain Definition for the solid structural Oak Wood Log.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   procedural coloring, and texture configurations for the Wood Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Supports 
-#   dynamic independent loading without central registry modifications.
+#   procedural coloring, and texture configurations for the Oak Wood Block.
+# - Open-Closed Principle (OCP): Extends BlockDefinition. Configures its 
+#   mining resistance locally to restore gameplay balance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/Blocks/WoodBlock.gd
 # ==============================================================================
 class_name WoodBlock
 extends BlockDefinition
@@ -22,6 +23,9 @@ func _init() -> void:
 	translation_key = "BLOCK_WOOD"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Enforce 3 impacts resistance for sturdy Oak logs
+	mining_resistance = 3
 	
 	# Procedural wood-brown colors for unshaded fallback rendering
 	color_top = Color(0.72, 0.55, 0.35)

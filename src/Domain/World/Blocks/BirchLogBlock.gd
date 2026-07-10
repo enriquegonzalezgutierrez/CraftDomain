@@ -6,9 +6,10 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and texture configurations for the Birch Log.
-# - Open-Closed Principle (OCP): Extends BlockDefinition. Being placed 
-#   inside the /Blocks/ directory allows it to be auto-registered on boot.
+# - Open-Closed Principle (OCP): Extends BlockDefinition. Configures its 
+#   mining resistance locally to restore gameplay balance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/Blocks/BirchLogBlock.gd
 # ==============================================================================
 class_name BirchLogBlock
 extends BlockDefinition
@@ -23,6 +24,9 @@ func _init() -> void:
 	translation_key = "BLOCK_BIRCH_LOG"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Enforce 3 impacts resistance for sturdy Birch logs
+	mining_resistance = 3
 	
 	# Procedural silver-white wood colors for unshaded fallback rendering
 	color_top = Color(0.92, 0.92, 0.94)

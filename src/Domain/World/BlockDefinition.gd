@@ -13,6 +13,7 @@
 # - Liskov Substitution Principle (LSP): Subclasses inherit this contract, 
 #   ensuring they can be polymorphically processed by meshing and loading engines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/BlockDefinition.gd
 # ==============================================================================
 class_name BlockDefinition
 extends RefCounted
@@ -32,6 +33,10 @@ var is_solid: bool = true
 
 ## Occlusion calculation property: true if block allows light rays or is partially clear
 var is_transparent: bool = false
+
+## The number of hits required by the player to break this block type.
+## Default is 1 (instant break). Harder materials should override this in constructors.
+var mining_resistance: int = 1
 
 ## Procedural flat fallback colors for mesh-generation without graphics card support
 var color_top: Color = Color.WHITE

@@ -8,12 +8,15 @@
 #              scale-aware nameplate floating.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, coordinate-facing rotations, and wing flap sways.
+#   translations, coordinate-facing rotations, wing flap sways, and local audio 
+#   chatter timers, keeping the shared Domain flight strategy pristine.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, utilizing inherited dynamic height solvers.
-# - Open-Closed Principle (OCP): Nameplate tracking calculations are fully 
-#   dynamic, adapting automatically to any scale configured in the .tscn editor.
+# - Open-Closed Principle (OCP): Nameplate tracking and ambient vocalization 
+#   cooldowns are managed internally. New bird species can be added with unique 
+#   vocal timers without modifying shared engines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/BirdEntity.gd
 # ==============================================================================
 class_name BirdEntity
 extends PassiveEntity
@@ -24,6 +27,14 @@ var _model_node: Node3D
 
 # Visual model baseline Y-coordinate (Y-axis origin when perched)
 const MODEL_BASE_Y: float = 0.0
+
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Throttled interval preventing the bird audio from overlapping
+const COOLDOWN_CHAT_MIN_SEC: float = 15.0
+const COOLDOWN_CHAT_MAX_SEC: float = 25.0
+
+# Start with a random initial offset so they don't all yell at spawn
+var _chat_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -75,13 +86,42 @@ func _can_socialize() -> bool:
 
 
 # ==============================================================================
+# TACTICAL AUDIO & FX PRESENTATION
+# ==============================================================================
+
+## Visual/Audio Avian Chatter: Plays the designated long 3D spatial bird song
+func _play_avian_chatter() -> void:
+	# Plays the dynamic ambient bird song using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (20m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("bird_chatter", global_position)
+
+
+# ==============================================================================
 # PROCEDURAL WING FLAP & ALTIMETRICAL ROTATIONS
 # ==============================================================================
 
 func _process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
+
+	# ==========================================================================
+	# AMBIENT CHATTER TIMER (SRP / OCP Compliant)
+	# Processed locally in the presenter to decouple audio from domain flight nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
 		
+	if not is_panicking:
+		_chat_timer -= delta
+		if _chat_timer <= 0.0:
+			_chat_timer = randf_range(COOLDOWN_CHAT_MIN_SEC, COOLDOWN_CHAT_MAX_SEC)
+			_play_avian_chatter()
+			
+	# ==========================================================================
+	# VISUAL SKELETAL SWAYS
+	# ==========================================================================
 	if is_instance_valid(_model_node):
 		# Read flight state from metadata safely (DIP)
 		var flight_state := 0 # Default STATE_SOARING
@@ -127,8 +167,6 @@ func _process(delta: float) -> void:
 				
 		# ======================================================================
 		# UNIVERSAL DYNAMIC NAMEPLATE POSITIONER (OCP / SOLID COMPLIANT)
-		# Sincroniza la etiqueta sumando la compensación de aleteo en tiempo real.
-		# Se adapta automáticamente a cualquier escala (0.25, 1.0, 5.0) sin tocar código.
 		# ======================================================================
 		if is_instance_valid(_nameplate):
 			var relative_offset := _model_node.position.y - MODEL_BASE_Y

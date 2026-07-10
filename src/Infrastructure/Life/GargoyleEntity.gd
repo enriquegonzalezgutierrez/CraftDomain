@@ -3,7 +3,7 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: GargoyleEntity
 # Description: Physical character controller for the hostile nocturnal Gargoyle.
-#              Delegates all state machine decisions, chasing vectors, and 
+#              Delegates all day/night stone transitions, flight sways, and 
 #              attack cooldowns to the decoupled GargoyleAIBehavior strategy, 
 #              focusing on physical translations and visual flight animations.
 # SOLID COMPLIANCE:
@@ -11,8 +11,10 @@
 #   gravity damping during active flight, and visual billboarding.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, utilizing inherited dynamic height solvers.
-# - Open-Closed Principle (OCP): Nameplate tracking calculations are fully 
-#   dynamic, adapting automatically to any scale configured in the .tscn editor.
+# - Open-Closed Principle (OCP): Mesh petrification yaw rotations are fully 
+#   dynamic, adapting automatically to any rotation configured in the .tscn editor.
+# - Dependency Inversion Principle (DIP): Injects the GargoyleAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GargoyleEntity.gd
 # ==============================================================================
@@ -32,6 +34,9 @@ const SPEED: float = 3.0
 
 # Visual model baseline Y-coordinate (Y-axis origin when stone statue)
 const MODEL_BASE_Y: float = 0.8982
+
+# Visual model baseline rotation vector configured in the editor (.tscn)
+var _model_base_rot: Vector3 = Vector3.ZERO
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -55,10 +60,13 @@ func _ready() -> void:
 	if is_instance_valid(_model_node):
 		_anim_player = _model_node.find_child("AnimationPlayer", true, false) as AnimationPlayer
 		_register_glb_materials(_model_node)
+		
+		# Cache the initial editor transform rotation vector (OCP compliant)
+		_model_base_rot = _model_node.rotation
 	
 	_locate_player()
 	
-	# Fetch nameplate configurations from inherited base class (LSP compliant)
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	if is_instance_valid(ai_component):
@@ -70,6 +78,7 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
+			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -202,7 +211,8 @@ func _process(delta: float) -> void:
 				_anim_player.stop() 
 				
 			_model_node.position.y = lerp(_model_node.position.y, MODEL_BASE_Y, delta * 5.0)
-			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(90.0), 0.0), delta * 5.0)
+			# Interpolate towards the pre-saved editor transform rotation vector (OCP compliant)
+			_model_node.rotation = _model_node.rotation.lerp(_model_base_rot, delta * 5.0)
 			
 		# ======================================================================
 		# UNIVERSAL DYNAMIC NAMEPLATE POSITIONER (OCP / SOLID COMPLIANT)

@@ -5,19 +5,27 @@
 # Description: Physical character controller for the loyal canine Growlithe.
 #              Delegates all magma sniffing, territorial heat seeking, and
 #              fiery barks to the decoupled CanineAIBehavior strategy, managing
-#              visual incandescent flame embers and bark audio cues.
+#              visual incandescent flame embers, bark audio cues, and local audio timers.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, collision shapes, and snout fire bark visual particles.
+#   translations, collision shapes, snout fire bark visual particles, and local audio timers.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, relying 100% on the base physics loop for standard translations.
 # - Dependency Inversion Principle (DIP): Injects the CanineAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+#   during ready state initialization and utilizes our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GrowlitheEntity.gd
 # ==============================================================================
 class_name GrowlitheEntity
 extends PassiveEntity
+
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Dogs bark occasionally to express excitement and playful energy
+const COOLDOWN_BARK_MIN_SEC: float = 15.0
+const COOLDOWN_BARK_MAX_SEC: float = 30.0
+
+# Start with a random initial offset on spawn so they don't sync up
+var _bark_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -106,13 +114,15 @@ func _can_socialize() -> bool:
 # ==============================================================================
 
 ## Visual Flame Bark: Plays alert bark audio and spawns glowing fire embers
-## Note: Invoked via reflective calls by the CanineAIBehavior strategy
+## Note: Invoked via reflective calls by the CanineAIBehavior strategy and locally
 func _play_flame_bark() -> void:
 	# Playful vertical hop
 	velocity.y = 2.8
 	
-	# Play meow-bark alert sound statically (Service Locator)
-	AudioService.play_sfx_static("npc_chat", global_position)
+	# Plays the dynamic fire canine bark statically using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (20m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("growlithe_bark", global_position)
 	
 	# Emit fiery embers from snout
 	_spawn_flame_bark_particles()
@@ -160,3 +170,23 @@ func _spawn_flame_bark_particles() -> void:
 	add_child(particles)
 	particles.position = Vector3(0.0, _collision_height - 0.2, -0.15) # Snout level
 	particles.emitting = true
+
+
+func _process(delta: float) -> void:
+	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	if domain_entity.is_dead:
+		return
+		
+	# ==========================================================================
+	# AMBIENT BARK TIMER (OCP / SRP Compliant)
+	# Processed locally in the presenter to decouple audio from domain walk nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
+		
+	if not is_panicking:
+		_bark_timer -= delta
+		if _bark_timer <= 0.0:
+			_bark_timer = randf_range(COOLDOWN_BARK_MIN_SEC, COOLDOWN_BARK_MAX_SEC)
+			_play_flame_bark()

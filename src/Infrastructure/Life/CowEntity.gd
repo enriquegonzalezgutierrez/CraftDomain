@@ -6,17 +6,23 @@
 #              Delegates its visual voxel/clay representation and physical 
 #              translations completely to the Godot Editor (.tscn).
 # SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Coordinates exclusively physical 
-#   passive movement, panic bounces, and signal-bound loot drops.
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
+#   passive movement, panic bounces, local audio vocal timers, and signal-bound loot drops.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, utilizing inherited dynamic height solvers.
 # - Dependency Inversion Principle (DIP): Relies on abstract interfaces 
-#   (IInventory) to process loot drops.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/CowEntity.gd
+#   (IInventory) to process loot drops and our OCP AudioService locator.
 # ==============================================================================
 class_name CowEntity
 extends PassiveEntity
+
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Cows moo less frequently to keep the pasture peaceful
+const COOLDOWN_MOO_MIN_SEC: float = 20.0
+const COOLDOWN_MOO_MAX_SEC: float = 35.0
+
+# Start with a random initial offset on spawn so they don't sync up
+var _moo_timer: float = randf_range(5.0, 20.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -90,3 +96,35 @@ func _is_avian() -> bool:
 
 func _can_socialize() -> bool:
 	return true
+
+
+# ==============================================================================
+# TACTICAL AUDIO PRESENTATION
+# ==============================================================================
+
+## Visual/Audio Cow Vocalization: Plays the designated 3D spatial low-pitch moo
+func _play_cow_vocal() -> void:
+	# Plays the dynamic ambient cow moo using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (20m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("cow_moo", global_position)
+
+
+func _process(delta: float) -> void:
+	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	if domain_entity.is_dead:
+		return
+		
+	# ==========================================================================
+	# AMBIENT MOO TIMER (OCP / SRP Compliant)
+	# Processed locally in the presenter to decouple audio from domain walk nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
+		
+	if not is_panicking:
+		_moo_timer -= delta
+		if _moo_timer <= 0.0:
+			_moo_timer = randf_range(COOLDOWN_MOO_MIN_SEC, COOLDOWN_MOO_MAX_SEC)
+			_play_cow_vocal()

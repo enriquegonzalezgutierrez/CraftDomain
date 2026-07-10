@@ -5,19 +5,29 @@
 # Description: Physical character controller for the acrobatic Tropical Monkey.
 #              Delegates all leaf clambering, branches perching, and backflip 
 #              cooldowns to the decoupled MonkeyAIBehavior strategy, managing
-#              procedural visual mesh rolls and squeak audio cues.
+#              procedural visual mesh rolls and spatial audio cues.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, collision shapes, and programmatic backflip mesh rolls.
+#   translations, collision shapes, local audio vocal timers, and programmatic 
+#   mesh rolls, keeping the shared Domain clambering strategy pristine.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations.
+#   base contract, relying 100% on the base physics loop for standard translations
+#   without compiling conflicts.
 # - Dependency Inversion Principle (DIP): Injects the MonkeyAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+#   during ready state initialization and utilizes our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MonkeyEntity.gd
 # ==============================================================================
 class_name MonkeyEntity
 extends PassiveEntity
+
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Throttled interval preventing the audio from overlapping
+const COOLDOWN_CHAT_MIN_SEC: float = 15.0
+const COOLDOWN_CHAT_MAX_SEC: float = 25.0
+
+# Start with a random initial offset so they don't all yell at spawn
+var _chat_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -102,8 +112,16 @@ func _can_socialize() -> bool:
 
 
 # ==============================================================================
-# TACTICAL ACROBATIC JUMPING & TWIRL EFFECTS
+# TACTICAL AUDIO & ACROBATIC PRESENTATION
 # ==============================================================================
+
+## Visual/Audio Monkey Chatter: Plays the designated ambient spatial monkey sound
+func _play_monkey_chatter() -> void:
+	# Plays the dynamic ambient monkey sound using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (20m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("monkey_chatter", global_position)
+
 
 ## Visual Backflip: Propels vertically and rotates 360 degrees on X-axis (Pitch roll)
 ## Note: Invoked via reflective calls by the MonkeyAIBehavior strategy
@@ -123,5 +141,25 @@ func _play_backflip_effect() -> void:
 				visual_component.visual_root.rotation.x = start_rot_x # Reset rotation exactly
 		)
 		
-	# Play high-pitched meow-squeak sound statically (Service Locator)
+	# Play high-pitched meow-squeak sound statically as a physical exertion effort
 	AudioService.play_sfx_static("npc_chat", global_position)
+
+
+func _process(delta: float) -> void:
+	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	if domain_entity.is_dead:
+		return
+		
+	# ==========================================================================
+	# AMBIENT CHATTER TIMER (OCP / SRP Compliant)
+	# Processed locally in the presenter to decouple audio from domain climb nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
+		
+	if not is_panicking:
+		_chat_timer -= delta
+		if _chat_timer <= 0.0:
+			_chat_timer = randf_range(COOLDOWN_CHAT_MIN_SEC, COOLDOWN_CHAT_MAX_SEC)
+			_play_monkey_chatter()

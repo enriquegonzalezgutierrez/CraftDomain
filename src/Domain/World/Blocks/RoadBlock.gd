@@ -6,9 +6,10 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and texture configurations for the Road Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Supports 
-#   dynamic independent loading from the /Blocks/ directory on startup.
+# - Open-Closed Principle (OCP): Extends BlockDefinition. Configures its 
+#   mining resistance locally to restore gameplay balance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/Blocks/RoadBlock.gd
 # ==============================================================================
 class_name RoadBlock
 extends BlockDefinition
@@ -23,6 +24,9 @@ func _init() -> void:
 	translation_key = "BLOCK_ROAD"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Enforce 3 impacts resistance for dense asphalt roads
+	mining_resistance = 3
 	
 	# Procedural dark asphalt colors for unshaded fallback rendering
 	color_top = Color(0.24, 0.24, 0.28)

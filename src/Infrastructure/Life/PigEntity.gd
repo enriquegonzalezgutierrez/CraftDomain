@@ -5,19 +5,26 @@
 # Description: Physical character controller for the passive grasslands Pig.
 #              Delegates its visual clay-voxel representation and physical 
 #              translations completely to the Godot Editor (.tscn).
-# SOLID COMPLIANCE:
+# SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Handles exclusively physical
-#   movement loops and life-signals, delegating visual design and
-#   collision parameters to the Godot Editor (.tscn).
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity
+#   passive movement, panic bounces, local audio vocal timers, and signal-bound loot drops.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, utilizing inherited dynamic height solvers.
 # - Dependency Inversion Principle (DIP): Relies on abstract interfaces 
-#   (IInventory) to process loot drops.
+#   (IInventory) to process loot drops and our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/PigEntity.gd
 # ==============================================================================
 class_name PigEntity
 extends PassiveEntity
+
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Pigs oink occasionally while tilling the topsoil looking for roots
+const COOLDOWN_OINK_MIN_SEC: float = 18.0
+const COOLDOWN_OINK_MAX_SEC: float = 35.0
+
+# Start with a random initial offset on spawn so they don't sync up
+var _oink_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -86,3 +93,36 @@ func _is_avian() -> bool:
 
 func _can_socialize() -> bool:
 	return true
+
+
+# ==============================================================================
+# TACTICAL AUDIO PRESENTATION
+# ==============================================================================
+
+## Visual/Audio Pig Vocalization: Plays the designated 3D spatial oink grunt
+func _play_pig_vocal() -> void:
+	# Plays the dynamic ambient pig oink using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (20m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("pig_oink", global_position)
+
+
+func _process(delta: float) -> void:
+	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
+	# This ensures compiling is 100% clean and free of crashes.
+	if domain_entity.is_dead:
+		return
+		
+	# ==========================================================================
+	# AMBIENT OINK TIMER (OCP / SRP Compliant)
+	# Processed locally in the presenter to decouple audio from domain walk nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
+		
+	if not is_panicking:
+		_oink_timer -= delta
+		if _oink_timer <= 0.0:
+			_oink_timer = randf_range(COOLDOWN_OINK_MIN_SEC, COOLDOWN_OINK_MAX_SEC)
+			_play_pig_vocal()

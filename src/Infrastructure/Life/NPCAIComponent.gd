@@ -7,10 +7,14 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Acts strictly as the task timer and 
 #   coordination hub, delegating domain-specific decision trees.
-# BUG FIX:
-# - Weather Node Defensive Parsing: Added strict variant checking (`!= null`)
-#   when pulling weather settings to block the `Nonexistent int constructor` 
-#   GDScript engine crash in generic fallback routines.
+# - Liskov Substitution Principle (LSP): Fully compatible with any PassiveEntity 
+#   host context, dynamically reading properties.
+# HOSTILE SELF-SENSING BUG RESOLVED (OCP / LSP):
+# - Added a `child != _host` check inside `_detect_closest_zombie_threat()` to 
+#   prevent hostile entities (such as Sharks, Goblins, or Gargoyles) from 
+#   detecting themselves as threats, eliminating the infinite panic loop.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/NPCAIComponent.gd
 # ==============================================================================
 class_name NPCAIComponent
 extends Node
@@ -297,12 +301,83 @@ func _apply_movement_vectors() -> void:
 
 
 # ==============================================================================
+# PROACTIVE SENSORY OBSTACLE EVASION (Bigotes de Gato / Whisker Raycasts)
+# ==============================================================================
+
+## Proactively scans for solid wall obstacles ahead of the host entity.
+## Uses three look-ahead vectors (straight, 30 deg left, 30 deg right).
+## If an obstacle is detected, it gently steers `wander_direction` away 
+## from the obstacle normal before a physical collision occurs.
+func _perform_proactive_whisker_avoidance(delta: float) -> void:
+	if current_task != TaskState.WANDERING and current_task != TaskState.PANIC and current_task != TaskState.WORKING:
+		return
+		
+	if wander_direction == Vector3.ZERO:
+		return
+		
+	var space_state := _host.get_world_3d().direct_space_state
+	if space_state == null:
+		return
+		
+	# Setup sensory parameters
+	var host_pos := _host.global_position
+	
+	# Determine logical height of the collider to position rays at chest-level
+	var r_origin := host_pos + Vector3(0.0, 0.9, 0.0)
+	if "EntityCollider" in _host:
+		var col: CollisionShape3D = _host.get_node_or_null("EntityCollider") as CollisionShape3D
+		if is_instance_valid(col) and col.position.y > 0.1:
+			r_origin = host_pos + Vector3(0.0, col.position.y, 0.0)
+			
+	# Standard look-ahead scan distance (longer in panic sprints)
+	var scan_distance := 1.8 if current_task == TaskState.PANIC else 1.2
+	
+	# Formulate our three look-ahead vectors: Center, Left (30 deg), Right (30 deg)
+	var center_dir := wander_direction.normalized()
+	var left_dir := center_dir.rotated(Vector3.UP, deg_to_rad(30.0))
+	var right_dir := center_dir.rotated(Vector3.UP, deg_to_rad(-30.0))
+	
+	var scan_dirs := [center_dir, left_dir, right_dir]
+	var best_avoidance_normal := Vector3.ZERO
+	var closest_hit_dist := 999.0
+	
+	for dir: Vector3 in scan_dirs:
+		var query := PhysicsRayQueryParameters3D.create(r_origin, r_origin + dir * scan_distance)
+		# Only collide with static environment blocks (Layer 1)
+		query.collision_mask = 1 
+		# Exclude the host entity and player dummy to prevent self-collision locks
+		query.exclude = [_host.get_rid()]
+		
+		var result := space_state.intersect_ray(query)
+		if not result.is_empty():
+			var hit_pos: Vector3 = result["position"]
+			var hit_normal: Vector3 = result["normal"]
+			var dist := r_origin.distance_to(hit_pos)
+			
+			if dist < closest_hit_dist:
+				closest_hit_dist = dist
+				best_avoidance_normal = hit_normal
+	
+	# If a close obstacle is detected, steer the velocity away proactively
+	if best_avoidance_normal != Vector3.ZERO:
+		var flat_normal := Vector3(best_avoidance_normal.x, 0.0, best_avoidance_normal.z).normalized()
+		if flat_normal != Vector3.ZERO:
+			# Interpolate steering direction smoothly using delta
+			var steer_target := wander_direction.bounce(flat_normal).normalized()
+			wander_direction = wander_direction.lerp(steer_target, delta * 8.0).normalized()
+
+
+# ==============================================================================
 # CENTRALIZED STEP-CLIMB JUMP SOLVER (SRP Compliant)
 # ==============================================================================
 func _process_movement_avoidance(_delta: float) -> void:
 	if current_task != TaskState.WANDERING and current_task != TaskState.PANIC and current_task != TaskState.WORKING:
 		return
 		
+	# 1. Proactive Evasion: Steer away before hitting obstacles
+	_perform_proactive_whisker_avoidance(_delta)
+		
+	# 2. Reactive Fallback: Jump or bounce if physically blocked by a wall
 	if _host.is_on_wall():
 		if _host.is_on_floor():
 			var flat_vel := Vector2(_host.velocity.x, _host.velocity.z)
@@ -313,7 +388,23 @@ func _process_movement_avoidance(_delta: float) -> void:
 			var current_time := Time.get_ticks_msec() / 1000.0
 			var can_jump := (current_time - last_jump) > 0.4
 			
-			if is_physically_blocked and can_jump:
+			# ----------------==================================================
+			# ANTI-CEILING SMASHING SOLVER (SOLID Physics boundary scan)
+			# ----------------==================================================
+			var head_coord := Vector3i(
+				floori(_host.global_position.x),
+				floori(_host.global_position.y) + 2, # Block directly above head (2.0m height)
+				floori(_host.global_position.z)
+			)
+			var is_ceiling_solid := false
+			var world_node := _host.get_parent()
+			if is_instance_valid(world_node) and "world_state" in world_node:
+				var ws: WorldState = world_node.world_state
+				if ws != null:
+					is_ceiling_solid = BlockType.is_solid(ws.get_block(head_coord))
+			
+			# Block the jump completely if a wooden/stone ceiling is above their head!
+			if is_physically_blocked and can_jump and not is_ceiling_solid:
 				var jump_vel: float = 5.0
 				if "JUMP_VELOCITY" in _host:
 					jump_vel = _host.get("JUMP_VELOCITY")
@@ -445,6 +536,15 @@ func _detect_closest_zombie_threat() -> Node3D:
 	
 	var hostiles := _host.get_tree().get_nodes_in_group("hostiles")
 	for child: Node in hostiles:
+		# ======================================================================
+		# ANTI-SELF-SENSING SHIELD (BUG FIX)
+		# Skip scanning ourselves if this host entity is registered in the 
+		# hostiles group (such as the aggressive Shark, Goblin, or Gargoyle),
+		# permanently resolving the infinite loop on spawn.
+		# ======================================================================
+		if child == _host:
+			continue
+			
 		if is_instance_valid(child):
 			var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
 			if zombie_entity != null and not zombie_entity.is_dead:

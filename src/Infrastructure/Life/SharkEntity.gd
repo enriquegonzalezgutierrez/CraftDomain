@@ -5,14 +5,17 @@
 # Description: Physical character controller for the hostile Great White Shark.
 #              Delegates all coordinate scent tracking, player chase paths, 
 #              and surface leap attacks to the decoupled SharkAIBehavior strategy,
-#              focusing strictly on swimming tail-wag oscillations and damage.
+#              focusing on swimming tail-wag oscillations and damage.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, collision shapes, and procedural mesh tail-wag animations.
+#   translations, collision shapes, local audio vocal timers, and procedural 
+#   mesh tail-wag animations.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers.
+#   base contract, utilizing inherited dynamic height solvers without compilation conflicts.
+# - Open-Closed Principle (OCP): Mesh yaw-wagging calculations and ambient vocalization 
+#   cooldowns are managed internally.
 # - Dependency Inversion Principle (DIP): Injects the SharkAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+#   during ready state initialization and utilizes our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/SharkEntity.gd
 # ==============================================================================
@@ -25,6 +28,17 @@ var player: CharacterBody3D
 # Dynamic cached reference to visual model
 var _model_node: Node3D
 
+# Visual model baseline Y-coordinate yaw rotation configured in the editor
+var _model_base_y: float = 0.0
+
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Sharks are silent hunters but make low-pitch subaquatic growls or water-thrashing sounds
+const COOLDOWN_ATTACK_MIN_SEC: float = 18.0
+const COOLDOWN_ATTACK_MAX_SEC: float = 35.0
+
+# Start with a random initial offset on spawn so they don't sync up
+var _attack_sound_timer: float = randf_range(5.0, 15.0)
+
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	# Sharks spawn with 4 Hearts of health (8 HP)
@@ -33,7 +47,7 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the hostile group for target lookups
+	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
 	
 	# Cache component references pre-configured in the scene
@@ -43,6 +57,9 @@ func _ready() -> void:
 	# TANGENT SHIELD FIX: Strip materials of tangent-requiring shaders to avoid C++ warnings
 	if is_instance_valid(_model_node):
 		_register_glb_materials(_model_node)
+		
+		# Cache the initial editor rotation to compute dynamic tail wags (OCP compliant)
+		_model_base_y = _model_node.rotation.y
 	
 	_locate_player()
 	
@@ -63,7 +80,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -108,23 +124,36 @@ func _locate_player() -> void:
 		player = world_node.get("player") as CharacterBody3D
 
 
-## Hostiles do not panic when hit
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	pass 
+	pass # Hostiles do not panic when hit
 
 
-## Drops 1x Sand Block on death
 func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(7, 1)
 
 
+# ==============================================================================
+# TACTICAL AUDIO PRESENTATION
+# ==============================================================================
+
+## Visual/Audio Shark Vocalization: Plays the designated subaquatic growl
+func _play_shark_vocal() -> void:
+	# Plays the dynamic subaquatic growl using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (20m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("shark_attack", global_position)
+
+
 ## Tactical Action bite: Inflicts heavy damage (1.5 Hearts / 3 HP) and applies knockback
-## Note: Invoked via reflective calls by the SharkAIBehavior strategy
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var dir := (player.global_position - global_position).normalized()
 		# High vertical-diagonal propulsion to push the player away in water
 		var knockback := Vector3(dir.x * 6.5, 2.5, dir.z * 6.5)
+		
+		# --- PLAY SPATIAL ATTACK ROAR ON BITE (OCP/DIP Compliant) ---
+		_play_shark_vocal()
+		
 		if player.has_method("take_damage"):
 			player.call("take_damage", 3, knockback)
 
@@ -151,9 +180,30 @@ func _process_procedural_swimming(delta: float) -> void:
 		if is_moving:
 			# Tail-wagging frequency scales dynamically with active movement speed
 			var swim_speed := flat_velocity.length() * 2.5
-			_model_node.rotation.y = deg_to_rad(-90.0) + sin(anim_time * swim_speed) * 0.22
+			# Symmetrical Gaze Wagging: Apply sinus wave relative to pre-saved editor transform
+			_model_node.rotation.y = _model_base_y + sin(anim_time * swim_speed) * 0.22
 			_model_node.rotation.z = cos(anim_time * swim_speed * 0.5) * 0.08 
 		else:
 			# Slow resting ocean current sways
-			_model_node.rotation.y = lerp(_model_node.rotation.y, deg_to_rad(-90.0), delta * 5.0)
+			_model_node.rotation.y = lerp_angle(_model_node.rotation.y, _model_base_y, delta * 5.0)
 			_model_node.rotation.z = sin(anim_time * 1.5) * 0.03
+
+
+func _process(delta: float) -> void:
+	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	if domain_entity.is_dead:
+		return
+		
+	# ==========================================================================
+	# AMBIENT SHARK SOUND TIMER (OCP / SRP Compliant)
+	# Processed locally in the presenter to decouple audio from domain swim nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
+		
+	if not is_panicking:
+		_attack_sound_timer -= delta
+		if _attack_sound_timer <= 0.0:
+			_attack_sound_timer = randf_range(COOLDOWN_ATTACK_MIN_SEC, COOLDOWN_ATTACK_MAX_SEC)
+			_play_shark_vocal()

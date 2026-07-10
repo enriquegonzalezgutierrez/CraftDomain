@@ -8,7 +8,9 @@
 #   procedural coloring, and emissive configurations for Diamond Ore.
 # - Open-Closed Principle (OCP): Inherits from BlockDefinition. Being placed 
 #   inside the /Blocks/ directory allows it to be auto-registered on boot.
+#   Specifies its high mining resistance locally within its constructor.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/World/Blocks/DiamondOreBlock.gd
 # ==============================================================================
 class_name DiamondOreBlock
 extends BlockDefinition
@@ -23,6 +25,9 @@ func _init() -> void:
 	translation_key = "BLOCK_DIAMOND_ORE"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Enforce 5 impacts resistance for precious diamond crystals
+	mining_resistance = 5
 	
 	# Procedural stone-grey colors for unshaded fallback rendering
 	color_top = Color(0.35, 0.38, 0.40)

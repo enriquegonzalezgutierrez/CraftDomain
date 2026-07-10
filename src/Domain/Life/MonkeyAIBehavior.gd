@@ -8,10 +8,14 @@
 #              acrobatic backflips, executing timed jumps with roll spin rotations.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only coordinates the monkey's acrobatic 
-#   decision trees, clamber loops, and flip cooldowns, keeping presentation separate.
+#   decision trees, clamber loops, flip cooldowns, and chatter states.
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. New fruit gathering, 
 #   banana items, or player taunts can be appended cleanly here.
 # - Liskov Substitution Principle (LSP): Fully compatible with the contract signatures.
+# CHATTER COOLDOWN UPDATE:
+# - Added `META_CHAT_TIMER` to throttle monkey chatter. Evaluates time procedurally
+#   and calls `_play_monkey_chatter` on the host, guaranteeing spatial audio 
+#   tracks never loop or spam the audio channels.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Life/MonkeyAIBehavior.gd
 # ==============================================================================
@@ -24,6 +28,10 @@ const COOLDOWN_FLIP_SEC: float = 5.0
 
 const RANGE_SENSE_SQ: float = 100.0 # 10.0 meters squared leaves tracking radius
 
+# Throttled interval preventing audio from overlapping
+const COOLDOWN_CHAT_MIN_SEC: float = 15.0
+const COOLDOWN_CHAT_MAX_SEC: float = 25.0
+
 # Decoupled task enums mirroring NPCAIComponent.TaskState
 const TASK_IDLE = 0
 const TASK_WANDERING = 1
@@ -35,6 +43,7 @@ const META_WANDER_TIMER := "monkey_wander_timer"
 const META_WANDER_DIR := "monkey_wander_dir"
 const META_FLIP_COOLDOWN := "monkey_flip_cooldown"
 const META_TARGET_TREE := "monkey_tree_target"
+const META_CHAT_TIMER := "monkey_chat_timer"
 
 
 func _init() -> void:
@@ -42,7 +51,7 @@ func _init() -> void:
 	overrides_wandering = true
 
 
-## Concrete Contract: Drives leaf climbing, arboreal rest, and backflip cycles
+## Concrete Contract: Drives leaf climbing, arboreal rest, backflips, and ambient chatter
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
@@ -53,6 +62,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	var wander_dir: Vector3 = host.get_meta(META_WANDER_DIR) as Vector3
 	var flip_cooldown: float = host.get_meta(META_FLIP_COOLDOWN) as float
 	var target_tree: Vector3i = host.get_meta(META_TARGET_TREE) as Vector3i
+	var chat_timer: float = host.get_meta(META_CHAT_TIMER) as float
 	
 	if flip_cooldown > 0.0:
 		flip_cooldown -= delta
@@ -66,12 +76,32 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	var host_pos: Vector3 = host.get("global_position")
 	var parent: Node = host.call("get_parent") as Node
 
+	# Check panic startle state
+	var is_panicking := false
+	if ai.get("current_task") as int == TASK_PANIC:
+		is_panicking = true
+
+	# ==========================================================================
+	# AMBIENT CHATTER LOGIC (DIP/SRP Compliant)
+	# ==========================================================================
+	if not is_panicking:
+		chat_timer -= delta
+		if chat_timer <= 0.0:
+			# Reset timer to a random long interval to prevent audio spam
+			chat_timer = randf_range(COOLDOWN_CHAT_MIN_SEC, COOLDOWN_CHAT_MAX_SEC)
+			
+			# Trigger the presentation layer to play the spatial sound effect
+			if host.has_method("_play_monkey_chatter"):
+				host.call("_play_monkey_chatter")
+				
+		host.set_meta(META_CHAT_TIMER, chat_timer)
+
 	# ==========================================================================
 	# 1. ARBOREAL TREE CLAMBERING SYSTEM (Attracted to Leaves ID 5)
 	# ==========================================================================
 	var ws: WorldState = parent.get("world_state") as WorldState if is_instance_valid(parent) else null
 	
-	if ws != null:
+	if ws != null and not is_panicking:
 		# If no active tree canopy block is targeted, perform vertical foliage scans
 		if target_tree.y == -999:
 			target_tree = _scan_for_nearby_leaves(host_pos, ws)
@@ -115,16 +145,16 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 			return
 
 	# ==========================================================================
-	# 2. DEFAULT PLAYFUL ACROBATIC WANDERING
+	# 2. DEFAULT PLAYFUL ACROBATIC WANDERING (Ground level)
 	# ==========================================================================
-	ai.set("current_task", TASK_WANDERING)
+	ai.set("current_task", TASK_PANIC if is_panicking else TASK_WANDERING)
 	
 	wander_timer -= delta
 	if wander_timer <= 0.0:
 		wander_timer = randf_range(1.5, 4.0)
 		
 		var roll := randf()
-		if roll < 0.45:
+		if roll < 0.45 or is_panicking:
 			var angle := randf() * TAU
 			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 		elif roll < 0.65 and flip_cooldown <= 0.0:
@@ -137,12 +167,13 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		else:
 			wander_dir = Vector3.ZERO
 			
-	host.set_meta(META_WANDER_TIMER, wander_timer)
-	host.set_meta(META_WANDER_DIR, wander_dir)
+		host.set_meta(META_WANDER_TIMER, wander_timer)
+		host.set_meta(META_WANDER_DIR, wander_dir)
 
 	if wander_dir != Vector3.ZERO:
-		velocity.x = wander_dir.x * SPEED_PATROL
-		velocity.z = wander_dir.z * SPEED_PATROL
+		var active_speed := SPEED_PATROL * (2.2 if is_panicking else 1.0)
+		velocity.x = wander_dir.x * active_speed
+		velocity.z = wander_dir.z * active_speed
 		host.set("velocity", velocity)
 		ai.set("wander_direction", wander_dir)
 	else:
@@ -161,6 +192,9 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 		host.set_meta(META_FLIP_COOLDOWN, 0.0)
 	if not host.has_meta(META_TARGET_TREE):
 		host.set_meta(META_TARGET_TREE, Vector3i(0, -999, 0))
+	if not host.has_meta(META_CHAT_TIMER):
+		# Start with a random initial offset so they don't all yell at spawn
+		host.set_meta(META_CHAT_TIMER, randf_range(5.0, 15.0))
 
 
 func _reset_monkey_state(host: Object) -> void:
