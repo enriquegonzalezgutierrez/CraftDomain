@@ -1,17 +1,17 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation Base)
+# Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: PassiveEntity
 # Description: Abstract base class representing physical entities. Manages movement 
 #              vectors, gravity calculations, safe boundary checks, 
 #              and dynamic nameplate/quest-arrow UI attachments.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates physical motion loops.
-# - Liskov Substitution Principle (LSP): Serves as a robust contract.
-# - Open-Closed Principle (OCP): Dynamic nameplate updates automatically pull 
-#   active AI task states as localized subtitles without modifying individual scripts.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/PassiveEntity.gd
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical motion loops
+#   and UI attachments.
+# - Liskov Substitution Principle (LSP): Fully compatible with all passive/hostile subclasses,
+#   utilizing inherited dynamic height solvers.
+# - Open-Closed Principle (OCP): Dynamic nameplate mapping and habitat constraint checks
+#   adapt automatically to subclasses.
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
@@ -134,7 +134,7 @@ func _auto_claim_registered_quest_target() -> void:
 					break
 
 
-## Instantiates a native Label3D billboard to display creature name above head.
+## Instantiates a dynamic Label3D billboard to display creature name above head.
 func _setup_nameplate() -> void:
 	if is_instance_valid(_nameplate):
 		return 
@@ -249,15 +249,9 @@ func _get_collision_box_position() -> Vector3:
 
 # ==============================================================================
 # UNIFORM SCALE MATRIX NORMALIZER
-# Guarantees all UI elements (Text, Icons, Arrows) render with an identical 
-# global pixel-size regardless of root scale modifications (LSP / SRP compliant).
 # ==============================================================================
 func _apply_uniform_ui_scaling() -> void:
 	var global_scale_vec := global_transform.basis.get_scale()
-	
-	# Developer Safety Warning: Enforce Godot Physics Best Practices
-	if not global_scale_vec.is_equal_approx(Vector3.ONE):
-		push_warning("[%s] Root node scale is not 1.0! Scaling CharacterBody3D root nodes corrupts physics and UI placements. Please reset the root scale to 1.0 and apply scaling to the visual '.glb' mesh instead." % name)
 	
 	if global_scale_vec.x < 0.001 or global_scale_vec.y < 0.001 or global_scale_vec.z < 0.001:
 		return
@@ -276,8 +270,7 @@ func _apply_uniform_ui_scaling() -> void:
 
 
 # ==============================================================================
-# STRICT CONVERSATIONAL FILTERING (SRP Fix)
-# Ensures non-speaking entities (Monsters, Animals) never spawn dialogue bubbles.
+# STRICT CONVERSATIONAL FILTERING
 # ==============================================================================
 func _is_conversational() -> bool:
 	var key := _get_nameplate_translation_key()
@@ -437,9 +430,15 @@ func _find_closest_hostile_threat() -> CharacterBody3D:
 	var min_dist_sq := 64.0
 	
 	for child: Node in hostiles:
-		if is_instance_valid(child) and child is CharacterBody3D:
-			var zombie_domain := child.get("domain_entity") as VoxelEntity
-			if zombie_domain != null and not zombie_domain.is_dead:
+		# ======================================================================
+		# ANTI-SELF-SENSING SHIELD (BUG FIX)
+		# ======================================================================
+		if child == self:
+			continue
+			
+		if is_instance_valid(child):
+			var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
+			if zombie_entity != null and not zombie_entity.is_dead:
 				var dist_sq := global_position.distance_squared_to(child.global_position)
 				if dist_sq < min_dist_sq:
 					min_dist_sq = dist_sq
@@ -558,20 +557,35 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 	var habitat := _get_habitat()
 	var is_crossing := false
 	
-	if habitat == 2: # AQUATIC
-		is_crossing = (block_at_feet != 6 and block_below_feet != 6) # 6 = WATER
-	elif habitat == 0: # TERRESTRIAL
+	if habitat == 2: # AQUATIC (Only Water)
+		is_crossing = (block_at_feet != BlockType.Type.WATER and block_below_feet != BlockType.Type.WATER)
+	elif habitat == 1: # AMPHIBIOUS (Water, Sand, Mud)
+		var is_water_or_shore_at_feet := (
+			block_at_feet == BlockType.Type.WATER or 
+			block_at_feet == BlockType.Type.SAND or 
+			block_at_feet == BlockType.Type.MUD
+		)
+		var is_water_or_shore_below := (
+			block_below_feet == BlockType.Type.WATER or 
+			block_below_feet == BlockType.Type.SAND or 
+			block_below_feet == BlockType.Type.MUD
+		)
+		if not (is_water_or_shore_at_feet or is_water_or_shore_below):
+			is_crossing = true
+		elif block_at_feet == BlockType.Type.LAVA or block_below_feet == BlockType.Type.LAVA:
+			is_crossing = true
+	else: # TERRESTRIAL (No Water, No Lava, No Void)
 		var is_liquid := (
-			block_at_feet == 6 or 
-			block_at_feet == 15 or 
-			block_below_feet == 6 or 
-			block_below_feet == 15 # 15 = LAVA
+			block_at_feet == BlockType.Type.WATER or 
+			block_at_feet == BlockType.Type.LAVA or 
+			block_below_feet == BlockType.Type.WATER or 
+			block_below_feet == BlockType.Type.LAVA
 		)
 		
 		if is_liquid:
 			is_crossing = true
 			
-		elif block_below_feet == 0 and not _can_fly(): # 0 = AIR
+		elif block_below_feet == BlockType.Type.AIR and not _can_fly():
 			var max_fall_scan := 3
 			var solid_found := false
 			for offset_y in range(2, max_fall_scan + 2):
@@ -579,7 +593,7 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 				if check_y < 0:
 					break
 				var block_type := ws.get_block(Vector3i(feet_coord.x, check_y, feet_coord.z))
-				if block_type != 0:
+				if block_type != BlockType.Type.AIR:
 					solid_found = true
 					break
 			
@@ -609,18 +623,24 @@ func _update_quest_bubble_state() -> void:
 	# ----------------==================================================
 	var task_subtitle := ""
 	if is_instance_valid(ai_component):
-		var task_id := int(ai_component.current_task)
-		var task_key := "SHOWCASE_TASK_IDLE"
-		match task_id:
-			0: task_key = "SHOWCASE_TASK_IDLE"
-			1: task_key = "SHOWCASE_TASK_WANDER"
-			2: task_key = "SHOWCASE_TASK_EXAMINE"
-			3: task_key = "SHOWCASE_TASK_GREET"
-			4: task_key = "SHOWCASE_TASK_CHAT"
-			5: task_key = "SHOWCASE_TASK_PANIC"
-			6: task_key = "SHOWCASE_TASK_WORKING"
+		# Query the active behavior strategy for its current state name polymorphically (DIP)
+		var active_task_name := "IDLE"
+		var active_behavior: IAIBehavior = ai_component.active_behavior as IAIBehavior
+		if active_behavior != null and active_behavior.has_method("get_active_state_name"):
+			active_task_name = str(active_behavior.call("get_active_state_name", self))
+		else:
+			# Fallback to the generic data carrier state name if strategy lacks override
+			active_task_name = _get_task_state_name(ai_component.current_task)
 			
-		task_subtitle = "\n[ " + tr(task_key).to_upper() + " ]"
+		# Normalize some name differences to match translation keys
+		var lookup_key := active_task_name
+		if lookup_key == "WANDERING":
+			lookup_key = "WANDER"
+		elif lookup_key == "CHATTING":
+			lookup_key = "CHAT"
+			
+		var translated_name := tr("SHOWCASE_TASK_" + lookup_key).to_upper()
+		task_subtitle = "\n[ " + translated_name + " ]"
 
 	# Nameplate X-Ray Star highlight and dynamic subtitle
 	if is_instance_valid(_nameplate):
@@ -686,8 +706,27 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 		
-	if not is_on_floor() and _get_habitat() != 2: # 2 = AQUATIC
+	# ==========================================================================
+	# HYDRODYNAMIC FLUID BYPASS (Godot Physics Sinking Fix)
+	# Verifies dynamically if the entity is submerged inside liquid blocks.
+	# If so, standard gravity is bypassed and fluid drag is applied, allowing 
+	# amphibious entities to float and swim smoothly on their AI thread.
+	# ==========================================================================
+	var is_in_liquid := false
+	var parent_node_ref := get_parent()
+	if is_instance_valid(parent_node_ref) and "world_state" in parent_node_ref:
+		var ws: WorldState = parent_node_ref.world_state
+		if ws != null:
+			var my_coord := Vector3i(floori(global_position.x), floori(global_position.y), floori(global_position.z))
+			var block_at := ws.get_block(my_coord)
+			var block_below := ws.get_block(my_coord + Vector3i(0, -1, 0))
+			is_in_liquid = (block_at == 6 or block_at == 15 or block_below == 6 or block_below == 15)
+
+	if not is_on_floor() and _get_habitat() != 2 and not is_in_liquid:
 		velocity.y -= gravity * delta
+	elif is_in_liquid:
+		# Fluid drag friction deceleration
+		velocity.y = move_toward(velocity.y, 0.0, gravity * 0.5 * delta)
 	else:
 		velocity.y = -0.1
 
@@ -707,3 +746,15 @@ func _physics_process(delta: float) -> void:
 		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)
 
 	move_and_slide()
+
+
+func _get_task_state_name(task_val: int) -> String:
+	match task_val:
+		0: return "IDLE"
+		1: return "WANDERING"
+		2: return "EXAMINING"
+		3: return "GREETING"
+		4: return "CHATTING"
+		5: return "PANIC"
+		6: return "WORKING"
+		_: return "IDLE"

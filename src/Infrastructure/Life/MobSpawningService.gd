@@ -10,11 +10,11 @@
 # - Open-Closed Principle (OCP): Dynamically queries biome strategies 
 #   for spawning pools, completely free of hardcoded match tables.
 # - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome strategy.
-# TRAPPING PREVENTION SYSTEM (Anti-Glitched Spawn):
-# - Implemented an absolute "Sky Line-of-Sight" scan to prevent spawning inside 
-#   closed houses, roofs, or subterranean caverns.
-# - Implemented a real-time Physics Sphere Sweep to prevent entities from 
-#   spawning inside physical scenery props (Wells, farolas, barrels, chests).
+# ANTI-DROWNING LAND SPAWNER (SOLID / OCP):
+# - Upgraded `_get_ground_surface_y()`. Now inspects the absolute topmost non-air 
+#   block first. If it detects liquid (Water or Lava), it strictly FORBIDS 
+#   spawning terrestrial land fauna (Cows, Pigs, Chickens, Sheep) on the ocean 
+#   floor, keeping land animals dry on the meadows.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
@@ -138,9 +138,29 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 ## Helper: Scans vertical columns downward from absolute sky limit (Y=31) 
 ## to find the absolute topmost solid ground block.
 func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
-	var hit_y: int = -1
+	# 1. LIQUID SURFACE DETECTOR (OCP / SOLID):
+	# First, verify what is the absolute topmost non-air block on this column.
+	# If it is Water or Lava, we strictly FORBID spawning land animals here,
+	# preventing pigs and cows from appearing underwater on the ocean seabed.
+	var top_block_type := BlockType.Type.AIR
+	var top_y := -1
 	
-	# 1. SKY LINE-OF-SIGHT SCAN: Scan downward to find the absolute highest solid voxel
+	for y: int in range(31, -1, -1):
+		var check_pos := Vector3i(global_x, y, global_z)
+		var block_type := world_state.get_block(check_pos)
+		if block_type != BlockType.Type.AIR:
+			top_block_type = block_type
+			top_y = y
+			break
+			
+	if top_y == -1:
+		return -1.0
+		
+	if top_block_type == BlockType.Type.WATER or top_block_type == BlockType.Type.LAVA:
+		return -1.0 # Cancel land spawning immediately in liquid bays
+	
+	# 2. SKY LINE-OF-SIGHT SCAN: Scan downward to find the absolute highest solid voxel
+	var hit_y: int = -1
 	for y: int in range(31, -1, -1):
 		var check_pos: Vector3i = Vector3i(global_x, y, global_z)
 		var block_type: BlockType.Type = world_state.get_block(check_pos)
@@ -154,7 +174,7 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		
 	var surface_block: BlockType.Type = world_state.get_block(Vector3i(global_x, hit_y, global_z))
 	
-	# 2. SOLID TERRAIN VERIFIER:
+	# 3. SOLID TERRAIN VERIFIER:
 	# Humanoids and land fauna must ONLY spawn on natural flat terrain (Grass, Dirt, Road, Sand, Snow).
 	# This prevents spawning on Bricks, Wood Logs, Planks, or Glass, blocking roof/castle traps!
 	var is_natural_terrain: bool = (
@@ -170,7 +190,7 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 	if not is_natural_terrain:
 		return -1.0
 		
-	# 3. STANDING CLEARANCE VERIFIER:
+	# 4. STANDING CLEARANCE VERIFIER:
 	# Ensure the two blocks directly above the ground surface are completely empty AIR.
 	var space_above_1: BlockType.Type = world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
 	var space_above_2: BlockType.Type = world_state.get_block(Vector3i(global_x, hit_y + 2, global_z))

@@ -5,18 +5,26 @@
 # Description: Concrete AI behavior strategy implementing protective guard routines,
 #              including threat scanning, alarm intercepts, and physical strikes.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates protective overwatch 
-#   and combat logic, isolating security routines from physical movement mechanics.
-#   All raw physical wall-climbing and jump physics are delegated to Infrastructure.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Patrol vectors and 
-#   shield-blocking stance triggers can be added without modifying physics layers.
-# - Liskov Substitution Principle (LSP): Fully interchangeable with other behaviors, 
-#   operating seamlessly on any valid Object context.
-# - Dependency Inversion Principle (DIP): Relies on generic 'Object' bindings 
-#   and domain-layer contracts, purging low-level framework node linkages.
+# - Single Responsibility Principle (SRP): EXTREME REFACTOR. Declares and manages 
+#   its own local state machine (IDLE, PATROLLING, SPRINTING, ENGAGING) and telemetry,
+#   completely independent of monolithic global enums.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. New combat maneuvers 
+#   (like shield-block, parrying, or calling archers support) can be added locally 
+#   without modifying core components.
+# - Liskov Substitution Principle (LSP): Fully compatible with the base contract.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/Life/GuardAIBehavior.gd
 # ==============================================================================
 class_name GuardAIBehavior
 extends IAIBehavior
+
+# Localized State Machine (SRP / OCP Compliant)
+enum State {
+	IDLE,       # standing on guard posts / resting
+	PATROLLING, # walking around the village borders
+	SPRINTING,  # running to intercept a detected threat
+	ENGAGING    # actively striking and knocking back hostiles
+}
 
 const SPEED_CHASE: float = 2.3
 const SPEED_PATROL: float = 1.3
@@ -26,7 +34,7 @@ const RANGE_ATTACK_SQ: float = 2.56 # 1.6 meters squared
 const COOLDOWN_ATTACK_SEC: float = 1.2
 const SCAN_INTERVAL_SEC: float = 0.25
 
-# Decoupled state mirrors to prevent importing Infrastructure enums directly
+# Decoupled task enums mirroring NPCAIComponent.TaskState
 const TASK_IDLE = 0
 const TASK_WORKING = 6
 
@@ -34,6 +42,7 @@ const TASK_WORKING = 6
 const META_COOLDOWN := "guard_attack_cooldown"
 const META_TARGET := "guard_combat_target"
 const META_SCAN_TIMER := "guard_scan_timer"
+const META_GUARD_STATE := "guard_local_state"
 
 
 ## Concrete Implementation: Executes defensive threat scanning and tactical strikes
@@ -97,15 +106,17 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 		var velocity: Vector3 = host.get("velocity")
 		if dist_sq > RANGE_ATTACK_SQ:
+			host.set_meta(META_GUARD_STATE, State.SPRINTING)
+			
 			# Chase threat at sprint speeds
 			var chase_dir := diff.normalized()
 			velocity.x = chase_dir.x * SPEED_CHASE
 			velocity.z = chase_dir.z * SPEED_CHASE
 			host.set("velocity", velocity)
 			ai.set("wander_direction", chase_dir)
-			
-			# NOTE: Wall physical step-climbing is handled centrally by NPCAIComponent.gd
 		else:
+			host.set_meta(META_GUARD_STATE, State.ENGAGING)
+			
 			# Target within range: halt movement and strike
 			velocity.x = 0.0
 			velocity.z = 0.0
@@ -125,7 +136,14 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		var current_task: int = ai.get("current_task")
 		if current_task == TASK_WORKING:
 			ai.set("current_task", TASK_IDLE)
+			host.set_meta(META_GUARD_STATE, State.IDLE)
 			ai.set("task_timer", 1.0)
+		else:
+			var is_moving := Vector2(host.velocity.x, host.velocity.z).length_squared() > 0.05
+			if is_moving:
+				host.set_meta(META_GUARD_STATE, State.PATROLLING)
+			else:
+				host.set_meta(META_GUARD_STATE, State.IDLE)
 
 
 func _initialize_metadata_if_missing(host: Object) -> void:
@@ -135,6 +153,8 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 		host.set_meta(META_TARGET, "")
 	if not host.has_meta(META_SCAN_TIMER):
 		host.set_meta(META_SCAN_TIMER, SCAN_INTERVAL_SEC)
+	if not host.has_meta(META_GUARD_STATE):
+		host.set_meta(META_GUARD_STATE, State.IDLE)
 
 
 func _reset_guard_state(host: Object) -> void:
@@ -143,6 +163,7 @@ func _reset_guard_state(host: Object) -> void:
 		ai.set("current_task", TASK_IDLE)
 		ai.set("wander_direction", Vector3.ZERO)
 	host.set_meta(META_TARGET, "")
+	host.set_meta(META_GUARD_STATE, State.IDLE)
 
 
 ## Trigonometric Scan: Locates the closest active zombie or outlaw player in sight range
@@ -204,3 +225,22 @@ func _strike_target(host: Object, target: Object) -> void:
 	
 	if target.has_method("take_damage"):
 		target.call("take_damage", 1, knockback, host)
+
+
+# ==============================================================================
+# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
+# ==============================================================================
+
+## Symmetrical Override: Maps the localized, private State enum to 
+## human-readable telemetry strings.
+func get_active_state_name(host: Object) -> String:
+	if not host.has_meta(META_GUARD_STATE):
+		return "IDLE"
+		
+	var state_val: int = host.get_meta(META_GUARD_STATE) as int
+	match state_val:
+		State.IDLE:       return "IDLE"
+		State.PATROLLING: return "PATROLLING"
+		State.SPRINTING:  return "SPRINTING_TO_THREAT"
+		State.ENGAGING:   return "ENGAGING_THREAT"
+		_: return "IDLE"

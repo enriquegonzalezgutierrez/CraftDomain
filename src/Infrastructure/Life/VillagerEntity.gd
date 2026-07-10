@@ -10,16 +10,24 @@
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, and talking visual chat bubble particles.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations.
+#   base class.
 # - Dependency Inversion Principle (DIP): Injects the VillagerAIBehavior strategy 
 #   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/VillagerEntity.gd
 # ==============================================================================
 class_name VillagerEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/villager/villager_base.fbx"
+
+# ==============================================================================
+# MIXAMO ORIENTATION COMPENSATOR (OCP SHIELD)
+# Compensates for this specific FBX skeleton export direction by adding 180 degrees
+# of offset, aligning his face directly with his walking velocity.
+# ==============================================================================
+var gaze_rotation_offset: float = PI
+
+# Sibling node references
+var player: CharacterBody3D
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -66,6 +74,47 @@ func _build_visual_representation() -> void:
 	# Bind as standard generic Resource contract
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
+
+
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_nameplate_color() -> Color:
+	return Color(1.0, 1.0, 1.0)
+
+
+func _get_habitat() -> int:
+	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+
+
+func _get_humanoid_role() -> int:
+	return 0 # ProceduralVoxelRepresentation.RoleType.VILLAGER
+
+
+func _has_ui_decorations() -> bool:
+	return true
+
+
+func _can_socialize() -> bool:
+	# Socialize is disabled during emergency escapes (night or storms)
+	var is_night: bool = CelestialService.is_night_time_static()
+	return not is_night
+
+
+func _locate_player() -> void:
+	var world_node := get_parent()
+	if is_instance_valid(world_node) and "player" in world_node:
+		player = world_node.get("player") as CharacterBody3D
+
+
+func _on_domain_entity_took_damage(_amount: int) -> void:
+	pass # Hostiles do not panic when hit
+
+
+func _drop_loot(inv: IInventory) -> void:
+	# Drops 1x Gold Block (ID 37) on death
+	inv.add_item(37, 1)
 
 
 # ==============================================================================
@@ -123,16 +172,9 @@ func _detect_current_biome() -> int:
 		if generator_node != null:
 			var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
-				# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise) as BiomeService.BiomeProfile
 				return profile.biome_id
 	return default_biome_id
-
-
-func _can_socialize() -> bool:
-	# Socialize is disabled during emergency escapes (night or storms)
-	var is_night: bool = CelestialService.is_night_time_static()
-	return not is_night
 
 
 # ==============================================================================

@@ -12,8 +12,6 @@
 #   (like matching the word "TURTLE") have been purged, allowing the class to 
 #   remain strictly closed to modifications when adding new animal species.
 # - Liskov Substitution Principle (LSP): Serves as a reliable, uniform contract.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/FaunaAIBehavior.gd
 # ==============================================================================
 class_name FaunaAIBehavior
 extends IAIBehavior
@@ -188,7 +186,7 @@ func _scan_for_hostile_monsters(host: Object) -> Object:
 	return closest_threat
 
 
-## Look-Ahead Validator: Ensures terrestrial wildlife doesn't drown and aquatic stays constrained
+## Look-Ahead Validator: Ensures terrestrial wildlife doesn't drown, aquatic stays constrained, and none walk into solid walls
 func _is_direction_safe_fauna(host: Object, dir: Vector3) -> bool:
 	var world_node: Node = null
 	if host.has_method("get_parent"):
@@ -209,6 +207,10 @@ func _is_direction_safe_fauna(host: Object, dir: Vector3) -> bool:
 	var block_below: int = ws.get_block(block_below_coord)
 	var block_at: int = ws.get_block(block_at_coord)
 	
+	# Proactively reject walking paths pointing straight into solid blocking walls
+	if BlockType.is_solid(block_at as BlockType.Type):
+		return false
+		
 	var habitat: int = 0
 	if host.has_method("_get_habitat"):
 		habitat = host.call("_get_habitat") as int

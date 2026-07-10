@@ -39,3 +39,11 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	var _d_val := delta
 	
 	assert(false, "[IAIBehavior ERROR] evaluate_and_execute must be implemented by a concrete subclass.")
+
+
+## Virtual Contract (LSP Compliant): Returns the current active state/task name 
+## of this behavior strategy as a human-readable string for telemetry.
+## Defaults to "IDLE" if not overridden by the subclass.
+func get_active_state_name(host: Object) -> String:
+	var _host_ref := host # Avoid unused variable warning
+	return "IDLE"

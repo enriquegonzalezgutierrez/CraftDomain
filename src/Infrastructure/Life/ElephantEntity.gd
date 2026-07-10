@@ -10,7 +10,8 @@
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, heavy box colliders, local audio vocal timers, and ground-thud screen shake feedback.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, preserving base damage hooks while enforcing customized weight.
+#   base contract, preserving base damage hooks while enforcing customized weight
+#   and calling 'super(delta)' on overrides.
 # - Dependency Inversion Principle (DIP): Injects the ElephantAIBehavior strategy 
 #   during ready state initialization and utilizes our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -117,14 +118,18 @@ func _play_heavy_step_impact() -> void:
 
 ## Visual/Audio Elephant Trumpet: Plays the designated deep trumpet sound
 func _play_elephant_chatter() -> void:
-	# Plays the dynamic majestic elephant barrito using our refactored OCP service locator.
-	# The AudioService automatically handles max spatial distance (20m) and 
-	# auto-frees the player when finished to guarantee no memory leaks!
-	AudioService.play_sfx_static("elephant_chatter", global_position)
+	# ==========================================================================
+	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
+	# Plays the elephant barrito sound with a custom 75.0 meters spatial distance.
+	# Slower, log-attenuated fade makes it sound faintly as background canyon
+	# ambience when far away, without interfering with closer combat/action sounds.
+	# ==========================================================================
+	AudioService.play_sfx_static("elephant_chatter", global_position, 75.0)
 
 
 func _process(delta: float) -> void:
-	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
+	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		

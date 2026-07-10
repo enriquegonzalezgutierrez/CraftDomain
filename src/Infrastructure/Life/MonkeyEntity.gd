@@ -117,10 +117,13 @@ func _can_socialize() -> bool:
 
 ## Visual/Audio Monkey Chatter: Plays the designated ambient spatial monkey sound
 func _play_monkey_chatter() -> void:
-	# Plays the dynamic ambient monkey sound using our refactored OCP service locator.
-	# The AudioService automatically handles max spatial distance (20m) and 
-	# auto-frees the player when finished to guarantee no memory leaks!
-	AudioService.play_sfx_static("monkey_chatter", global_position)
+	# ==========================================================================
+	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
+	# Plays the monkey sound with a custom 55.0 meters spatial distance.
+	# Slower, log-attenuated fade makes it sound faintly as background forest
+	# ambience when far away, without interfering with closer combat/action sounds.
+	# ==========================================================================
+	AudioService.play_sfx_static("monkey_chatter", global_position, 55.0)
 
 
 ## Visual Backflip: Propels vertically and rotates 360 degrees on X-axis (Pitch roll)
@@ -146,7 +149,8 @@ func _play_backflip_effect() -> void:
 
 
 func _process(delta: float) -> void:
-	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
+	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		

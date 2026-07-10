@@ -7,16 +7,26 @@
 #              throttled target scans (Zombies or Outlaw wanted players), sprinting 
 #              pursuit vectors, and calls concrete ballistical launcher strikes.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly Golem threat 
-#   scanning and combat state-machine schedules, keeping physical rigs separated.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Custom village defensive 
-#   zones, patrol anchors, or rage levels can be appended cleanly here.
-# - Liskov Substitution Principle (LSP): Fully compatible with the contract signatures.
+# - Single Responsibility Principle (SRP): EXTREME REFACTOR. Declares and manages 
+#   its own local state machine (IDLE, OVERWATCH, SPRINTING, SLAM_ATTACK) and telemetry,
+#   completely independent of monolithic global enums or knight states.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. New combat movesets 
+#   (like ground-smash, sweeping, or throwing rocks) can be added locally in this file
+#   without modifying other scripts.
+# - Liskov Substitution Principle (LSP): Fully compatible with the base contract.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Life/GolemAIBehavior.gd
 # ==============================================================================
 class_name GolemAIBehavior
 extends IAIBehavior
+
+# Localized State Machine (SRP / OCP Compliant)
+enum State {
+	IDLE,        # stationary guard stance in the plaza
+	OVERWATCH,   # mossy patrol around the village center
+	SPRINTING,   # massive heavy charge towards active threats
+	SLAM_ATTACK  # double-arm launcher strike execution
+}
 
 const SPEED_CHASE_MULT: float = 1.3
 const SPEED_PATROL: float = 1.0
@@ -35,6 +45,7 @@ const TASK_WORKING = 6
 const META_COOLDOWN := "golem_attack_cooldown"
 const META_TARGET := "golem_combat_target"
 const META_SCAN_TIMER := "golem_scan_timer"
+const META_GOLEM_STATE := "golem_local_state"
 
 
 func _init() -> void:
@@ -110,15 +121,17 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 			base_speed = host.get("BASE_SPEED") as float
 			
 		if dist_sq > RANGE_ATTACK_SQ:
+			host.set_meta(META_GOLEM_STATE, State.SPRINTING)
+			
 			# Fast mechanical charge towards threat
 			var chase_dir := diff.normalized()
 			velocity.x = chase_dir.x * base_speed * SPEED_CHASE_MULT
 			velocity.z = chase_dir.z * base_speed * SPEED_CHASE_MULT
 			host.set("velocity", velocity)
 			ai.set("wander_direction", chase_dir)
-			
-			# Note: Step-climbing and obstacles jumping are managed by NPCAIComponent.gd
 		else:
+			host.set_meta(META_GOLEM_STATE, State.SLAM_ATTACK)
+			
 			# Symmetrical stop and strike!
 			velocity.x = 0.0
 			velocity.z = 0.0
@@ -143,7 +156,14 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		var current_task: int = ai.get("current_task") as int
 		if current_task == TASK_WORKING:
 			ai.set("current_task", TASK_IDLE)
+			host.set_meta(META_GOLEM_STATE, State.IDLE)
 			ai.set("task_timer", 1.0)
+		else:
+			var is_moving := Vector2(host.velocity.x, host.velocity.z).length_squared() > 0.05
+			if is_moving:
+				host.set_meta(META_GOLEM_STATE, State.OVERWATCH)
+			else:
+				host.set_meta(META_GOLEM_STATE, State.IDLE)
 
 
 func _initialize_metadata_if_missing(host: Object) -> void:
@@ -153,6 +173,8 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 		host.set_meta(META_TARGET, "")
 	if not host.has_meta(META_SCAN_TIMER):
 		host.set_meta(META_SCAN_TIMER, SCAN_INTERVAL_SEC)
+	if not host.has_meta(META_GOLEM_STATE):
+		host.set_meta(META_GOLEM_STATE, State.IDLE)
 
 
 func _reset_golem_state(host: Object) -> void:
@@ -161,6 +183,7 @@ func _reset_golem_state(host: Object) -> void:
 		ai.set("current_task", TASK_IDLE)
 		ai.set("wander_direction", Vector3.ZERO)
 	host.set_meta(META_TARGET, "")
+	host.set_meta(META_GOLEM_STATE, State.IDLE)
 
 
 ## Proximity Scanner: Scans for active outlaws or hostile monsters
@@ -204,3 +227,22 @@ func _scan_for_active_hostile_target(host: Object) -> Node3D:
 					closest_target = child as Node3D
 					
 	return closest_target
+
+
+# ==============================================================================
+# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
+# ==============================================================================
+
+## Symmetrical Override: Maps the localized, private State enum to 
+## human-readable telemetry strings.
+func get_active_state_name(host: Object) -> String:
+	if not host.has_meta(META_GOLEM_STATE):
+		return "IDLE"
+		
+	var state_val: int = host.get_meta(META_GOLEM_STATE) as int
+	match state_val:
+		State.IDLE:        return "IDLE"
+		State.OVERWATCH:   return "OVERWATCH_PATROL"
+		State.SPRINTING:   return "CHARGE_TO_TARGET"
+		State.SLAM_ATTACK: return "LAUNCH_ATTACK"
+		_: return "IDLE"

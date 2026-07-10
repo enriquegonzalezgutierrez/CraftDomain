@@ -5,18 +5,26 @@
 # Description: Concrete AI behavior strategy implementing hostile zombie routines,
 #              including player tracking, wall flanking steering, and coordinate bites.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively manages the hostile pursuit 
-#   and combat logic, isolating decision trees from physical simulation layers.
-#   All raw physical wall-climbing and jump physics are delegated to Infrastructure.
-# - Open-Closed Principle (OCP): Extends IAIBehavior. Custom offensive movesets, 
-#   rage triggers, or target-scanning limits can be added here without editing entities.
-# - Liskov Substitution Principle (LSP): Adheres fully to the base contract, 
-#   supporting uniform execution across all Object context targets.
-# - Dependency Inversion Principle (DIP): Purges concrete framework linkages 
-#   by depending purely on Godot's abstract generic 'Object' class.
+# - Single Responsibility Principle (SRP): EXTREME REFACTOR. Declares and manages 
+#   its own local state machine (WANDERING, CHASING, ATTACKING) and telemetry reporting,
+#   completely independent of monolithic global enums.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. You can add new zombie 
+#   states (like feeding, hiding) locally in this file without modifying any other 
+#   AI system or the parent presenter.
+# - Liskov Substitution Principle (LSP): Fully compatible with the IAIBehavior 
+#   contract signatures.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/Life/ZombieAIBehavior.gd
 # ==============================================================================
 class_name ZombieAIBehavior
 extends IAIBehavior
+
+# Localized State Machine (SRP / OCP Compliant)
+enum State {
+	WANDERING,  # Standard passive roaming
+	CHASING,    # Aggressive player pursuit
+	ATTACKING   # Executing coordinate bites
+}
 
 const SPEED_CHASE: float = 2.2
 const SPEED_WANDER: float = 1.1
@@ -30,6 +38,7 @@ const META_WANDER_TIMER := "zombie_wander_timer"
 const META_WANDER_DIR := "zombie_wander_dir"
 const META_COOLDOWN := "zombie_attack_cooldown"
 const META_STUCK_TIMER := "zombie_stuck_timer"
+const META_ZOMBIE_STATE := "zombie_local_state"
 
 
 func _init() -> void:
@@ -58,7 +67,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(ai):
 		return
 		
-	# Unify physical velocity reading at top level to avoid local shadowing warnings
+	# Unify physical velocity reading at top level
 	var velocity: Vector3 = host.get("velocity")
 		
 	# 1. TACTICAL PLAYER PROXIMITY EVALUATION
@@ -76,7 +85,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 			to_player.y = 0.0
 			wander_dir = to_player
 			
-			# Flanking Wall Steering
+			# Flanking Wall Steering (Using metadata to query collision state)
 			if host.call("is_on_wall"):
 				var wall_normal: Vector3 = host.call("get_wall_normal")
 				var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
@@ -85,10 +94,10 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 					if slide_dir != Vector3.ZERO:
 						wander_dir = slide_dir
 						
-			# NOTE: Wall physical step-climbing is handled centrally by NPCAIComponent.gd
-				
 			# Attack Trigger
 			if dist_sq <= RANGE_ATTACK_SQ:
+				host.set_meta(META_ZOMBIE_STATE, State.ATTACKING)
+				
 				velocity.x = 0.0
 				velocity.z = 0.0
 				host.set("velocity", velocity)
@@ -100,15 +109,20 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 					var vis_rep: IEntityVisualRepresentation = host.get("visual_representation") as IEntityVisualRepresentation
 					if vis_rep != null:
 						vis_rep.trigger_attack_visuals()
+				return
+			else:
+				host.set_meta(META_ZOMBIE_STATE, State.CHASING)
 						
 	# 2. STANDARD RANDOM WANDERING STATE (If player is out of range)
 	if not is_tracking:
+		host.set_meta(META_ZOMBIE_STATE, State.WANDERING)
+		
 		wander_timer -= delta
 		if wander_timer <= 0.0:
 			var is_moving := randf() > 0.4
 			if is_moving:
 				var angle := randf() * TAU
-				wander_dir = Vector3(cos(angle), 0.0, sin(angle))
+				wander_dir = Vector3(cos(angle), 0, sin(angle))
 				wander_timer = randf_range(2.0, 5.0)
 			else:
 				wander_dir = Vector3.ZERO
@@ -122,21 +136,21 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 			stuck_timer += delta
 			if stuck_timer > 0.4:
 				stuck_timer = 0.0
-				var wall_normal: Vector3 = host.call("get_wall_normal")
+				var wall_normal := host.call("get_wall_normal")
 				var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
 				if flat_normal != Vector3.ZERO:
 					wander_dir = wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
 					host.set_meta(META_WANDER_DIR, wander_dir)
 				else:
 					var angle := randf() * TAU
-					wander_dir = Vector3(cos(angle), 0.0, sin(angle))
+					wander_dir = Vector3(cos(angle), 0, sin(angle))
 					host.set_meta(META_WANDER_DIR, wander_dir)
 			host.set_meta(META_STUCK_TIMER, stuck_timer)
 		else:
 			stuck_timer = 0.0
 			host.set_meta(META_STUCK_TIMER, stuck_timer)
 
-	# 3. APPLY DISPATCHED VELOCITY VECTORS AND AI COMPONENT UPDATE
+	# 3. APPLY DISPATCHED VELOCITY VECTORS
 	if wander_dir != Vector3.ZERO:
 		var active_speed := SPEED_CHASE if is_tracking else SPEED_WANDER
 		velocity.x = wander_dir.x * active_speed
@@ -159,6 +173,8 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 		host.set_meta(META_COOLDOWN, 0.0)
 	if not host.has_meta(META_STUCK_TIMER):
 		host.set_meta(META_STUCK_TIMER, 0.0)
+	if not host.has_meta(META_ZOMBIE_STATE):
+		host.set_meta(META_ZOMBIE_STATE, State.WANDERING)
 
 
 func _bite_player(host: Object, player_node: Object) -> void:
@@ -168,3 +184,21 @@ func _bite_player(host: Object, player_node: Object) -> void:
 	var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
 	if player_node.has_method("take_damage"):
 		player_node.call("take_damage", 1, knockback)
+
+
+# ==============================================================================
+# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
+# ==============================================================================
+
+## Symmetrical Override: Maps the localized, private State enum to 
+## human-readable telemetry strings.
+func get_active_state_name(host: Object) -> String:
+	if not host.has_meta(META_ZOMBIE_STATE):
+		return "WANDERING"
+		
+	var state_val: int = host.get_meta(META_ZOMBIE_STATE) as int
+	match state_val:
+		State.WANDERING: return "WANDERING"
+		State.CHASING:   return "CHASING"
+		State.ATTACKING: return "ATTACKING"
+		_: return "WANDERING"

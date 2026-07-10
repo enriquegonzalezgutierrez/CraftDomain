@@ -5,8 +5,9 @@
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Handles exclusively audio buffers,
 #   soundtrack crossfading, and dynamic spatial SFX instantiation.
-# - Open-Closed Principle (OCP): Dynamic multi-extension scanner. Attempts to 
-#   load audio files as .ogg, .mp3, or .wav automatically, preventing format crashes.
+# - Open-Closed Principle (OCP): Dynamic multi-extension scanner with adjustable 
+#   3D spatial attenuation bounds. Allows custom distances for ambient animals 
+#   without hardcoding specific rules inside the audio loop.
 # - Dependency Inversion Principle (DIP): Injected dependencies are used to 
 #   subscribe to Domain/Infrastructure events reactively.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -249,13 +250,14 @@ func _get_or_load_sfx(sfx_name: String) -> AudioStream:
 
 
 ## Static Service Locator API: Allows any scene node to trigger sounds globally.
-static func play_sfx_static(sfx_name: String, global_pos: Vector3 = Vector3.ZERO) -> void:
+## [param max_distance]: Optional parameter to set a custom 3D spatial attenuation boundary.
+static func play_sfx_static(sfx_name: String, global_pos: Vector3 = Vector3.ZERO, max_distance: float = 20.0) -> void:
 	if is_instance_valid(instance):
-		instance.play_sfx_local(sfx_name, global_pos)
+		instance.play_sfx_local(sfx_name, global_pos, max_distance)
 
 
 ## Local router: Fetches stream dynamically and plays it.
-func play_sfx_local(sfx_name: String, global_pos: Vector3 = Vector3.ZERO) -> void:
+func play_sfx_local(sfx_name: String, global_pos: Vector3 = Vector3.ZERO, max_distance: float = 20.0) -> void:
 	var stream := _get_or_load_sfx(sfx_name)
 	if stream == null:
 		return
@@ -270,23 +272,29 @@ func play_sfx_local(sfx_name: String, global_pos: Vector3 = Vector3.ZERO) -> voi
 		player_2d.play()
 		player_2d.finished.connect(player_2d.queue_free)
 	else:
-		_play_sound_3d(stream, global_pos, -2.0)
+		_play_sound_3d(stream, global_pos, -2.0, max_distance)
 
 
 ## Instantiates and plays a 3D positional sound, auto-freeing itself upon completion.
-func _play_sound_3d(stream: AudioStream, global_pos: Vector3, db_volume: float = 0.0) -> void:
+func _play_sound_3d(stream: AudioStream, global_pos: Vector3, db_volume: float = 0.0, max_distance: float = 20.0) -> void:
 	var player_3d := AudioStreamPlayer3D.new()
 	player_3d.stream = stream
 	player_3d.volume_db = db_volume
 	player_3d.bus = "SFX"
 	
-	# Attenuation curve bounds (40m gives a wide, natural fade-out for distant animal calls)
-	player_3d.max_distance = 40.0 
+	# ==========================================================================
+	# TACTICAL RANGE ATTENUATION MODEL (OCP / SOLID COMPLIANCE)
+	# Sets max_distance dynamically based on the caller specification.
+	# Scales 'unit_size' proportionally so that the sound volume rolls off 
+	# logarithmically. This allows ambient bird songs to be heard faintly 
+	# in the far background while keeping close-combat attacks short-ranged.
+	# ==========================================================================
+	player_3d.max_distance = max_distance
+	player_3d.unit_size = max_distance / 4.0 
+	player_3d.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 	
 	# ==========================================================================
 	# 3D SPATIAL ANCHOR RESOLUTION (SOLID / GODOT FIX)
-	# If world_controller is active, we append the 3D Player there, allowing 
-	# proper spatial transform tracking. Fallbacks to the root viewport.
 	# ==========================================================================
 	var parent_node: Node = self
 	if is_instance_valid(world_controller):

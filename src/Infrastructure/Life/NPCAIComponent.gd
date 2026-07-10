@@ -1,25 +1,21 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (AI Logic)
+# Layer: Infrastructure (AI Logic Rig)
 # Class: NPCAIComponent
 # Description: Rigging component managing task timers, obstacle avoidance, 
-#              and dynamic behavior delegation with high-performance execution.
+#              and physical step-climbing assistance.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Acts strictly as the task timer and 
-#   coordination hub, delegating domain-specific decision trees.
-# - Liskov Substitution Principle (LSP): Fully compatible with any PassiveEntity 
-#   host context, dynamically reading properties.
-# HOSTILE SELF-SENSING BUG RESOLVED (OCP / LSP):
-# - Added a `child != _host` check inside `_detect_closest_zombie_threat()` to 
-#   prevent hostile entities (such as Sharks, Goblins, or Gargoyles) from 
-#   detecting themselves as threats, eliminating the infinite panic loop.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/NPCAIComponent.gd
+# - Single Responsibility Principle (SRP): Actively manages the physical translation
+#   and pathing state of the NPC, delegating complex behaviors to isolated strategies.
+# - Open-Closed Principle (OCP): Integrates cleanly with interchangeable 
+#   IAIBehavior strategies, closing the core component to modification.
+# - Liskov Substitution Principle (LSP): Functions uniformly across all passive and
+#   hostile entity classes.
 # ==============================================================================
 class_name NPCAIComponent
 extends Node
 
-# Task States representing civilian, hostile, or passive actions
+# Generic Task States maintained strictly as a data-contract for the animation blenders (LSP/OCP)
 enum TaskState {
 	IDLE,       
 	WANDERING,  
@@ -30,51 +26,70 @@ enum TaskState {
 	WORKING     
 }
 
+# ==============================================================================
+# CLASS MEMBER VARIABLES
+# ==============================================================================
+## Injected AI Strategy contract (OCP Compliant)
 @export var active_behavior: IAIBehavior
 
-# Live Task States
+# Live physics and animation data-carriers (SRP compliant, read/written by strategies)
 var current_task: TaskState = TaskState.IDLE
-var task_timer: float = 0.0
 var wander_direction: Vector3 = Vector3.ZERO
+var stuck_timer: float = 0.0
+var task_timer: float = 0.0
 var social_cooldown: float = 0.0
-
-# Sibling Component references
-var _host: CharacterBody3D
-var _nav_service: Object # Decoupled navigation service lookup
 
 # Performance Lod tracker
 var _ai_timer_accum: float = 0.0
 var _ai_tick_rate: float = 0.25 # Standard throttled tick rate for decisions
 
+# Fallback movement and sensory ranges (OCP/SOLID compliant)
+var SIGHT_RANGE_SQ: float = 64.0
+var SOCIAL_RANGE_SQ: float = 9.0
+var GREET_DISTANCE_SQ: float = 12.25
+const SOCIAL_COOLDOWN_INTERVAL: float = 8.0
+
+# Pathfinding coordinates trackers
+var _active_path: Array[Vector3] = []
+var _current_path_index: int = 0
+
+# Sibling Component references
+var _host: CharacterBody3D
+var _nav_service: Object # Decoupled navigation service lookup
+
 
 func _ready() -> void:
 	name = "NPCAIComponent"
 	_host = get_parent() as CharacterBody3D
-	
-	# Randomize initial offsets to stagger logical sweeps across frames
 	_ai_timer_accum = randf_range(0.0, _ai_tick_rate)
-	task_timer = randf_range(1.0, 3.0)
 
 
+## Core processing tick executing physics-sensitive avoidance and decision throttling
 func process_ai(delta: float) -> void:
 	if not is_instance_valid(_host) or _host.get("domain_entity") == null or _host.domain_entity.is_dead:
 		return
 		
-	# Check if we have an active behavior that overrides wandering
-	var has_override := false
-	if active_behavior != null and active_behavior.get("overrides_wandering") == true:
-		has_override = true
+	# --- TELEMETRY FLUSH DISPATCH (DIP Compliant) ---
+	if is_instance_valid(AITelemetryService.instance):
+		AITelemetryService.instance.process_telemetry_flush(delta)
 		
 	# ==========================================================================
-	# HIGH-PERFORMANCE UN-THROTTLED PHYSICS ENGINE (BUG RESOLUTION)
-	# Decouples frame-by-frame velocity vectors and physical collisions from 
-	# the throttled AI decision ticks. This frees entities from freezing.
+	# HIGH-PERFORMANCE UN-THROTTLED PHYSICS ENGINE
+	# Apply sensory obstacle avoidance and step-climbing assistance EVERY FRAME (120Hz)
 	# ==========================================================================
+	_process_movement_avoidance(delta)
+	
+	var has_override := false # Declared at the top level of the function to resolve shadowed warning
+
 	_ai_timer_accum += delta
 	if _ai_timer_accum < _ai_tick_rate:
-		# Apply movement forces and jump avoidance calculations EVERY FRAME (120Hz)
-		_process_movement_avoidance(delta)
-		# ZERO-REGRESSION SHIELD: If behavior overrides wandering, do NOT overwrite its velocity here!
+		# UNFREEZE PATROLLER GALE (SOLID OCP Fix)
+		# If the active strategy does NOT override wandering, apply the fallback 
+		# movement forces every frame to keep them sliding on screen smoothly.
+		has_override = false
+		if active_behavior != null and active_behavior.get("overrides_wandering") == true:
+			has_override = true
+			
 		if not has_override:
 			_apply_movement_vectors()
 		return
@@ -82,41 +97,38 @@ func process_ai(delta: float) -> void:
 	# Reset decision clock once threshold is satisfied (runs at 4Hz)
 	_ai_timer_accum = 0.0
 	
-	# Extract trackers
-	if social_cooldown > 0.0:
-		social_cooldown -= _ai_tick_rate
-		
-	if task_timer > 0.0:
-		task_timer -= _ai_tick_rate
-		
-	# Synchronize state with active behaviors
 	_locate_navigation_service_if_missing()
 	
 	# ==========================================================================
-	# DOMAIN STRATEGY EXECUTION PIPELINE (DDD / SOLID COMPLIANCE)
-	# Call behavior with the simplified, decoupled signature
+	# DELEGATED DOMAIN STRATEGY PIPELINE (DDD / SOLID COMPLIANCE)
+	# Execute the active behavior strategy, letting it decide its own states,
+	# velocities, and write into the animation data carriers.
 	# ==========================================================================
+	has_override = false
 	if active_behavior != null:
 		active_behavior.evaluate_and_execute(_host, _ai_tick_rate)
+		has_override = active_behavior.get("overrides_wandering") == true
+
+	# ==========================================================================
+	# UNFREEZE SCHEDULER: RUN FALLBACK VILLAGE PATROLS
+	# Only run standard wandering routines for entities that do NOT override them 
+	# (e.g. Guards, Golems, Farmers, Miners, Druids in repose).
+	# ==========================================================================
+	if not has_override:
+		_process_fallback_village_routines()
+		_apply_movement_vectors()
 		
-		# OCP Fallback Flag: If set to true, this behavior strategy completely 
-		# overrides and intercepts the generic wander schedules.
-		if has_override or current_task == TaskState.WORKING:
-			_process_movement_avoidance(delta)
-			if not has_override:
-				_apply_movement_vectors()
-			return
-			
-	# Default Fallback: Standard peaceful schedules
-	_process_fallback_village_routines(delta)
+	# --- TELEMETRY LOG TRANSMISSION ---
+	_dispatch_active_telemetry()
 
 
-func _process_fallback_village_routines(delta: float) -> void:
-	# B. Evaluate state durations
+## Standard fallback behaviors executed when no specialized domain override is active
+func _process_fallback_village_routines() -> void:
+	# Evaluate state durations
 	if task_timer <= 0.0:
 		_select_next_random_task()
 		
-	# C. Scan for local threats
+	# Scan for local threats
 	var closest_hostile := _detect_closest_zombie_threat()
 	if closest_hostile != null:
 		var escape_dir := (_host.global_position - closest_hostile.global_position).normalized()
@@ -131,7 +143,7 @@ func _process_fallback_village_routines(delta: float) -> void:
 			_apply_movement_vectors()
 			return
 			
-	# D. Check Environmental and Time Schedule
+	# Check Environmental and Time Schedule
 	var is_night: bool = CelestialService.is_night_time_static()
 	var is_storming := false
 	
@@ -139,7 +151,6 @@ func _process_fallback_village_routines(delta: float) -> void:
 	if is_instance_valid(world_node):
 		var weather_node := world_node.get_node_or_null("WeatherService")
 		if is_instance_valid(weather_node):
-			# DEFENSIVE CASTING: Safely extract variant, preventing int(null) crash!
 			var cur_weather: Variant = weather_node.get("current_weather")
 			if cur_weather != null:
 				var w_val: int = int(cur_weather)
@@ -155,7 +166,7 @@ func _process_fallback_village_routines(delta: float) -> void:
 		_apply_movement_vectors()
 		return
 		
-	# E. Check Social Interactions
+	# Check Social Interactions
 	var can_socialize: bool = _host.has_method("_can_socialize") and _host.call("_can_socialize") as bool
 	var actual_player: CharacterBody3D = null
 	if is_instance_valid(world_node) and "player" in world_node:
@@ -194,24 +205,6 @@ func _process_fallback_village_routines(delta: float) -> void:
 		if not _is_direction_safe(wander_direction):
 			_active_path.clear()
 			_select_next_random_task()
-			
-	_process_movement_avoidance(delta)
-	_apply_movement_vectors()
-
-
-# ==============================================================================
-# FALLBACK MOVEMENT ROUTINES & DECOUPLED SCANNING
-# ==============================================================================
-
-var SIGHT_RANGE_SQ: float = 64.0
-var SOCIAL_RANGE_SQ: float = 9.0
-var GREET_DISTANCE_SQ: float = 12.25
-const SOCIAL_COOLDOWN_INTERVAL: float = 8.0
-
-var _spawn_point: Vector3
-var _active_path: Array[Vector3] = []
-var _current_path_index: int = 0
-var stuck_timer: float = 0.0
 
 
 func _locate_navigation_service_if_missing() -> void:
@@ -221,6 +214,7 @@ func _locate_navigation_service_if_missing() -> void:
 			_nav_service = parent.get("navigation_service")
 
 
+## Evaluates time and storm conditions to trigger shelter-seeking routes
 func _seek_shelter_routine() -> void:
 	if current_task == TaskState.IDLE and _active_path.is_empty():
 		var my_coord := Vector3i(floori(_host.global_position.x), floori(_host.global_position.y), floori(_host.global_position.z))
@@ -250,6 +244,7 @@ func _seek_shelter_routine() -> void:
 	task_timer = randf_range(1.5, 3.0)
 
 
+## Translates mathematical task targets into physical physics velocities
 func _apply_movement_vectors() -> void:
 	var base_speed: float = 1.3
 	if "BASE_SPEED" in _host:
@@ -294,24 +289,20 @@ func _apply_movement_vectors() -> void:
 			
 			var is_tethered_npc: bool = _host.has_method("_has_ui_decorations") and _host.call("_has_ui_decorations") as bool
 			if is_tethered_npc:
-				if _host.global_position.distance_squared_to(_spawn_point) > 144.0: 
+				var spawn_pt: Vector3 = _host.get("_spawn_point") if "_spawn_point" in _host else _host.global_position
+				
+				if _host.global_position.distance_squared_to(spawn_pt) > 144.0: 
 					_active_path.clear()
-					wander_direction = (_spawn_point - _host.global_position).normalized()
+					wander_direction = (spawn_pt - _host.global_position).normalized()
 					wander_direction.y = 0
 
 
 # ==============================================================================
-# PROACTIVE SENSORY OBSTACLE EVASION (Bigotes de Gato / Whisker Raycasts)
+# PROACTIVE SENSORY OBSTACLE EVASION (Whisker Raycasts)
 # ==============================================================================
 
-## Proactively scans for solid wall obstacles ahead of the host entity.
-## Uses three look-ahead vectors (straight, 30 deg left, 30 deg right).
-## If an obstacle is detected, it gently steers `wander_direction` away 
-## from the obstacle normal before a physical collision occurs.
+## Steers movement away from imminent solid block collisions detected ahead
 func _perform_proactive_whisker_avoidance(delta: float) -> void:
-	if current_task != TaskState.WANDERING and current_task != TaskState.PANIC and current_task != TaskState.WORKING:
-		return
-		
 	if wander_direction == Vector3.ZERO:
 		return
 		
@@ -319,7 +310,6 @@ func _perform_proactive_whisker_avoidance(delta: float) -> void:
 	if space_state == null:
 		return
 		
-	# Setup sensory parameters
 	var host_pos := _host.global_position
 	
 	# Determine logical height of the collider to position rays at chest-level
@@ -329,8 +319,7 @@ func _perform_proactive_whisker_avoidance(delta: float) -> void:
 		if is_instance_valid(col) and col.position.y > 0.1:
 			r_origin = host_pos + Vector3(0.0, col.position.y, 0.0)
 			
-	# Standard look-ahead scan distance (longer in panic sprints)
-	var scan_distance := 1.8 if current_task == TaskState.PANIC else 1.2
+	var scan_distance := 1.2
 	
 	# Formulate our three look-ahead vectors: Center, Left (30 deg), Right (30 deg)
 	var center_dir := wander_direction.normalized()
@@ -343,9 +332,7 @@ func _perform_proactive_whisker_avoidance(delta: float) -> void:
 	
 	for dir: Vector3 in scan_dirs:
 		var query := PhysicsRayQueryParameters3D.create(r_origin, r_origin + dir * scan_distance)
-		# Only collide with static environment blocks (Layer 1)
 		query.collision_mask = 1 
-		# Exclude the host entity and player dummy to prevent self-collision locks
 		query.exclude = [_host.get_rid()]
 		
 		var result := space_state.intersect_ray(query)
@@ -362,23 +349,22 @@ func _perform_proactive_whisker_avoidance(delta: float) -> void:
 	if best_avoidance_normal != Vector3.ZERO:
 		var flat_normal := Vector3(best_avoidance_normal.x, 0.0, best_avoidance_normal.z).normalized()
 		if flat_normal != Vector3.ZERO:
-			# Interpolate steering direction smoothly using delta
 			var steer_target := wander_direction.bounce(flat_normal).normalized()
 			wander_direction = wander_direction.lerp(steer_target, delta * 8.0).normalized()
 
 
 # ==============================================================================
-# CENTRALIZED STEP-CLIMB JUMP SOLVER (SRP Compliant)
+# CENTRALIZED STEP-CLIMB JUMP SOLVER & RECOVERY STUCK ENGINE
 # ==============================================================================
 func _process_movement_avoidance(_delta: float) -> void:
-	if current_task != TaskState.WANDERING and current_task != TaskState.PANIC and current_task != TaskState.WORKING:
-		return
-		
-	# 1. Proactive Evasion: Steer away before hitting obstacles
 	_perform_proactive_whisker_avoidance(_delta)
 		
-	# 2. Reactive Fallback: Jump or bounce if physically blocked by a wall
+	# Reactive Fallback: Jump or bounce if physically blocked by a wall
 	if _host.is_on_wall():
+		stuck_timer += _delta
+		
+		var world_node := _host.get_parent()
+		
 		if _host.is_on_floor():
 			var flat_vel := Vector2(_host.velocity.x, _host.velocity.z)
 			var speed := flat_vel.length()
@@ -397,7 +383,6 @@ func _process_movement_avoidance(_delta: float) -> void:
 				floori(_host.global_position.z)
 			)
 			var is_ceiling_solid := false
-			var world_node := _host.get_parent()
 			if is_instance_valid(world_node) and "world_state" in world_node:
 				var ws: WorldState = world_node.world_state
 				if ws != null:
@@ -418,22 +403,63 @@ func _process_movement_avoidance(_delta: float) -> void:
 				if _host.has_method("_can_jump_to"):
 					is_jump_capable = _host.call("_can_jump_to", target_coord) as bool
 					
-				if is_jump_capable:
+				# ----------------==================================================
+				# SMART STEP-CLIMBING VERIFIER: Only jump if there is an actual climbable 1-block step
+				# --------------------------------==================================
+				var is_step_climbable := false
+				if is_instance_valid(world_node) and "world_state" in world_node and world_node.world_state != null:
+					var ws: WorldState = world_node.world_state
+					var block_at_step_feet := ws.get_block(Vector3i(target_coord.x, target_coord.y - 1, target_coord.z))
+					var block_at_step_chest := ws.get_block(target_coord)
+					# Climbing is only valid if the obstacle is 1 block high (feet solid, chest empty)
+					is_step_climbable = BlockType.is_solid(block_at_step_feet) and not BlockType.is_solid(block_at_step_chest)
+					
+				if is_jump_capable and is_step_climbable:
 					_host.velocity.y = jump_vel
 					_host.set_meta("last_jump_time", current_time)
 					
-		stuck_timer += _delta
-		if stuck_timer > 0.12: 
+		# ======================================================================
+		# 3. RECOVERY STUCK ENGINE (LSP/OCP Compliant)
+		# ======================================================================
+		if stuck_timer > 0.35: 
 			stuck_timer = 0.0
 			var wall_normal := _host.get_wall_normal()
 			var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
 			if flat_normal != Vector3.ZERO:
-				wander_direction = wander_direction.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
-				_active_path.clear()
+				# Slide laterally: Rotate 90 degrees left or right randomly
+				var slide_dir := Vector3(-flat_normal.z, 0.0, flat_normal.x) if randf() > 0.5 else Vector3(flat_normal.z, 0.0, -flat_normal.x)
+				wander_direction = slide_dir.normalized()
+				
+				# Clear the stale path so the navigation service recalculates clean nodes
+				if _host.has_meta("avian_flight_state") == false: # Do not clear paths for flying avians
+					_active_path.clear()
+					# Reset task state to IDLE so they halt and select an unobstructed direction instantly on next tick!
+					current_task = TaskState.IDLE
+					task_timer = 0.1
+				
+				# Exert a slight hop to escape voxel corner clippings ONLY if it's a climbable step
+				if _host.is_on_floor() and not _host.call("_is_avian") as bool:
+					var step_dir := wander_direction
+					var projected_pos := _host.global_position + step_dir * 0.8
+					var target_coord := Vector3i(floori(projected_pos.x), floori(projected_pos.y) + 1, floori(projected_pos.z))
+					
+					var is_step_climbable := false
+					if is_instance_valid(world_node) and "world_state" in world_node and world_node.world_state != null:
+						var ws: WorldState = world_node.world_state
+						var block_at_step_feet := ws.get_block(Vector3i(target_coord.x, target_coord.y - 1, target_coord.z))
+						var block_at_step_chest := ws.get_block(target_coord)
+						is_step_climbable = BlockType.is_solid(block_at_step_feet) and not BlockType.is_solid(block_at_step_chest)
+						
+					if is_step_climbable:
+						var hop_vel: float = 4.0
+						if "JUMP_VELOCITY" in _host:
+							hop_vel = _host.get("JUMP_VELOCITY") * 0.8
+						_host.velocity.y = hop_vel
 	else:
 		stuck_timer = 0.0
 
 
+## Calculates random next tasks or triggers pathfinding towards random points
 func _select_next_random_task() -> void:
 	var roll := randf()
 	
@@ -486,6 +512,7 @@ func _select_next_random_task() -> void:
 		task_timer = randf_range(0.4, 1.2)
 
 
+## Checks if a certain direction is safe from deep liquids, voids, or solid walls
 func _is_direction_safe(dir: Vector3) -> bool:
 	if not is_instance_valid(_host):
 		return false
@@ -514,9 +541,16 @@ func _is_direction_safe(dir: Vector3) -> bool:
 	elif habitat == 1: # AMPHIBIOUS
 		var is_water: bool = block_below == 6 or block_at == 6
 		var is_shore: bool = block_below == 7 or block_below == 11 # 7 = SAND, 11 = MUD
+		# Symmetrical wall check: prevent amphibious scuttling straight into solid stone borders
+		if BlockType.is_solid(block_at):
+			return false
 		return is_water or is_shore
 	else: # TERRESTRIAL
-		var is_water: bool = block_below == 6 or block_below == 15 or block_at == 6 # 15 = LAVA
+		# Proactively reject walking paths pointing straight into solid blocking walls
+		if BlockType.is_solid(block_at):
+			return false
+			
+		var is_liquid: bool = block_below == 6 or block_below == 15 or block_at == 6 # 15 = LAVA
 		var is_void: bool = block_below == 0 # 0 = AIR
 		
 		if is_void:
@@ -524,7 +558,7 @@ func _is_direction_safe(dir: Vector3) -> bool:
 			if block_2_below != 0 and block_2_below != 6 and block_2_below != 15:
 				is_void = false
 				
-		return not is_water and not is_void
+		return not is_liquid and not is_void
 
 
 func _detect_closest_zombie_threat() -> Node3D:
@@ -536,12 +570,6 @@ func _detect_closest_zombie_threat() -> Node3D:
 	
 	var hostiles := _host.get_tree().get_nodes_in_group("hostiles")
 	for child: Node in hostiles:
-		# ======================================================================
-		# ANTI-SELF-SENSING SHIELD (BUG FIX)
-		# Skip scanning ourselves if this host entity is registered in the 
-		# hostiles group (such as the aggressive Shark, Goblin, or Gargoyle),
-		# permanently resolving the infinite loop on spawn.
-		# ======================================================================
 		if child == _host:
 			continue
 			
@@ -576,3 +604,51 @@ func _detect_closest_peer_npc() -> Node3D:
 						closest_peer = child as Node3D
 						
 	return closest_peer
+
+
+# ==============================================================================
+# TELEMETRY LOG DISPATCHING SERVICES
+# ==============================================================================
+
+## Formulates and dispatches current diagnostic parameters to the Telemetry Service
+func _dispatch_active_telemetry() -> void:
+	if is_instance_valid(AITelemetryService.instance) and is_instance_valid(_host):
+		var active_task_name := "IDLE"
+		if active_behavior != null and active_behavior.has_method("get_active_state_name"):
+			active_task_name = str(active_behavior.call("get_active_state_name", _host))
+		else:
+			active_task_name = _get_task_state_name(current_task)
+			
+		var waypoints_left := _active_path.size() - _current_path_index if _active_path.size() > 0 else 0
+		
+		# Normalize key names to match localization files
+		var lookup_key := active_task_name
+		if lookup_key == "WANDERING":
+			lookup_key = "WANDER"
+		elif lookup_key == "CHATTING":
+			lookup_key = "CHAT"
+		
+		var localized_task_name := tr("SHOWCASE_TASK_" + lookup_key).to_upper()
+		
+		AITelemetryService.log_movement(
+			_host.name,
+			_host.global_position,
+			_host.velocity,
+			wander_direction,
+			localized_task_name,
+			_host.is_on_wall(),
+			_host.is_on_floor(),
+			waypoints_left
+		)
+
+
+func _get_task_state_name(task_val: int) -> String:
+	match task_val:
+		0: return "IDLE"
+		1: return "WANDERING"
+		2: return "EXAMINING"
+		3: return "GREETING"
+		4: return "CHATTING"
+		5: return "PANIC"
+		6: return "WORKING"
+		_: return "IDLE"

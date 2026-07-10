@@ -8,17 +8,25 @@
 #              strikes, and procedurally replacing the mined blocks with raw Stone,
 #              triggering geological particle feedback.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Only coordinates the mineral scanning, 
-#   navigation pathing, and extraction loop of the Miner entity.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. New ores, diamond 
-#   drills, or cave-in evasion parameters can be appended cleanly here.
-# - Liskov Substitution Principle (LSP): Fully compatible with the IAIBehavior 
-#   contract signatures, making it interchangeable with other strategies.
+# - Single Responsibility Principle (SRP): EXTREME REFACTOR. Declares and manages 
+#   its own local state machine (IDLE, SCANNING, MINING) and telemetry reporting,
+#   completely independent of monolithic global enums.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. New mining states 
+#   (like extracting diamonds, placing supports, or retreating from cave-ins) 
+#   can be added locally without touching other systems.
+# - Liskov Substitution Principle (LSP): Fully compatible with the base contract.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/Life/MinerAIBehavior.gd
 # ==============================================================================
 class_name MinerAIBehavior
 extends IAIBehavior
+
+# Localized State Machine (SRP / OCP Compliant)
+enum State {
+	IDLE,       # resting/sleeping between tasks
+	SCANNING,   # exploring cavern tunnels looking for coal veins
+	MINING      # walking to or actively extracting the ore
+}
 
 const SCAN_INTERVAL_SEC: float = 3.0
 const MINE_DURATION_SEC: float = 2.0
@@ -31,6 +39,7 @@ const TASK_WORKING = 6
 const META_SCAN_TIMER := "miner_scan_timer"
 const META_TARGET_ORE := "miner_target_ore"
 const META_MINE_TIMER := "miner_mine_timer"
+const META_MINER_STATE := "miner_local_state"
 
 
 ## Concrete Contract: Drives the cavern mining and exploration cycles
@@ -56,6 +65,8 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	var current_task: int = ai.get("current_task") as int
 	
 	if current_task != TASK_WORKING:
+		host.set_meta(META_MINER_STATE, State.SCANNING)
+		
 		# 1. CAVERN VEIN SCANNING STATE
 		scan_timer -= delta
 		if scan_timer <= 0.0:
@@ -65,11 +76,13 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 				target_ore = found_ore
 				mine_timer = MINE_DURATION_SEC
 				ai.set("current_task", TASK_WORKING)
+				host.set_meta(META_MINER_STATE, State.MINING)
 				
 		host.set_meta(META_SCAN_TIMER, scan_timer)
 		host.set_meta(META_TARGET_ORE, target_ore)
 		host.set_meta(META_MINE_TIMER, mine_timer)
 	else:
+		host.set_meta(META_MINER_STATE, State.MINING)
 		# 2. ORE EXTRACTION STATE
 		_execute_cavern_mining(host, ai, delta)
 
@@ -81,6 +94,8 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 		host.set_meta(META_TARGET_ORE, Vector3i(0, -999, 0))
 	if not host.has_meta(META_MINE_TIMER):
 		host.set_meta(META_MINE_TIMER, 0.0)
+	if not host.has_meta(META_MINER_STATE):
+		host.set_meta(META_MINER_STATE, State.IDLE)
 
 
 func _reset_miner_state(host: Object) -> void:
@@ -90,6 +105,7 @@ func _reset_miner_state(host: Object) -> void:
 		ai.set("wander_direction", Vector3.ZERO)
 	host.set_meta(META_TARGET_ORE, Vector3i(0, -999, 0))
 	host.set_meta(META_MINE_TIMER, 0.0)
+	host.set_meta(META_MINER_STATE, State.IDLE)
 
 
 ## Proximity Scanner: Identifies Coal Ore (ID 21) within 3 meters in the caverns
@@ -125,6 +141,7 @@ func _execute_cavern_mining(host: Object, ai: Object, delta: float) -> void:
 	var target_ore: Vector3i = host.get_meta(META_TARGET_ORE) as Vector3i
 	if target_ore.y == -999:
 		ai.set("current_task", TASK_IDLE)
+		host.set_meta(META_MINER_STATE, State.IDLE)
 		return
 		
 	var target_pos := Vector3(target_ore) + Vector3(0.5, 0.0, 0.5)
@@ -178,7 +195,26 @@ func _execute_cavern_mining(host: Object, ai: Object, delta: float) -> void:
 			
 			target_ore = Vector3i(0, -999, 0)
 			ai.set("current_task", TASK_IDLE)
+			host.set_meta(META_MINER_STATE, State.IDLE)
 			ai.set("task_timer", 3.0) # Rest time before next sweep
 			
 		host.set_meta(META_MINE_TIMER, mine_timer)
 		host.set_meta(META_TARGET_ORE, target_ore)
+
+
+# ==============================================================================
+# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
+# ==============================================================================
+
+## Symmetrical Override: Maps the localized, private State enum to 
+## human-readable telemetry strings.
+func get_active_state_name(host: Object) -> String:
+	if not host.has_meta(META_MINER_STATE):
+		return "IDLE"
+		
+	var state_val: int = host.get_meta(META_MINER_STATE) as int
+	match state_val:
+		State.IDLE:     return "IDLE"
+		State.SCANNING: return "SCANNING_ORE"
+		State.MINING:   return "EXTRACTING_COAL"
+		_: return "IDLE"

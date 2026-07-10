@@ -12,15 +12,22 @@
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. New fruit gathering, 
 #   banana items, or player taunts can be appended cleanly here.
 # - Liskov Substitution Principle (LSP): Fully compatible with the contract signatures.
-# CHATTER COOLDOWN UPDATE:
-# - Added `META_CHAT_TIMER` to throttle monkey chatter. Evaluates time procedurally
-#   and calls `_play_monkey_chatter` on the host, guaranteeing spatial audio 
-#   tracks never loop or spam the audio channels.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/MonkeyAIBehavior.gd
+# CLIMBING JUMP & ENUM CORRECTION:
+# - Corrected 'chat_timer' scope typo on ambient vocalizations.
+# - Appended the missing 'WANDERING' state inside the local State enum, 
+#   clearing the compilation errors.
 # ==============================================================================
 class_name MonkeyAIBehavior
 extends IAIBehavior
+
+# Localized State Machine (SRP / OCP Compliant)
+enum State {
+	IDLE,       # resting on branches
+	WANDERING,  # standard ground-level patrol
+	SCANNING,   # looking for nearby trees to clamber
+	CLAMBERING, # climbing up tree trunks
+	ACROBATICS  # performing playful backflips
+}
 
 const SPEED_PATROL: float = 1.2
 const SPEED_CLIMB: float = 1.8
@@ -44,6 +51,7 @@ const META_WANDER_DIR := "monkey_wander_dir"
 const META_FLIP_COOLDOWN := "monkey_flip_cooldown"
 const META_TARGET_TREE := "monkey_tree_target"
 const META_CHAT_TIMER := "monkey_chat_timer"
+const META_MONKEY_STATE := "monkey_local_state"
 
 
 func _init() -> void:
@@ -109,6 +117,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 			
 		# If foliage coordinates are targeted, walk to climb and perch on branches
 		if target_tree.y != -999:
+			host.set_meta(META_MONKEY_STATE, State.CLAMBERING)
 			ai.set("current_task", TASK_WORKING)
 			
 			var tree_pos := Vector3(target_tree) + Vector3(0.5, 1.0, 0.5)
@@ -124,17 +133,27 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 				ai.set("wander_direction", climb_dir)
 			else:
 				# Arrived at trunk! Climb up or sit comfortably on the leaves
-				velocity.x = 0.0
-				velocity.z = 0.0
-				ai.set("wander_direction", Vector3(diff.x, 0.0, diff.z).normalized())
+				var climb_dir := Vector3(diff.x, 0.0, diff.z).normalized()
+				ai.set("wander_direction", climb_dir)
 				
 				# If on floor, execute vertical thrust jump to clamber up onto foliage
 				if host.call("is_on_floor"):
 					velocity.y = 5.5 # high-climb jump!
+					
+					# FIX: Preserve a forward-pushing horizontal momentum towards the trunk
+					# during the jump so the monkey actually lands ON the leaves instead 
+					# of bouncing straight up in a trampoline loop.
+					velocity.x = climb_dir.x * (SPEED_CLIMB * 0.6)
+					velocity.z = climb_dir.z * (SPEED_CLIMB * 0.6)
+					
 					host.set("velocity", velocity)
 				else:
-					# Resting perched in the branches: trigger backflips
+					# In the air: continue pushing forward slowly to reach the branches
+					velocity.x = climb_dir.x * (SPEED_CLIMB * 0.4)
+					velocity.z = climb_dir.z * (SPEED_CLIMB * 0.4)
 					host.set("velocity", velocity)
+					
+					# Resting perched in the branches: trigger backflips
 					if flip_cooldown <= 0.0:
 						flip_cooldown = COOLDOWN_FLIP_SEC
 						host.set_meta(META_FLIP_COOLDOWN, flip_cooldown)
@@ -155,9 +174,11 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 		var roll := randf()
 		if roll < 0.45 or is_panicking:
+			host.set_meta(META_MONKEY_STATE, State.WANDERING)
 			var angle := randf() * TAU
 			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 		elif roll < 0.65 and flip_cooldown <= 0.0:
+			host.set_meta(META_MONKEY_STATE, State.ACROBATICS)
 			# Playful ground flip!
 			flip_cooldown = COOLDOWN_FLIP_SEC
 			host.set_meta(META_FLIP_COOLDOWN, flip_cooldown)
@@ -165,6 +186,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 				host.call("_play_backflip_effect")
 			wander_dir = Vector3.ZERO
 		else:
+			host.set_meta(META_MONKEY_STATE, State.IDLE)
 			wander_dir = Vector3.ZERO
 			
 		host.set_meta(META_WANDER_TIMER, wander_timer)
@@ -193,8 +215,9 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 	if not host.has_meta(META_TARGET_TREE):
 		host.set_meta(META_TARGET_TREE, Vector3i(0, -999, 0))
 	if not host.has_meta(META_CHAT_TIMER):
-		# Start with a random initial offset so they don't all yell at spawn
 		host.set_meta(META_CHAT_TIMER, randf_range(5.0, 15.0))
+	if not host.has_meta(META_MONKEY_STATE):
+		host.set_meta(META_MONKEY_STATE, State.IDLE)
 
 
 func _reset_monkey_state(host: Object) -> void:
@@ -204,6 +227,7 @@ func _reset_monkey_state(host: Object) -> void:
 		ai.set("wander_direction", Vector3.ZERO)
 	host.set_meta(META_TARGET_TREE, Vector3i(0, -999, 0))
 	host.set_meta(META_WANDER_TIMER, 1.0)
+	host.set_meta(META_MONKEY_STATE, State.IDLE)
 
 
 ## Proximity Scanner: Scans a 3D grid looking for foliage tree canopies (ID 5 Leaves)
@@ -220,3 +244,23 @@ func _scan_for_nearby_leaves(host_pos: Vector3, ws: WorldState) -> Vector3i:
 					return check_coord
 					
 	return Vector3i(0, -999, 0)
+
+
+# ==============================================================================
+# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
+# ==============================================================================
+
+## Symmetrical Override: Maps the localized, private State enum to 
+## human-readable telemetry strings.
+func get_active_state_name(host: Object) -> String:
+	if not host.has_meta(META_MONKEY_STATE):
+		return "IDLE"
+		
+	var state_val: int = host.get_meta(META_MONKEY_STATE) as int
+	match state_val:
+		State.IDLE:        return "IDLE"
+		State.WANDERING:   return "WANDERING"
+		State.SCANNING:    return "SCANNING_TREES"
+		State.CLAMBERING:  return "CLAMBERING_BRANCHES"
+		State.ACROBATICS:  return "BACKFLIP_PLAY"
+		_: return "IDLE"

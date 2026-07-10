@@ -10,7 +10,8 @@
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, local audio vocal timers, and warning visual particles.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations.
+#   base contract, relying 100% on the base physics loop for standard translations
+#   without compiling conflicts.
 # - Dependency Inversion Principle (DIP): Injects the CatAIBehavior strategy 
 #   during ready state initialization and utilizes our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -87,10 +88,13 @@ func _can_socialize() -> bool:
 
 ## Visual/Audio Cat Vocalization: Plays the designated 3D spatial cozy meow
 func _play_cat_vocal() -> void:
-	# Plays the dynamic ambient cat meow using our refactored OCP service locator.
-	# The AudioService automatically handles max spatial distance (20m) and 
-	# auto-frees the player when finished to guarantee no memory leaks!
-	AudioService.play_sfx_static("cat_meow", global_position)
+	# ==========================================================================
+	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
+	# Plays the cat meow sound with a custom 40.0 meters spatial distance.
+	# Slower, log-attenuated fade makes it sound faintly as background village
+	# ambience when far away, without interfering with closer combat/action sounds.
+	# ==========================================================================
+	AudioService.play_sfx_static("cat_meow", global_position, 40.0)
 
 
 ## Visual Alarm: Instantiates warning alert, locks gaze onto zombie and triggers sparks
@@ -148,7 +152,8 @@ func _spawn_hiss_alert_particles() -> void:
 
 
 func _process(delta: float) -> void:
-	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
+	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		

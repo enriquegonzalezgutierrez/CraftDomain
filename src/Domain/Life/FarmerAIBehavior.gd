@@ -5,19 +5,25 @@
 # Description: Concrete AI behavior strategy implementing agricultural routines 
 #              including local crop scanning, path navigation, and harvesting.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively manages the agricultural 
-#   decision-making state machine, completely isolated from physics and visuals.
-#   All raw physical wall-climbing and jump physics are delegated to Infrastructure.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. New crops or farming 
-#   actions can be extended here without modifying standard entity nodes.
-# - Liskov Substitution Principle (LSP): Adheres fully to the base contract, 
-#   making it interchangeable with other behavior strategies.
-# - Dependency Inversion Principle (DIP): Communicates with the physical actor 
-#   and AI systems using generic 'Object' dynamic routing, eliminating concrete 
-#   compile-time imports of 'NPCAIComponent' or framework 'CharacterBody3D' nodes.
+# - Single Responsibility Principle (SRP): EXTREME REFACTOR. Declares and manages 
+#   its own local state machine (IDLE, SCANNING, HARVESTING) and telemetry reporting,
+#   completely independent of monolithic global enums.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. New agricultural 
+#   states (like watering, planting seeds, or resting) can be added locally 
+#   without modifying any other system.
+# - Liskov Substitution Principle (LSP): Fully compatible with the base contract.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Domain/Life/FarmerAIBehavior.gd
 # ==============================================================================
 class_name FarmerAIBehavior
 extends IAIBehavior
+
+# Localized State Machine (SRP / OCP Compliant)
+enum State {
+	IDLE,       # resting/sleeping between tasks
+	SCANNING,   # looking around the fields for mature crops
+	HARVESTING  # walking to or actively reaping the wheat
+}
 
 const SCAN_INTERVAL_SEC: float = 3.0
 const HARVEST_DURATION_SEC: float = 1.8
@@ -30,6 +36,7 @@ const TASK_WORKING = 6
 const META_SCAN_TIMER := "farmer_scan_timer"
 const META_TARGET_CROP := "farmer_target_crop"
 const META_HARVEST_TIMER := "farmer_harvest_timer"
+const META_FARMER_STATE := "farmer_local_state"
 
 
 ## Concrete Implementation: Drives the farmer's agricultural state machine
@@ -56,6 +63,8 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	var current_task: int = ai.get("current_task")
 	
 	if current_task != TASK_WORKING:
+		host.set_meta(META_FARMER_STATE, State.SCANNING)
+		
 		# 1. SCANNING STATE: Look for mature wheat blocks nearby
 		scan_timer -= delta
 		if scan_timer <= 0.0:
@@ -65,11 +74,13 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 				target_crop = found_crop
 				harvest_timer = HARVEST_DURATION_SEC
 				ai.set("current_task", TASK_WORKING)
+				host.set_meta(META_FARMER_STATE, State.HARVESTING)
 				
 		host.set_meta(META_SCAN_TIMER, scan_timer)
 		host.set_meta(META_TARGET_CROP, target_crop)
 		host.set_meta(META_HARVEST_TIMER, harvest_timer)
 	else:
+		host.set_meta(META_FARMER_STATE, State.HARVESTING)
 		# 2. EXECUTION STATE: Move to target, play animations, and harvest
 		_execute_crop_harvesting(host, ai, delta)
 
@@ -81,6 +92,8 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 		host.set_meta(META_TARGET_CROP, Vector3i(0, -999, 0))
 	if not host.has_meta(META_HARVEST_TIMER):
 		host.set_meta(META_HARVEST_TIMER, 0.0)
+	if not host.has_meta(META_FARMER_STATE):
+		host.set_meta(META_FARMER_STATE, State.IDLE)
 
 
 func _reset_farmer_state(host: Object) -> void:
@@ -90,6 +103,7 @@ func _reset_farmer_state(host: Object) -> void:
 		ai.set("wander_direction", Vector3.ZERO)
 	host.set_meta(META_TARGET_CROP, Vector3i(0, -999, 0))
 	host.set_meta(META_HARVEST_TIMER, 0.0)
+	host.set_meta(META_FARMER_STATE, State.IDLE)
 
 
 ## Proximity Scanner: Identifies mature wheat blocks within 3 meters
@@ -124,6 +138,7 @@ func _execute_crop_harvesting(host: Object, ai: Object, delta: float) -> void:
 	var target_crop: Vector3i = host.get_meta(META_TARGET_CROP)
 	if target_crop.y == -999:
 		ai.set("current_task", TASK_IDLE)
+		host.set_meta(META_FARMER_STATE, State.IDLE)
 		return
 		
 	var target_pos := Vector3(target_crop) + Vector3(0.5, 0.0, 0.5)
@@ -135,7 +150,6 @@ func _execute_crop_harvesting(host: Object, ai: Object, delta: float) -> void:
 	if "BASE_SPEED" in host:
 		base_speed = host.get("BASE_SPEED")
 		
-	# Declare velocity once at scope level to avoid local shadowing warnings
 	var velocity: Vector3 = host.get("velocity")
 		
 	if diff.length() > 1.1:
@@ -145,8 +159,6 @@ func _execute_crop_harvesting(host: Object, ai: Object, delta: float) -> void:
 		velocity.z = wander_dir.z * base_speed
 		host.set("velocity", velocity)
 		ai.set("wander_direction", wander_dir)
-		
-		# NOTE: Wall physical step-climbing is handled centraly by NPCAIComponent.gd
 	else:
 		# Target Reached: Halt coordinates and execute swing timers
 		velocity.x = 0.0
@@ -162,17 +174,14 @@ func _execute_crop_harvesting(host: Object, ai: Object, delta: float) -> void:
 		harvest_timer -= delta
 		
 		if harvest_timer <= 0.0:
-			# Execute Block-Overwrites across the coordinate system
 			var world_node: Node = null
 			if host.has_method("get_parent"):
 				world_node = host.call("get_parent") as Node
 				
 			if is_instance_valid(world_node) and world_node.has_method("set_block_globally"):
-				# 0 = BlockType.Type.AIR, 18 = BlockType.Type.CROP_SEED
 				world_node.call("set_block_globally", target_crop, 0)
 				world_node.call("set_block_globally", target_crop, 18)
 				
-				# DDD COMPLIANT: Ask the infrastructure controller to trigger the visual particles
 				if world_node.has_method("spawn_replant_particles"):
 					world_node.call("spawn_replant_particles", Vector3(target_crop))
 				
@@ -181,7 +190,26 @@ func _execute_crop_harvesting(host: Object, ai: Object, delta: float) -> void:
 			
 			target_crop = Vector3i(0, -999, 0)
 			ai.set("current_task", TASK_IDLE)
+			host.set_meta(META_FARMER_STATE, State.IDLE)
 			ai.set("task_timer", 2.0)
 			
 		host.set_meta(META_TARGET_CROP, target_crop)
 		host.set_meta(META_HARVEST_TIMER, harvest_timer)
+
+
+# ==============================================================================
+# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
+# ==============================================================================
+
+## Symmetrical Override: Maps the localized, private State enum to 
+## human-readable telemetry strings.
+func get_active_state_name(host: Object) -> String:
+	if not host.has_meta(META_FARMER_STATE):
+		return "IDLE"
+		
+	var state_val: int = host.get_meta(META_FARMER_STATE) as int
+	match state_val:
+		State.IDLE:       return "IDLE"
+		State.SCANNING:   return "SCANNING_CROPS"
+		State.HARVESTING: return "HARVESTING"
+		_: return "IDLE"

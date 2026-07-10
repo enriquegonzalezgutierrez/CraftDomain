@@ -33,7 +33,7 @@ const MODEL_BASE_Y: float = 0.0
 const COOLDOWN_CHAT_MIN_SEC: float = 15.0
 const COOLDOWN_CHAT_MAX_SEC: float = 25.0
 
-# Start with a random initial offset so they don't all yell at spawn
+# Start with a random initial offset on spawn so they don't sync up
 var _chat_timer: float = randf_range(5.0, 15.0)
 
 
@@ -91,10 +91,13 @@ func _can_socialize() -> bool:
 
 ## Visual/Audio Avian Chatter: Plays the designated long 3D spatial bird song
 func _play_avian_chatter() -> void:
-	# Plays the dynamic ambient bird song using our refactored OCP service locator.
-	# The AudioService automatically handles max spatial distance (20m) and 
-	# auto-frees the player when finished to guarantee no memory leaks!
-	AudioService.play_sfx_static("bird_chatter", global_position)
+	# ==========================================================================
+	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
+	# Plays the bird song with a custom 60.0 meters spatial distance.
+	# Slower, log-attenuated fade makes it sound faintly as background forest
+	# ambience when far away, without interfering with closer combat/action sounds.
+	# ==========================================================================
+	AudioService.play_sfx_static("bird_chatter", global_position, 60.0)
 
 
 # ==============================================================================
@@ -106,7 +109,7 @@ func _process(delta: float) -> void:
 		return
 
 	# ==========================================================================
-	# AMBIENT CHATTER TIMER (SRP / OCP Compliant)
+	# AMBIENT CHATTER TIMER (OCP / SRP Compliant)
 	# Processed locally in the presenter to decouple audio from domain flight nodes
 	# ==========================================================================
 	var is_panicking := false

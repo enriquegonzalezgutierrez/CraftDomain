@@ -13,13 +13,18 @@
 #   parent class, utilizing its base physics and save loops transparently.
 # - Dependency Inversion Principle (DIP): Receives its behavioral decision tree 
 #   via dynamic strategy injection on startup.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
 class_name FarmerEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/farmer/farmer_base.fbx"
+
+# ==============================================================================
+# MIXAMO ORIENTATION COMPENSATOR (OCP SHIELD)
+# Compensates for this specific FBX skeleton export direction by adding 180 degrees
+# of offset, aligning his face directly with his walking velocity.
+# ==============================================================================
+var gaze_rotation_offset: float = PI
 
 # Sibling node references
 var player: CharacterBody3D
@@ -131,8 +136,11 @@ func _detect_current_biome() -> int:
 		if generator_node != null:
 			var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
-				# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise) as BiomeService.BiomeProfile
 				return profile.biome_id
 				
 	return default_biome_id
+
+
+func _get_humanoid_role() -> int:
+	return 3 # ProceduralVoxelRepresentation.RoleType.FARMER

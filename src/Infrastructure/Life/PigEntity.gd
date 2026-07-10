@@ -9,7 +9,7 @@
 # - Single Responsibility Principle (SRP): Handles exclusively physical
 #   passive movement, panic bounces, local audio vocal timers, and signal-bound loot drops.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers.
+#   base contract, utilizing inherited dynamic height solvers without compilation conflicts.
 # - Dependency Inversion Principle (DIP): Relies on abstract interfaces 
 #   (IInventory) to process loot drops and our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -101,10 +101,13 @@ func _can_socialize() -> bool:
 
 ## Visual/Audio Pig Vocalization: Plays the designated 3D spatial oink grunt
 func _play_pig_vocal() -> void:
-	# Plays the dynamic ambient pig oink using our refactored OCP service locator.
-	# The AudioService automatically handles max spatial distance (20m) and 
-	# auto-frees the player when finished to guarantee no memory leaks!
-	AudioService.play_sfx_static("pig_oink", global_position)
+	# ==========================================================================
+	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
+	# Plays the pig oink sound with a custom 40.0 meters spatial distance.
+	# Slower, log-attenuated fade makes it sound faintly as background pasture
+	# ambience when far away, without interfering with closer combat/action sounds.
+	# ==========================================================================
+	AudioService.play_sfx_static("pig_oink", global_position, 40.0)
 
 
 func _process(delta: float) -> void:

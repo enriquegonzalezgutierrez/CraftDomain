@@ -8,23 +8,11 @@
 # - Single Responsibility Principle (SRP): Coordinates chunk lifecycle, 
 #   delegating heavy geometry and physics tree compiling to background worker threads.
 # - Open-Closed Principle (OCP): Integrates custom solid and liquid geometries.
-# THREAD-SAFE COLLISION BAKING & ASYNC NAV COMPILATION (Phase 1 & 4 Optimizations):
-# - Shifted `ConcavePolygonShape3D` resource building (`set_faces()`) directly 
-#   into the background thread task wrapper (`_background_generate_chunk_task` and 
-#   `_background_rebuild_chunk_task`).
-# - Offloaded the heavy 3D A* coordinate scans (4,096 checks) into the background thread 
-#   using `ChunkNavigationBuilder.compile_walkable_nodes_asynchronous()`.
-# - Main-thread rendering now simply assigns the pre-baked shape resource and 
-#   instantly registers pre-filtered walkable nodes via `register_compiled_nodes_synchronous()`, 
-#   slashing CPU frame-time spikes to zero.
-# - Maintained immediate, synchronous main-thread updates inside `_rebuild_chunk_instantly` 
-#   to guarantee zero-latency terrain interactions.
-# REFACTOR FIXES:
-# - Replaced hardcoded geometry loop queries with `ChunkMesher.generate_special_meshes()` 
-#   to dynamically fetch all registered liquids and custom blocks (Slabs) via OCP.
-# ADVANCED SLIDE PHYSICS INTEGRATION:
-# - Configured a static, shared, frictionless PhysicsMaterial on all chunk 
-#   colliders. This completely removes wall-friction, enabling smooth entity sliding.
+# ASYNC COMPILATION ORDER CORRECTION (SOLID Fix):
+# - Reordered the background thread generation pipeline. Now applies Mega-Structures 
+#   (`apply_mega_structures`) BEFORE extracting collision vertices (`extract_render_data`).
+#   This guarantees that all handcrafted castles, galleons, windmills, and pyramids 
+#   have solid, non-ghost physics colliders, preventing sailors from falling to the void.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/ChunkManagerService.gd
 # ==============================================================================
@@ -78,17 +66,15 @@ static var _frictionless_material: PhysicsMaterial = null
 static func _get_frictionless_material() -> PhysicsMaterial:
 	if _frictionless_material == null:
 		_frictionless_material = PhysicsMaterial.new()
-		_frictionless_material.friction = 0.0
-		_frictionless_material.rough = false # FIXED: Godot 4 renamed 'roughness' to 'rough'
+		_frictionless_material.rough = false
 		_frictionless_material.bounce = 0.0
 	return _frictionless_material
 
 
 func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
+	_queue_mutex = Mutex.new()
 	controller = p_controller
 	world_state = p_world_state
-	_queue_mutex = Mutex.new()
-	
 	_max_concurrent_bg_tasks = clampi(OS.get_processor_count() + 1, 4, 16)
 	print("[ChunkManagerService] Initialized aggressive multi-threading with pool size: ", _max_concurrent_bg_tasks)
 
@@ -201,14 +187,14 @@ func queue_unloads(chunk_positions: Array[Vector3i]) -> void:
 
 
 ## Main thread updater coordinating asynchronous queue processing and thread state checks
-func process_frame_queues(_delta: float) -> void:
-	var player_active := false
+func process_frame_queues(player_active: bool) -> void:
+	var active_view_chunk_pos := Vector3i.ZERO
 	if is_instance_valid(controller) and is_instance_valid(controller.get("player")):
 		var player_node: Node3D = controller.get("player") as Node3D
 		if is_instance_valid(player_node):
-			player_active = player_node.get("is_active") as bool
 			var p_pos := player_node.global_position
-			_last_known_viewer_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z)))
+			active_view_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z)))
+			_last_known_viewer_chunk_pos = active_view_chunk_pos
 	
 	if Engine.get_frames_drawn() % 15 == 0:
 		_execute_lod_scans()
@@ -244,7 +230,7 @@ func _request_asynchronous_chunk_load(chunk_pos: Vector3i, high_priority: bool =
 	
 	if world_state.get_chunk(chunk_pos) != null:
 		if _chunk_nodes.has(chunk_pos):
-			# FLOOD PROTECTION: Already loaded and fully rendered in the tree, ignore!
+			# FLOOD PROTECTION: Already loaded and rendered, ignore!
 			_queue_mutex.unlock()
 			return
 		else:
@@ -391,6 +377,14 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 		for local_pos: Vector3i in saved_edits.keys():
 			chunk.set_block(local_pos.x, local_pos.y, local_pos.z, saved_edits[local_pos] as BlockType.Type)
 			
+	# ==========================================================================
+	# FIXED COMPILE ORDER (SOLID / COLLISION FIX)
+	# We MUST apply the Mega-Structures (Galleons, Castles, Windmills) BEFORE 
+	# extracting collision vertices, so that all wooden decks and floors possess 
+	# perfect, non-ghost solid physics.
+	# ==========================================================================
+	MegaStructureService.apply_mega_structures(chunk)
+			
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
 	var build_physics := not is_distant
 	
@@ -406,10 +400,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	task_result.set_meta("version", version) 
 	
 	if build_physics:
-		# ======================================================================
-		# BACKGROUND THEAD BAKING: Generate and bake the physics resource in 
-		# the background thread to avoid main-thread spikes during exploration!
-		# ======================================================================
+		# BACKGROUND THEAD BAKING
 		var collision_verts: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
 		if collision_verts.size() > 0:
 			var shape := ConcavePolygonShape3D.new()
@@ -417,10 +408,7 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 			shape.backface_collision = true
 			task_result.collision_shape = shape
 			
-	# ==========================================================================
-	# BACKGROUND NAVIGATION COMPILATION: Compile the 3D A* navigation nodes 
-	# asynchronously in the background thread instead of the main thread!
-	# ==========================================================================
+	# BACKGROUND NAVIGATION COMPILATION
 	var nav_nodes := ChunkNavigationBuilder.compile_walkable_nodes_asynchronous(chunk, world_state)
 	task_result.set_meta("nav_nodes", nav_nodes)
 	
@@ -444,6 +432,11 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
 	var build_physics := not is_distant
 	
+	# ==========================================================================
+	# FIXED REBUILD ORDER: Ensure Mega-Structures remain solid upon rebuilds
+	# ==========================================================================
+	MegaStructureService.apply_mega_structures(chunk)
+	
 	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, build_physics) as Dictionary
 	
 	# UNIFIED ASYNCHRONOUS GEOMETRY COMPILE PIPELINE (OCP compliant)
@@ -457,10 +450,7 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	task_result.set_meta("version", version) 
 	
 	if build_physics:
-		# ======================================================================
-		# BACKGROUND THEAD BAKING: Generate and bake the physics resource in 
-		# the background thread to avoid main-thread spikes during exploration!
-		# ======================================================================
+		# BACKGROUND THEAD BAKING
 		var collision_verts: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
 		if collision_verts.size() > 0:
 			var shape := ConcavePolygonShape3D.new()
@@ -468,10 +458,7 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 			shape.backface_collision = true
 			task_result.collision_shape = shape
 			
-	# ==========================================================================
-	# BACKGROUND NAVIGATION COMPILATION: Compile the 3D A* navigation nodes 
-	# asynchronously in the background thread instead of the main thread!
-	# ==========================================================================
+	# BACKGROUND NAVIGATION COMPILATION
 	var nav_nodes := ChunkNavigationBuilder.compile_walkable_nodes_asynchronous(chunk, world_state)
 	task_result.set_meta("nav_nodes", nav_nodes)
 	
@@ -538,9 +525,7 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var static_body: StaticBody3D = task.get_meta("static_body") if task.has_meta("static_body") else null
 	
 	# ==========================================================================
-	# INSTANT SHAPE BINDINGS:
-	# If the background thread pre-baked the collision resource, we simply 
-	# assign it instantly. This completely bypasses main-thread baking!
+	# INSTANT SHAPE BINDINGS
 	# ==========================================================================
 	if static_body == null and task.collision_shape != null:
 		static_body = StaticBody3D.new()
@@ -557,10 +542,7 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 		_physics_bodies[chunk_pos] = static_body.get_rid()
 		
 	# ==========================================================================
-	# INSTANT NAVIGATION REGISTRATION (Main Thread):
-	# Pulls the pre-filtered, lightweight array of walkable coordinates and 
-	# binds them instantly to the global AStar3D solver, completely avoiding 
-	# heavy 4,096-iteration coordinate scans on the main thread!
+	# INSTANT NAVIGATION REGISTRATION (Main Thread)
 	# ==========================================================================
 	var nav_nodes: Array = task.get_meta("nav_nodes") if task.has_meta("nav_nodes") else []
 	if not nav_nodes.is_empty() and is_instance_valid(controller):

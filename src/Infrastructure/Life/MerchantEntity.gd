@@ -13,13 +13,18 @@
 #   base contract, relying 100% on the base physics loop for standard translations.
 # - Dependency Inversion Principle (DIP): Injects the MerchantAIBehavior strategy 
 #   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/MerchantEntity.gd
 # ==============================================================================
 class_name MerchantEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/merchant/merchant_base.fbx"
+
+# ==============================================================================
+# MIXAMO ORIENTATION COMPENSATOR (OCP SHIELD)
+# Compensates for this specific FBX skeleton export direction by adding 180 degrees
+# of offset, aligning his face directly with his walking velocity.
+# ==============================================================================
+var gaze_rotation_offset: float = PI
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:

@@ -3,21 +3,30 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: FoxEntity
 # Description: Physical character controller for the forest predator Fox.
-#              Delegates leaves scans, crawling crouches, and pounce leaps
+#              Delegates all leaves scans, crawling crouches, and pounce leaps
 #              to the decoupled FoxAIBehavior strategy, managing visual flattening
-#              offsets and strike damage upon landings.
+#              offsets, local audio vocal timers, and strike damage upon landings.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, collision shapes, and dynamic crouching mesh scales.
+#   translations, collision shapes, local audio vocal timers, and dynamic crouching mesh scales.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, preserving base damage hooks while enforcing customized reflexes.
+#   base contract, relying 100% on the base physics loop for standard translations
+#   without compiling conflicts.
 # - Dependency Inversion Principle (DIP): Injects the FoxAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+#   during ready state initialization and utilizes our OCP AudioService locator.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/FoxEntity.gd
 # ==============================================================================
 class_name FoxEntity
 extends PassiveEntity
+
+# --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
+# Foxes screech occasionally to communicate in the mossy valleys of the forest
+const COOLDOWN_CHAT_MIN_SEC: float = 20.0
+const COOLDOWN_CHAT_MAX_SEC: float = 35.0
+
+# Start with a random initial offset on spawn so they don't sync up
+var _chat_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -126,11 +135,44 @@ func _execute_pounce_strike(target: Node3D) -> void:
 	if not is_instance_valid(target):
 		return
 		
-	# Play high-pitched canine alert statically (Service Locator)
-	AudioService.play_sfx_static("npc_chat", global_position)
+	# ==========================================================================
+	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
+	# Plays the fox hunt screech sound with a custom 35.0 meters spatial distance
+	# to represent close-combat hunting exertion.
+	# ==========================================================================
+	AudioService.play_sfx_static("fox_screech", global_position, 35.0)
 	
 	# Execute damage strike upon landing
 	if target.has_method("take_damage"):
 		var direction_vec: Vector3 = (target.global_position - global_position).normalized()
 		var pounce_knockback: Vector3 = direction_vec * 4.2 + Vector3(0.0, 1.8, 0.0)
 		target.call("take_damage", 2, pounce_knockback, self) # Inflicts 2 HP (1 Heart)
+
+
+## Visual/Audio Fox Vocalization: Plays the designated ambient spatial screech
+func _play_fox_vocal() -> void:
+	# Plays the dynamic ambient fox screech using our refactored OCP service locator.
+	# The AudioService automatically handles max spatial distance (45m) and 
+	# auto-frees the player when finished to guarantee no memory leaks!
+	AudioService.play_sfx_static("fox_screech", global_position, 45.0)
+
+
+func _process(delta: float) -> void:
+	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
+	# This ensures compiling is 100% clean and free of crashes.
+	if domain_entity.is_dead:
+		return
+		
+	# ==========================================================================
+	# AMBIENT SCREECH TIMER (OCP / SRP Compliant)
+	# Processed locally in the presenter to decouple audio from domain stalk nodes
+	# ==========================================================================
+	var is_panicking := false
+	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
+		is_panicking = true
+		
+	if not is_panicking:
+		_chat_timer -= delta
+		if _chat_timer <= 0.0:
+			_chat_timer = randf_range(COOLDOWN_CHAT_MIN_SEC, COOLDOWN_CHAT_MAX_SEC)
+			_play_fox_vocal()

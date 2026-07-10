@@ -51,7 +51,7 @@ func _ready() -> void:
 	_setup_nameplate_height()
 	
 	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
+	# BEHAVIOR STRATEJECTION (SOLID / OCP COMPLIANCE)
 	# Inject the specialized Growlithe canine AI strategy dynamically on ready,
 	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
 	# ==========================================================================
@@ -119,10 +119,13 @@ func _play_flame_bark() -> void:
 	# Playful vertical hop
 	velocity.y = 2.8
 	
-	# Plays the dynamic fire canine bark statically using our refactored OCP service locator.
-	# The AudioService automatically handles max spatial distance (20m) and 
-	# auto-frees the player when finished to guarantee no memory leaks!
-	AudioService.play_sfx_static("growlithe_bark", global_position)
+	# ==========================================================================
+	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
+	# Plays the canine bark sound with a custom 45.0 meters spatial distance.
+	# Slower, log-attenuated fade makes it sound faintly as background valley
+	# ambience when far away, without interfering with closer combat/action sounds.
+	# ==========================================================================
+	AudioService.play_sfx_static("growlithe_bark", global_position, 45.0)
 	
 	# Emit fiery embers from snout
 	_spawn_flame_bark_particles()
@@ -173,7 +176,8 @@ func _spawn_flame_bark_particles() -> void:
 
 
 func _process(delta: float) -> void:
-	# REMOVED: super(delta) because PassiveEntity does not implement _process()
+	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
+	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		

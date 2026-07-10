@@ -10,10 +10,9 @@
 #   and visual shader setups to specialized managers.
 # - Open-Closed Principle (OCP): Completely open to extensions. Dynamic scenery 
 #   props and physical entity scene templates are registered dynamically on startup.
-# BUG FIX:
-# - Corrected Sheep and Cow registrations. They now correctly use `_register_scene_mob` 
-#   to load their `.tscn` scenes (with colliders!) instead of instantiating raw 
-#   physics scripts, fixing the physics tunneling (falling to the void).
+# LAZY TELEMETRY INITIALIZATION:
+# - Instantiates the custom RefCounted `AITelemetryService` on application boot, 
+#   allocating its RAM buffer and enabling diagnostics logs to stream to disk.
 # ==============================================================================
 class_name Bootstrap
 extends Node
@@ -26,6 +25,9 @@ var audio_service: AudioService
 var celestial_service: CelestialService
 var weather_service: WeatherService
 
+# Instantiated RefCounted Services (SRP compliant)
+var ai_telemetry_service: AITelemetryService
+
 var world_repository: WorldRepository
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
@@ -37,6 +39,9 @@ func _ready() -> void:
 
 func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application composing root...")
+	
+	# --- ACTIVATE HIGH-RESOLUTION AI TELEMETRY (DIP Compliant) ---
+	ai_telemetry_service = AITelemetryService.new()
 	
 	_load_and_apply_user_settings()
 	TranslationRegistry.initialize_translations()
@@ -134,8 +139,20 @@ func _register_scene_mob(spawn_id: int, file_name: String, fallback_class: Varia
 			if scene != null:
 				var inst := scene.instantiate() as CharacterBody3D
 				inst.position = pos
+				# Assign a clean, recognizable name from the scene file name (e.g. "zombie_entity" -> "ZombieEntity")
+				var base_name := file_name.get_basename()
+				var camel_name := base_name.to_camel_case()
+				var pascal_name := camel_name.capitalize().replace(" ", "")
+				inst.name = pascal_name
 				return inst
-		return fallback_class.new(pos)
+		var fallback_inst := fallback_class.new(pos) as Node
+		if is_instance_valid(fallback_inst):
+			# Extract a clean alphanumeric class name from the script resource path (e.g., "SharkEntity")
+			var class_name_str := "PassiveEntity"
+			if fallback_class.resource_path != "":
+				class_name_str = fallback_class.resource_path.get_file().get_basename()
+			fallback_inst.name = class_name_str
+		return fallback_inst
 	, habitat, default_behavior)
 
 

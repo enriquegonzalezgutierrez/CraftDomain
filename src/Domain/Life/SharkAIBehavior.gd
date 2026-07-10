@@ -8,17 +8,24 @@
 #              and executes coordinate bites. If the player is floating on 
 #              the surface, it triggers a dynamic vertical leap attack.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Only coordinates the tactical 
-#   decision-making of the Shark, completely decoupled from physics engines.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Custom frenzy multipliers,
-#   boat collision impacts, or depth pathing can be appended cleanly here.
+# - Single Responsibility Principle (SRP): EXTREME REFACTOR. Declares and manages 
+#   its own local state machine (SWIMMING, STALKING, LEAP_ATTACK) and telemetry reporting,
+#   completely independent of monolithic global enums or zombie states.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. You can add new shark 
+#   states (like resting, circling, biting boats) locally in this file without 
+#   modifying any other AI system or the parent presenter.
 # - Liskov Substitution Principle (LSP): Fully compatible with the IAIBehavior 
-#   contract signatures, making it interchangeable with other strategies.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/SharkAIBehavior.gd
+#   contract signatures.
 # ==============================================================================
 class_name SharkAIBehavior
 extends IAIBehavior
+
+# Localized State Machine (SRP / OCP Compliant)
+enum State {
+	SWIMMING,      # Standard passive ocean patrolling
+	STALKING,      # Aggressive coordinate scent pursuit
+	LEAP_ATTACK    # Executing vertical surface leaps and bites
+}
 
 const SPEED_CHASE: float = 4.2
 const SPEED_SWIM: float = 1.8
@@ -28,13 +35,16 @@ const RANGE_ATTACK_SQ: float = 4.0   # 2.0 meters squared bite radius
 const COOLDOWN_ATTACK_SEC: float = 1.5
 
 # Decoupled task enums mirroring NPCAIComponent.TaskState
+const TASK_IDLE = 0
 const TASK_WANDERING = 1
+const TASK_PANIC = 5
 const TASK_WORKING = 6
 
 # Decoupled metadata keys to store state variables safely on the host node
 const META_WANDER_TIMER := "shark_wander_timer"
 const META_WANDER_DIR := "shark_wander_dir"
 const META_COOLDOWN := "shark_attack_cooldown"
+const META_SHARK_STATE := "shark_local_state"
 
 
 func _init() -> void:
@@ -87,10 +97,11 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 			var to_player: Vector3 = (player_pos - host_pos).normalized()
 			wander_dir = to_player
 			
-			ai.set("current_task", TASK_WORKING)
-			
 			# Inside bite range: execute combat strike and apply leap momentum if needed
 			if dist_sq <= RANGE_ATTACK_SQ:
+				host.set_meta(META_SHARK_STATE, State.LEAP_ATTACK)
+				ai.set("current_task", TASK_WORKING) # Set active task to clear REST/IDLE state!
+				
 				velocity.x = 0.0
 				velocity.z = 0.0
 				ai.set("wander_direction", to_player)
@@ -116,12 +127,16 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 				else:
 					host.set("velocity", velocity)
 				return
+			else:
+				host.set_meta(META_SHARK_STATE, State.STALKING)
+				ai.set("current_task", TASK_WORKING) # Set active task to clear REST/IDLE state!
 
 	# ==========================================================================
 	# 2. PATROLLING OCEAN REEFS (Standard wandering)
 	# ==========================================================================
 	if not is_tracking:
-		ai.set("current_task", TASK_WANDERING)
+		host.set_meta(META_SHARK_STATE, State.SWIMMING)
+		ai.set("current_task", TASK_WANDERING) # Set active task to clear REST/IDLE state!
 		
 		wander_timer -= delta
 		if wander_timer <= 0.0:
@@ -172,9 +187,11 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 		host.set_meta(META_WANDER_DIR, Vector3.ZERO)
 	if not host.has_meta(META_COOLDOWN):
 		host.set_meta(META_COOLDOWN, 0.0)
+	if not host.has_meta(META_SHARK_STATE):
+		host.set_meta(META_SHARK_STATE, State.SWIMMING)
 
 
-## Safe Check: Ensures the shark remains strictly inside water blocks, avoiding shores
+## Safe Check: Ensures the shark remains strictly inside water blocks, avoiding shores and solid cliffs
 func _is_direction_safe_shark(host: Object, dir: Vector3, world_node: Node) -> bool:
 	if not is_instance_valid(world_node) or not "world_state" in world_node:
 		return true
@@ -191,5 +208,27 @@ func _is_direction_safe_shark(host: Object, dir: Vector3, world_node: Node) -> b
 	var block_below: int = ws.get_block(block_below_coord)
 	var block_at: int = ws.get_block(block_at_coord)
 	
+	# Restrict pathing from choosing routes straight into solid underwater block barriers
+	if BlockType.is_solid(block_at as BlockType.Type):
+		return false
+		
 	# Strict Aquatic Rule: The next targeted voxel must be Water (ID 6)
 	return (block_below == 6 or block_at == 6)
+
+
+# ==============================================================================
+# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
+# ==============================================================================
+
+## Symmetrical Override: Maps the localized, private State enum to 
+## human-readable telemetry strings.
+func get_active_state_name(host: Object) -> String:
+	if not host.has_meta(META_SHARK_STATE):
+		return "SWIMMING"
+		
+	var state_val: int = host.get_meta(META_SHARK_STATE) as int
+	match state_val:
+		State.SWIMMING:    return "SWIMMING"
+		State.STALKING:    return "STALKING"
+		State.LEAP_ATTACK: return "LEAP_ATTACK"
+		_: return "SWIMMING"
