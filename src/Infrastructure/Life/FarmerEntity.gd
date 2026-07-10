@@ -1,9 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation)
+# Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: FarmerEntity
 # Description: Physical character controller representing an agricultural Farmer NPC. 
-#              Schedules modular animation rigging and dynamically registers 
+#              Schedules modular skeletal animation rigging and dynamically registers 
 #              its specialized farming AI behavior.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical body 
@@ -14,6 +14,7 @@
 # - Dependency Inversion Principle (DIP): Receives its behavioral decision tree 
 #   via dynamic strategy injection on startup.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/FarmerEntity.gd
 # ==============================================================================
 class_name FarmerEntity
 extends PassiveEntity
@@ -31,6 +32,7 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 
 
 func _ready() -> void:
+	# HIGH PERFORMANCE: Register in the passive group for target lookups
 	add_to_group("passives")
 	
 	# Cache components pre-configured in the scene
@@ -40,6 +42,8 @@ func _ready() -> void:
 	# Injects and compiles its specific Mixamo animations strategy (fixes T-Pose)
 	_build_visual_representation()
 	_locate_player()
+	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	# ==========================================================================
@@ -58,11 +62,8 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("scale_multiplier", Vector3(0.8665, 0.8665, 0.8665))
-	strategy.set("position_offset", Vector3.ZERO)
-	strategy.set("rotation_offset", Vector3(0, 180, 0))
 	
-	# Load concrete animation tracks
+	# Obsolete Transform-Overrides removed! We strictly trust the .tscn editor values now.
 	strategy.set("anim_idle_path", ANIM_DIR + "farmer/farmer_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "farmer/farmer_walk.fbx")
 	strategy.set("anim_attack_path", ANIM_DIR + "farmer/farmer_harvest.fbx")
@@ -130,7 +131,8 @@ func _detect_current_biome() -> int:
 		if generator_node != null:
 			var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
-				var profile := BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise)
+				# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
+				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise) as BiomeService.BiomeProfile
 				return profile.biome_id
 				
 	return default_biome_id

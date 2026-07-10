@@ -2,51 +2,53 @@
 # Project: CraftDomain
 # Layer: Infrastructure (Physics & Presentation Base)
 # Class: PassiveEntity
-# Description: Abstract base class representing physical entities. Manages movement 
-#              vectors, gravity calculations, safe boundary checks, 
-#              and dynamic nameplate/quest-arrow UI attachments.
+# Description: Abstract base class representing all physical entities in the world.
+#              Manages movement vectors, gravity calculations, absolute boundaries, 
+#              and dynamic UI attachments (Nameplates, Speech Bubbles, Quest Arrows).
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively physical motion loops.
-# - Liskov Substitution Principle (LSP): Serves as a robust contract.
-# UX BUG FIXES:
-# - THE "COW" INVISIBLE NAMEPLATE RESOLVED:
-#   * Math Height Solver: Calculates the real local top of any shaped collider 
-#     by compounding shape height, local scaling, and translation offsets. This 
-#     perfectly places UI elements above scaled/offset colliders (like the Cow).
-#   * Uniform Global Text Scale: Added `_apply_uniform_ui_scaling()`, which computes 
-#     the inverse of the entity's global scale (`Vector3.ONE / global_scale`) and 
-#     forces it onto the UI nodes. This guarantees that all text labels and bubbles 
-#     maintain an identical global size, regardless of parent scaling.
+# - Single Responsibility Principle (SRP): Handles exclusively physical motion loops 
+#   and UI billboard positioning.
+# - Liskov Substitution Principle (LSP): Serves as a robust, polymorphic contract 
+#   for all living entities (mobs, civilians, hostiles).
+# ARCHITECTURAL SAFEGUARDS:
+# - True Local Height Solver: Dynamically calculates the actual top of the collision 
+#   shape based on its shape geometry and local position, ensuring UI elements 
+#   always float perfectly above the entity regardless of visual mesh scaling.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
 
-# Base physical movement constants
+# ==============================================================================
+# CONSTANTS & CONFIGURATIONS
+# ==============================================================================
 const BASE_SPEED: float = 1.3
 const JUMP_VELOCITY: float = 5.0
-
-# Base animation asset root folder
 const ANIM_DIR := "res://assets/models/mobs/"
 
-# Sibling Component references (Composite Pattern)
+# ==============================================================================
+# SIBLING COMPONENTS (Composite Pattern)
+# ==============================================================================
 var ai_component: NPCAIComponent
 var visual_component: NPCVisualComponent
 
-# Domain Model Composition (DDD Compliance)
+# ==============================================================================
+# DOMAIN MODEL COMPOSITION (DDD Compliance)
+# ==============================================================================
 var domain_entity: VoxelEntity
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
-# Original Spawn Point used to anchor human NPCs so they never get lost (Tethering)
+# Original Spawn Point used to anchor human NPCs so they never get lost
 var _spawn_point: Vector3
 
-# Dynamic floating Speech Bubble & Nameplate references
+# ==============================================================================
+# DYNAMIC UI ELEMENTS
+# ==============================================================================
 var _bubble: Node3D
 var _nameplate: Label3D
-var _quest_check_timer: float = 0.5
-
-# 3D Floating Quest Indicator Arrow (Golden Prism pointing down)
 var _quest_arrow: MeshInstance3D
+var _quest_check_timer: float = 0.5
+var _collision_height: float = 1.5
 
 # Deterministic unique Seed computed on coordinate hashes
 var npc_seed: int = 0
@@ -54,38 +56,31 @@ var npc_seed: int = 0
 # Injected Visual Representation Strategy (DIP Compliant)
 var visual_representation: IEntityVisualRepresentation
 
-# Cached height tracker for dynamic UI positioning
-var _collision_height: float = 1.5
-
-# Conversation State Machine: Dynamic player gaze-lock variables
+# ==============================================================================
+# CONVERSATION & COMBAT STATE
+# ==============================================================================
 var is_talking: bool = false
 var _talking_partner: CharacterBody3D = null
-
-# Reputation and combat trackers
 var _last_attacker: Node = null
-
-# Physics LOD status flag
 var _is_physically_sleeping: bool = false
-
-# ==============================================================================
-# SOLID UNIQUE IDENTIFICATION:
-# Binds this specific NPC instance permanently to a Quest ID if spawned 
-# at the target location, completely eliminating distance-tracking bugs.
-# ==============================================================================
 var quest_target_id: String = ""
 
-# LAZY INITIALIZATION ENGINE:
+# Lazy Initialization Shield
 var _is_lifecycle_initialized: bool = false
 
+
+# ==============================================================================
+# LIFECYCLE INITIALIZATION
+# ==============================================================================
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
 	_spawn_point = spawn_pos
 	
-	# Compute a deterministic seed based on coordinate hashes
+	# Compute a deterministic seed based on coordinate hashes for variant generation
 	npc_seed = abs(int(spawn_pos.x * 73856093) ^ int(spawn_pos.z * 19349663))
 	
-	# Pure Domain Model initialization and signals binding
+	# Pure Domain Model initialization and signal binding
 	domain_entity = VoxelEntity.new(initial_health)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
@@ -129,7 +124,7 @@ func _auto_claim_registered_quest_target() -> void:
 			if dist <= 25.0:
 				var is_matching_role := false
 				
-				# STRICT NARRATIVE FILTERING:
+				# Strict narrative filtering to prevent animals stealing civilian quests
 				if q_id == "lost_bazaar" and nameplate_key.contains("VILLAGER"):
 					is_matching_role = true
 				elif q_id == "fuel_fryer" and nameplate_key.contains("MERCHANT"):
@@ -144,7 +139,39 @@ func _auto_claim_registered_quest_target() -> void:
 					break
 
 
-## Instantiates a native Label3D billboard to display creature name above head.
+# ==============================================================================
+# DYNAMIC UI & HEIGHT SOLVERS
+# ==============================================================================
+
+## Decoupled height calculation. Reads physical bounds directly from the collider.
+func _setup_nameplate_height() -> void:
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
+	if is_instance_valid(col):
+		var shape_height := 1.5
+		if col.shape is CylinderShape3D:
+			shape_height = col.shape.height
+		elif col.shape is BoxShape3D:
+			shape_height = col.shape.size.y
+		elif col.shape is CapsuleShape3D:
+			shape_height = col.shape.height
+			
+		# TRUE LOCAL HEIGHT SOLVER: 
+		# Calculates the absolute top of the collider by adding half of its height to its local Y position.
+		# This guarantees flawless UI placement even if the collider is offset from the floor.
+		var local_y_center := col.position.y
+		var scaled_half_height := (shape_height * col.scale.y) / 2.0
+		
+		_collision_height = local_y_center + scaled_half_height
+	else:
+		_collision_height = 1.5
+		
+	_setup_nameplate()
+	
+	if is_instance_valid(_nameplate):
+		_nameplate.position.y = _collision_height + 0.35
+
+
+## Instantiates a native Label3D billboard to display the creature's name.
 func _setup_nameplate() -> void:
 	if is_instance_valid(_nameplate):
 		return 
@@ -168,87 +195,7 @@ func _setup_nameplate() -> void:
 	_apply_uniform_ui_scaling()
 
 
-## Decoupled height calculation sourcing boundaries directly from the scene setup
-## COMPUTES TALL DISTORTED COLLIDERS DYNAMICALLY (E.G. THE CLAY COW)
-func _setup_nameplate_height() -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col):
-		var shape_height := 1.5
-		if col.shape is CylinderShape3D:
-			shape_height = col.shape.height
-		elif col.shape is BoxShape3D:
-			shape_height = col.shape.size.y
-		elif col.shape is CapsuleShape3D:
-			shape_height = col.shape.height
-			
-		# TRUE LOCAL HEIGHT SOLVER: Position.y + Half of (Raw Height * Local Scale)
-		var local_y_center := col.position.y
-		var scaled_half_height := (shape_height * col.scale.y) / 2.0
-		
-		_collision_height = local_y_center + scaled_half_height
-	else:
-		_collision_height = 1.5
-		
-	_setup_nameplate()
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.position.y = _collision_height + 0.35
-
-
-func _build_visual_representation() -> void:
-	pass
-
-
-func _get_collision_box_size() -> Vector3:
-	return Vector3(0.6, 0.8, 0.6)
-
-
-func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.4, 0.0)
-
-
-# ==============================================================================
-# UNIFORM SCALE MATRIX NORMALIZER
-# Guarantees all UI elements (Text, Icons, Arrows) render with an identical 
-# global pixel-size regardless of root scale modifications (LSP / SRP compliant).
-# ==============================================================================
-func _apply_uniform_ui_scaling() -> void:
-	var global_scale_vec := global_transform.basis.get_scale()
-	if global_scale_vec.x < 0.001 or global_scale_vec.y < 0.001 or global_scale_vec.z < 0.001:
-		return
-		
-	# Mathematically invert parent scaling matrix to lock global size at 1.0
-	var inverse_scale := Vector3.ONE / global_scale_vec
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.scale = inverse_scale
-		
-	if is_instance_valid(_bubble):
-		_bubble.scale = inverse_scale
-		
-	if is_instance_valid(_quest_arrow):
-		_quest_arrow.scale = inverse_scale
-
-
-# ==============================================================================
-# STRICT CONVERSATIONAL FILTERING (SRP Fix)
-# Ensures non-speaking entities (Monsters, Animals) never spawn dialogue bubbles.
-# ==============================================================================
-func _is_conversational() -> bool:
-	var key := _get_nameplate_translation_key()
-	var talking_npcs: Array[String] = [
-		"NPC_NAME_VILLAGER", 
-		"NPC_NAME_MERCHANT", 
-		"NPC_NAME_GUARD", 
-		"NPC_NAME_FARMER", 
-		"NPC_NAME_MINER", 
-		"NPC_NAME_DRUID", 
-		"NPC_NAME_ANDROID"
-	]
-	return talking_npcs.has(key)
-
-
-## Virtual Hook: Instantiates the 3D SpeechBubble and places it above the entity's head.
+## Instantiates the 3D SpeechBubble and places it above the entity's head.
 func _setup_floating_bubble() -> void:
 	if _is_conversational() and not is_instance_valid(_bubble):
 		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
@@ -264,25 +211,396 @@ func _setup_floating_bubble() -> void:
 			else:
 				_bubble.call("set_text", tr("BUBBLE_TALK"))
 				
-			# GUARANTEED PLACEMENT ABOVE HEAD
+			# Guaranteed placement strictly above the computed collision boundary
 			_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
 			_apply_uniform_ui_scaling()
 
 
-func _get_humanoid_role() -> int:
-	return -1
+## Programmatically constructs the 3D rotating quest arrow (PrismMesh).
+func _setup_quest_arrow() -> void:
+	if is_instance_valid(_quest_arrow):
+		return 
+		
+	_quest_arrow = MeshInstance3D.new()
+	_quest_arrow.name = "FloatingQuestArrow"
+	
+	var prism := PrismMesh.new()
+	prism.size = Vector3(0.35, 0.45, 0.22)
+	
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.85, 0.2)
+	mat.roughness = 0.1
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.85, 0.2)
+	mat.emission_energy_multiplier = 2.4
+	mat.no_depth_test = true 
+	mat.render_priority = 10
+	
+	prism.material = mat
+	_quest_arrow.mesh = prism
+	_quest_arrow.rotation.z = PI
+	_quest_arrow.position = Vector3(0.0, _collision_height + 1.15, 0.0)
+	_quest_arrow.visible = false
+	
+	add_child(_quest_arrow)
+	_apply_uniform_ui_scaling()
 
 
-func _has_ui_decorations() -> bool:
-	return _get_humanoid_role() >= 0
+## Safety mechanism ensuring UI elements render at a 1.0 global scale, 
+## compensating for any accidental scaling applied to the root node.
+func _apply_uniform_ui_scaling() -> void:
+	var global_scale_vec := global_transform.basis.get_scale()
+	
+	# DEVELOPER SAFETY WARNING: Enforce Godot Physics Best Practices
+	if not global_scale_vec.is_equal_approx(Vector3.ONE):
+		push_warning("[%s] Root node scale is not 1.0! Scaling CharacterBody3D root nodes corrupts physics and UI placements. Please reset the root scale to 1.0 and apply scaling to the visual '.glb' mesh instead." % name)
+	
+	if global_scale_vec.x < 0.001 or global_scale_vec.y < 0.001 or global_scale_vec.z < 0.001:
+		return
+		
+	# Mathematically invert parent scaling matrix to lock UI global size at 1.0
+	var inverse_scale := Vector3.ONE / global_scale_vec
+	
+	if is_instance_valid(_nameplate):
+		_nameplate.scale = inverse_scale
+	if is_instance_valid(_bubble):
+		_bubble.scale = inverse_scale
+	if is_instance_valid(_quest_arrow):
+		_quest_arrow.scale = inverse_scale
 
 
-func _get_habitat() -> int:
-	return 0
+# ==============================================================================
+# COMBAT, DAMAGE & INTERACTIONS
+# ==============================================================================
+
+func interact(_player_node: CharacterBody3D) -> void:
+	pass # Overridden by civilians
+
+
+func start_talking(partner: CharacterBody3D) -> void:
+	is_talking = true
+	_talking_partner = partner
+	velocity = Vector3.ZERO
+
+
+func stop_talking() -> void:
+	is_talking = false
+	_talking_partner = null
+	if is_instance_valid(ai_component):
+		ai_component.task_timer = 1.0
+
+
+## Processes incoming combat damage, stores attacker reference for Karma rules, 
+## and delegates health subtraction to the pure Domain Entity.
+func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -> void:
+	if domain_entity.is_dead: 
+		return
+	if is_talking:
+		stop_talking()
+		
+	if is_instance_valid(attacker):
+		_last_attacker = attacker
+		
+	_is_physically_sleeping = false
+	velocity += knockback_force
+	domain_entity.take_damage(amount)
+
+
+## Reactive callback triggered when the Domain Entity registers a successful hit.
+func _on_domain_entity_took_damage(_amount: int) -> void:
+	velocity.y = JUMP_VELOCITY
+	
+	# Startle the AI into a Panic state
+	if is_instance_valid(ai_component):
+		ai_component.current_task = NPCAIComponent.TaskState.PANIC
+		ai_component.task_timer = randf_range(3.0, 5.0)
+		var angle := randf() * TAU
+		ai_component.wander_direction = Vector3(cos(angle), 0, sin(angle))
+		
+	# Process Village Reputation (Karma) deductions for attacking civilians
+	var role := _get_humanoid_role()
+	var is_civilian: bool = (role == 0 or role == 1 or role == 3 or role == 4 or role == 5)
+	
+	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
+		var rep := VillageReputationService.instance
+		if is_instance_valid(rep):
+			rep.modify_reputation(-15)
+		
+	# Broadcast alarm to nearby village defenders
+	var closest_attacker := _find_closest_hostile_threat()
+	if is_instance_valid(closest_attacker):
+		AlertNetworkService.broadcast_alarm(closest_attacker, global_position)
+
+
+## Proximity Scanner: Identifies the closest active threat within an 8-meter combat radius
+func _find_closest_hostile_threat() -> CharacterBody3D:
+	if not is_inside_tree():
+		return null
+		
+	var hostiles := get_tree().get_nodes_in_group("hostiles")
+	var closest: CharacterBody3D = null
+	var min_dist_sq := 64.0
+	
+	for child: Node in hostiles:
+		if is_instance_valid(child) and child is CharacterBody3D:
+			var zombie_domain := child.get("domain_entity") as VoxelEntity
+			if zombie_domain != null and not zombie_domain.is_dead:
+				var dist_sq := global_position.distance_squared_to(child.global_position)
+				if dist_sq < min_dist_sq:
+					min_dist_sq = dist_sq
+					closest = child as CharacterBody3D
+					
+	return closest
+
+
+# ==============================================================================
+# DEATH SEQUENCE & LOOT ORCHESTRATION
+# ==============================================================================
+
+## Executes the physical deletion, visual shrinking animations, and drops loot.
+func _on_domain_entity_died() -> void:
+	_try_drop_player_loot()
+	remove_from_group("passives")
+	
+	# Freeze physics and clear colliders immediately
+	set_physics_process(false)
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
+	if is_instance_valid(col):
+		col.queue_free()
+		
+	# Clear UI decorations
+	if is_instance_valid(_bubble): _bubble.queue_free()
+	if is_instance_valid(_quest_arrow): _quest_arrow.queue_free()
+	if is_instance_valid(_nameplate): _nameplate.queue_free()
+		
+	var alert_net := AlertNetworkService.instance
+	if is_instance_valid(alert_net):
+		alert_net.unregister_defender(self)
+		
+	# Severe Karma Penalty for murdering peaceful civilians
+	var role := _get_humanoid_role()
+	var is_civilian: bool = (role == 0 or role == 1 or role == 3 or role == 4 or role == 5)
+	
+	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
+		var rep := VillageReputationService.instance
+		if is_instance_valid(rep):
+			rep.modify_reputation(-35)
+		
+	_spawn_death_particles()
+	
+	# Smooth shrinking death animation
+	var death_tween := create_tween().set_parallel(true)
+	if is_instance_valid(visual_component) and is_instance_valid(visual_component.visual_root):
+		death_tween.tween_property(visual_component.visual_root, "scale", Vector3.ZERO, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		death_tween.tween_property(visual_component.visual_root, "rotation:y", deg_to_rad(180), 0.25).set_trans(Tween.TRANS_SINE)
+		
+	death_tween.chain().tween_callback(queue_free)
+
+
+func _spawn_death_particles() -> void:
+	var particles := GPUParticles3D.new()
+	particles.emitting = false
+	particles.amount = 15
+	particles.one_shot = true
+	particles.explosiveness = 0.95
+	particles.lifetime = 0.6
+	
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.4
+	pm.direction = Vector3(0, 1, 0)
+	pm.spread = 180.0
+	pm.initial_velocity_min = 2.0
+	pm.initial_velocity_max = 4.0
+	pm.gravity = Vector3(0, 2.0, 0)
+	pm.scale_min = 0.5
+	pm.scale_max = 1.2
+	particles.process_material = pm
+	
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.15, 0.15, 0.15)
+	var mat := ORMMaterial3D.new()
+	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh.material = mat
+	particles.draw_pass_1 = mesh
+	
+	var world_node: Node = get_parent() as Node
+	if is_instance_valid(world_node):
+		world_node.add_child(particles)
+		particles.global_position = global_position + Vector3(0, 0.5, 0)
+		particles.emitting = true
+		get_tree().create_timer(1.0).timeout.connect(particles.queue_free)
+
+
+func _try_drop_player_loot() -> void:
+	var parent_node: Node = get_parent() as Node
+	if is_instance_valid(parent_node):
+		var player_node := parent_node.get_node_or_null("Player") as CharacterBody3D
+		if is_instance_valid(player_node):
+			var inv: IInventory = player_node.get("inventory") as IInventory
+			if is_instance_valid(inv):
+				_drop_loot(inv)
+
+
+# ==============================================================================
+# MAIN PHYSICS CALCULATIONS & BOUNDARY SAFETY
+# ==============================================================================
+
+func _physics_process(delta: float) -> void:
+	if domain_entity.is_dead: 
+		return
+		
+	# Lazy-Initialization Fallback
+	if not _is_lifecycle_initialized:
+		_execute_lifecycle_initialization()
+		
+	# Physics LOD (Level of Detail): Sleep if player is far away
+	if Engine.get_physics_frames() % 15 == 0:
+		var player_node: CharacterBody3D = null
+		var parent_node := get_parent()
+		
+		if is_instance_valid(parent_node) and "player" in parent_node:
+			player_node = parent_node.get("player") as CharacterBody3D
+			
+		if is_instance_valid(player_node):
+			var dist_sq := global_position.distance_squared_to(player_node.global_position)
+			var sleep_state := dist_sq > 1600.0 # 40 meters
+			
+			if sleep_state != _is_physically_sleeping:
+				_is_physically_sleeping = sleep_state
+		else:
+			_is_physically_sleeping = false
+			
+	if _is_physically_sleeping:
+		velocity = Vector3.ZERO
+		return
+		
+	# Gravity Application
+	if not is_on_floor() and _get_habitat() != 2: # 2 = AQUATIC
+		velocity.y -= gravity * delta
+	else:
+		velocity.y = -0.1
+
+	if is_instance_valid(ai_component):
+		ai_component.process_ai(delta)
+	
+	_quest_check_timer -= delta
+	if _quest_check_timer <= 0.0:
+		_quest_check_timer = 0.5
+		_update_quest_bubble_state()
+
+	_apply_absolute_boundary_forcefield(delta)
+
+	var flat_velocity := Vector2(velocity.x, velocity.z)
+
+	if is_instance_valid(visual_representation):
+		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)
+
+	move_and_slide()
+
+
+## Projects the next physics step and cancels velocity if attempting to cross 
+## into an invalid habitat (e.g., land animals walking into deep oceans).
+func _apply_absolute_boundary_forcefield(delta: float) -> void:
+	var world_controller_ref := get_parent()
+	if not is_instance_valid(world_controller_ref) or not "world_state" in world_controller_ref:
+		return
+		
+	var ws: WorldState = world_controller_ref.world_state
+	if ws == null:
+		return
+		
+	var next_pos := global_position + velocity * delta
+	var feet_coord := Vector3i(floori(next_pos.x), floori(next_pos.y + 0.1), floori(next_pos.z))
+	
+	var block_at_feet := ws.get_block(feet_coord)
+	var block_below_feet := ws.get_block(feet_coord + Vector3i(0, -1, 0))
+	
+	var habitat := _get_habitat()
+	var is_crossing := false
+	
+	if habitat == 2: # AQUATIC
+		is_crossing = (block_at_feet != 6 and block_below_feet != 6) # 6 = WATER
+	elif habitat == 0: # TERRESTRIAL
+		var is_liquid := (
+			block_at_feet == 6 or 
+			block_at_feet == 15 or 
+			block_below_feet == 6 or 
+			block_below_feet == 15 # 15 = LAVA
+		)
+		
+		if is_liquid:
+			is_crossing = true
+			
+		elif block_below_feet == 0 and not _can_fly(): # 0 = AIR
+			var max_fall_scan := 3
+			var solid_found := false
+			for offset_y in range(2, max_fall_scan + 2):
+				var check_y := feet_coord.y - offset_y
+				if check_y < 0:
+					break
+				var block_type := ws.get_block(Vector3i(feet_coord.x, check_y, feet_coord.z))
+				if block_type != 0:
+					solid_found = true
+					break
+			
+			if not solid_found:
+				is_crossing = true
+		
+	if is_crossing:
+		velocity.x = 0.0
+		velocity.z = 0.0
+
+
+## Evaluates the active quest state and continuously syncs tracking if this NPC is the target
+func _update_quest_bubble_state() -> void:
+	var active_q := QuestService.get_active_quest()
+	var is_target := false
+	
+	if active_q != null and quest_target_id == active_q.quest_id:
+		is_target = true
+		active_q.target_position = global_position 
+
+	if is_instance_valid(_quest_arrow):
+		_quest_arrow.visible = is_target
+
+	# Nameplate X-Ray Star highlight
+	if is_instance_valid(_nameplate):
+		var base_text := tr(_get_nameplate_translation_key()).to_upper()
+		if is_target:
+			_nameplate.text = "⭐ " + base_text + " ⭐"
+			_nameplate.modulate = Color(1.0, 0.85, 0.2) # Gold Highlight
+			_nameplate.no_depth_test = true
+		else:
+			_nameplate.text = base_text
+			_nameplate.modulate = _get_nameplate_color() 
+			_nameplate.no_depth_test = false
+
+	# Ensures continuous scale normalizations
+	_apply_uniform_ui_scaling()
+
+	if not is_instance_valid(_bubble):
+		return
+			
+	if is_target:
+		_bubble.call("set_text", "⭐ [ " + tr("BUBBLE_ACTIVE_MISSION").to_upper() + " ] ⭐")
+		return
+		
+	# Dynamic Text Router
+	var key := _get_nameplate_translation_key()
+	match key:
+		"NPC_NAME_MERCHANT":
+			_bubble.call("set_text", tr("BUBBLE_TRADE"))
+		"NPC_NAME_FARMER":
+			_bubble.call("set_text", tr("BUBBLE_FARMER"))
+		_:
+			_bubble.call("set_text", tr("BUBBLE_TALK"))
 
 
 # ==============================================================================
 # SOLID POLYMORPHIC ABSTRACT HOOKS & FALLBACKS (OCP / LSP COMPLIANCE)
+# These methods can be cleanly overridden by inheriting subclasses.
 # ==============================================================================
 
 ## Virtual Hook: Returns the translation key representing this entity's nameplate.
@@ -339,7 +657,7 @@ func _can_jump_to(target_coord: Vector3i) -> bool:
 	if habitat == 2: # AQUATIC
 		var world_controller_ref := get_parent()
 		if is_instance_valid(world_controller_ref) and "world_state" in world_controller_ref:
-			var ws: WorldState = world_controller_ref.world_state
+			var ws: WorldState = world_controller_ref.get("world_state") as WorldState
 			if ws != null:
 				var block_type: int = ws.get_block(target_coord)
 				return block_type == 6 # 6 = WATER
@@ -347,356 +665,42 @@ func _can_jump_to(target_coord: Vector3i) -> bool:
 	return true 
 
 
-## Programmatically constructs the 3D rotating quest arrow (PrismMesh)
-func _setup_quest_arrow() -> void:
-	if is_instance_valid(_quest_arrow):
-		return 
-		
-	_quest_arrow = MeshInstance3D.new()
-	_quest_arrow.name = "FloatingQuestArrow"
-	
-	var prism := PrismMesh.new()
-	prism.size = Vector3(0.35, 0.45, 0.22)
-	
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.85, 0.2)
-	mat.roughness = 0.1
-	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.85, 0.2)
-	mat.emission_energy_multiplier = 2.4
-	
-	mat.no_depth_test = true 
-	mat.render_priority = 10
-	
-	prism.material = mat
-	_quest_arrow.mesh = prism
-	_quest_arrow.rotation.z = PI
-	_quest_arrow.position = Vector3(0.0, _collision_height + 1.15, 0.0)
-	_quest_arrow.visible = false
-	
-	add_child(_quest_arrow)
-	_apply_uniform_ui_scaling()
-
-
-func interact(_player_node: CharacterBody3D) -> void:
+func _build_visual_representation() -> void:
 	pass
 
 
-func start_talking(partner: CharacterBody3D) -> void:
-	is_talking = true
-	_talking_partner = partner
-	velocity = Vector3.ZERO
+func _get_collision_box_size() -> Vector3:
+	return Vector3(0.6, 0.8, 0.6)
 
 
-func stop_talking() -> void:
-	is_talking = false
-	_talking_partner = null
-	if is_instance_valid(ai_component):
-		ai_component.task_timer = 1.0
+func _get_collision_box_position() -> Vector3:
+	return Vector3(0.0, 0.4, 0.0)
 
 
-## Tracks the direct attacker Node for karma deductions
-func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -> void:
-	if domain_entity.is_dead: 
-		return
-	if is_talking:
-		stop_talking()
-		
-	if is_instance_valid(attacker):
-		_last_attacker = attacker
-		
-	_is_physically_sleeping = false
-		
-	velocity += knockback_force
-	domain_entity.take_damage(amount)
+func _is_conversational() -> bool:
+	var key := _get_nameplate_translation_key()
+	var talking_npcs: Array[String] = [
+		"NPC_NAME_VILLAGER", 
+		"NPC_NAME_MERCHANT", 
+		"NPC_NAME_GUARD", 
+		"NPC_NAME_FARMER", 
+		"NPC_NAME_MINER", 
+		"NPC_NAME_DRUID", 
+		"NPC_NAME_ANDROID"
+	]
+	return talking_npcs.has(key)
 
 
-func _on_domain_entity_took_damage(_amount: int) -> void:
-	velocity.y = JUMP_VELOCITY
-	
-	if is_instance_valid(ai_component):
-		# AI component task state PANIC = 5
-		ai_component.current_task = NPCAIComponent.TaskState.PANIC
-		ai_component.task_timer = randf_range(3.0, 5.0)
-		var angle := randf() * TAU
-		ai_component.wander_direction = Vector3(cos(angle), 0, sin(angle))
-		
-	var role := _get_humanoid_role()
-	var is_civilian: bool = (role == 0 or role == 1 or role == 3 or role == 4 or role == 5)
-	
-	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
-		var rep := VillageReputationService.instance
-		if is_instance_valid(rep):
-			rep.modify_reputation(-15)
-		
-	var closest_attacker := _find_closest_hostile_threat()
-	if is_instance_valid(closest_attacker):
-		AlertNetworkService.broadcast_alarm(closest_attacker, global_position)
+func _get_humanoid_role() -> int:
+	return -1
 
 
-## Proximity Scanner: Identifies the closest active zombie within an 8-meter combat radius
-func _find_closest_hostile_threat() -> CharacterBody3D:
-	if not is_inside_tree():
-		return null
-		
-	var hostiles := get_tree().get_nodes_in_group("hostiles")
-	var closest: CharacterBody3D = null
-	var min_dist_sq := 64.0
-	
-	for child: Node in hostiles:
-		if is_instance_valid(child) and child is CharacterBody3D:
-			var zombie_domain := child.get("domain_entity") as VoxelEntity
-			if zombie_domain != null and not zombie_domain.is_dead:
-				var dist_sq := global_position.distance_squared_to(child.global_position)
-				if dist_sq < min_dist_sq:
-					min_dist_sq = dist_sq
-					closest = child as CharacterBody3D
-					
-	return closest
+func _has_ui_decorations() -> bool:
+	return _get_humanoid_role() >= 0
 
 
-# ==============================================================================
-# DEATH SEQUENCE & LOOT ORCHESTRATION
-# ==============================================================================
-func _on_domain_entity_died() -> void:
-	_try_drop_player_loot()
-	remove_from_group("passives")
-	
-	set_physics_process(false)
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col):
-		col.queue_free()
-	if is_instance_valid(_bubble):
-		_bubble.queue_free()
-	if is_instance_valid(_quest_arrow):
-		_quest_arrow.queue_free()
-	if is_instance_valid(_nameplate):
-		_nameplate.queue_free()
-		
-	var alert_net := AlertNetworkService.instance
-	if is_instance_valid(alert_net):
-		alert_net.unregister_defender(self)
-		
-	var role := _get_humanoid_role()
-	var is_civilian: bool = (role == 0 or role == 1 or role == 3 or role == 4 or role == 5)
-	
-	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
-		var rep := VillageReputationService.instance
-		if is_instance_valid(rep):
-			rep.modify_reputation(-35)
-		
-	_spawn_death_particles()
-	
-	var death_tween := create_tween().set_parallel(true)
-	if is_instance_valid(visual_component) and is_instance_valid(visual_component.visual_root):
-		death_tween.tween_property(visual_component.visual_root, "scale", Vector3.ZERO, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-		death_tween.tween_property(visual_component.visual_root, "rotation:y", deg_to_rad(180), 0.25).set_trans(Tween.TRANS_SINE)
-		
-	death_tween.chain().tween_callback(queue_free)
-
-
-func _spawn_death_particles() -> void:
-	var particles := GPUParticles3D.new()
-	particles.emitting = false
-	particles.amount = 15
-	particles.one_shot = true
-	particles.explosiveness = 0.95
-	particles.lifetime = 0.6
-	
-	var pm := ParticleProcessMaterial.new()
-	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	pm.emission_sphere_radius = 0.4
-	pm.direction = Vector3(0, 1, 0)
-	pm.spread = 180.0
-	pm.initial_velocity_min = 2.0
-	pm.initial_velocity_max = 4.0
-	pm.gravity = Vector3(0, 2.0, 0)
-	pm.scale_min = 0.5
-	pm.scale_max = 1.2
-	particles.process_material = pm
-	
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.15, 0.15, 0.15)
-	var mat := ORMMaterial3D.new()
-	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA # CORRECTED TYPO (TRANSPAREY_ALPHA -> TRANSPARENCY_ALPHA)
-	mesh.material = mat
-	particles.draw_pass_1 = mesh
-	
-	var world_node: Node = get_parent() as Node
-	if is_instance_valid(world_node):
-		world_node.add_child(particles)
-		particles.global_position = global_position + Vector3(0, 0.5, 0)
-		particles.emitting = true
-		get_tree().create_timer(1.0).timeout.connect(particles.queue_free)
-
-
-func _try_drop_player_loot() -> void:
-	var parent_node: Node = get_parent() as Node
-	if is_instance_valid(parent_node):
-		var player_node := parent_node.get_node_or_null("Player") as CharacterBody3D
-		if is_instance_valid(player_node):
-			var inv: IInventory = player_node.get("inventory") as IInventory
-			if is_instance_valid(inv):
-				_drop_loot(inv)
-
+func _get_habitat() -> int:
+	return 0 # TERRESTRIAL
 
 func _drop_loot(_inv: IInventory) -> void:
 	pass
-
-
-# ==============================================================================
-# ABSOLUTE BOUNDARY FORCEFIELD
-# ==============================================================================
-func _apply_absolute_boundary_forcefield(delta: float) -> void:
-	var world_controller_ref := get_parent()
-	if not is_instance_valid(world_controller_ref) or not "world_state" in world_controller_ref:
-		return
-		
-	var ws: WorldState = world_controller_ref.world_state
-	if ws == null:
-		return
-		
-	var next_pos := global_position + velocity * delta
-	var feet_coord := Vector3i(floori(next_pos.x), floori(next_pos.y + 0.1), floori(next_pos.z))
-	
-	var block_at_feet := ws.get_block(feet_coord)
-	var block_below_feet := ws.get_block(feet_coord + Vector3i(0, -1, 0))
-	
-	var habitat := _get_habitat()
-	var is_crossing := false
-	
-	if habitat == 2: # AQUATIC
-		is_crossing = (block_at_feet != 6 and block_below_feet != 6) # 6 = WATER
-	elif habitat == 0: # TERRESTRIAL
-		var is_liquid := (
-			block_at_feet == 6 or 
-			block_at_feet == 15 or 
-			block_below_feet == 6 or 
-			block_below_feet == 15 # 15 = LAVA
-		)
-		
-		if is_liquid:
-			is_crossing = true
-			
-		elif block_below_feet == 0 and not _can_fly(): # 0 = AIR
-			var max_fall_scan := 3
-			var solid_found := false
-			for offset_y in range(2, max_fall_scan + 2):
-				var check_y := feet_coord.y - offset_y
-				if check_y < 0:
-					break
-				var block_type := ws.get_block(Vector3i(feet_coord.x, check_y, feet_coord.z))
-				if block_type != 0:
-					solid_found = true
-					break
-			
-			if not solid_found:
-				is_crossing = true
-		
-	if is_crossing:
-		velocity.x = 0.0
-		velocity.z = 0.0
-
-
-# ==============================================================================
-# MAIN PHYSICS CALCULATIONS & ANIMATIONS
-# ==============================================================================
-func _physics_process(delta: float) -> void:
-	if domain_entity.is_dead: 
-		return
-		
-	# ==========================================================================
-	# LAZY-INITIALIZATION FALLBACK SHIELD
-	# ==========================================================================
-	if not _is_lifecycle_initialized:
-		_execute_lifecycle_initialization()
-		
-	if Engine.get_physics_frames() % 15 == 0:
-		var player_node: CharacterBody3D = null
-		var parent_node := get_parent()
-		
-		if is_instance_valid(parent_node) and "player" in parent_node:
-			player_node = parent_node.get("player") as CharacterBody3D
-			
-		if is_instance_valid(player_node):
-			var dist_sq := global_position.distance_squared_to(player_node.global_position)
-			var sleep_state := dist_sq > 1600.0
-			
-			if sleep_state != _is_physically_sleeping:
-				_is_physically_sleeping = sleep_state
-		else:
-			_is_physically_sleeping = false
-			
-	if _is_physically_sleeping:
-		velocity = Vector3.ZERO
-		return
-		
-	if not is_on_floor() and _get_habitat() != 2: # 2 = AQUATIC
-		velocity.y -= gravity * delta
-	else:
-		velocity.y = -0.1
-
-	if is_instance_valid(ai_component):
-		ai_component.process_ai(delta)
-	
-	_quest_check_timer -= delta
-	if _quest_check_timer <= 0.0:
-		_quest_check_timer = 0.5
-		_update_quest_bubble_state()
-
-	_apply_absolute_boundary_forcefield(delta)
-
-	var flat_velocity := Vector2(velocity.x, velocity.z)
-
-	if is_instance_valid(visual_representation):
-		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)
-
-	move_and_slide()
-
-
-## Evaluates the active quest state and continuously syncs tracking if this NPC is the target
-func _update_quest_bubble_state() -> void:
-	var active_q := QuestService.get_active_quest()
-	var is_target := false
-	
-	if active_q != null and quest_target_id == active_q.quest_id:
-		is_target = true
-		active_q.target_position = global_position 
-
-	if is_instance_valid(_quest_arrow):
-		_quest_arrow.visible = is_target
-
-	# ==========================================================================
-	# NAMEPLATE STAR & X-RAY VISION (Always ON for quest targets)
-	# ==========================================================================
-	if is_instance_valid(_nameplate):
-		var base_text := tr(_get_nameplate_translation_key()).to_upper()
-		if is_target:
-			_nameplate.text = "⭐ " + base_text + " ⭐"
-			_nameplate.modulate = Color(1.0, 0.85, 0.2) # Gold Highlight
-			_nameplate.no_depth_test = true
-		else:
-			_nameplate.text = base_text
-			_nameplate.modulate = _get_nameplate_color() 
-			_nameplate.no_depth_test = false
-
-	# Ensures continuous scale normalizations
-	_apply_uniform_ui_scaling()
-
-	if not is_instance_valid(_bubble):
-		return
-			
-	if is_target:
-		_bubble.call("set_text", "⭐ [ " + tr("BUBBLE_ACTIVE_MISSION").to_upper() + " ] ⭐")
-		return
-		
-	# Dynamic Text Router (OCP/SOLID compliant based on Translation Key matches)
-	var key := _get_nameplate_translation_key()
-	match key:
-		"NPC_NAME_MERCHANT":
-			_bubble.call("set_text", tr("BUBBLE_TRADE"))
-		"NPC_NAME_FARMER":
-			_bubble.call("set_text", tr("BUBBLE_FARMER"))
-		_:
-			_bubble.call("set_text", tr("BUBBLE_TALK"))

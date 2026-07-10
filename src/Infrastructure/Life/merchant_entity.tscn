@@ -1,28 +1,31 @@
 [gd_scene format=3 uid="uid://dbumty4fo5njm"]
 
 [ext_resource type="Script" uid="uid://cc7ixwduwkj8b" path="res://src/Infrastructure/Life/MerchantEntity.gd" id="1_merchant"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="2_vis"]
-[ext_resource type="PackedScene" uid="uid://bh7wt3nvr3q3d" path="res://assets/models/mobs/merchant/merchant_base.fbx" id="3_fbx"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://bh7wt3nvr3q3d" path="res://assets/models/mobs/merchant/merchant_base.fbx" id="4_fbx"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_merchant"]
-height = 1.8
+height = 1.5484375
 radius = 0.3334961
 
 [node name="MerchantEntity" type="CharacterBody3D" unique_id=1508689217]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
 script = ExtResource("1_merchant")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1663591200]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.77421874, 0)
 shape = SubResource("CylinderShape3D_merchant")
 
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+script = ExtResource("2_ai")
+
 [node name="NPCVisualComponent" type="Node" parent="." unique_id=790950688]
-script = ExtResource("2_vis")
+script = ExtResource("3_vis")
 
 [node name="Visuals" type="Node3D" parent="." unique_id=1297854638]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1819838518]
 
-[node name="merchant_base" parent="Visuals/BodyBobJoint" unique_id=1030556118 instance=ExtResource("3_fbx")]
-transform = Transform3D(-0.8856, 0, -7.74209e-08, 0, 0.8856, 0, 7.74209e-08, 0, -0.8856, 0, 0, 0)
+[node name="merchant_base" parent="Visuals/BodyBobJoint" unique_id=1030556118 instance=ExtResource("4_fbx")]
+transform = Transform3D(0.75, 0, 0, 0, 0.75, 0, 0, 0, 0.75, 0, 0, 0)

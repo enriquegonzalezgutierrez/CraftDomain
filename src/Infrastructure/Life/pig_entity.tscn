@@ -6,15 +6,14 @@
 [ext_resource type="PackedScene" uid="uid://tijk5hikb3mb" path="res://assets/models/mobs/pig.glb" id="4_glb"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_pig"]
-height = 0.75
-radius = 0.3
+height = 0.8100586
+radius = 0.3642578
 
 [node name="PigEntity" type="CharacterBody3D" unique_id=1503595207]
-transform = Transform3D(-2, 0, -3.019916e-07, 0, 2, 0, 3.019916e-07, 0, -2, 0, 0, 0)
 script = ExtResource("1_pig")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1902404766]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.375, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4050293, 0)
 shape = SubResource("CylinderShape3D_pig")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
@@ -29,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=657485286]
 
 [node name="pig" parent="Visuals/BodyBobJoint" unique_id=1978983367 instance=ExtResource("4_glb")]
-transform = Transform3D(0, 0, 9.4485, 0, 9.4485, 0, -9.4485, 0, 0, 0, 0.0102, 0)
+transform = Transform3D(-4.371139e-07, 0, -10, 0, 10, 0, 10, 0, -4.371139e-07, 0, 0.0102, 0)

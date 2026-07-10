@@ -1,28 +1,31 @@
 [gd_scene format=3 uid="uid://crngc5vjnil1s"]
 
 [ext_resource type="Script" uid="uid://c6kremh1nhrw0" path="res://src/Infrastructure/Life/GargoyleEntity.gd" id="1_gargoyle"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="2_vis"]
-[ext_resource type="PackedScene" uid="uid://cu8spmmpsrbdd" path="res://assets/models/mobs/gargoyle.glb" id="3_glb"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://cu8spmmpsrbdd" path="res://assets/models/mobs/gargoyle.glb" id="4_glb"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_gargoyle"]
-height = 1.8164551
-radius = 1.1884766
+height = 2.312262
+radius = 1.496582
 
 [node name="GargoyleEntity" type="CharacterBody3D" unique_id=1520422958]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
 script = ExtResource("1_gargoyle")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=25535899]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.92058104, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1684844, 0)
 shape = SubResource("CylinderShape3D_gargoyle")
 
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+script = ExtResource("2_ai")
+
 [node name="NPCVisualComponent" type="Node" parent="." unique_id=590871825]
-script = ExtResource("2_vis")
+script = ExtResource("3_vis")
 
 [node name="Visuals" type="Node3D" parent="." unique_id=817849081]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1889340245]
 
-[node name="gargoyle" parent="Visuals/BodyBobJoint" unique_id=682649713 instance=ExtResource("3_glb")]
-transform = Transform3D(0, 0, 2.3504, 0, 2.3504, 0, -2.3504, 0, 0, 0, 0.8982, 0)
+[node name="gargoyle" parent="Visuals/BodyBobJoint" unique_id=682649713 instance=ExtResource("4_glb")]
+transform = Transform3D(-1.3113416e-07, 0, -3, 0, 3, 0, 3, 0, -1.3113416e-07, 0, 1.1374629, 0)

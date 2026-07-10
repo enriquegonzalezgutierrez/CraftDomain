@@ -1,34 +1,36 @@
 [gd_scene format=3 uid="uid://dyfquy5j8fw4y"]
 
 [ext_resource type="Script" uid="uid://t5oephunuytq" path="res://src/Infrastructure/Life/MinerEntity.gd" id="1_miner"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="2_vis"]
-[ext_resource type="PackedScene" uid="uid://muyvonc4poj3" path="res://assets/models/mobs/miner/miner_base.fbx" id="3_fbx"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://muyvonc4poj3" path="res://assets/models/mobs/miner/miner_base.fbx" id="4_fbx"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_miner"]
-height = 1.6016601
-radius = 0.28564453
+height = 1.7993653
+radius = 0.33691406
 
 [node name="MinerEntity" type="CharacterBody3D" unique_id=1567317944]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
 script = ExtResource("1_miner")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=679311854]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.80083007, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.89968264, 0)
 shape = SubResource("CylinderShape3D_miner")
 
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+script = ExtResource("2_ai")
+
 [node name="NPCVisualComponent" type="Node" parent="." unique_id=523509985]
-script = ExtResource("2_vis")
+script = ExtResource("3_vis")
 
 [node name="Visuals" type="Node3D" parent="." unique_id=391590748]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=200487864]
 
-[node name="miner_base" parent="Visuals/BodyBobJoint" unique_id=1684504717 instance=ExtResource("3_fbx")]
-transform = Transform3D(-0.8856, 0, -7.74209e-08, 0, 0.8856, 0, 7.74209e-08, 0, -0.8856, 0, 0, 0)
+[node name="miner_base" parent="Visuals/BodyBobJoint" unique_id=1684504717 instance=ExtResource("4_fbx")]
 
 [node name="HeadlampBeam" type="SpotLight3D" parent="Visuals/BodyBobJoint" unique_id=2072787664]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.65, -0.22)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.868641, -0.22)
 light_color = Color(0.921569, 0.94902, 1, 1)
 light_energy = 2.4
 shadow_enabled = true

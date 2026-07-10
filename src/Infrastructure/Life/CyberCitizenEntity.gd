@@ -3,17 +3,16 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: CyberCitizenEntity
 # Description: Physical character controller for the tech-noir Cyber Citizen Android.
-#              It delegates all paved road tracking, security rotations, and 
-#              diagnostic lasers triggers to the decoupled CyberCitizenAIBehavior 
+#              Delegates paved road tracking, security rotations, and 
+#              diagnostic laser triggers to the decoupled CyberCitizenAIBehavior 
 #              strategy, managing unshaded compile-free laser scanning particles.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   movement, custom mesh alignments, and laser scan visual feedback.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
 #   base contract, relying 100% on the base physics loop for standard translations.
-# BUG FIX:
-# - Removed redundant `_setup_floating_bubble()` override, resolving the 
-#   "speech bubble at the feet" bug by letting PassiveEntity manage height.
+# - Dependency Inversion Principle (DIP): Injects the CyberCitizenAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/CyberCitizenEntity.gd
 # ==============================================================================
@@ -49,6 +48,8 @@ func _ready() -> void:
 	
 	_setup_graphics_representation()
 	_locate_player()
+	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	# ==========================================================================
@@ -68,10 +69,8 @@ func _setup_graphics_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("scale_multiplier", Vector3(0.8856, 0.8856, 0.8856))
-	strategy.set("position_offset", Vector3.ZERO)
-	strategy.set("rotation_offset", Vector3(0, 180, 0))
 	
+	# Obsolete Transform-Overrides removed! We strictly trust the .tscn editor values now.
 	strategy.set("anim_idle_path", ANIM_DIR + "cyber/cyber_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "cyber/cyber_walk.fbx")
 	strategy.set("anim_panic_path", ANIM_DIR + "cyber/cyber_panic.fbx")
@@ -90,6 +89,11 @@ func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
+
+
+## Bypasses old procedural representation compiling
+func _build_visual_representation() -> void:
+	pass # Visual model is instanced directly in the .tscn scene file
 
 
 # ==============================================================================
@@ -157,9 +161,9 @@ func _spawn_cyan_laser_particles() -> void:
 	mesh.material = mat
 	particles.mesh = mesh
 	
+	# Native leak-free automatic cleanup on complete emission (Milestone 7)
+	particles.finished.connect(particles.queue_free)
+	
 	add_child(particles)
 	particles.position = Vector3(0.0, _collision_height - 0.2, -0.2) # Chest scan origin
 	particles.emitting = true
-	
-	# Safe memory cleanup direct connection
-	get_tree().create_timer(0.45).timeout.connect(particles.queue_free)

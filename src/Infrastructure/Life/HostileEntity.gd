@@ -1,20 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation)
+# Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: HostileEntity
 # Description: Physical character controller representing a hostile Cave Zombie.
-#              Schedules animation rigging, handles loot drops, and registers its 
-#              specialized ZombieAIBehavior strategy dynamically on ready.
+#              Schedules modular skeletal animation rigging, handles loot drops, 
+#              and registers its specialized ZombieAIBehavior strategy dynamically on ready.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical body 
 #   movement structures and target visual attachments, delegating pathing and 
 #   pursuit routines to the injected ZombieAIBehavior.
-# BUG FIXES:
-# - Re-routed `_build_glb_representation()` to correctly instantiate the 
-#   `SkeletalVisualRepresentation` strategy instead of raw-injecting the node.
-#   This completely resolves the T-Pose bug by ensuring Mixamo animations 
-#   are correctly compiled, linked to the "states" library, and blended.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   base contract, utilizing inherited dynamic height solvers.
+# - Dependency Inversion Principle (DIP): Injects the ZombieAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/HostileEntity.gd
 # ==============================================================================
 class_name HostileEntity
 extends PassiveEntity
@@ -68,7 +68,7 @@ func _setup_graphics_representation() -> void:
 		_build_procedural_representation()
 
 
-## FIX: Now correctly delegates to SkeletalVisualRepresentation to load animations!
+## Binds the Skeletal strategy dynamically and registers FBX animation tracks
 func _build_glb_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -77,11 +77,8 @@ func _build_glb_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("scale_multiplier", Vector3(1.6635, 1.6635, 1.6635))
-	strategy.set("position_offset", Vector3.ZERO)
-	strategy.set("rotation_offset", Vector3(0, 180, 0)) # Face forward along -Z
 	
-	# Load concrete animation tracks
+	# Obsolete Transform-Overrides removed! We strictly trust the .tscn editor values now.
 	strategy.set("anim_idle_path", ANIM_DIR + "zombie/zombie_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "zombie/zombie_walk.fbx")
 	strategy.set("anim_attack_path", ANIM_DIR + "zombie/zombie_attack.fbx")
@@ -129,7 +126,7 @@ func _get_nameplate_color() -> Color:
 
 
 func _get_habitat() -> int:
-	return 0 # TERRESTRIAL
+	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
 
 
 func _has_ui_decorations() -> bool:
@@ -143,7 +140,7 @@ func _locate_player() -> void:
 
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	pass 
+	pass # Hostiles do not panic when hit
 
 
 func _drop_loot(inv: IInventory) -> void:

@@ -3,14 +3,14 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: ElephantEntity
 # Description: Physical character controller for the Colossal Elephant.
-#              It delegates all slow walk cycles, canyon limits, and stomp 
+#              Delegates slow walk cycles, canyon limits, and stomp 
 #              impacts to the decoupled ElephantAIBehavior strategy, managing
 #              knockback immunities and dynamic player camera screen shake.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, heavy box colliders, and ground-thud screen shake feedback.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, overriding knockback logic to enforce weight.
+#   base contract, preserving base damage hooks while enforcing customized weight.
 # - Dependency Inversion Principle (DIP): Injects the ElephantAIBehavior strategy 
 #   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -34,6 +34,7 @@ func _ready() -> void:
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	# ==========================================================================
@@ -47,21 +48,7 @@ func _ready() -> void:
 
 ## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
-	pass
-
-
-## Decoupled height calculation sourcing boundaries directly from the scene setup
-func _setup_nameplate_height() -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.shape is CylinderShape3D:
-		var cylinder := col.shape as CylinderShape3D
-		_collision_height = cylinder.height
-		
-	_setup_nameplate()
-	
-	# Aligns nameplate correctly above the giant ears
-	if is_instance_valid(_nameplate):
-		_nameplate.position.y = _collision_height + 0.35
+	pass # Visual model is instanced directly in the .tscn scene file
 
 
 # ==============================================================================
@@ -74,12 +61,13 @@ func take_damage(amount: int, _knockback_force: Vector3, attacker: Node = null) 
 	super(amount, Vector3.ZERO, attacker)
 
 
-func _on_domain_entity_took_damage(_amount: int) -> void:
-	# Symmetrical lighter startle jump
+## Reactive callback triggered when the Domain Entity registers a successful hit.
+func _on_domain_entity_took_damage(amount: int) -> void:
+	# 1. Restore the base class signal chains (Alert network and Karma systems)
+	super(amount)
+	
+	# 2. Dampen the jump velocity afterward to enforce colossal mass
 	velocity.y = JUMP_VELOCITY * 0.75
-	if is_instance_valid(ai_component):
-		ai_component.current_task = NPCAIComponent.TaskState.PANIC
-		ai_component.task_timer = randf_range(3.0, 5.0)
 
 
 func _drop_loot(inv: IInventory) -> void:

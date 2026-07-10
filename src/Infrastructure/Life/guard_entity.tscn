@@ -1,28 +1,30 @@
 [gd_scene format=3 uid="uid://ctaayiertktbu"]
 
 [ext_resource type="Script" uid="uid://bq2vb0duj27fh" path="res://src/Infrastructure/Life/GuardEntity.gd" id="1_guard"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="2_vis"]
-[ext_resource type="PackedScene" uid="uid://dqqy0legpibpj" path="res://assets/models/mobs/guard/guard_base.fbx" id="3_fbx"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://dqqy0legpibpj" path="res://assets/models/mobs/guard/guard_base.fbx" id="4_fbx"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_guard"]
-height = 1.8
-radius = 0.28027344
+height = 2.1119142
+radius = 0.3305664
 
 [node name="GuardEntity" type="CharacterBody3D" unique_id=862353002]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
 script = ExtResource("1_guard")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=957045320]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0559571, 0)
 shape = SubResource("CylinderShape3D_guard")
 
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+script = ExtResource("2_ai")
+
 [node name="NPCVisualComponent" type="Node" parent="." unique_id=1723682516]
-script = ExtResource("2_vis")
+script = ExtResource("3_vis")
 
 [node name="Visuals" type="Node3D" parent="." unique_id=179629062]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1082663266]
 
-[node name="guard_base" parent="Visuals/BodyBobJoint" unique_id=1898178525 instance=ExtResource("3_fbx")]
-transform = Transform3D(-0.8507, 0, -7.43703e-08, 0, 0.8507, 0, 7.43703e-08, 0, -0.8507, 0, 0, 0)
+[node name="guard_base" parent="Visuals/BodyBobJoint" unique_id=1898178525 instance=ExtResource("4_fbx")]

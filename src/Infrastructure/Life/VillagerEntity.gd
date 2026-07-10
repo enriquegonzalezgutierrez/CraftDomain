@@ -3,7 +3,7 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: VillagerEntity
 # Description: Physical character controller for the Common Villager NPC.
-#              It delegates all group gossips circles, social chats sways, and 
+#              Delegates all group gossip circles, social chat sways, and 
 #              daytime/nighttime shelter schedules to the decoupled 
 #              VillagerAIBehavior strategy, managing visual chat particles.
 # SOLID COMPLIANCE:
@@ -48,7 +48,7 @@ func _ready() -> void:
 		ai_component.active_behavior = VillagerAIBehavior.new()
 
 
-## Bypasses old procedural representation compiling
+## Binds the Skeletal strategy dynamically and registers FBX animation tracks
 func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -56,10 +56,8 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("scale_multiplier", Vector3(0.8856, 0.8856, 0.8856))
-	strategy.set("position_offset", Vector3.ZERO)
-	strategy.set("rotation_offset", Vector3(0, 180, 0))
 	
+	# Obsolete Transform-Overrides removed! We strictly trust the .tscn editor values now.
 	strategy.set("anim_idle_path", ANIM_DIR + "villager/villager_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "villager/villager_walk.fbx")
 	strategy.set("anim_panic_path", ANIM_DIR + "villager/villager_panic.fbx")
@@ -125,7 +123,8 @@ func _detect_current_biome() -> int:
 		if generator_node != null:
 			var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
-				var profile := BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise)
+				# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
+				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise) as BiomeService.BiomeProfile
 				return profile.biome_id
 	return default_biome_id
 
@@ -183,9 +182,9 @@ func _spawn_gossip_dialogue_particles() -> void:
 	mesh.material = mat
 	particles.mesh = mesh
 	
+	# Native leak-free automatic cleanup on complete emission (Milestone 7)
+	particles.finished.connect(particles.queue_free)
+	
 	add_child(particles)
 	particles.position = Vector3(0.0, _collision_height + 0.15, -0.1) # above forehead level
 	particles.emitting = true
-	
-	# Symmetrical memory safe cleanup Direct connection
-	get_tree().create_timer(0.5).timeout.connect(particles.queue_free)

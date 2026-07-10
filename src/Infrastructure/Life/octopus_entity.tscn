@@ -6,15 +6,14 @@
 [ext_resource type="PackedScene" uid="uid://cpvwsg7k1b51a" path="res://assets/models/mobs/octopus.glb" id="4_glb"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_octopus"]
-height = 0.75683594
-radius = 0.55
+height = 0.83099365
+radius = 0.59375
 
 [node name="OctopusEntity" type="CharacterBody3D" unique_id=1089576940]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
 script = ExtResource("1_octopus")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=827724159]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3952546, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.41409302, 0)
 shape = SubResource("CylinderShape3D_octopus")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1698191959]
@@ -29,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=828317724]
 
 [node name="octopus" parent="Visuals/BodyBobJoint" unique_id=1858800082 instance=ExtResource("4_glb")]
-transform = Transform3D(0, 0, 1.8525, 0, 1.8525, 0, -1.8525, 0, 0, 0, 0.3156, 0)
+transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0, 0.33360413, 0)

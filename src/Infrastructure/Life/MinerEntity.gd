@@ -3,18 +3,16 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: MinerEntity
 # Description: Physical character controller for the cave Miner NPC.
-#              It delegates all coal scanning, mining decision trees, and 
+#              Delegates all coal scanning, mining decision trees, and 
 #              rock extraction routines to the decoupled MinerAIBehavior strategy, 
-#              focusing on physical Translations, skeletal attachments, and chat.
+#              focusing on physical translations, skeletal attachments, and chat.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   movement, custom mesh alignments, and dialogue tree interactions.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing its parent physics process and signals.
-# BUG FIXES:
-# - Set `_get_humanoid_role()` to return MINER role (4) instead of Villager (0).
-# - Removed redundant `_setup_floating_bubble()` override, resolving the 
-#   "speech bubble at the feet" bug by letting PassiveEntity manage height.
+#   base contract, utilizing inherited dynamic height solvers.
+# - Dependency Inversion Principle (DIP): Injects the MinerAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MinerEntity.gd
 # ==============================================================================
@@ -50,6 +48,8 @@ func _ready() -> void:
 	
 	_setup_graphics_representation()
 	_locate_player()
+	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	# ==========================================================================
@@ -69,11 +69,8 @@ func _setup_graphics_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("scale_multiplier", Vector3(0.8856, 0.8856, 0.8856))
-	strategy.set("position_offset", Vector3.ZERO)
-	strategy.set("rotation_offset", Vector3(0, 180, 0))
 	
-	# Load concrete animation tracks
+	# Obsolete Transform-Overrides removed! We strictly trust the .tscn editor values now.
 	strategy.set("anim_idle_path", ANIM_DIR + "miner/miner_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "miner/miner_walk.fbx")
 	strategy.set("anim_attack_path", ANIM_DIR + "miner/miner_attack.fbx")

@@ -6,15 +6,14 @@
 [ext_resource type="PackedScene" uid="uid://urgv0h4ywbho" path="res://assets/models/mobs/fox.glb" id="4_glb"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_fox"]
-height = 0.75
-radius = 0.28320313
+height = 0.99609375
+radius = 0.36865234
 
 [node name="FoxEntity" type="CharacterBody3D" unique_id=151631679]
-transform = Transform3D(-2, 0, -3.019916e-07, 0, 2, 0, 3.019916e-07, 0, -2, 0, 0, 0)
 script = ExtResource("1_fox")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1402273349]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.039803505, 0.375, -3.479733e-09)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.039803505, 0.49804688, -3.479733e-09)
 shape = SubResource("CylinderShape3D_fox")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1036044421]
@@ -29,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=217600692]
 
 [node name="fox" parent="Visuals/BodyBobJoint" unique_id=1909003643 instance=ExtResource("4_glb")]
-transform = Transform3D(-0.3775, 0, 0, 0, 0.3775, 0, 0, 0, -0.3775, 0, 0, 0)
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0)

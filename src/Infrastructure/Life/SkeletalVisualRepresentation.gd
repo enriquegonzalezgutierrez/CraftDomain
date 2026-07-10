@@ -1,59 +1,58 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Infrastructure (Presentation / Visual Strategies)
+# Class: SkeletalVisualRepresentation
 # Description: Concrete Skeletal Visual Representation Strategy.
-#              Loads, scales, offsets, and animates humanoid Mixamo FBX meshes.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively the 
-#                FBX scene loading, dynamic animation extraction, skeletal 
-#                blending, and tangent warning suppression.
-# BUG FIX: TANGENT WARNING SHIELD ENHANCEMENT
-# - Standardized `_register_glb_materials()` to loop through *every* surface index
-#   in the MeshInstance3D using `get_surface_count()`. This ensures that complex
-#   humanoid meshes with multiple embedded materials correctly strip their normal maps
-#   and tangent requirements, completely eliminating C++ renderer warnings.
+#              Extracts dynamic FBX animations, applies skeletal blending, and 
+#              suppresses tangent warnings for humanoid characters.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively animation states 
+#   and material corrections. It explicitly relies on the Godot Editor (.tscn) 
+#   for all physical dimensions, removing code-based scaling/rotation interference.
+# - Dependency Inversion Principle (DIP): Receives the host and parent nodes 
+#   via injection, keeping it decoupled from specific entities.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd
 # ==============================================================================
 class_name SkeletalVisualRepresentation
 extends IEntityVisualRepresentation
 
+# Configurable fallback paths
 @export var base_model_path: String = ""
-@export var scale_multiplier: Vector3 = Vector3.ONE
-@export var position_offset: Vector3 = Vector3.ZERO
-@export var rotation_offset: Vector3 = Vector3.ZERO
 
+# External animation track paths (Mixamo FBX splits)
 @export var anim_idle_path: String = ""
 @export var anim_walk_path: String = ""
 @export var anim_attack_path: String = ""
 @export var anim_panic_path: String = ""
 @export var anim_jump_path: String = ""
 
+# Internal state tracking
 var _host: CharacterBody3D
 var _model_node: Node3D
 var _anim_player: AnimationPlayer
 
 
+## Concrete Implementation: Locates the scene's existing model or instantiates a fallback,
+## leaving all transform matrices (scale/position/rotation) untouched.
 func build_representation(host: CharacterBody3D, target_parent: Node3D) -> void:
 	_host = host
 	
-	# 1. HYBRID EDITOR CHECK: Recycle the existing model if it's already in the .tscn
+	# 1. HYBRID EDITOR CHECK: Trust the SceneTree! 
+	# Look for an existing AnimationPlayer in the injected scene parent.
 	_anim_player = target_parent.find_child("AnimationPlayer", true, false)
 	
 	if is_instance_valid(_anim_player):
 		_model_node = _anim_player.get_parent() as Node3D
 	else:
-		# 2. CODE FALLBACK: Instantiate from disk if missing
+		# 2. CODE FALLBACK: Instantiate from disk if missing from the .tscn
 		if not FileAccess.file_exists(base_model_path):
 			push_error("[SkeletalVisualRepresentation] Model file not found: " + base_model_path)
 			return
+			
 		var scene_resource := load(base_model_path) as PackedScene
 		_model_node = scene_resource.instantiate() as Node3D
 		target_parent.add_child(_model_node)
-		
-		# Apply Calibrations ONLY to dynamically code-spawned nodes
-		_model_node.scale = scale_multiplier
-		_model_node.position = position_offset
-		_model_node.rotation_degrees = rotation_offset
+		# Note: We do NOT apply scale or rotation here anymore. We trust the raw asset.
 		
 	_prune_extraneous_nodes(_model_node)
 	_register_glb_materials(_model_node)
@@ -65,6 +64,7 @@ func build_representation(host: CharacterBody3D, target_parent: Node3D) -> void:
 		_play_animation_safe("idle", 1.0)
 
 
+## Dynamically injects external Mixamo FBX animation tracks into the main player
 func _load_external_fbx_animations() -> void:
 	if not is_instance_valid(_anim_player):
 		return
@@ -113,6 +113,7 @@ func _load_external_fbx_animations() -> void:
 	_anim_player.add_animation_library("states", anim_library)
 
 
+## Blends animation tracks dynamically based on physical velocities
 func animate_movement(velocity_flat: Vector2, is_on_floor: bool, _delta: float) -> void:
 	if not is_instance_valid(_anim_player) or not is_instance_valid(_host):
 		return
@@ -145,6 +146,7 @@ func animate_movement(velocity_flat: Vector2, is_on_floor: bool, _delta: float) 
 		_play_animation_safe("idle", 1.0)
 
 
+## Specific attack integration for hostile and defender humanoid entities
 func trigger_attack_visuals() -> void:
 	_play_animation_safe("attack", 1.2)
 
@@ -157,6 +159,7 @@ func get_collision_box_position() -> Vector3:
 	return Vector3(0.0, 0.75, 0.0) 
 
 
+## Prevents animation snapping by executing a 0.20s linear crossfade blend
 func _play_animation_safe(anim_name: String, speed: float = 1.0) -> void:
 	# Pre-append the "states" library path
 	var full_name := "states/" + anim_name
@@ -166,10 +169,10 @@ func _play_animation_safe(anim_name: String, speed: float = 1.0) -> void:
 			_anim_player.play(full_name, 0.20)
 
 
-## Recursively duplicates materials over ALL mesh surfaces to suppress tangent errors
+## Recursively duplicates materials over ALL mesh surfaces to suppress C++ tangent errors
 func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
-		# Iterate dynamically over every single surface index mapped on the mesh!
+		# Iterate dynamically over every single surface index mapped on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
@@ -183,14 +186,14 @@ func _register_glb_materials(node: Node) -> void:
 				new_mat.clearcoat_enabled = false
 				new_mat.heightmap_enabled = false
 				
-				# Explicitly override the matching surface index!
+				# Explicitly override the matching surface index
 				node.set_surface_override_material(i, new_mat)
 				
 	for child: Node in node.get_children():
 		_register_glb_materials(child)
 
 
-## Recursively locates and frees extraneous camera and light nodes
+## Recursively locates and frees extraneous camera and light nodes embedded in FBX files
 func _prune_extraneous_nodes(node: Node) -> void:
 	for i in range(node.get_child_count() - 1, -1, -1):
 		var child := node.get_child(i)

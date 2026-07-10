@@ -3,17 +3,16 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: GargoyleEntity
 # Description: Physical character controller for the hostile nocturnal Gargoyle.
-#              It delegates all state machine decisions, chasing vectors, and 
+#              Delegates all state machine decisions, chasing vectors, and 
 #              attack cooldowns to the decoupled GargoyleAIBehavior strategy, 
-#              focusing strictly on physical translations and visual flight animations.
+#              focusing on physical translations and visual flight animations.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical movement, 
 #   gravity damping during active flight, and visual billboarding.
-# BUG FIXES:
-# - T-POSE RESOLUTION: Dynamically locates the embedded GLB `AnimationPlayer` and 
-#   plays its primary animation track during the Night (Awake) state, stopping 
-#   it completely during the Day (Stone Statue) state.
-# - TANGENT WARNING SHIELD: Added recursive material override to suppress C++ errors.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   base contract, utilizing inherited dynamic height solvers.
+# - Open-Closed Principle (OCP): Nameplate tracking calculations are fully 
+#   dynamic, adapting automatically to any scale configured in the .tscn editor.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GargoyleEntity.gd
 # ==============================================================================
@@ -23,13 +22,16 @@ extends PassiveEntity
 # Sibling node references
 var player: CharacterBody3D
 
-# Visual animation trackers
+# Visual animation and model references
 var _animation_time: float = 0.0
 var _model_node: Node3D
 var _anim_player: AnimationPlayer
 
 # Physical flight configurations (decoupled from decisions)
 const SPEED: float = 3.0
+
+# Visual model baseline Y-coordinate (Y-axis origin when stone statue)
+const MODEL_BASE_Y: float = 0.8982
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -55,27 +57,31 @@ func _ready() -> void:
 		_register_glb_materials(_model_node)
 	
 	_locate_player()
+	
+	# Fetch nameplate configurations from inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GargoyleAIBehavior.new()
 
 
-## Recursively duplicates materials to prevent material-sharing leaks and tangent errors
+## Recursively duplicates and sanitizes materials across ALL mesh surfaces (Tangent Shield)
 func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		var mat: Material = node.get_active_material(0)
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0)
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			# TANGENT WARNING SHIELD
-			new_mat.normal_enabled = false
-			new_mat.anisotropy_enabled = false
-			new_mat.clearcoat_enabled = false
-			new_mat.heightmap_enabled = false
-			node.material_override = new_mat
+	if node is MeshInstance3D and node.mesh != null:
+		# Multi-Surface Sweep: Sanitize every material index on the mesh
+		for i: int in range(node.mesh.get_surface_count()):
+			var mat: Material = node.get_active_material(i)
+			if mat == null:
+				mat = node.mesh.surface_get_material(i)
+				
+			if mat is BaseMaterial3D:
+				var new_mat := mat.duplicate() as BaseMaterial3D
+				# TANGENT WARNING SHIELD
+				new_mat.normal_enabled = false
+				new_mat.anisotropy_enabled = false
+				new_mat.clearcoat_enabled = false
+				new_mat.heightmap_enabled = false
+				node.set_surface_override_material(i, new_mat)
 			
 	for child: Node in node.get_children():
 		_register_glb_materials(child)
@@ -83,31 +89,19 @@ func _register_glb_materials(node: Node) -> void:
 
 ## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
-	pass
-
-
-## Decoupled height calculation sourcing boundaries directly from the scene setup
-func _setup_nameplate_height() -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.shape is CylinderShape3D:
-		var cylinder := col.shape as CylinderShape3D
-		_collision_height = cylinder.height
-		
-	_setup_nameplate()
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.position.y = _collision_height + 0.35
+	pass # Visual model is instanced directly in the .tscn scene file
 
 
 # ==============================================================================
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
+
 func _get_nameplate_color() -> Color:
 	return Color(1.0, 0.15, 0.15) # Red warning nameplate
 
 
 func _get_habitat() -> int:
-	return 0 # TERRESTRIAL
+	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
 
 
 func _has_ui_decorations() -> bool:
@@ -138,7 +132,7 @@ func _set_gargoyle_stone_appearance(is_stone: bool) -> void:
 
 func _traverse_and_apply_stone_appearance(node: Node, is_stone: bool) -> void:
 	if node is MeshInstance3D:
-		var mat := node.material_override as BaseMaterial3D
+		var mat: BaseMaterial3D = node.material_override as BaseMaterial3D
 		if is_instance_valid(mat):
 			if is_stone:
 				mat.albedo_color = Color(0.48, 0.48, 0.50) # Solid grey statue
@@ -163,6 +157,7 @@ func _bite_player() -> void:
 # ==============================================================================
 # MAIN GEOMETRIC PRESENTATION & FLIGHT BOBBING OSCILLATION
 # ==============================================================================
+
 func _process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
@@ -206,17 +201,21 @@ func _process(delta: float) -> void:
 			if is_instance_valid(_anim_player):
 				_anim_player.stop() 
 				
-			_model_node.position.y = lerp(_model_node.position.y, 0.8982, delta * 5.0)
+			_model_node.position.y = lerp(_model_node.position.y, MODEL_BASE_Y, delta * 5.0)
 			_model_node.rotation = lerp(_model_node.rotation, Vector3(0.0, deg_to_rad(90.0), 0.0), delta * 5.0)
 			
-		# Synchronize Label3D Nameplate's height dynamically with flight bobbing sways!
+		# ======================================================================
+		# UNIVERSAL DYNAMIC NAMEPLATE POSITIONER (OCP / SOLID COMPLIANT)
+		# ======================================================================
 		if is_instance_valid(_nameplate):
-			_nameplate.position.y = _model_node.position.y + 1.05
+			var relative_offset := _model_node.position.y - MODEL_BASE_Y
+			_nameplate.position.y = _collision_height + 0.35 + relative_offset
 
 
 # ==============================================================================
 # UN-THROTTLED PHYSICS ENGINE (GRAVITY AND STEP- avoidance)
 # ==============================================================================
+
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return

@@ -6,15 +6,14 @@
 [ext_resource type="PackedScene" uid="uid://b53w1pekdv7wu" path="res://assets/models/mobs/turtle.glb" id="4_glb"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_turtle"]
-height = 0.34921876
-radius = 0.15185547
+height = 0.45717773
+radius = 0.18408203
 
 [node name="TurtleEntity" type="CharacterBody3D" unique_id=1385184284]
-transform = Transform3D(-2, 0, -3.019916e-07, 0, 2, 0, 3.019916e-07, 0, -2, 0, 0, 0)
 script = ExtResource("1_turtle")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1256879904]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18945311, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.24943845, 0)
 shape = SubResource("CylinderShape3D_turtle")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1007958759]
@@ -29,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1474115088]
 
 [node name="turtle" parent="Visuals/BodyBobJoint" unique_id=815521553 instance=ExtResource("4_glb")]
-transform = Transform3D(-0.057, 0, 0, 0, 0.057, 0, 0, 0, -0.057, 0, 0, 0)
+transform = Transform3D(0.075, 0, 0, 0, 0.075, 0, 0, 0, 0.075, 0, 0, 0)

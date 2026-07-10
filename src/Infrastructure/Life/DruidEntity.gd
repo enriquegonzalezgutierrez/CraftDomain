@@ -3,16 +3,17 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: DruidEntity
 # Description: Physical character controller for the forest guardian Druid.
-#              It delegates all wildlife scanning, magical spellcasting timers, 
+#              Delegates all wildlife scanning, magical spellcasting timers, 
 #              and healing triggers to the decoupled DruidAIBehavior strategy,
-#              focusing strictly on dialogs, physical translations, and 
+#              focusing on dialogues, physical translations, and 
 #              unshaded compile-free éter particles generation.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, dialogue trees, and magical visual feedback.
-# BUG FIX:
-# - Removed redundant `_setup_floating_bubble()` override, resolving the 
-#   "speech bubble at the feet" bug by letting PassiveEntity manage height.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   base contract, utilizing inherited dynamic height solvers.
+# - Dependency Inversion Principle (DIP): Injects the DruidAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/DruidEntity.gd
 # ==============================================================================
@@ -44,7 +45,8 @@ func _ready() -> void:
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
 	# ==========================================================================
-	# T-POSE FIX: INYECTAR LAS ANIMACIONES ESQUELÉTICAS DE MIXAMO
+	# T-POSE & ALIGNMENT OVERHAUL
+	# Load skeletal animation rigs dynamically and bind the visual component.
 	# ==========================================================================
 	_build_visual_representation()
 	
@@ -53,7 +55,7 @@ func _ready() -> void:
 		ai_component.active_behavior = DruidAIBehavior.new()
 
 
-## Enlaza la estrategia de animación esquelética y carga las pistas FBX
+## Binds the Skeletal strategy dynamically and registers FBX animation tracks
 func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -61,11 +63,8 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("scale_multiplier", Vector3(1.0, 1.0, 1.0))
-	strategy.set("position_offset", Vector3.ZERO)
-	strategy.set("rotation_offset", Vector3(0, 180, 0))
 	
-	# Load concrete animation tracks
+	# Obsolete Transform-Overrides removed! We strictly trust the .tscn editor values now.
 	strategy.set("anim_idle_path", ANIM_DIR + "druid/druid_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "druid/druid_walk.fbx")
 	strategy.set("anim_jump_path", ANIM_DIR + "druid/druid_jump.fbx")
@@ -158,6 +157,9 @@ func _spawn_magical_heal_particle(target_pos: Vector3) -> void:
 	mesh.material = mat
 	particles.mesh = mesh
 	
+	# Native leak-free automatic cleanup on complete emission (Milestone 7)
+	particles.finished.connect(particles.queue_free)
+	
 	# Add to world parent node to prevent particles moving with the druid
 	var parent := get_parent()
 	if is_instance_valid(parent):
@@ -166,6 +168,3 @@ func _spawn_magical_heal_particle(target_pos: Vector3) -> void:
 		# Symmetrical start pos: spawn slightly above hand/báculo (approx 1.1m height)
 		particles.global_position = global_position + Vector3(0.0, 1.1, 0.0)
 		particles.emitting = true
-		
-		# Symmetrical safety cleanup direct connection
-		get_tree().create_timer(0.65).timeout.connect(particles.queue_free)

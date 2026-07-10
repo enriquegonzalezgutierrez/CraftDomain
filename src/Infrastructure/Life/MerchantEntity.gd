@@ -3,7 +3,7 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: MerchantEntity
 # Description: Physical character controller for the Village Merchant NPC.
-#              It delegates all marketplace shop-tending and nighttime shelter
+#              Delegates all marketplace shop-tending and nighttime shelter
 #              coin counting to the decoupled MerchantAIBehavior strategy,
 #              managing visual glistening metallic gold coin particles on ready.
 # SOLID COMPLIANCE:
@@ -13,10 +13,6 @@
 #   base contract, relying 100% on the base physics loop for standard translations.
 # - Dependency Inversion Principle (DIP): Injects the MerchantAIBehavior strategy 
 #   during ready state initialization to keep code decoupled.
-# BUG FIX:
-# - Added `_get_humanoid_role()` to map MERCHANT role, and removed the redundant, 
-#   bugged `_setup_floating_bubble()` to allow the base class to render the 
-#   burbuja correctly over his head.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/MerchantEntity.gd
 # ==============================================================================
@@ -27,7 +23,7 @@ const BASE_MODEL_PATH := "res://assets/models/mobs/merchant/merchant_base.fbx"
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Merchants spawn with 3 Hearts of health (6 HP)
+	# Keep base health matching 3 Hearts (6 HP)
 	super(spawn_pos, 6)
 	name = "Entity_MERCHANT"
 
@@ -42,6 +38,8 @@ func _ready() -> void:
 	
 	# Injects and compiles its specific Mixamo animations strategy (fixes T-Pose)
 	_build_visual_representation()
+	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	# ==========================================================================
@@ -53,7 +51,7 @@ func _ready() -> void:
 		ai_component.active_behavior = MerchantAIBehavior.new()
 
 
-## Bypasses old procedural representation compiling
+## Binds the Skeletal strategy dynamically and registers FBX animation tracks
 func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -61,10 +59,8 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("scale_multiplier", Vector3(0.8856, 0.8856, 0.8856))
-	strategy.set("position_offset", Vector3.ZERO)
-	strategy.set("rotation_offset", Vector3(0, 180, 0))
 	
+	# Obsolete Transform-Overrides removed! We strictly trust the .tscn editor values now.
 	strategy.set("anim_idle_path", ANIM_DIR + "merchant/merchant_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "merchant/merchant_walk.fbx")
 	strategy.set("anim_panic_path", ANIM_DIR + "merchant/merchant_panic.fbx")
@@ -139,9 +135,9 @@ func _spawn_golden_coin_particles() -> void:
 	mesh.material = mat
 	particles.mesh = mesh
 	
+	# Native leak-free automatic cleanup on complete emission (Milestone 7)
+	particles.finished.connect(particles.queue_free)
+	
 	add_child(particles)
 	particles.position = Vector3(0.0, _collision_height - 0.4, -0.2) # Held right in front of chest
 	particles.emitting = true
-	
-	# Safe memory cleanup direct connection
-	get_tree().create_timer(0.7).timeout.connect(particles.queue_free)

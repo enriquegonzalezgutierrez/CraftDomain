@@ -3,8 +3,8 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: CatEntity
 # Description: Physical character controller for the domestic companion Cat.
-#              It delegates player-following vectors, campfire snuggling loops,
-#              and zombie hiss warnings to the decoupled CatAIBehavior strategy,
+#              Delegates player-following vectors, campfire snuggling loops,
+#              and zombie hiss warnings to the CatAIBehavior strategy,
 #              managing visual exclamation particles and meow audio cues.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
@@ -34,6 +34,7 @@ func _ready() -> void:
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	# ==========================================================================
@@ -48,19 +49,6 @@ func _ready() -> void:
 ## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
 	pass
-
-
-## Decoupled height calculation sourcing boundaries directly from the scene setup
-func _setup_nameplate_height() -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.shape is CylinderShape3D:
-		var cylinder := col.shape as CylinderShape3D
-		_collision_height = cylinder.height
-		
-	_setup_nameplate()
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.position.y = _collision_height + 0.35
 
 
 # ==============================================================================
@@ -135,9 +123,9 @@ func _spawn_hiss_alert_particles() -> void:
 	mesh.material = mat
 	particles.mesh = mesh
 	
+	# Native leak-free automatic cleanup on complete emission (Milestone 7)
+	particles.finished.connect(particles.queue_free)
+	
 	add_child(particles)
 	particles.position = Vector3(0.0, _collision_height + 0.1, 0.0)
 	particles.emitting = true
-	
-	# Safe memory cleanup डायरेक्ट connection
-	get_tree().create_timer(0.55).timeout.connect(particles.queue_free)

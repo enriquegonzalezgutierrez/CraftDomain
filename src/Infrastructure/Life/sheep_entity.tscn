@@ -1,27 +1,30 @@
 [gd_scene format=3 uid="uid://bwk5ibc5ooi8q"]
 
 [ext_resource type="Script" uid="uid://ccao5g6f5rcdx" path="res://src/Infrastructure/Life/SheepEntity.gd" id="1_sheep"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="2_vis"]
-[ext_resource type="PackedScene" uid="uid://dy00wfnelaf7v" path="res://assets/models/mobs/sheep.glb" id="3_glb"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://dy00wfnelaf7v" path="res://assets/models/mobs/sheep.glb" id="4_glb"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_sheep"]
-height = 0.9814453
+height = 1.0024414
 radius = 0.40673828
 
 [node name="SheepEntity" type="CharacterBody3D" unique_id=189901055]
-transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0)
 script = ExtResource("1_sheep")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=227965575]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.50927734, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5197754, 0)
 shape = SubResource("CylinderShape3D_sheep")
 
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+script = ExtResource("2_ai")
+
 [node name="NPCVisualComponent" type="Node" parent="." unique_id=1487611404]
-script = ExtResource("2_vis")
+script = ExtResource("3_vis")
 
 [node name="Visuals" type="Node3D" parent="." unique_id=159742051]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=908397151]
 
-[node name="sheep" parent="Visuals/BodyBobJoint" unique_id=682198733 instance=ExtResource("3_glb")]
+[node name="sheep" parent="Visuals/BodyBobJoint" unique_id=682198733 instance=ExtResource("4_glb")]

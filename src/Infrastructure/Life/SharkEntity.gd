@@ -3,14 +3,14 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: SharkEntity
 # Description: Physical character controller for the hostile Great White Shark.
-#              It delegates all coordinate scent tracking, player chase paths, 
+#              Delegates all coordinate scent tracking, player chase paths, 
 #              and surface leap attacks to the decoupled SharkAIBehavior strategy,
 #              focusing strictly on swimming tail-wag oscillations and damage.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, and procedural mesh tail-wag animations.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing its parent physics process and signals.
+#   base contract, utilizing inherited dynamic height solvers.
 # - Dependency Inversion Principle (DIP): Injects the SharkAIBehavior strategy 
 #   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -40,7 +40,13 @@ func _ready() -> void:
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/shark") as Node3D
 	
+	# TANGENT SHIELD FIX: Strip materials of tangent-requiring shaders to avoid C++ warnings
+	if is_instance_valid(_model_node):
+		_register_glb_materials(_model_node)
+	
 	_locate_player()
+	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	# ==========================================================================
@@ -52,27 +58,38 @@ func _ready() -> void:
 		ai_component.active_behavior = SharkAIBehavior.new()
 
 
+## Recursively duplicates and sanitizes materials across ALL mesh surfaces (Tangent Shield)
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D and node.mesh != null:
+		# Multi-Surface Sweep: Sanitize every material index on the mesh
+		for i: int in range(node.mesh.get_surface_count()):
+			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
+			var mat: Material = node.get_active_material(i)
+			if mat == null:
+				mat = node.mesh.surface_get_material(i)
+				
+			if mat is BaseMaterial3D:
+				var new_mat := mat.duplicate() as BaseMaterial3D
+				# TANGENT WARNING SHIELD
+				new_mat.normal_enabled = false
+				new_mat.anisotropy_enabled = false
+				new_mat.clearcoat_enabled = false
+				new_mat.heightmap_enabled = false
+				node.set_surface_override_material(i, new_mat)
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
+
+
 ## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
-	pass
-
-
-## Decoupled height calculation sourcing boundaries directly from the scene setup
-func _setup_nameplate_height() -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.shape is CylinderShape3D:
-		var cylinder := col.shape as CylinderShape3D
-		_collision_height = cylinder.height
-		
-	_setup_nameplate()
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.position.y = _collision_height + 0.35
+	pass # Visual model is instanced directly in the .tscn scene file
 
 
 # ==============================================================================
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
+
 func _get_nameplate_color() -> Color:
 	return Color(1.0, 0.15, 0.15) # Red warning nameplate
 
@@ -115,6 +132,7 @@ func _bite_player() -> void:
 # ==============================================================================
 # MAIN PHYSICS LOOP & PROCEDURAL TAIL-WAG OSCILLATION
 # ==============================================================================
+
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return

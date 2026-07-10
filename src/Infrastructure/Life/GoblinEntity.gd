@@ -3,13 +3,16 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: GoblinEntity
 # Description: Physical character controller for the hostile skirmisher Goblin.
+#              Delegates all rapid chasing vectors, skirmishing retreats, 
+#              and combat cooldowns to the decoupled GoblinAIBehavior strategy, 
+#              focusing on physical translations and visual animations.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, and entity nameplate styling.
-# BUG FIX:
-# - Added `_register_glb_materials()` to strip tangent and normal-map rendering
-#   requirements from the GLB mesh, completely suppressing the Godot C++ shader 
-#   warning spam in the console.
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
+#   base contract, utilizing inherited dynamic height solvers.
+# - Dependency Inversion Principle (DIP): Injects the GoblinAIBehavior strategy 
+#   during ready state initialization to keep code decoupled.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/Life/GoblinEntity.gd
 # ==============================================================================
@@ -30,6 +33,7 @@ func _ready() -> void:
 	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
 	
+	# Cache component references pre-configured in the scene
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
@@ -39,57 +43,64 @@ func _ready() -> void:
 		_register_glb_materials(model_node)
 	
 	_locate_player()
+	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
+	# ==========================================================================
+	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
+	# Inject the specialized Goblin skirmisher AI strategy dynamically on ready,
+	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
+	# ==========================================================================
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GoblinAIBehavior.new()
 
 
-## Recursively duplicates materials to prevent material-sharing leaks and tangent errors
+## Recursively duplicates and sanitizes materials across ALL mesh surfaces (Tangent Shield)
 func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		var mat: Material = node.get_active_material(0)
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0)
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			# TANGENT WARNING SHIELD
-			new_mat.normal_enabled = false
-			new_mat.anisotropy_enabled = false
-			new_mat.clearcoat_enabled = false
-			new_mat.heightmap_enabled = false
-			node.material_override = new_mat
+	if node is MeshInstance3D and node.mesh != null:
+		# Multi-Surface Sweep: Sanitize every material index on the mesh
+		for i: int in range(node.mesh.get_surface_count()):
+			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
+			var mat: Material = node.get_active_material(i)
+			if mat == null:
+				mat = node.mesh.surface_get_material(i)
+				
+			if mat is BaseMaterial3D:
+				var new_mat := mat.duplicate() as BaseMaterial3D
+				# TANGENT WARNING SHIELD
+				new_mat.normal_enabled = false
+				new_mat.anisotropy_enabled = false
+				new_mat.clearcoat_enabled = false
+				new_mat.heightmap_enabled = false
+				node.set_surface_override_material(i, new_mat)
 			
 	for child: Node in node.get_children():
 		_register_glb_materials(child)
 
 
+## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
-	pass
+	pass # Visual model is instanced directly in the .tscn scene file
 
 
-func _setup_nameplate_height() -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.shape is CylinderShape3D:
-		var cylinder := col.shape as CylinderShape3D
-		_collision_height = cylinder.height
-		
-	_setup_nameplate()
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.position.y = _collision_height + 0.35
-
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
 
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 0.15, 0.15)
+	return Color(1.0, 0.15, 0.15) # Red warning nameplate
 
 
 func _get_habitat() -> int:
-	return 0 # TERRESTRIAL
+	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
 
 
 func _has_ui_decorations() -> bool:
+	return true
+
+
+func _can_socialize() -> bool:
 	return true
 
 
@@ -100,13 +111,15 @@ func _locate_player() -> void:
 
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	pass 
+	pass # Hostiles do not panic when hit
 
 
 func _drop_loot(inv: IInventory) -> void:
+	# Drops 1x Stone Block (acting as raw cave-rubble debris)
 	inv.add_item(1, 1)
 
 
+## Tactical Action bite: Inflicts damage and applies diagonal knockback
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var dir := (player.global_position - global_position).normalized()

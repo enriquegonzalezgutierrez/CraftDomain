@@ -3,8 +3,8 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: RaccoonEntity
 # Description: Physical character controller for the forest Raccoon.
-#              It delegates all daytime sleeps, nighttime village barrel stalking,
-#              and scratches timers to the decoupled RaccoonAIBehavior strategy,
+#              Delegates all daytime sleeps, nighttime village barrel stalking,
+#              and scratching timers to the decoupled RaccoonAIBehavior strategy,
 #              managing wood-chip particle feedback and scratch audio cues.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
@@ -34,6 +34,12 @@ func _ready() -> void:
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
+	# TANGENT SHIELD FIX: Strip materials of tangent-requiring shaders to avoid C++ warnings
+	var model_node := get_node_or_null("Visuals/BodyBobJoint/raccoon") as Node3D
+	if is_instance_valid(model_node):
+		_register_glb_materials(model_node)
+	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	# ==========================================================================
@@ -45,17 +51,32 @@ func _ready() -> void:
 		ai_component.active_behavior = RaccoonAIBehavior.new()
 
 
-## Decoupled height calculation sourcing boundaries directly from the scene setup
-func _setup_nameplate_height() -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.shape is CylinderShape3D:
-		var cylinder := col.shape as CylinderShape3D
-		_collision_height = cylinder.height
-		
-	_setup_nameplate()
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.position.y = _collision_height + 0.35
+## Recursively duplicates and sanitizes materials across ALL mesh surfaces (Tangent Shield)
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D and node.mesh != null:
+		# Multi-Surface Sweep: Sanitize every material index on the mesh
+		for i: int in range(node.mesh.get_surface_count()):
+			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
+			var mat: Material = node.get_active_material(i)
+			if mat == null:
+				mat = node.mesh.surface_get_material(i)
+				
+			if mat is BaseMaterial3D:
+				var new_mat := mat.duplicate() as BaseMaterial3D
+				# TANGENT WARNING SHIELD
+				new_mat.normal_enabled = false
+				new_mat.anisotropy_enabled = false
+				new_mat.clearcoat_enabled = false
+				new_mat.heightmap_enabled = false
+				node.set_surface_override_material(i, new_mat)
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
+
+
+## Bypasses old procedural representation compiling
+func _build_visual_representation() -> void:
+	pass # Visual model is instanced directly in the .tscn scene file
 
 
 # ==============================================================================
@@ -132,6 +153,9 @@ func _spawn_claw_wood_particles(target_pos: Vector3) -> void:
 	mesh.material = mat
 	particles.mesh = mesh
 	
+	# Native leak-free automatic cleanup on complete emission (Milestone 7)
+	particles.finished.connect(particles.queue_free)
+	
 	# Add to world parent node to prevent particles moving with the raccoon
 	var parent := get_parent()
 	if is_instance_valid(parent):
@@ -140,6 +164,3 @@ func _spawn_claw_wood_particles(target_pos: Vector3) -> void:
 		# Symmetrical start pos: spawn right in between raccoon and targeted prop
 		particles.global_position = global_position.lerp(target_pos, 0.6) + Vector3(0.0, 0.2, 0.0)
 		particles.emitting = true
-		
-		# Safe memory cleanup direct connection
-		get_tree().create_timer(0.45).timeout.connect(particles.queue_free)

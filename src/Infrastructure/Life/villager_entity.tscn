@@ -1,28 +1,31 @@
 [gd_scene format=3 uid="uid://2sbxr25hfoco"]
 
 [ext_resource type="Script" uid="uid://cl8exwos1iv74" path="res://src/Infrastructure/Life/VillagerEntity.gd" id="1_villager"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="2_vis"]
-[ext_resource type="PackedScene" uid="uid://b6ph7o17seehi" path="res://assets/models/mobs/villager/villager_base.fbx" id="3_fbx"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://b6ph7o17seehi" path="res://assets/models/mobs/villager/villager_base.fbx" id="4_fbx"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_villager"]
-height = 1.8
-radius = 0.31835938
+height = 2.5357423
+radius = 0.4897461
 
 [node name="VillagerEntity" type="CharacterBody3D" unique_id=1452590235]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
 script = ExtResource("1_villager")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1324781141]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2678711, 0)
 shape = SubResource("CylinderShape3D_villager")
 
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+script = ExtResource("2_ai")
+
 [node name="NPCVisualComponent" type="Node" parent="." unique_id=1167051562]
-script = ExtResource("2_vis")
+script = ExtResource("3_vis")
 
 [node name="Visuals" type="Node3D" parent="." unique_id=595935945]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1003189423]
 
-[node name="villager_base" parent="Visuals/BodyBobJoint" unique_id=1733097190 instance=ExtResource("3_fbx")]
-transform = Transform3D(-0.8856, 0, -7.74209e-08, 0, 0.8856, 0, 7.74209e-08, 0, -0.8856, 0, 0, 0)
+[node name="villager_base" parent="Visuals/BodyBobJoint" unique_id=1733097190 instance=ExtResource("4_fbx")]
+transform = Transform3D(1.25, 0, 0, 0, 1.25, 0, 0, 0, 1.25, 0, 0, 0)

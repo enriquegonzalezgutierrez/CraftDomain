@@ -3,69 +3,54 @@
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: BirdEntity
 # Description: Physical character controller for the flying Yellow Bird.
-#              It delegates all thermal soaring, landing scans, and leaf perching
-#              to the decoupled AvianAIBehavior strategy, managing wing flap
-#              oscillations and procedural landing-height offsets.
+#              Delegates all flight and perching decisions to the AvianAIBehavior 
+#              strategy, managing procedural wing flap sways and dynamic, 
+#              scale-aware nameplate floating.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, coordinate-facing rotations, and wing flap sways.
 # - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, overriding flying caps so Y translations are safe from void drops.
-# - Dependency Inversion Principle (DIP): Injects the AvianAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+#   base contract, utilizing inherited dynamic height solvers.
+# - Open-Closed Principle (OCP): Nameplate tracking calculations are fully 
+#   dynamic, adapting automatically to any scale configured in the .tscn editor.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/BirdEntity.gd
 # ==============================================================================
 class_name BirdEntity
 extends PassiveEntity
 
-# Visual animation trackers
+# Animation and visual reference trackers
 var _animation_time: float = 0.0
 var _model_node: Node3D
 
+# Visual model baseline Y-coordinate (Y-axis origin when perched)
+const MODEL_BASE_Y: float = 0.0
+
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Birds spawn with 1 Heart of health (2 HP, fragile)
+	# Birds spawn with 1 Heart of health (2 HP)
 	super(spawn_pos, 2)
 	name = "Entity_BIRD"
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the passive group for target lookups
+	# Register in the passive group for target lookups
 	add_to_group("passives")
 	
-	# Cache component references pre-configured in the scene
+	# Cache components pre-configured in the scene
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/yellow_bird") as Node3D
 	
+	# Fetch nameplate configurations from inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Avian flight/perch AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior.
-	# ==========================================================================
+	# Inject the specialized Avian flight/perch AI behavior strategy on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = AvianAIBehavior.new()
 
 
-## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
-	pass
-
-
-## Decoupled height calculation sourcing boundaries directly from the scene setup
-func _setup_nameplate_height() -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.shape is CylinderShape3D:
-		var cylinder := col.shape as CylinderShape3D
-		_collision_height = cylinder.height
-		
-	_setup_nameplate()
-	if is_instance_valid(_nameplate):
-		# Aligns nameplate correctly above the flight height baseline
-		_nameplate.position.y = 1.05
+	pass # Visual model is instanced directly in the .tscn scene file
 
 
 func _drop_loot(inv: IInventory) -> void:
@@ -76,6 +61,7 @@ func _drop_loot(inv: IInventory) -> void:
 # ==============================================================================
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
+
 func _is_avian() -> bool: 
 	return true
 
@@ -91,6 +77,7 @@ func _can_socialize() -> bool:
 # ==============================================================================
 # PROCEDURAL WING FLAP & ALTIMETRICAL ROTATIONS
 # ==============================================================================
+
 func _process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
@@ -102,13 +89,9 @@ func _process(delta: float) -> void:
 			flight_state = get_meta(AvianAIBehavior.META_STATE) as int
 			
 		if flight_state == 2: # STATE_PERCHED (Resting flat on top of leaves)
-			_model_node.position.y = 0.0
+			_model_node.position.y = MODEL_BASE_Y
 			_model_node.rotation.z = 0.0
 			_model_node.rotation.x = 0.0
-			
-			# Synchronize Nameplate's height flatly above leaves
-			if is_instance_valid(_nameplate):
-				_nameplate.position.y = 0.65
 		else:
 			# FLIGHT FLAPPING ACTIVE STATE
 			_animation_time += delta
@@ -119,6 +102,7 @@ func _process(delta: float) -> void:
 			# Smooth thermal hover bobbing
 			var hover_bob := sin(_animation_time * 4.0) * 0.18
 			
+			# Handle Showcase Room visualization override
 			var is_showcase := false
 			var current_node := get_parent()
 			while current_node != null:
@@ -128,9 +112,9 @@ func _process(delta: float) -> void:
 				current_node = current_node.get_parent()
 				
 			if is_showcase:
-				_model_node.position.y = 0.0 # Sinks to floor inside showroom
+				_model_node.position.y = MODEL_BASE_Y # Sinks flat to floor inside showroom
 			else:
-				_model_node.position.y = hover_bob
+				_model_node.position.y = MODEL_BASE_Y + hover_bob
 			
 			if is_moving:
 				# High-frequency Z-axis rotation roll to simulate flapping wings
@@ -141,6 +125,11 @@ func _process(delta: float) -> void:
 				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
 				_model_node.rotation.x = 0.0
 				
-			# Synchronize Nameplate's height dynamically with flight bobbing sways!
-			if is_instance_valid(_nameplate):
-				_nameplate.position.y = _model_node.position.y + 0.85
+		# ======================================================================
+		# UNIVERSAL DYNAMIC NAMEPLATE POSITIONER (OCP / SOLID COMPLIANT)
+		# Sincroniza la etiqueta sumando la compensación de aleteo en tiempo real.
+		# Se adapta automáticamente a cualquier escala (0.25, 1.0, 5.0) sin tocar código.
+		# ======================================================================
+		if is_instance_valid(_nameplate):
+			var relative_offset := _model_node.position.y - MODEL_BASE_Y
+			_nameplate.position.y = _collision_height + 0.35 + relative_offset

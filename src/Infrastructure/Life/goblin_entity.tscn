@@ -1,28 +1,31 @@
 [gd_scene format=3 uid="uid://cpup55dqlhbo1"]
 
 [ext_resource type="Script" uid="uid://bx3wns0hnau3x" path="res://src/Infrastructure/Life/GoblinEntity.gd" id="1_goblin"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="2_vis"]
-[ext_resource type="PackedScene" uid="uid://j4r5rpcad8cc" path="res://assets/models/mobs/goblin.glb" id="3_glb"]
+[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://j4r5rpcad8cc" path="res://assets/models/mobs/goblin.glb" id="4_glb"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_goblin"]
-height = 0.75
-radius = 0.25
+height = 1.4831543
+radius = 0.5205078
 
 [node name="GoblinEntity" type="CharacterBody3D" unique_id=410366998]
-transform = Transform3D(-1.5, 0, -2.2649371e-07, 0, 1.5, 0, 2.2649371e-07, 0, -1.5, 0, 0, 0)
 script = ExtResource("1_goblin")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=166422272]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.51240385, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7437271, 0)
 shape = SubResource("CylinderShape3D_goblin")
 
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+script = ExtResource("2_ai")
+
 [node name="NPCVisualComponent" type="Node" parent="." unique_id=615514488]
-script = ExtResource("2_vis")
+script = ExtResource("3_vis")
 
 [node name="Visuals" type="Node3D" parent="." unique_id=1822559643]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1804348494]
 
-[node name="goblin" parent="Visuals/BodyBobJoint" unique_id=1634874312 instance=ExtResource("3_glb")]
-transform = Transform3D(0, 0, 0.75, 0, 0.75, 0, -0.75, 0, 0, 0, 0.5, 0)
+[node name="goblin" parent="Visuals/BodyBobJoint" unique_id=1634874312 instance=ExtResource("4_glb")]
+transform = Transform3D(-6.556708e-08, 0, -1.5, 0, 1.5, 0, 1.5, 0, -6.556708e-08, 0, 0.73887503, 0)

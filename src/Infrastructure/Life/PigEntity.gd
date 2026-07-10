@@ -1,16 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Physics & Presentation)
-# Description: Physics controller for the passive Pig, designed to be attached
-#              to a '.tscn' scene file.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively physical
-#                movement loops and life-signals, delegating visual design and
-#                collision parameters to the Godot Editor.
-#              - Liskov Substitution Principle (LSP): Subclasses PassiveEntity
-#                and satisfies the base contracts without code-based instantiation.
-#              STABILIZATION:
-#              - Removed redundant signal connections already handled in parent class.
+# Layer: Infrastructure / Presentation & Physics (Entities)
+# Class: PigEntity
+# Description: Physical character controller for the passive grasslands Pig.
+#              Delegates its visual clay-voxel representation and physical 
+#              translations completely to the Godot Editor (.tscn).
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively physical
+#   movement loops and life-signals, delegating visual design and
+#   collision parameters to the Godot Editor (.tscn).
+# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity
+#   base contract, utilizing inherited dynamic height solvers.
+# - Dependency Inversion Principle (DIP): Relies on abstract interfaces 
+#   (IInventory) to process loot drops.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# File: res://src/Infrastructure/Life/PigEntity.gd
 # ==============================================================================
 class_name PigEntity
 extends PassiveEntity
@@ -30,31 +34,49 @@ func _ready() -> void:
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
-	# Fetch nameplate configurations if available
+	# TANGENT SHIELD FIX: Strip materials of tangent-requiring shaders to avoid C++ warnings
+	var model_node := get_node_or_null("Visuals/BodyBobJoint/pig") as Node3D
+	if is_instance_valid(model_node):
+		_register_glb_materials(model_node)
+	
+	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
+
+
+## Recursively duplicates and sanitizes materials across ALL mesh surfaces (Tangent Shield)
+func _register_glb_materials(node: Node) -> void:
+	if node is MeshInstance3D and node.mesh != null:
+		# Multi-Surface Sweep: Sanitize every material index on the mesh
+		for i: int in range(node.mesh.get_surface_count()):
+			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
+			var mat: Material = node.get_active_material(i)
+			if mat == null:
+				mat = node.mesh.surface_get_material(i)
+				
+			if mat is BaseMaterial3D:
+				var new_mat := mat.duplicate() as BaseMaterial3D
+				# TANGENT WARNING SHIELD
+				new_mat.normal_enabled = false
+				new_mat.anisotropy_enabled = false
+				new_mat.clearcoat_enabled = false
+				new_mat.heightmap_enabled = false
+				node.set_surface_override_material(i, new_mat)
+			
+	for child: Node in node.get_children():
+		_register_glb_materials(child)
 
 
 ## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
-	pass
+	pass # Visual model is instanced directly in the .tscn scene file
 
 
-## Decoupled height calculation sourcing boundaries directly from the scene setup
-func _setup_nameplate_height() -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.shape is CylinderShape3D:
-		var cylinder := col.shape as CylinderShape3D
-		_collision_height = cylinder.height
-		
-	_setup_nameplate()
-	
-	# Aligns nameplate correctly above the visual model
-	if is_instance_valid(_nameplate):
-		_nameplate.position.y = _collision_height + 0.35
-
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
 
 func _drop_loot(inv: IInventory) -> void:
-	# Item ID 16: Fried Chicken
+	# Item ID 16: Fried Chicken (acting as soft pork meat proxy)
 	inv.add_item(16, 1)
 
 
