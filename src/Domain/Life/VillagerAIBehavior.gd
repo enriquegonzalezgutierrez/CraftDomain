@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: VillagerAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Specialized AI behavior strategy implementing social life routines for
 #              the Common Villager NPC. Coordinates real-time group "gossiping" 
 #              and dynamic day/night shelter-seeking scheduling.
@@ -11,8 +13,6 @@
 # - Added defensiveness against 'null' values when querying the WeatherService 
 #   for the current weather state, preventing GDScript C++ "Nonexistent int constructor"
 #   crashes during isolated testing without proper service nodes.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/VillagerAIBehavior.gd
 # ==============================================================================
 class_name VillagerAIBehavior
 extends IAIBehavior

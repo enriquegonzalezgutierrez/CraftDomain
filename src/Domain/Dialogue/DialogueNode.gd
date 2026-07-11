@@ -1,10 +1,13 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Dialogue System / Value Objects)
+# Class: DialogueNode
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Resource defining an individual dialogue state node,
 #              encapsulating NPC speech text and an array of branching choices.
-#              FIXED: Swapped choices to untyped Array to bypass Godot's circular compiler lock.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Dialogue/DialogueNode.gd
+#              FIXED: Swapped choices to untyped Array to bypass Godot's circular 
+#              compiler lock.
 # ==============================================================================
 class_name DialogueNode
 extends Resource

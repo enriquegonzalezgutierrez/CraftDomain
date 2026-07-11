@@ -1,107 +1,77 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (Player Controller & Physics)
-# Class: PlayerController
+# Pathfile: res://src/Infrastructure/Player/PlayerController.gd
 # Description: First-person player physics controller. Manages movement vectors,
 #              camera rotations, view bobs, and input actions.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   movement translations, camera rotations, and post-processed sways, 
-#   delegating raycast mining and block placements to the interaction component.
-# - Open-Closed Principle (OCP): All hardcoded item-to-viewmodel matches are 
-#   completely removed. Active held tools and build-types are resolved polimorphically 
-#   by querying the static registries, closing this class to modifications.
-# - Liskov Substitution Principle (LSP): Fully compatible with standard 
-#   CharacterBody3D physics, utilizing smooth linear interpolations.
+#              Refactored to instantiate PlayerHUD via its scene tree.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PlayerController
 extends CharacterBody3D
 
-## Signal emitted when the player swings their active weapon or tool.
 signal sword_swung
 
-# Movement configurations
+const PLAYER_HUD_SCENE := preload("res://src/Infrastructure/UI/player_hud.tscn")
+
 const SPEED: float = 6.0
 const JUMP_VELOCITY: float = 6.5
 const MOUSE_SENSITIVITY: float = 0.003
 const TERMINAL_VELOCITY: float = -20.0
 
-# Physics gravity
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-
-# Spawn Protection: Player remains frozen until home chunk is generated
 var is_active: bool = false
-
-# Domain Model Composition (DDD Compliance)
 var domain_entity: VoxelEntity
-
-# Segregated Inventory Interface (ISP compliant)
 var inventory: IInventory
 
-# STRICT TYPING: Statically typed Node references
 var camera: Camera3D
-var world_controller: Node3D # Typed as Node3D base class to prevent compiler circular dependencies
+var world_controller: Node3D 
 var hud: PlayerHUD
 var viewmodel: PlayerViewModel
-var interaction_component: Node3D # Bound loosely to prevent cyclic compile locks
+var interaction_component: Node3D 
 var visual_component: PlayerVisualComponent
 
-# Build inventory selection state (0 to 7 matches our 8 hotbar slots)
 var active_slot_index: int = 0
 var active_build_type: BlockType.Type = BlockType.Type.STONE
 var is_item_selected: bool = true 
 
-# Camera Bobbing & Tilt variables
 var _bob_timer: float = 0.0
 var _target_camera_pos: Vector3 = Vector3(0.0, 1.6, 0.0)
 var _target_camera_tilt: float = 0.0
-
-# Camera Trauma Shake variable
 var _shake_intensity: float = 0.0
-
-# Dynamic soundscape footstep distance accumulator (meters)
 var _footstep_accumulator: float = 0.0
 
 
 func _init() -> void:
 	_setup_inputs_mouse_actions()
-	
 	domain_entity = VoxelEntity.new(3)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
 
 
 func _ready() -> void:
-	# ==========================================================================
-	# VOXEL SMOOTH SLIDING CONFIGURATIONS
-	# ==========================================================================
-	floor_block_on_wall = false         # Allows sliding along block walls while standing on floors
-	floor_constant_speed = true         # Prevents micro-jitter speed changes over steps
-	floor_max_angle = deg_to_rad(45.0)   # Standard limits for walking slopes
-	floor_snap_length = 0.25           # Keeps the player glued down step edges smoothly
-	wall_min_slide_angle = 0.0         # Guarantees sliding against absolute 90-degree voxel vertical seams
-	safe_margin = 0.015                # 1.5cm safety boundary prevents capsule seam cling and corner traps
+	floor_block_on_wall = false         
+	floor_constant_speed = true         
+	floor_max_angle = deg_to_rad(45.0)   
+	floor_snap_length = 0.25           
+	wall_min_slide_angle = 0.0         
+	safe_margin = 0.015                
 	
 	_setup_inputs()
 	_setup_player_geometry()
 	_setup_sub_components()
 	
-	# Reactively bind to inventory modifications to sync the held tool mesh
 	var inv_comp := inventory as InventoryComponent
 	if is_instance_valid(inv_comp):
 		inv_comp.inventory_changed.connect(_on_inventory_changed)
 		
-	# Trigger the first selection visually
 	_apply_hotbar_selection(0)
 
 
-## Public API (DIP/Observer): Called by child components to emit the sword swing internally.
 func swing_sword() -> void:
 	sword_swung.emit()
 
 
 func _setup_player_geometry() -> void:
-	# 1. Physics capsule shape setup
 	var col := CollisionShape3D.new()
 	col.name = "PlayerCollider"
 	var capsule := CapsuleShape3D.new()
@@ -111,14 +81,12 @@ func _setup_player_geometry() -> void:
 	col.position = Vector3(0, 0.9, 0)
 	add_child(col)
 
-	# 2. Camera setup positioned at eye-level
 	camera = Camera3D.new()
 	camera.name = "PlayerCamera"
-	camera.position = Vector3(0, 1.6, 0) # Eye height relative to feet
+	camera.position = Vector3(0, 1.6, 0) 
 	camera.current = true
 	add_child(camera)
 	
-	# 3. Third-person visual representation setup (Shadow-casting only for local player)
 	visual_component = PlayerVisualComponent.new()
 	visual_component.name = "PlayerVisualComponent"
 	visual_component.is_local_player = true 
@@ -128,12 +96,10 @@ func _setup_player_geometry() -> void:
 func _setup_sub_components() -> void:
 	inventory = InventoryComponent.new()
 	
-	# Instantiate first-person arms viewmodel
 	viewmodel = PlayerViewModel.new()
-	viewmodel.player = self  # <--- DIP COMPLIANCE: Explicit dependency injection
+	viewmodel.player = self  
 	camera.add_child(viewmodel)
 	
-	# Instantiate raycasting and placement component under the camera
 	var interaction_script := load("res://src/Infrastructure/Player/VoxelInteractionComponent.gd") as GDScript
 	if interaction_script != null:
 		interaction_component = interaction_script.new() as Node3D
@@ -141,8 +107,8 @@ func _setup_sub_components() -> void:
 		interaction_component.set("world_controller", world_controller)
 		camera.add_child(interaction_component)
 	
-	# Instantiate HUD overlay
-	hud = PlayerHUD.new()
+	# Scene-Based instantiation to build child nodes correctly
+	hud = PLAYER_HUD_SCENE.instantiate() as PlayerHUD
 	hud.player = self
 	hud.world_controller = world_controller
 	add_child(hud)
@@ -150,40 +116,19 @@ func _setup_sub_components() -> void:
 
 func _setup_inputs() -> void:
 	var primary_inputs := {
-		"move_forward": KEY_W,
-		"move_backward": KEY_S,
-		"move_left": KEY_A,
-		"move_right": KEY_D,
-		"jump": KEY_SPACE,
-		"ui_cancel": KEY_ESCAPE,
-		"select_stone": KEY_1,
-		"select_dirt": KEY_2,
-		"select_grass": KEY_3,
-		"select_wood": KEY_4,
-		"select_leaves": KEY_5,
-		"select_lava": KEY_6,
-		"select_chicken": KEY_7,
-		"select_sword": KEY_8,
-		"craft_item": KEY_C,
-		"toggle_backpack": KEY_I,
-		"free_cursor": KEY_ALT,
-		"toggle_world_map": KEY_M 
+		"move_forward": KEY_W, "move_backward": KEY_S, "move_left": KEY_A, "move_right": KEY_D,
+		"jump": KEY_SPACE, "ui_cancel": KEY_ESCAPE, "select_stone": KEY_1, "select_dirt": KEY_2,
+		"select_grass": KEY_3, "select_wood": KEY_4, "select_leaves": KEY_5, "select_lava": KEY_6,
+		"select_chicken": KEY_7, "select_sword": KEY_8, "craft_item": KEY_C, "toggle_backpack": KEY_I,
+		"free_cursor": KEY_ALT, "toggle_world_map": KEY_M 
 	}
-	
 	for action_name: String in primary_inputs.keys():
 		if not InputMap.has_action(action_name):
 			InputMap.add_action(action_name)
 		InputMap.action_erase_events(action_name)
-		
-		var primary_event := InputEventKey.new()
-		primary_event.keycode = primary_inputs[action_name] as Key
-		InputMap.action_add_event(action_name, primary_event)
-
-
-func _locate_world() -> void:
-	var parent_node := get_parent()
-	if is_instance_valid(parent_node):
-		world_controller = parent_node.get_node_or_null("World") as Node3D
+		var event := InputEventKey.new()
+		event.keycode = primary_inputs[action_name] as Key
+		InputMap.action_add_event(action_name, event)
 
 
 func _input(event: InputEvent) -> void:
@@ -192,11 +137,10 @@ func _input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			if is_instance_valid(hud):
 				hud.toggle_pause_menu(true)
-			# Safe reflective call: prevents tight coupling and cyclic parsing locks
 			if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
 				world_controller.call("save_all")
 		else:
-			if is_instance_valid(hud) and (hud.get("_crafting_overlay") != null or hud.get("_inventory_overlay") != null or hud.get("_world_map_overlay") != null):
+			if is_instance_valid(hud) and hud.is_any_menu_open():
 				return
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			if is_instance_valid(hud):
@@ -206,12 +150,10 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_active or Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		return
-		
 	if event is InputEventMouseMotion:
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
 		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
-		
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_scroll_hotbar(-1)
@@ -221,14 +163,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	_process_cursor_grab_state()
-
 	if global_position.y < 2.0:
 		_rescue_player_from_void()
-
 	if not is_active:
 		return
 
-	# Scan chunk manager to verify spawning chunks are fully compiled
 	if is_instance_valid(world_controller):
 		var chunk_manager_ref: Object = world_controller.get("chunk_manager")
 		if is_instance_valid(chunk_manager_ref) and "world_state" in world_controller:
@@ -240,7 +179,6 @@ func _physics_process(delta: float) -> void:
 					return
 
 	_process_hotbar_keys()
-
 	if is_instance_valid(interaction_component) and interaction_component.has_method("process_interaction"):
 		interaction_component.call("process_interaction")
 
@@ -252,13 +190,11 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = JUMP_VELOCITY
 
-	var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
-	var direction: Vector3 = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 	
 	var current_flat_velocity := Vector2(velocity.x, velocity.z)
 	var target_flat_velocity := Vector2(direction.x, direction.z) * SPEED
-	
-	# Native linear interpolation for smooth in-game sliding responses
 	var acceleration := 12.0 if is_on_floor() else 6.0
 	current_flat_velocity = current_flat_velocity.lerp(target_flat_velocity, acceleration * delta)
 	
@@ -268,36 +204,27 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	_process_camera_effects(delta)
 	
-	# --- SEAMLESS FOOTSTEP TRIGGER ENGINE (Milestone 10) ---
 	if is_on_floor() and current_flat_velocity.length_squared() > 0.25:
 		_footstep_accumulator += delta * current_flat_velocity.length()
-		if _footstep_accumulator >= 2.2: # Trigger footstep sound every 2.2 meters walked
+		if _footstep_accumulator >= 2.2: 
 			_footstep_accumulator = 0.0
 			_trigger_footstep_sfx(current_flat_velocity)
 	else:
 		_footstep_accumulator = lerp(_footstep_accumulator, 0.0, delta * 3.0)
 
-	# --- SYNCHRONIZE THIRD-PERSON MOVEMENTS ---
 	if is_instance_valid(visual_component):
 		visual_component.animate_movement(current_flat_velocity, is_on_floor(), delta)
 
 
-## Resolves block types under the player's feet and plays the matching OGG footstep pos.
 func _trigger_footstep_sfx(_velocity_flat: Vector2) -> void:
-	# Block directly beneath the player's feet (0.1m offset downward)
-	var p_block := Vector3i(
-		floori(global_position.x),
-		floori(global_position.y - 0.1),
-		floori(global_position.z)
-	)
-	
+	var p_block := Vector3i(floori(global_position.x), floori(global_position.y - 0.1), floori(global_position.z))
 	var block_below := BlockType.Type.AIR
 	if is_instance_valid(world_controller) and "world_state" in world_controller:
 		var ws: WorldState = world_controller.world_state
 		if is_instance_valid(ws):
 			block_below = ws.get_block(p_block)
 		
-	var sfx_name := "footstep_stone" # Solid rock/stone default
+	var sfx_name := "footstep_stone" 
 	match block_below:
 		BlockType.Type.GRASS, BlockType.Type.DIRT:
 			sfx_name = "footstep_grass"
@@ -306,30 +233,27 @@ func _trigger_footstep_sfx(_velocity_flat: Vector2) -> void:
 		BlockType.Type.SNOW, BlockType.Type.ICE:
 			sfx_name = "footstep_snow"
 		BlockType.Type.AIR, BlockType.Type.WATER:
-			return # Discard sounds in empty air or swimming
+			return 
 			
-	# Trigger the preloaded sound statically at the player's current location
 	AudioService.play_sfx_static(sfx_name, global_position)
 
 
 func _process_camera_effects(delta: float) -> void:
 	if not is_instance_valid(camera):
 		return
-		
 	var flat_vel := Vector2(velocity.x, velocity.z)
 	var horizontal_speed := flat_vel.length()
 	
 	if is_on_floor() and horizontal_speed > 0.1:
 		_bob_timer += delta * horizontal_speed * 2.2
-		var bob_y: float = sin(_bob_timer) * 0.035
-		var bob_x: float = cos(_bob_timer * 0.5) * 0.018
+		var bob_y := sin(_bob_timer) * 0.035
+		var bob_x := cos(_bob_timer * 0.5) * 0.018
 		_target_camera_pos = Vector3(bob_x, 1.6 + bob_y, 0.0)
-		
 		var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 		_target_camera_tilt = -input_dir.x * 0.02
 	else:
 		_bob_timer += delta * 1.5
-		var breath_y: float = sin(_bob_timer) * 0.006
+		var breath_y := sin(_bob_timer) * 0.006
 		_target_camera_pos = Vector3(0.0, 1.6 + breath_y, 0.0)
 		_target_camera_tilt = 0.0
 		
@@ -350,12 +274,8 @@ func _process_camera_effects(delta: float) -> void:
 	camera.rotation.z = current_tilt
 
 
-func _process_camera_trauma_shake(delta: float) -> void:
-	_shake_intensity = lerp(_shake_intensity, 0.0, delta * 8.0)
-
-
 func _scroll_hotbar(direction: int) -> void:
-	var new_slot: int = active_slot_index + direction
+	var new_slot := active_slot_index + direction
 	if new_slot > 7: new_slot = 0
 	elif new_slot < 0: new_slot = 7
 	_apply_hotbar_selection(new_slot)
@@ -372,12 +292,10 @@ func _process_hotbar_keys() -> void:
 	elif Input.is_action_just_pressed("select_sword"): _apply_hotbar_selection(7)
 
 
-## Refactored Hotbar Alignment: Dynamically resolves viewmodel tools and held meshes (OCP compliant).
 func _apply_hotbar_selection(slot: int) -> void:
 	active_slot_index = slot
 	if is_instance_valid(hud):
 		hud.update_active_slot(slot)
-		
 	if inventory == null:
 		return
 		
@@ -388,26 +306,19 @@ func _apply_hotbar_selection(slot: int) -> void:
 		is_item_selected = false
 		active_build_type = BlockType.Type.AIR
 		_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
-		
-		# Clear third-person visual hand
 		if is_instance_valid(visual_component):
 			visual_component.update_held_tool(-1)
 		return
 		
 	var item_id := slot_data.item_id
-	
-	# Update third-person visual tool dynamically
 	if is_instance_valid(visual_component):
 		visual_component.update_held_tool(item_id)
 		
-	# OCP RESOLUTION: Query the static Viewmodel API to resolve the tool type polimorphically,
-	# completely removing the hardcoded list of item IDs.
 	var tool_type: PlayerViewModel.ToolType = PlayerViewModel.get_tool_type_for_item(item_id)
 	_set_viewmodel_tool(tool_type)
 	
-	# Check if the item is a structural block by validating its definition registry
 	var block_def := BlockLibrary.get_definition(item_id)
-	if block_def != null and block_def.type != 0: # 0 represents BlockType.Type.AIR
+	if block_def != null and block_def.type != 0: 
 		is_item_selected = true
 		active_build_type = item_id as BlockType.Type
 	else:
@@ -434,23 +345,18 @@ func _on_domain_entity_died() -> void:
 	domain_entity.health = 3
 	domain_entity.is_dead = false
 	is_active = false
-	
 	if is_instance_valid(hud):
 		hud.show_loading_screen()
-		
 	position = Vector3(8.5, 14.0, 8.5)
 	velocity = Vector3.ZERO
-	
 	if is_instance_valid(world_controller):
 		world_controller.set("is_teleport_spawn", true)
-		
-		var ws: WorldState = world_controller.get("world_state") as WorldState
+		var ws: WorldState = world_controller.world_state
 		if is_instance_valid(ws):
 			var chunk_pos: Vector3i = ws.global_to_chunk_pos(Vector3i(8, 0, 8))
 			world_controller.set("_target_spawn_chunk_pos", chunk_pos)
 
 
-## Reactive Domain Event Callback: Syncs hand meshes on stock mutations
 func _on_inventory_changed() -> void:
 	_apply_hotbar_selection(active_slot_index)
 
@@ -460,12 +366,10 @@ func _rescue_player_from_void() -> void:
 	var block_x := floori(position.x)
 	var block_z := floori(position.z)
 	var found_safe_y: float = 14.0 
-	
 	if is_instance_valid(world_controller) and "world_state" in world_controller:
 		var ws: WorldState = world_controller.world_state
 		if is_instance_valid(ws):
 			found_safe_y = ws.get_highest_solid_y(block_x, block_z)
-		
 	global_position.y = found_safe_y
 
 

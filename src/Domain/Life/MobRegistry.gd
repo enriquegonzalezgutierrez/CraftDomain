@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Pure Business Logic)
+# Layer: Domain (Life & Entities / Registries)
 # Class: MobRegistry
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Registry managing abstract entity factories, habitat 
 #              rules, and polymorphic behavior strategy bindings.
 # SOLID COMPLIANCE:

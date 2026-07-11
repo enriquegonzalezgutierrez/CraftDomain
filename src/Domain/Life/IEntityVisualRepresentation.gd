@@ -1,17 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Life & Entities / Abstract Interfaces)
+# Class: IEntityVisualRepresentation
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Abstract Strategy Interface defining the contract 
 #              for any entity's visual representation (Voxel or Skeletal).
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Exclusively defines the 
-#                visual assembly and skeletal blending contract, separating 
-#                graphics rendering from physical controllers.
-#              - Open-Closed Principle (OCP): Enables adding infinite new 3D assets 
-#                and rigs without modifying existing Entity scripts.
-#              - Dependency Inversion Principle (DIP): Physical nodes depend strictly 
-#                on this abstraction rather than concrete model loader classes.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/IEntityVisualRepresentation.gd
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively defines the visual assembly 
+#   and skeletal blending contract, separating graphics rendering from physical controllers.
+# - Open-Closed Principle (OCP): Enables adding infinite new 3D assets and rigs 
+#   without modifying existing Entity scripts.
+# - Dependency Inversion Principle (DIP): Physical nodes depend strictly on this 
+#   abstraction rather than concrete model loader classes.
 # ==============================================================================
 class_name IEntityVisualRepresentation
 extends Resource

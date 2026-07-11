@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: MerchantAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Specialized AI behavior strategy implementing mercantile routines for
 #              the Village Merchant. During the day, it tends the marketplace stall,
 #              greeting customers. At night, it navigates into indoor shelters to
@@ -12,8 +14,6 @@
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. New bartering tables,
 #   discounts gestures, or coin-purse visual meshes can be appended cleanly here.
 # - Liskov Substitution Principle (LSP): Fully compatible with the contract signatures.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/MerchantAIBehavior.gd
 # ==============================================================================
 class_name MerchantAIBehavior
 extends IAIBehavior

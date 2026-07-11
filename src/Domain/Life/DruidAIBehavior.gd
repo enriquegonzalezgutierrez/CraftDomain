@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: DruidAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Specialized AI behavior strategy implementing the Forest Druid's 
 #              mystical protector routines. It scans the surroundings for injured 
 #              peaceful animals, navigating to them to channel a botanical 
@@ -12,8 +14,6 @@
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. New druidic spells, 
 #   nature barriers, or floral portals can be appended cleanly here.
 # - Liskov Substitution Principle (LSP): Fully compatible with the contract signatures.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/DruidAIBehavior.gd
 # ==============================================================================
 class_name DruidAIBehavior
 extends IAIBehavior
@@ -163,8 +163,8 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		else:
 			wander_dir = Vector3.ZERO
 			
-	host.set_meta(META_WANDER_TIMER, wander_timer)
-	host.set_meta(META_WANDER_DIR, wander_dir)
+		host.set_meta(META_WANDER_TIMER, wander_timer)
+		host.set_meta(META_WANDER_DIR, wander_dir)
 
 	if wander_dir != Vector3.ZERO:
 		velocity.x = wander_dir.x * SPEED_PATROL

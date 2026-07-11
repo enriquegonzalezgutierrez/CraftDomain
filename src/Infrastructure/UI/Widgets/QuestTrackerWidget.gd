@@ -1,16 +1,10 @@
 # ==============================================================================
-# Project: CraftDomain
-# Description: Infrastructure UI Widget responsible ONLY for rendering the 
-#              active quest objectives, distance, and inventory progress.
-#              SOLID COMPLIANCE: Adheres strictly to SRP by isolating quest tracking.
-#              i18n UPGRADE: Localized all UI text labels, headings, and dynamic
-#              JSON quest objectives using tr() for full OCP compliance.
-#              UNIFIED HUD NAVIGATION UPGRADE:
-#              - Redesigned the gathering quest branch (Case B) to render BOTH
-#                inventory progress counters AND dynamic distance tracking towards
-#                natural resource hotspots, establishing complete UI cohesion.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
+# Pathfile: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
+# Description: Infrastructure UI Widget responsible ONLY for updating the 
+#              active quest objectives, distance, and inventory progress texts.
+#              Layout and styling are strictly delegated to its .tscn scene.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name QuestTrackerWidget
 extends Control
@@ -18,63 +12,19 @@ extends Control
 # Dependency injected by the HUD orchestrator
 var player: CharacterBody3D
 
-var _header_label: Label
-var _title_label: Label
-var _objective_label: Label
+@onready var _header_label: Label = $MarginContainer/VBoxContainer/HeaderLabel
+@onready var _title_label: Label = $MarginContainer/VBoxContainer/TitleLabel
+@onready var _objective_label: Label = $MarginContainer/VBoxContainer/ObjectiveLabel
 
 var _last_active_quest_id: String = ""
 var _last_active_quest_title: String = ""
 var _is_first_frame: bool = true
 
+
 func _ready() -> void:
-	name = "QuestTrackerWidget"
-	custom_minimum_size = Vector2(260, 110)
-	size = Vector2(260, 110)
-	
 	# Start hidden until a quest is actively loaded
 	visible = false 
-	
-	# Margin Layout
-	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(margin)
-	
-	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
-	margin.add_child(vbox)
-	
-	# Header Label (Localized)
-	_header_label = Label.new()
-	_header_label.text = tr("HUD_ACTIVE_MISSION")
-	var hs := LabelSettings.new()
-	hs.font_size = 11
-	hs.font_color = Color(1.0, 0.85, 0.2) # Gold
-	hs.outline_size = 3
-	hs.outline_color = Color(0.0, 0.0, 0.0, 0.9)
-	_header_label.label_settings = hs
-	vbox.add_child(_header_label)
-	
-	# Quest Title (Localized)
-	_title_label = Label.new()
-	var ts := LabelSettings.new()
-	ts.font_size = 14
-	ts.font_color = Color.WHITE
-	ts.outline_size = 4
-	ts.outline_color = Color(0.0, 0.0, 0.0, 0.9)
-	_title_label.label_settings = ts
-	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	vbox.add_child(_title_label)
-	
-	# Quest Objective (Localized)
-	_objective_label = Label.new()
-	var os := LabelSettings.new()
-	os.font_size = 12
-	os.font_color = Color(0.9, 0.9, 0.95) 
-	os.outline_size = 4
-	os.outline_color = Color(0.0, 0.0, 0.0, 0.9)
-	_objective_label.label_settings = os
-	_objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	vbox.add_child(_objective_label)
+
 
 ## Real-time metric updater: Decoupled quest evaluation loop
 func update_widget() -> void:

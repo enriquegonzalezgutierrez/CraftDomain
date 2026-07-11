@@ -1,18 +1,12 @@
 # ==============================================================================
-# Project: CraftDomain
-# Description: SRP-compliant UI Widget responsible ONLY for rendering the 
-#              full-screen red flash vignette when the player takes damage.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/Widgets/DamageOverlayWidget.gd
+# Pathfile: res://src/Infrastructure/UI/Widgets/DamageOverlayWidget.gd
+# Description: SRP-compliant UI Widget responsible ONLY for the animation 
+#              logic of the damage vignette. Visual properties are defined in .tscn.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name DamageOverlayWidget
 extends ColorRect
-
-func _ready() -> void:
-	name = "DamageOverlayWidget"
-	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	color = Color(0.8, 0.0, 0.0, 0.0) # Start fully transparent
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 ## Triggers a high-impact, short-lived screen flash animation.
 func flash() -> void:

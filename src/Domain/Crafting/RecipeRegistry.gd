@@ -1,16 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Crafting System / Registries)
+# Class: RecipeRegistry
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Registry responsible for parsing and storing crafting
 #              recipes from external JSON files.
-#              SOLID COMPLIANCE: Adheres to the Open-Closed Principle (OCP) by
-#              dynamically loading data without modifying GDScript source code.
-#              STRICT MODE: Utilizes safe type casting to prevent Variant warnings.
-#              WARNING FIX:
-#              - Added explicit static typing to all loop iterators (`item`, 
-#                `slot_key`, and `key`) to completely resolve `UNTYPED_DECLARATION` 
-#                compiler warnings.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Crafting/RecipeRegistry.gd
+# SOLID COMPLIANCE: 
+# - Open-Closed Principle (OCP): Adheres to OCP by dynamically loading data 
+#   without modifying GDScript source code.
+# - Strict Mode: Utilizes safe static typing and explicit type casting to prevent 
+#   Variant compiler warnings.
 # ==============================================================================
 class_name RecipeRegistry
 extends RefCounted
@@ -20,6 +20,7 @@ const RECIPE_DIR := "res://assets/recipes/"
 ## In-memory database mapping recipe_id (String) to Recipe instances
 static var _recipes: Dictionary = {}
 
+
 ## Scans the directory and loads all present JSON recipe files (OCP compliant)
 static func initialize_recipes() -> void:
 	print("[RecipeRegistry] Initializing crafting database...")
@@ -27,10 +28,12 @@ static func initialize_recipes() -> void:
 	_ensure_directory_exists()
 	_scan_and_load_all_recipe_files()
 
+
 static func _ensure_directory_exists() -> void:
 	if not DirAccess.dir_exists_absolute(RECIPE_DIR):
 		DirAccess.make_dir_recursive_absolute(RECIPE_DIR)
 		print("[RecipeRegistry] Created missing recipes directory: ", RECIPE_DIR)
+
 
 ## Scans the recipe directory and parses every .json file present
 static func _scan_and_load_all_recipe_files() -> void:
@@ -53,6 +56,7 @@ static func _scan_and_load_all_recipe_files() -> void:
 	dir.list_dir_end()
 	print("[RecipeRegistry] Dynamic scan finished. Total recipe files loaded: ", loaded_files_count, " | Total recipes: ", _recipes.size())
 
+
 ## Parses a specific JSON file and registers its instantiated Recipes
 static func _load_recipes_from_file(file_path: String) -> void:
 	var file := FileAccess.open(file_path, FileAccess.READ)
@@ -74,18 +78,16 @@ static func _load_recipes_from_file(file_path: String) -> void:
 	if recipe_array == null:
 		return
 		
-	# FIX: Added explicit static typing `Dictionary` to the JSON recipe objects loop iterator
 	for r_data: Dictionary in recipe_array:
 		var r := Recipe.new()
 		
 		r.recipe_id = r_data["recipe_id"] as String
 		r.recipe_name = r_data["recipe_name"] as String
 		
-		# Parse inputs (JSON keys are always strings, we must convert them to integer slots)
+		# Parse inputs (JSON keys are always strings, convert them to integer slots)
 		var inputs_dict := r_data["inputs"] as Dictionary
 		var typed_inputs: Dictionary = {}
 		
-		# FIX: Added explicit static typing `String` to the JSON inputs loop iterator
 		for slot_key: String in inputs_dict.keys():
 			var slot_index := slot_key.to_int()
 			var required_qty := inputs_dict[slot_key] as int
@@ -98,16 +100,17 @@ static func _load_recipes_from_file(file_path: String) -> void:
 		
 		_recipes[r.recipe_id] = r
 
+
 ## Returns a registered recipe by its ID
 static func get_recipe(recipe_id: String) -> Recipe:
 	if _recipes.has(recipe_id):
 		return _recipes[recipe_id] as Recipe
 	return null
 
+
 ## Returns all loaded recipes (useful for populating the UI crafting menu)
 static func get_all_recipes() -> Array[Recipe]:
 	var list: Array[Recipe] = []
-	# FIX: Added explicit static typing `String` to key loop iterator
 	for key: String in _recipes.keys():
 		list.append(_recipes[key] as Recipe)
 	return list

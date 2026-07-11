@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Interfaces)
+# Layer: Domain (Life & Entities / Abstract Interfaces)
 # Class: IVoxelModelBuilder
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Strategy Interface defining the contract for any 
 #              procedural voxel model sculptor.
 # SOLID COMPLIANCE:
@@ -30,11 +32,11 @@ func build_model(
 	_hair_color: Color, 
 	_biome_id: int
 ) -> void:
-	# Evitamos advertencias de parámetros no utilizados en el contrato abstracto
-	var _vc := _visual_component
-	var _sc := _skin_color
-	var _cc := _clothing_color
-	var _hc := _hair_color
-	var _bid := _biome_id
+	# Avoid unused parameters warnings in this abstract base interface
+	var _vc: Object = _visual_component
+	var _sc: Color = _skin_color
+	var _cc: Color = _clothing_color
+	var _hc: Color = _hair_color
+	var _bid: int = _biome_id
 	
 	assert(false, "[IVoxelModelBuilder ERROR] build_model must be implemented by concrete subclasses.")

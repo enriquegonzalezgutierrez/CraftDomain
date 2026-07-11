@@ -1,0 +1,22 @@
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/UI/Widgets/damage_overlay_widget.tscn
+; Description: Visual configuration for the damage flash overlay. 
+;              Anchored to fill the viewport and set to ignore input.
+;              Warning UID stripped to align with Godot local metadata caches.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
+
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/UI/Widgets/DamageOverlayWidget.gd" id="1_script"]
+
+[node name="DamageOverlayWidget" type="ColorRect"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.8, 0, 0, 0)
+script = ExtResource("1_script")

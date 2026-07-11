@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: GuardAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Concrete AI behavior strategy implementing protective guard routines,
 #              including threat scanning, alarm intercepts, and physical strikes.
 # SOLID COMPLIANCE:
@@ -9,11 +11,9 @@
 #   its own local state machine (IDLE, PATROLLING, SPRINTING, ENGAGING) and telemetry,
 #   completely independent of monolithic global enums.
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. New combat maneuvers 
-#   (like shield-block, parrying, or calling archers support) can be added locally 
+#   (like shield-block, parrying, or calling archer support) can be added locally 
 #   without modifying core components.
 # - Liskov Substitution Principle (LSP): Fully compatible with the base contract.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/GuardAIBehavior.gd
 # ==============================================================================
 class_name GuardAIBehavior
 extends IAIBehavior
@@ -166,7 +166,7 @@ func _reset_guard_state(host: Object) -> void:
 	host.set_meta(META_GUARD_STATE, State.IDLE)
 
 
-## Trigonometric Scan: Locates the closest active zombie or outlaw player in sight range
+## Trigonometric Scan: Locates closest active zombie or outlaw player in sight range
 func _scan_for_active_zombie_target(host: Object) -> Object:
 	if not host.call("is_inside_tree"):
 		return null

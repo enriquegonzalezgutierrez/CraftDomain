@@ -1,22 +1,22 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Core (World Management Services)
+# Class: ChunkLoaderService
 # Description: Application Service calculating procedural chunk loading and 
 #              unloading queues based on player spatial translations.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively player 
-#                boundary tracking and queue calculations.
-#              - Open-Closed Principle (OCP): Dynamically reacts to static 
-#                configuration changes without modifying core logic.
-#              ALGORITHM OVERHAUL (ROTATION-AWARE SCHEDULING):
-#              - Added look direction tracking (`_last_look_dir`). 
-#              - Now triggers a recalculation whenever the player crosses boundaries 
-#                OR rotates their camera by more than 15 degrees (Dot Product < 0.96).
-#                This allows the queue to be hot-swapped dynamically during panning.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Core/World/ChunkLoaderService.gd
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively player 
+#   boundary tracking and queue calculations.
+# - Open-Closed Principle (OCP): Dynamically reacts to static 
+#   configuration changes without modifying core logic.
 # ==============================================================================
 class_name ChunkLoaderService
 extends RefCounted
+
+# Configurable constants to eliminate magic numbers (SOLID compliance)
+const ANGLE_ROTATION_THRESHOLD: float = 0.96 # ~15 degrees
+const SORT_DOT_ATTENUATION: float = 0.85
+const MIN_DISTANCE_THRESHOLD: float = 0.1
 
 static var global_view_distance: int = 8
 
@@ -38,71 +38,78 @@ class ChunkUpdateTask:
 ## Evaluates the player's position and look direction, prioritizing visible chunks.
 func check_viewer_position(player_global_pos: Vector3, player_look_dir: Vector3, world_state: WorldState) -> ChunkUpdateTask:
 	var task := ChunkUpdateTask.new()
-	
-	# 1. Translate the player's global float coordinates to its chunk position
-	var player_block_pos := Vector3i(
-		floor(player_global_pos.x),
-		floor(player_global_pos.y),
-		floor(player_global_pos.z)
-	)
-	var current_viewer_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
+	var current_viewer_chunk_pos := _get_viewer_chunk_pos(player_global_pos, world_state)
 	var current_distance := global_view_distance
 	
-	# Calculate directional alignment drift (Dot product of look vectors)
-	var look_diff: float = _last_look_dir.dot(player_look_dir)
-	
-	# 2. Trigger updates on boundary crossings OR when camera rotates > 15 degrees (dot < 0.96)
-	if current_viewer_chunk_pos == _last_viewer_chunk_pos and current_distance == _last_view_distance and look_diff > 0.96:
-		return task # Position, distance, and direction are stable, skip
+	if _should_skip_update(current_viewer_chunk_pos, current_distance, player_look_dir):
+		return task
 		
+	_update_cached_viewer_state(current_viewer_chunk_pos, current_distance, player_look_dir)
+	
+	var desired_chunks := _gather_desired_chunks(current_viewer_chunk_pos, current_distance, world_state, task)
+	_sort_chunks_by_view(task.to_load, current_viewer_chunk_pos, player_look_dir)
+	_gather_unloaded_chunks(desired_chunks, world_state, task)
+	
+	return task
+
+
+func _get_viewer_chunk_pos(player_global_pos: Vector3, world_state: WorldState) -> Vector3i:
+	var player_block_pos := Vector3i(
+		floori(player_global_pos.x),
+		floori(player_global_pos.y),
+		floori(player_global_pos.z)
+	)
+	return world_state.global_to_chunk_pos(player_block_pos)
+
+
+func _should_skip_update(current_viewer_chunk_pos: Vector3i, current_distance: int, player_look_dir: Vector3) -> bool:
+	var look_diff: float = _last_look_dir.dot(player_look_dir)
+	return (
+		current_viewer_chunk_pos == _last_viewer_chunk_pos 
+		and current_distance == _last_view_distance 
+		and look_diff > ANGLE_ROTATION_THRESHOLD
+	)
+
+
+func _update_cached_viewer_state(current_viewer_chunk_pos: Vector3i, current_distance: int, player_look_dir: Vector3) -> void:
 	_last_viewer_chunk_pos = current_viewer_chunk_pos
 	_last_view_distance = current_distance
 	_last_look_dir = player_look_dir
-	
-	# 3. Calculate all chunk positions that should be active
+
+
+func _gather_desired_chunks(center: Vector3i, distance: int, world_state: WorldState, task: ChunkUpdateTask) -> Dictionary:
 	var desired_chunks: Dictionary = {}
-	for x: int in range(-current_distance, current_distance + 1):
-		for z: int in range(-current_distance, current_distance + 1):
-			# We load layers Y=0 and Y=1 (Height range 0 to 31) to support full heights & building
-			for y: int in range(2):
-				var target_pos := Vector3i(current_viewer_chunk_pos.x + x, y, current_viewer_chunk_pos.z + z)
+	for x: int in range(-distance, distance + 1):
+		for z: int in range(-distance, distance + 1):
+			for y: int in range(2): # Height layers Y=0 and Y=1
+				var target_pos := Vector3i(center.x + x, y, center.z + z)
 				desired_chunks[target_pos] = true
-				
-				# If the desired chunk does not exist in the database, queue it for loading
-				if world_state.get_chunk(target_pos) == null:
-					task.to_load.append(target_pos)
-					
-	# ==========================================================================
-	# FRUSTUM VIEW-DIRECTED SORTING ALGORITHM
-	# ==========================================================================
-	var center := current_viewer_chunk_pos
-	# Flatten the camera vector to 2D (X and Z)
+				_queue_unloaded_chunk(target_pos, world_state, task)
+	return desired_chunks
+
+
+func _queue_unloaded_chunk(target_pos: Vector3i, world_state: WorldState, task: ChunkUpdateTask) -> void:
+	if world_state.get_chunk(target_pos) == null:
+		task.to_load.append(target_pos)
+
+
+func _sort_chunks_by_view(to_load: Array[Vector3i], center: Vector3i, player_look_dir: Vector3) -> void:
 	var flat_look := Vector2(player_look_dir.x, player_look_dir.z).normalized()
-	
-	task.to_load.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
-		var vec_a := Vector2(float(a.x - center.x), float(a.z - center.z))
-		var vec_b := Vector2(float(b.x - center.x), float(b.z - center.z))
-		
-		var dist_a := vec_a.length()
-		var dist_b := vec_b.length()
-		
-		# Prevent division by zero if the chunk is the one the player stands inside
-		var dot_a := flat_look.dot(vec_a.normalized()) if dist_a > 0.1 else 1.0
-		var dot_b := flat_look.dot(vec_b.normalized()) if dist_b > 0.1 else 1.0
-		
-		# SCORE FORMULA: Closer distance is better (lower score).
-		# Being in front (dot > 0) reduces the score dramatically (loads first).
-		# Being behind (dot < 0) multiplies the score, heavily penalizing it (loads last).
-		var score_a := dist_a * (1.0 - (dot_a * 0.85))
-		var score_b := dist_b * (1.0 - (dot_b * 0.85))
-		
+	to_load.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		var score_a := _calculate_chunk_view_score(a, center, flat_look)
+		var score_b := _calculate_chunk_view_score(b, center, flat_look)
 		return score_a < score_b
 	)
-	# ==========================================================================
-				
-	# 4. Identify chunks currently in the database that are outside the view distance
+
+
+func _calculate_chunk_view_score(chunk_pos: Vector3i, center: Vector3i, flat_look: Vector2) -> float:
+	var vec := Vector2(float(chunk_pos.x - center.x), float(chunk_pos.z - center.z))
+	var dist := vec.length()
+	var dot_val := flat_look.dot(vec.normalized()) if dist > MIN_DISTANCE_THRESHOLD else 1.0
+	return dist * (1.0 - (dot_val * SORT_DOT_ATTENUATION))
+
+
+func _gather_unloaded_chunks(desired_chunks: Dictionary, world_state: WorldState, task: ChunkUpdateTask) -> void:
 	for active_pos: Vector3i in world_state._chunks.keys():
 		if not desired_chunks.has(active_pos):
 			task.to_unload.append(active_pos)
-			
-	return task

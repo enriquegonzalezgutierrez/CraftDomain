@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: CyberCitizenAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Specialized AI behavior strategy implementing robotic routines for
 #              the Cyber Citizen Android NPC. It features high-efficiency road 
 #              tracking (prioritizing walking along paved highway blocks) and a 
@@ -13,8 +15,6 @@
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. New data logging, 
 #   hacking overrides, or energy recharges can be appended cleanly here.
 # - Liskov Substitution Principle (LSP): Fully compatible with the contract signatures.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/CyberCitizenAIBehavior.gd
 # ==============================================================================
 class_name CyberCitizenAIBehavior
 extends IAIBehavior

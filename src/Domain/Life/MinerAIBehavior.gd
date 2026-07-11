@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: MinerAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Specialized AI behavior strategy implementing deep cavern mining
 #              routines for the Cave Miner NPC. It scans surrounding blocks 
 #              seeking Coal Ore veins, navigating to them, executing pickaxe 
@@ -15,8 +17,6 @@
 #   (like extracting diamonds, placing supports, or retreating from cave-ins) 
 #   can be added locally without touching other systems.
 # - Liskov Substitution Principle (LSP): Fully compatible with the base contract.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/MinerAIBehavior.gd
 # ==============================================================================
 class_name MinerAIBehavior
 extends IAIBehavior

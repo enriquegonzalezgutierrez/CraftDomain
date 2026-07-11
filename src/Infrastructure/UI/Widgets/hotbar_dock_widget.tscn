@@ -1,0 +1,680 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd" id="1_script"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_toast"]
+font_size = 16
+outline_size = 5
+outline_color = Color(0, 0, 0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bg"]
+bg_color = Color(0.04, 0.04, 0.06, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.25, 0.3, 0.6)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_shortcut_normal"]
+bg_color = Color(0.18, 0.18, 0.22, 0.5)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.3, 0.3, 0.35, 0.4)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_shortcut_hover"]
+bg_color = Color(0.22, 0.22, 0.28, 0.8)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.85, 0.2, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_btn_focus"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_hotkey"]
+font_size = 11
+font_color = Color(0.65, 0.65, 0.7, 1)
+outline_size = 2
+outline_color = Color(0, 0, 0, 1)
+
+[sub_resource type="StyleBoxLine" id="StyleBoxLine_sep"]
+color = Color(1, 1, 1, 0.1)
+grow_begin = 4.0
+grow_end = 4.0
+thickness = 2
+vertical = true
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slot"]
+bg_color = Color(0.12, 0.12, 0.14, 0.7)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0, 0, 0, 0)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="LabelSettings" id="LabelSettings_qty"]
+font_size = 14
+outline_size = 4
+outline_color = Color(0, 0, 0, 1)
+
+[node name="HotbarDockWidget" type="Control"]
+custom_minimum_size = Vector2(700, 140)
+layout_mode = 3
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -350.0
+offset_top = -160.0
+offset_right = 350.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("1_script")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 2
+
+[node name="ItemNameToast" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+label_settings = SubResource("LabelSettings_toast")
+horizontal_alignment = 1
+
+[node name="StatusContainer" type="Control" parent="VBoxContainer"]
+custom_minimum_size = Vector2(426, 28)
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="HeartsContainer" type="HBoxContainer" parent="VBoxContainer/StatusContainer"]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+grow_vertical = 2
+theme_override_constants/separation = 2
+
+[node name="FoodContainer" type="HBoxContainer" parent="VBoxContainer/StatusContainer"]
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_override_constants/separation = 2
+alignment = 2
+
+[node name="HotbarBG" type="PanelContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_styles/panel = SubResource("StyleBoxFlat_bg")
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/HotbarBG"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer/HotbarBG/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="BackpackBox" type="VBoxContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="BackpackButton" type="Button" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/BackpackBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_shortcut_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_shortcut_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_shortcut_normal")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_btn_focus")
+text = "🎒"
+
+[node name="HotkeyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/BackpackBox"]
+layout_mode = 2
+text = "[I]"
+label_settings = SubResource("LabelSettings_hotkey")
+horizontal_alignment = 1
+
+[node name="VSeparatorLeft" type="VSeparator" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer"]
+layout_mode = 2
+theme_override_styles/separator = SubResource("StyleBoxLine_sep")
+
+[node name="SlotsHBox" type="HBoxContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Slot_0" type="Panel" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="ItemIconContainer" type="Control" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_0"]
+visible = false
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FallbackColor" type="ColorRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_0/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TextureDisplay" type="TextureRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_0/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_0"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = -2
+
+[node name="QtyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_0/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+label_settings = SubResource("LabelSettings_qty")
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="Slot_1" type="Panel" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="ItemIconContainer" type="Control" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_1"]
+visible = false
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FallbackColor" type="ColorRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_1/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TextureDisplay" type="TextureRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_1/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_1"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = -2
+
+[node name="QtyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_1/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+label_settings = SubResource("LabelSettings_qty")
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="Slot_2" type="Panel" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="ItemIconContainer" type="Control" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_2"]
+visible = false
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FallbackColor" type="ColorRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_2/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TextureDisplay" type="TextureRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_2/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_2"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = -2
+
+[node name="QtyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_2/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+label_settings = SubResource("LabelSettings_qty")
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="Slot_3" type="Panel" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="ItemIconContainer" type="Control" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_3"]
+visible = false
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FallbackColor" type="ColorRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_3/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TextureDisplay" type="TextureRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_3/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_3"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = -2
+
+[node name="QtyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_3/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+label_settings = SubResource("LabelSettings_qty")
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="Slot_4" type="Panel" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="ItemIconContainer" type="Control" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_4"]
+visible = false
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FallbackColor" type="ColorRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_4/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TextureDisplay" type="TextureRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_4/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_4"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = -2
+
+[node name="QtyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_4/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+label_settings = SubResource("LabelSettings_qty")
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="Slot_5" type="Panel" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="ItemIconContainer" type="Control" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_5"]
+visible = false
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FallbackColor" type="ColorRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_5/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TextureDisplay" type="TextureRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_5/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_5"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = -2
+
+[node name="QtyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_5/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+label_settings = SubResource("LabelSettings_qty")
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="Slot_6" type="Panel" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="ItemIconContainer" type="Control" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_6"]
+visible = false
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FallbackColor" type="ColorRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_6/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TextureDisplay" type="TextureRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_6/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_6"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = -2
+
+[node name="QtyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_6/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+label_settings = SubResource("LabelSettings_qty")
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="Slot_7" type="Panel" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="ItemIconContainer" type="Control" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_7"]
+visible = false
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FallbackColor" type="ColorRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_7/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TextureDisplay" type="TextureRect" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_7/ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_7"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = -2
+
+[node name="QtyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox/Slot_7/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+label_settings = SubResource("LabelSettings_qty")
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="VSeparatorRight" type="VSeparator" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer"]
+layout_mode = 2
+theme_override_styles/separator = SubResource("StyleBoxLine_sep")
+
+[node name="WorkshopBox" type="VBoxContainer" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="WorkshopButton" type="Button" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/WorkshopBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_shortcut_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_shortcut_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_shortcut_normal")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_btn_focus")
+text = "🛠️"
+
+[node name="HotkeyLabel" type="Label" parent="VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/WorkshopBox"]
+layout_mode = 2
+text = "[C]"
+label_settings = SubResource("LabelSettings_hotkey")
+horizontal_alignment = 1

@@ -1,85 +1,21 @@
 # ==============================================================================
-# Project: CraftDomain
-# Description: Infrastructure UI Widget responsible ONLY for rendering the 
-#              top coordinates, celestial clock, active biome, and closest
-#              fixed Point of Interest (POI) with distance and cardinal compass direction.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Isolates navigation metrics representation.
-#              - Dependency Inversion Principle (DIP): Retrieves time metrics statically 
-#                via the decoupled CelestialService provider.
-#              i18n UPGRADE: Uses standardized translation keys for biomes, structures,
-#              and dynamic cardinal directions (N, NE, E, SE, S, SW, W, NW).
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/Widgets/GPSPanelWidget.gd
+# Pathfile: res://src/Infrastructure/UI/Widgets/GPSPanelWidget.gd
+# Description: Infrastructure UI Widget responsible ONLY for updating the 
+#              coordinates, celestial clock, active biome, and closest
+#              fixed Point of Interest (POI) metrics. Layout is defined in .tscn.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GPSPanelWidget
 extends Control
 
-# Dependency injected by the HUD orchestrator
+# Dependencies injected by the HUD orchestrator
 var player: CharacterBody3D
 var world_controller: Node3D
 
-var _coords_label: Label
-var _biome_label: Label
-var _poi_label: Label # New line for closest landmark tracking
-
-## Translation keys mapping Biome IDs to their i18n codes
-const BIOME_NAMES = {
-	0: "BIOME_BAY_OF_SAILS",
-	1: "BIOME_WARP_PLATEAU",
-	2: "BIOME_GOLDEN_BAZAAR",
-	3: "BIOME_CRAGGY_MINES",
-	4: "BIOME_FROSTBITE_GLACIERS",
-	5: "BIOME_REDWOOD_FOREST",
-	6: "BIOME_RED_BADLANDS",
-	7: "BIOME_NEON_RUINS",
-	8: "BIOME_SWAMP_OF_SIGHS",
-	9: "BIOME_CLOUD_KINGDOM"
-}
-
-
-func _ready() -> void:
-	name = "GPSPanel"
-	_setup_gps_layout()
-
-
-func _setup_gps_layout() -> void:
-	# Clean floating design (Expanded to height 72 to fit 3 lines elegantly)
-	custom_minimum_size = Vector2(400, 72)
-	size = Vector2(400, 72)
-	
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 2)
-	add_child(vbox)
-	
-	# Line 1: Coords & Clock Label
-	_coords_label = Label.new()
-	_coords_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls_coords := LabelSettings.new()
-	ls_coords.font_size = 14; ls_coords.font_color = Color(1.0, 1.0, 1.0)
-	ls_coords.outline_size = 4; ls_coords.outline_color = Color(0.0, 0.0, 0.0, 0.8)
-	_coords_label.label_settings = ls_coords
-	vbox.add_child(_coords_label)
-	
-	# Line 2: Biome Label
-	_biome_label = Label.new()
-	_biome_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls_biome := LabelSettings.new()
-	ls_biome.font_size = 13; ls_biome.font_color = Color(0.85, 0.85, 0.85)
-	ls_biome.outline_size = 4; ls_biome.outline_color = Color(0.0, 0.0, 0.0, 0.8)
-	_biome_label.label_settings = ls_biome
-	vbox.add_child(_biome_label)
-	
-	# Line 3: Closest Fixed POI Compass Label
-	_poi_label = Label.new()
-	_poi_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls_poi := LabelSettings.new()
-	ls_poi.font_size = 11; ls_poi.font_color = Color(1.0, 0.85, 0.2) # Gold tracking color
-	ls_poi.outline_size = 3; ls_poi.outline_color = Color(0.0, 0.0, 0.0, 0.9)
-	_poi_label.label_settings = ls_poi
-	vbox.add_child(_poi_label)
+@onready var _coords_label: Label = $VBoxContainer/CoordsLabel
+@onready var _biome_label: Label = $VBoxContainer/BiomeLabel
+@onready var _poi_label: Label = $VBoxContainer/POILabel
 
 
 ## Real-time metric updater: Decoupled navigation loop
@@ -159,10 +95,10 @@ func _update_closest_landmark(p_pos: Vector3) -> void:
 		_poi_label.text = "%s: %s (%dm %s)" % [
 			header_prefix.to_upper(), 
 			landmark_name, 
-			int(closest_distance_formatting_clamp(min_dist)), 
+			int(_closest_distance_formatting_clamp(min_dist)), 
 			cardinal_direction
 		]
 
 
-func closest_distance_formatting_clamp(dist: float) -> float:
-	return clamp(dist, 0.0, 99999.0)
+func _closest_distance_formatting_clamp(dist: float) -> float:
+	return clampf(dist, 0.0, 99999.0)

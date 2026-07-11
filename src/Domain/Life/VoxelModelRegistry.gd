@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Registries)
+# Layer: Domain (Life & Entities / Registries)
 # Class: VoxelModelRegistry
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Registry managing the binding and lookup of 
 #              IVoxelModelBuilder strategy classes.
 # SOLID COMPLIANCE:

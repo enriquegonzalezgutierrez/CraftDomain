@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: FarmerAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Concrete AI behavior strategy implementing agricultural routines 
 #              including local crop scanning, path navigation, and harvesting.
 # SOLID COMPLIANCE:
@@ -12,8 +14,6 @@
 #   states (like watering, planting seeds, or resting) can be added locally 
 #   without modifying any other system.
 # - Liskov Substitution Principle (LSP): Fully compatible with the base contract.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/FarmerAIBehavior.gd
 # ==============================================================================
 class_name FarmerAIBehavior
 extends IAIBehavior
@@ -28,7 +28,7 @@ enum State {
 const SCAN_INTERVAL_SEC: float = 3.0
 const HARVEST_DURATION_SEC: float = 1.8
 
-# Decoupled state mirrors to prevent importing Infrastructure enums directly
+# Decoupled task enums mirroring NPCAIComponent.TaskState
 const TASK_IDLE = 0
 const TASK_WORKING = 6
 

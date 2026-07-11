@@ -1,0 +1,54 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/UI/PlayerHUD.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/damage_overlay_widget.tscn" id="2_damage"]
+[ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/crosshair_widget.tscn" id="3_crosshair"]
+[ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/fps_counter_widget.tscn" id="4_fps"]
+[ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/minimap_widget.tscn" id="5_minimap"]
+[ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/gps_panel_widget.tscn" id="6_gps"]
+[ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/quest_tracker_widget.tscn" id="7_quest"]
+[ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/hotbar_dock_widget.tscn" id="8_hotbar"]
+[ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/pause_menu_widget.tscn" id="9_pause"]
+
+[node name="PlayerHUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_script")
+
+[node name="DamageOverlayWidget" parent="." instance=ExtResource("2_damage")]
+layout_mode = 1
+
+[node name="CrosshairWidget" parent="." instance=ExtResource("3_crosshair")]
+layout_mode = 1
+
+[node name="FPSCounter" parent="." instance=ExtResource("4_fps")]
+layout_mode = 1
+
+[node name="MinimapWidget" parent="." instance=ExtResource("5_minimap")]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -170.0
+offset_top = 20.0
+offset_right = -10.0
+offset_bottom = 180.0
+grow_horizontal = 0
+
+[node name="GPSPanelWidget" parent="." instance=ExtResource("6_gps")]
+layout_mode = 1
+
+[node name="QuestTrackerWidget" parent="." instance=ExtResource("7_quest")]
+layout_mode = 1
+
+[node name="HotbarDockWidget" parent="." instance=ExtResource("8_hotbar")]
+layout_mode = 1
+
+[node name="PauseMenuWidget" parent="." instance=ExtResource("9_pause")]
+layout_mode = 1
+visible = false

@@ -1,5 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Life & Entities / Services)
+# Class: VillageReputationService
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Service managing the player's village reputation and economic multipliers.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively player reputation scores,
@@ -8,8 +12,6 @@
 #   special titles, items, or elite quests).
 # - Dependency Inversion Principle (DIP): Pure data-oriented RefCounted service,
 #   completely decoupled from Godot's SceneTree or physics engines.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/VillageReputationService.gd
 # ==============================================================================
 class_name VillageReputationService
 extends RefCounted

@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: GolemAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Specialized AI behavior strategy implementing protective military 
 #              overwatch routines for the colossus Iron Golem. It coordinates 
 #              throttled target scans (Zombies or Outlaw wanted players), sprinting 
@@ -14,8 +16,6 @@
 #   (like ground-smash, sweeping, or throwing rocks) can be added locally in this file
 #   without modifying other scripts.
 # - Liskov Substitution Principle (LSP): Fully compatible with the base contract.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/GolemAIBehavior.gd
 # ==============================================================================
 class_name GolemAIBehavior
 extends IAIBehavior

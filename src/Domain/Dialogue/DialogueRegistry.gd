@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Dialogue System)
+# Layer: Domain (Dialogue System / Registries)
 # Class: DialogueRegistry
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Registry responsible for managing conversation nodes, 
 #              routing options, and compiling dynamic interactive dialogue trees.
 # SOLID COMPLIANCE:
@@ -9,7 +11,7 @@
 #   declarative node linking away from visual and text rendering overlays.
 # - Open-Closed Principle (OCP): Decoupled from hardcoded source code lines. 
 #   Conversations are loaded dynamically from an external JSON file.
-# - Dependency Inversion Principle (DIP): Resolves dialogue nodes polimorphically 
+# - Dependency Inversion Principle (DIP): Resolves dialogue nodes polymorphically 
 #   by storing references to abstract domain resources ('DialogueNode', 'DialogueChoice'), 
 #   decoupling data structures from frame-bound user interfaces.
 # ==============================================================================

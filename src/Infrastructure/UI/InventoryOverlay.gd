@@ -1,39 +1,29 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (UI Presentation / Backpack Inventory)
-# Class: InventoryOverlay
+# Pathfile: res://src/Infrastructure/UI/InventoryOverlay.gd
 # Description: Glassmorphic 24-slot inventory and backpack inspector.
-#              Supports tactile slot selections, automated quick sorting, 
-#              and native drag-and-drop operations.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively the layout grids, 
-#   details panel selections, and high-level button clicks, delegating item 
-#   transactions to the pure domain strategies.
-# - Open-Closed Principle (OCP): All hardcoded checks for specific food item IDs 
-#   are removed. Consumable items are detected and processed polimorphically 
-#   by querying the `ItemStrategyRegistry` contract, closing this file to changes.
-# - Interface Segregation Principle (ISP): Interacts with player inventory stocks 
-#   strictly through the segregated `IInventory` abstract interface.
+#              Renders grid slots and handles item actions and DND events.
+#              Layout and structural offsets are strictly defined in .tscn.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name InventoryOverlay
 extends Panel
 
-## Emitted when the user exits the backpack screen.
 signal closed
 
-## Strictly-typed reference to the active Player Controller.
-var player: PlayerController
+@export var player: PlayerController
 
-# UI Node References
-var _backpack_grid_container: GridContainer
-var _hotbar_grid_container: GridContainer
-var _detail_title: Label
-var _detail_desc: Label
-var _detail_qty: Label
-var _detail_instruction: Label
-var _detail_icon: ColorRect
-var _action_button: Button
-var _use_button: Button
+# Static UI Node References (Bound from .tscn)
+@onready var _backpack_grid_container: GridContainer = $BackpackCard/HBoxContainer/LeftPane/LeftVBox/ScrollContainer/BackpackGridContainer
+@onready var _hotbar_grid_container: GridContainer = $BackpackCard/HBoxContainer/LeftPane/LeftVBox/HotbarGridContainer
+@onready var _detail_title: Label = $BackpackCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/DetailTitle
+@onready var _detail_desc: Label = $BackpackCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/DetailDesc
+@onready var _detail_qty: Label = $BackpackCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/DetailQty
+@onready var _detail_instruction: Label = $BackpackCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/DetailInstruction
+@onready var _detail_icon: ColorRect = $BackpackCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/PreviewPanel/DetailIcon
+@onready var _action_button: Button = $BackpackCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/ButtonsHBox/ActionButton
+@onready var _use_button: Button = $BackpackCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/ButtonsHBox/UseButton
+@onready var _sort_btn: Button = $BackpackCard/HBoxContainer/LeftPane/LeftVBox/HeaderHBox/SortButton
 
 # Internal selection state tracking
 var _first_selected_slot_index: int = -1
@@ -41,235 +31,15 @@ var _focused_slot_index: int = -1
 
 
 func _ready() -> void:
-	# Fullscreen translucent backdrop wash
-	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var bg_style := StyleBoxFlat.new()
-	bg_style.bg_color = Color(0.02, 0.02, 0.03, 0.65)
-	add_theme_stylebox_override("panel", bg_style)
+	_sort_btn.pressed.connect(_on_sort_pressed)
+	_action_button.pressed.connect(_on_equip_pressed)
+	_use_button.pressed.connect(_on_use_pressed)
 	
-	_setup_backpack_ui()
 	_refresh_backpack_grids()
 	_show_empty_details()
 
 
-func _setup_backpack_ui() -> void:
-	# 1. Main Card Container (Centered, glassmorphic panel)
-	var main_card := Panel.new()
-	main_card.name = "BackpackCard"
-	main_card.custom_minimum_size = Vector2(840, 520)
-	main_card.size = Vector2(840, 520)
-	main_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	main_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	main_card.grow_vertical = Control.GROW_DIRECTION_BOTH
-	
-	main_card.offset_left = -420
-	main_card.offset_right = 420
-	main_card.offset_top = -260
-	main_card.offset_bottom = 260
-	
-	var card_style := StyleBoxFlat.new()
-	card_style.set_corner_radius_all(12)
-	card_style.bg_color = Color(0.06, 0.06, 0.08, 0.96) 
-	card_style.border_width_left = 2; card_style.border_width_top = 2
-	card_style.border_width_right = 2; card_style.border_width_bottom = 2
-	card_style.border_color = Color(0.35, 0.35, 0.4, 0.4)
-	card_style.shadow_size = 20
-	card_style.shadow_color = Color(0, 0, 0, 0.6)
-	main_card.add_theme_stylebox_override("panel", card_style)
-	add_child(main_card)
-	
-	# Horizontal Splitter Container (Dual-pane layout)
-	var hbox := HBoxContainer.new()
-	hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hbox.add_theme_constant_override("separation", 0)
-	main_card.add_child(hbox)
-	
-	# ==================== LEFT PANE: BACKPACK GRID ====================
-	var left_pane := MarginContainer.new()
-	left_pane.custom_minimum_size = Vector2(360, 0)
-	left_pane.add_theme_constant_override("margin_left", 24)
-	left_pane.add_theme_constant_override("margin_top", 24)
-	left_pane.add_theme_constant_override("margin_right", 12)
-	left_pane.add_theme_constant_override("margin_bottom", 24)
-	hbox.add_child(left_pane)
-	
-	var left_vbox := VBoxContainer.new()
-	left_pane.add_child(left_vbox)
-	
-	# Header HBox (Backpack title & Auto-sort action button)
-	var header_hbox := HBoxContainer.new()
-	header_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left_vbox.add_child(header_hbox)
-	
-	var catalog_title := Label.new()
-	catalog_title.text = tr("INVENTORY_BACKPACK_STORAGE").to_upper()
-	catalog_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var ts := LabelSettings.new()
-	ts.font_size = 18
-	ts.font_color = Color(0.2, 0.85, 0.85) 
-	ts.outline_size = 4
-	ts.outline_color = Color.BLACK
-	catalog_title.label_settings = ts
-	header_hbox.add_child(catalog_title)
-	
-	var sort_btn := Button.new()
-	sort_btn.text = " ⚡ " + tr("INVENTORY_SORT").to_upper() + " "
-	sort_btn.custom_minimum_size = Vector2(100, 32)
-	sort_btn.pressed.connect(_on_sort_pressed)
-	_setup_button_style(sort_btn, Color(0.12, 0.55, 0.32, 0.7)) 
-	header_hbox.add_child(sort_btn)
-	
-	left_vbox.add_child(_create_spacer(14))
-	
-	# Scrollable grid container for the 16 backpack storage cells (slots 8 to 23)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	left_vbox.add_child(scroll)
-	
-	_backpack_grid_container = GridContainer.new()
-	_backpack_grid_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_backpack_grid_container.columns = 4 
-	_backpack_grid_container.add_theme_constant_override("h_separation", 10)
-	_backpack_grid_container.add_theme_constant_override("v_separation", 10)
-	scroll.add_child(_backpack_grid_container)
-	
-	# ==================== HOTBAR DOCK GRID ====================
-	left_vbox.add_child(_create_spacer(14))
-	
-	var hotbar_title := Label.new()
-	hotbar_title.text = tr("INVENTORY_HOTBAR_DOCK").to_upper()
-	var hts := LabelSettings.new()
-	hts.font_size = 13
-	hts.font_color = Color(0.65, 0.65, 0.7)
-	hts.outline_size = 2
-	hts.outline_color = Color.BLACK
-	hotbar_title.label_settings = hts
-	left_vbox.add_child(hotbar_title)
-	
-	left_vbox.add_child(_create_spacer(6))
-	
-	_hotbar_grid_container = GridContainer.new()
-	_hotbar_grid_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_hotbar_grid_container.columns = 8 
-	_hotbar_grid_container.add_theme_constant_override("h_separation", 6)
-	_hotbar_grid_container.add_theme_constant_override("v_separation", 6)
-	left_vbox.add_child(_hotbar_grid_container)
-	
-	# ==================== RIGHT PANE: ITEM DETAILED INSPECTOR ====================
-	var detail_panel := Panel.new()
-	detail_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	
-	var detail_style := StyleBoxFlat.new()
-	detail_style.bg_color = Color(0.04, 0.04, 0.05, 0.6)
-	detail_style.set_corner_radius_all(14)
-	detail_style.border_width_left = 1
-	detail_style.border_color = Color(0.25, 0.25, 0.3, 0.2)
-	detail_panel.add_theme_stylebox_override("panel", detail_style)
-	hbox.add_child(detail_panel)
-	
-	var right_margin := MarginContainer.new()
-	right_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	right_margin.add_theme_constant_override("margin_left", 24)
-	right_margin.add_theme_constant_override("margin_top", 24)
-	right_margin.add_theme_constant_override("margin_right", 24)
-	right_margin.add_theme_constant_override("margin_bottom", 24)
-	detail_panel.add_child(right_margin)
-	
-	var right_vbox := VBoxContainer.new()
-	right_margin.add_child(right_vbox)
-	
-	# Dynamic Title Label
-	_detail_title = Label.new()
-	_detail_title.text = tr("INVENTORY_INSPECT_TITLE")
-	var dts := LabelSettings.new()
-	dts.font_size = 22
-	dts.font_color = Color.WHITE
-	dts.outline_size = 4
-	dts.outline_color = Color.BLACK
-	_detail_title.label_settings = dts
-	right_vbox.add_child(_detail_title)
-	
-	right_vbox.add_child(_create_spacer(10))
-	
-	# Large 3D-Like Preview Box panel
-	var preview_panel := Panel.new()
-	preview_panel.custom_minimum_size = Vector2(0, 110)
-	var ps := StyleBoxFlat.new()
-	ps.bg_color = Color(0.1, 0.1, 0.12, 0.4)
-	ps.set_corner_radius_all(10)
-	preview_panel.add_theme_stylebox_override("panel", ps)
-	right_vbox.add_child(preview_panel)
-	
-	_detail_icon = ColorRect.new()
-	_detail_icon.custom_minimum_size = Vector2(38, 38)
-	_detail_icon.size = Vector2(38, 38)
-	_detail_icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	_detail_icon.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_detail_icon.grow_vertical = Control.GROW_DIRECTION_BOTH
-	preview_panel.add_child(_detail_icon)
-	
-	right_vbox.add_child(_create_spacer(10))
-	
-	# Localized Description Text
-	_detail_desc = Label.new()
-	_detail_desc.text = tr("INVENTORY_EMPTY_DESC")
-	_detail_desc.autowrap_mode = TextServer.AUTOWRAP_WORD
-	_detail_desc.custom_minimum_size = Vector2(0, 70)
-	var dds := LabelSettings.new()
-	dds.font_size = 13
-	dds.font_color = Color(0.85, 0.85, 0.9)
-	_detail_desc.label_settings = dds
-	right_vbox.add_child(_detail_desc)
-	
-	right_vbox.add_child(_create_spacer(10))
-	
-	# Action Instructions Subtitle
-	_detail_instruction = Label.new()
-	_detail_instruction.text = ""
-	_detail_instruction.autowrap_mode = TextServer.AUTOWRAP_WORD
-	_detail_instruction.custom_minimum_size = Vector2(0, 45)
-	var dis := LabelSettings.new()
-	dis.font_size = 12
-	dis.font_color = Color(1.0, 0.85, 0.2) 
-	_detail_instruction.label_settings = dis
-	right_vbox.add_child(_detail_instruction)
-	
-	# Stock Quantity Label
-	_detail_qty = Label.new()
-	_detail_qty.text = ""
-	var dqs := LabelSettings.new()
-	dqs.font_size = 12
-	dqs.font_color = Color(0.65, 0.65, 0.7)
-	_detail_qty.label_settings = dqs
-	right_vbox.add_child(_detail_qty)
-	
-	right_vbox.add_child(_create_spacer(14))
-	
-	# Contextual Action Buttons
-	var buttons_hbox := HBoxContainer.new()
-	buttons_hbox.size_flags_vertical = Control.SIZE_SHRINK_END
-	buttons_hbox.add_theme_constant_override("separation", 10)
-	right_vbox.add_child(buttons_hbox)
-	
-	_action_button = Button.new()
-	_action_button.text = tr("INVENTORY_EQUIP").to_upper()
-	_action_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_action_button.custom_minimum_size = Vector2(0, 42)
-	_action_button.pressed.connect(_on_equip_pressed)
-	buttons_hbox.add_child(_action_button)
-	_setup_button_style(_action_button, Color(0.12, 0.55, 0.82, 0.8)) 
-	
-	_use_button = Button.new()
-	_use_button.text = tr("INVENTORY_CONSUME").to_upper()
-	_use_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_use_button.custom_minimum_size = Vector2(0, 42)
-	_use_button.pressed.connect(_on_use_pressed)
-	buttons_hbox.add_child(_use_button)
-	_setup_button_style(_use_button, Color(0.12, 0.55, 0.32, 0.8)) 
-
-
-## Clears, compiles, and redraws both the hotbar dock and upper storage grids.
+## Clears, compiles, and redraws both the hotbar dock and upper storage grids
 func _refresh_backpack_grids() -> void:
 	if not is_instance_valid(player):
 		return
@@ -279,28 +49,25 @@ func _refresh_backpack_grids() -> void:
 	for child: Node in _hotbar_grid_container.get_children(): 
 		child.queue_free()
 		
-	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+	var inventory := player.inventory as InventoryComponent
 	
 	# 1. Populate UPPER STORAGE GRID (Slots 8 to 23)
 	for i: int in range(8, 24):
-		var btn := _create_grid_slot_button(i, inventory, 68)
-		_backpack_grid_container.add_child(btn)
+		_backpack_grid_container.add_child(_create_grid_slot_button(i, inventory, 68))
 		
 	# 2. Populate LOWER QUICKBAR DOCK (Slots 0 to 7)
 	for i: int in range(8):
-		var btn := _create_grid_slot_button(i, inventory, 38)
-		_hotbar_grid_container.add_child(btn)
+		_hotbar_grid_container.add_child(_create_grid_slot_button(i, inventory, 38))
 
 
-## Programmatically constructs a grid button supporting native Drag and Drop.
 func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, size_pixels: int) -> Button:
-	var slot := inventory.get_slot_data(slot_index)
-	var qty: int = slot.quantity
-	
 	var btn := InventorySlotWidget.new()
 	btn.slot_index = slot_index
 	btn.overlay = self
 	btn.custom_minimum_size = Vector2(size_pixels, size_pixels)
+	
+	var slot := inventory.get_slot_data(slot_index)
+	var qty := slot.quantity
 	
 	# Build layout StyleBoxes
 	var slot_style := StyleBoxFlat.new()
@@ -357,15 +124,12 @@ func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, si
 			tex_display.texture = tex
 			tex_display.visible = true
 			fallback.visible = false
-			for child: Node in fallback.get_children():
-				child.queue_free()
 		else:
 			tex_display.texture = null
 			tex_display.visible = false
 			
 			var def: BlockDefinition = BlockLibrary.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
 			fallback.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
-			
 			fallback.visible = true
 			btn._apply_special_fallback_decoration(fallback, slot.item_id)
 		
@@ -379,11 +143,7 @@ func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, si
 		ls.outline_color = Color.BLACK
 		qty_label.label_settings = ls
 		
-		if qty == -1:
-			qty_label.text = tr("INVENTORY_INFINITE_SHORT") + " "
-		else:
-			qty_label.text = str(qty) + " "
-			
+		qty_label.text = tr("INVENTORY_INFINITE_SHORT") if qty == -1 else str(qty)
 		qty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(qty_label)
 		
@@ -391,37 +151,28 @@ func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, si
 	return btn
 
 
-## Clicking Swapping fallback interface (useful for tactile layouts)
 func _on_slot_clicked(slot_index: int) -> void:
-	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+	var inventory := player.inventory as InventoryComponent
 	
 	if _first_selected_slot_index == -1:
 		_first_selected_slot_index = slot_index
 		_on_slot_selected(slot_index) 
 		_refresh_backpack_grids()
-		
 	elif _first_selected_slot_index == slot_index:
 		_first_selected_slot_index = -1
 		_show_empty_details()
 		_refresh_backpack_grids()
-		
 	else:
 		inventory.swap_slots(_first_selected_slot_index, slot_index)
 		player.call("_apply_hotbar_selection", player.get("active_slot_index"))
-		
-		var hud: PlayerHUD = player.get("hud") as PlayerHUD
-		if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-			hud.call("show_quest_notification", tr("INVENTORY_COMPACTED_HEADER"), tr("INVENTORY_COMPACTED_DESC"))
-			
 		_first_selected_slot_index = -1
 		_on_slot_selected(slot_index) 
 		_refresh_backpack_grids()
 
 
-## Redraws the details information panel based on the selected slot index.
 func _on_slot_selected(slot_index: int) -> void:
 	_focused_slot_index = slot_index
-	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+	var inventory := player.inventory as InventoryComponent
 	var slot := inventory.get_slot_data(slot_index)
 	
 	if slot == null or slot.item_id == -1:
@@ -452,34 +203,23 @@ func _on_slot_selected(slot_index: int) -> void:
 		_detail_icon.color = Color(0, 0, 0, 0)
 	else:
 		helper._apply_special_fallback_decoration(_detail_icon, slot.item_id)
-		
 	helper.queue_free()
 	
 	_detail_desc.text = tr("ITEM_" + str(slot.item_id) + "_DESC")
 	_detail_instruction.text = tr("ITEM_USAGE_PREFIX") + ": " + tr("ITEM_" + str(slot.item_id) + "_USE")
+	_detail_qty.text = tr("ITEM_STOCKED_PREFIX") + ": " + (tr("INVENTORY_INFINITE") if slot.quantity == -1 else str(slot.quantity) + " " + tr("ITEM_STOCKED_UNITS"))
 	
-	if slot.quantity == -1:
-		_detail_qty.text = tr("ITEM_STOCKED_PREFIX") + ": " + tr("INVENTORY_INFINITE")
-	else:
-		_detail_qty.text = tr("ITEM_STOCKED_PREFIX") + ": " + str(slot.quantity) + " " + tr("ITEM_STOCKED_UNITS")
-		
 	_action_button.visible = true
 	
-	# OCP RESOLUTION: Verify if the active held item is a consumable food,
-	# completely removing the hardcoded ID checks inside the UI script.
 	var strategy: ItemUsageStrategy = ItemStrategyRegistry.get_strategy(slot.item_id) as ItemUsageStrategy
 	var is_consumable := (strategy != null and strategy is ConsumableItemStrategy)
-	
 	_use_button.visible = is_consumable
 	
 	if is_consumable:
 		var hp: int = player.domain_entity.health
 		var can_eat := hp < 3 and slot.quantity > 0
 		_use_button.disabled = not can_eat
-		if can_eat:
-			_use_button.modulate = Color.WHITE
-		else:
-			_use_button.modulate = Color(0.5, 0.5, 0.5, 0.6)
+		_use_button.modulate = Color.WHITE if can_eat else Color(0.5, 0.5, 0.5, 0.6)
 
 
 func _on_equip_pressed() -> void:
@@ -487,25 +227,19 @@ func _on_equip_pressed() -> void:
 		return
 		
 	player.call("_apply_hotbar_selection", _focused_slot_index)
-	
-	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+	var inventory := player.inventory as InventoryComponent
 	var item_name := inventory.get_slot_item_name(_focused_slot_index)
-	var hud: PlayerHUD = player.get("hud") as PlayerHUD
-	if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-		hud.call("show_quest_notification", tr("NOTIFICATION_EQUIP_SUCCESS_HEADER"), tr("NOTIFICATION_EQUIP_SUCCESS_DESC") + ": " + item_name.to_upper())
-		
+	var hud := player.hud as PlayerHUD
+	if is_instance_valid(hud):
+		hud.show_quest_notification("NOTIFICATION_EQUIP_SUCCESS_HEADER", tr("NOTIFICATION_EQUIP_SUCCESS_DESC") + ": " + item_name.to_upper())
 	_refresh_backpack_grids()
 
 
-## Symmetrical Action Execution: Triggers the pure domain consumption transaction.
 func _on_use_pressed() -> void:
 	if _focused_slot_index == -1 or not is_instance_valid(player):
 		return
 		
-	var inventory_comp := player.get("inventory") as InventoryComponent
-	if not is_instance_valid(inventory_comp):
-		return
-		
+	var inventory_comp := player.inventory as InventoryComponent
 	var slot := inventory_comp.get_slot_data(_focused_slot_index)
 	if slot == null:
 		return
@@ -514,39 +248,28 @@ func _on_use_pressed() -> void:
 	if strategy == null or not (strategy is ConsumableItemStrategy):
 		return
 		
-	# Assemble parameters and invoke the pure domain contract (SRP/DIP compliant)
 	var world_modifier: IWorldModifier = null
-	var world_ctrl: Node3D = player.get("world_controller") as Node3D
-	if is_instance_valid(world_ctrl) and "world_modifier" in world_ctrl:
-		world_modifier = world_ctrl.get("world_modifier") as IWorldModifier
+	var world_ctrl := player.world_controller as WorldController
+	if is_instance_valid(world_ctrl):
+		world_modifier = world_ctrl.world_modifier
 		
-	# Execute transaction
 	if strategy.can_use(player.domain_entity, inventory_comp, Vector3i.ZERO, Vector3.ZERO, null):
 		strategy.use(player.domain_entity, inventory_comp, Vector3i.ZERO, Vector3.ZERO, world_modifier)
 		
-		# Play tactile viewmodel swing feedback
-		var viewmodel: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
-		if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
-			viewmodel.call("play_swing_animation")
+		var viewmodel := player.viewmodel as PlayerViewModel
+		if is_instance_valid(viewmodel):
+			viewmodel.play_swing_animation()
 			
-		# Symmetrical visual updates
 		_on_slot_selected(_focused_slot_index)
 		_refresh_backpack_grids()
 
 
-## Sorting pipeline coordinator: Calls Domain sorting algorithms
 func _on_sort_pressed() -> void:
 	if not is_instance_valid(player):
 		return
-		
-	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+	var inventory := player.inventory as InventoryComponent
 	if is_instance_valid(inventory):
 		inventory.consolidate_and_sort_backpack()
-		
-		var hud: PlayerHUD = player.get("hud") as PlayerHUD
-		if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-			hud.call("show_quest_notification", tr("INVENTORY_COMPACTED_HEADER"), tr("INVENTORY_COMPACTED_DESC"))
-			
 		_show_empty_details()
 		_refresh_backpack_grids()
 
@@ -569,59 +292,24 @@ func _input(event: InputEvent) -> void:
 		closed.emit()
 
 
-func _setup_button_style(btn: Button, normal_color: Color) -> void:
-	var sn := StyleBoxFlat.new()
-	sn.bg_color = normal_color
-	sn.set_corner_radius_all(10)
-	sn.border_width_left = 2
-	sn.border_width_top = 2
-	sn.border_width_right = 2
-	sn.border_width_bottom = 2
-	sn.border_color = Color(1.0, 1.0, 1.0, 0.15)
-	
-	var sh := sn.duplicate() as StyleBoxFlat
-	sh.bg_color = normal_color + Color(0.08, 0.08, 0.08, 0.0) 
-	sh.border_color = Color(1.0, 0.85, 0.2, 0.9) 
-	
-	btn.add_theme_stylebox_override("normal", sn)
-	btn.add_theme_stylebox_override("hover", sh)
-	btn.add_theme_stylebox_override("disabled", StyleBoxFlat.new())
-	btn.add_theme_stylebox_override("pressed", sn)
-	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	
-	btn.add_theme_font_size_override("font_size", 14)
-
-
-func _create_spacer(height: int) -> Control:
-	var s := Control.new()
-	s.custom_minimum_size = Vector2(0, height)
-	return s
-
-
-# ==============================================================================
-# VIEW COORDINATION ROUTERS FOR DECOUPLED SLOT WIDGETS
-# ==============================================================================
-
-## Highlights slot A and updates display grids.
 func set_drag_source(slot_index: int) -> void:
 	_first_selected_slot_index = slot_index
 	_refresh_backpack_grids()
 
 
-## Finalizes the Drag-and-Drop swapping payload.
 func execute_dnd_swap(source_idx: int, target_idx: int) -> void:
 	if source_idx < 0 or source_idx >= 24 or target_idx < 0 or target_idx >= 24:
 		return
 		
-	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+	var inventory := player.inventory as InventoryComponent
 	if is_instance_valid(inventory):
 		inventory.swap_slots(source_idx, target_idx)
 		player.call("_apply_hotbar_selection", player.get("active_slot_index"))
 		
-		var hud: PlayerHUD = player.get("hud") as PlayerHUD
-		if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
+		var hud := player.hud as PlayerHUD
+		if is_instance_valid(hud):
 			var item_name := inventory.get_slot_item_name(target_idx)
-			hud.call("show_quest_notification", tr("NOTIFICATION_EQUIP_SUCCESS_HEADER"), tr("NOTIFICATION_EQUIP_SUCCESS_DESC") + ": " + item_name.to_upper())
+			hud.show_quest_notification("NOTIFICATION_EQUIP_SUCCESS_HEADER", tr("NOTIFICATION_EQUIP_SUCCESS_DESC") + ": " + item_name.to_upper())
 			
 		_first_selected_slot_index = -1
 		_on_slot_selected(target_idx)

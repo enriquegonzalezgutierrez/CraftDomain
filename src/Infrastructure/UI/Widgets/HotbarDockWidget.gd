@@ -1,261 +1,57 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (UI Presentation / Hotbar HUD)
-# Class: HotbarDockWidget
-# Description: SRP-compliant UI Widget responsible ONLY for building and managing
-#              the unified bottom HUD selection dock (Hotbar).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively the hotbar slots, 
-#   selection outlines, and civilian shortcuts rendering, delegating logic to the domain.
-# - Open-Closed Principle (OCP): Completely closed to modifications. All rigid 
-#   match tables for item symbols or textures are removed. Textures are queried 
-#   polimorphically from `BlockLibrary`, and non-block item symbols use an 
-#   extensible static registry, allowing seamless mods and custom additions.
+# Pathfile: res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd
+# Description: SRP-compliant UI Widget responsible ONLY for updating the hotbar slots,
+#              selection outlines, and health/hunger status bars. Layout is defined in .tscn.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name HotbarDockWidget
 extends Control
 
-## Symmetrical texture folder constant.
 const TEXTURE_DIR := "res://assets/textures/"
 
-## Dependencies injected by the HUD orchestrator.
 var player: CharacterBody3D
 var hud_orchestrator: PlayerHUD
 
-# Internal UI node references
+@onready var _hearts_container: HBoxContainer = $VBoxContainer/StatusContainer/HeartsContainer
+@onready var _food_container: HBoxContainer = $VBoxContainer/StatusContainer/FoodContainer
+@onready var _item_name_toast: Label = $VBoxContainer/ItemNameToast
+
+@onready var _bp_btn: Button = $VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/BackpackBox/BackpackButton
+@onready var _cr_btn: Button = $VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/WorkshopBox/WorkshopButton
+
+# Active hotbar slots container references
+@onready var _slots_hbox: HBoxContainer = $VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox
+
 var _hotbar_slots: Array[Panel] = []
-var _hearts_container: HBoxContainer
-var _food_container: HBoxContainer
-var _item_name_toast: Label
 var _toast_tween: Tween
 
 # In-memory cache for loaded 2D textures to save CPU reads
 static var _textures_cache: Dictionary = {}
-
-# Dynamic registry mapping Item IDs to their fallback 2D UI unicode symbols.
 static var _item_symbols: Dictionary = {}
 
 
-## Static Constructor: Registers default base-game item symbols on boot.
 static func _static_init() -> void:
 	register_item_symbol(15, "🧪") # Lava bucket or fluid vial
 	register_item_symbol(16, "🍗") # Fried Chicken
 	register_item_symbol(17, "⚔️") # Wooden Sword
 	register_item_symbol(18, "🌱") # Crop Seeds
-	register_item_symbol(12, "💠") # Cyan Conduit
+	register_item_symbol(12, "💠") # Cyan warmth
 	register_item_symbol(14, "☁️") # Cloud
 
 
-## Public OCP Extension API: Registers a custom item symbol dynamically.
-## Can be called from mods, custom items, or DLC loaders on startup.
 static func register_item_symbol(item_id: int, symbol_char: String) -> void:
 	_item_symbols[item_id] = symbol_char
-	print("[HotbarDockWidget] Registered dynamic OCP item symbol for ID %d -> '%s'" % [item_id, symbol_char])
 
 
 func _ready() -> void:
-	name = "HotbarDockWidget"
+	_bp_btn.pressed.connect(_on_backpack_shortcut_pressed)
+	_cr_btn.pressed.connect(_on_workshop_shortcut_pressed)
 	
-	# Set this controller as a bottom-centered responsive container
-	set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	grow_horizontal = Control.GROW_DIRECTION_BOTH
-	grow_vertical = Control.GROW_DIRECTION_BEGIN
-	
-	custom_minimum_size = Vector2(700, 140)
-	size = Vector2(700, 140)
-	
-	# Floating bottom margin
-	offset_bottom = -20
-	offset_top = -160
-	offset_left = -350
-	offset_right = 350
-	
-	_setup_responsive_ui_layout()
-	_setup_item_name_toast()
-	update_health_display(3)
-
-
-## Builds the highly polished, mathematically aligned HUD layout.
-func _setup_responsive_ui_layout() -> void:
-	var master_vbox := VBoxContainer.new()
-	master_vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	master_vbox.alignment = BoxContainer.ALIGNMENT_END
-	master_vbox.add_theme_constant_override("separation", 8)
-	add_child(master_vbox)
-	
-	# ==================== ROW 1: STATUS BARS (HEARTS & FOOD) ====================
-	var status_container := Control.new()
-	status_container.custom_minimum_size = Vector2(426, 28)
-	status_container.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	master_vbox.add_child(status_container)
-	
-	_hearts_container = HBoxContainer.new()
-	_hearts_container.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	_hearts_container.add_theme_constant_override("separation", 2)
-	status_container.add_child(_hearts_container)
-	
-	_food_container = HBoxContainer.new()
-	_food_container.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	_food_container.alignment = BoxContainer.ALIGNMENT_END
-	_food_container.add_theme_constant_override("separation", 2)
-	status_container.add_child(_food_container)
-	
-	# ==================== ROW 2: UNIFIED HOTBAR DOCK ====================
-	var hotbar_bg := PanelContainer.new()
-	hotbar_bg.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var bg_style := StyleBoxFlat.new()
-	bg_style.set_corner_radius_all(14)
-	bg_style.bg_color = Color(0.04, 0.04, 0.06, 0.85) # Sleek Glassmorphic dark slate
-	bg_style.border_width_left = 2; bg_style.border_width_top = 2
-	bg_style.border_width_right = 2; bg_style.border_width_bottom = 2
-	bg_style.border_color = Color(0.25, 0.25, 0.3, 0.6)
-	bg_style.shadow_size = 12; bg_style.shadow_color = Color(0, 0, 0, 0.5)
-	hotbar_bg.add_theme_stylebox_override("panel", bg_style)
-	master_vbox.add_child(hotbar_bg)
-	
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 12)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_right", 12)
-	margin.add_theme_constant_override("margin_bottom", 10)
-	hotbar_bg.add_child(margin)
-	
-	var hbox := HBoxContainer.new()
-	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	hbox.add_theme_constant_override("separation", 10)
-	margin.add_child(hbox)
-	
-	# A. Left-docked Button: Backpack
-	var bp_vbox := VBoxContainer.new()
-	bp_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	bp_vbox.add_theme_constant_override("separation", 4)
-	hbox.add_child(bp_vbox)
-	
-	var bp_btn := Button.new()
-	bp_btn.text = "🎒"
-	bp_btn.custom_minimum_size = Vector2(48, 48)
-	bp_btn.tooltip_text = tr("HUD_TOOLTIP_BACKPACK")
-	_setup_hud_shortcut_button_style(bp_btn)
-	bp_btn.pressed.connect(_on_backpack_shortcut_pressed)
-	bp_vbox.add_child(bp_btn)
-	bp_vbox.add_child(_create_hotkey_label("[I]"))
-	
-	# Splitter line
-	var sep_left := VSeparator.new()
-	var sep_style := StyleBoxLine.new()
-	sep_style.color = Color(1.0, 1.0, 1.0, 0.1)
-	sep_style.vertical = true; sep_style.thickness = 2
-	sep_left.add_theme_stylebox_override("separator", sep_style)
-	hbox.add_child(sep_left)
-	
-	# B. Middle Area: Slots 0 to 7 (48x48)
-	var slots_hbox := HBoxContainer.new()
-	slots_hbox.add_theme_constant_override("separation", 6)
-	hbox.add_child(slots_hbox)
-	
-	for i: int in range(8):
-		var slot := Panel.new()
-		slot.name = "Slot_%d" % i
-		slot.custom_minimum_size = Vector2(48, 48)
-		slot.pivot_offset = Vector2(24, 24) 
-		
-		# Base style with fixed invisible borders to prevent layout shifting!
-		var slot_style := StyleBoxFlat.new()
-		slot_style.set_corner_radius_all(6)
-		slot_style.bg_color = Color(0.12, 0.12, 0.14, 0.7)
-		slot_style.border_width_left = 3; slot_style.border_width_top = 3
-		slot_style.border_width_right = 3; slot_style.border_width_bottom = 3
-		slot_style.border_color = Color(0, 0, 0, 0) # Transparent by default
-		slot.add_theme_stylebox_override("panel", slot_style)
-		slots_hbox.add_child(slot)
-		
-		# --- COMPOSITE GRAPHIC SYSTEM: Holds the 3D-like icons ---
-		var icon_container := Control.new()
-		icon_container.name = "ItemIconContainer"
-		icon_container.custom_minimum_size = Vector2(34, 34)
-		icon_container.size = Vector2(34, 34)
-		icon_container.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-		icon_container.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		icon_container.grow_vertical = Control.GROW_DIRECTION_BOTH
-		icon_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_child(icon_container)
-		
-		# Overlay 1: Color Fallback
-		var fallback_rect := ColorRect.new()
-		fallback_rect.name = "FallbackColor"
-		fallback_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		fallback_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon_container.add_child(fallback_rect)
-		
-		# Overlay 2: Real block textures
-		var tex_rect := TextureRect.new()
-		tex_rect.name = "TextureDisplay"
-		tex_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tex_rect.stretch_mode = TextureRect.STRETCH_SCALE
-		tex_rect.texture_filter = TextureRect.TEXTURE_FILTER_NEAREST
-		tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon_container.add_child(tex_rect)
-		
-		# Quantity Label
-		var qty_label := Label.new()
-		qty_label.name = "QtyLabel"
-		qty_label.text = ""
-		qty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		qty_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-		qty_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-		
-		var label_style := LabelSettings.new()
-		label_style.font_size = 14
-		label_style.font_color = Color.WHITE
-		label_style.outline_size = 4
-		label_style.outline_color = Color.BLACK
-		qty_label.label_settings = label_style
-		
-		var label_margin := MarginContainer.new()
-		label_margin.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-		label_margin.add_theme_constant_override("margin_right", 4)
-		label_margin.add_theme_constant_override("margin_bottom", -2)
-		label_margin.add_child(qty_label)
-		slot.add_child(label_margin)
-		
-		_hotbar_slots.append(slot)
-		
-	# Splitter line
-	var sep_right := VSeparator.new()
-	sep_right.add_theme_stylebox_override("separator", sep_style)
-	hbox.add_child(sep_right)
-	
-	# C. Right-docked Button: Workshop
-	var cr_vbox := VBoxContainer.new()
-	cr_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	cr_vbox.add_theme_constant_override("separation", 4)
-	hbox.add_child(cr_vbox)
-	
-	var cr_btn := Button.new()
-	cr_btn.text = "🛠️"
-	cr_btn.custom_minimum_size = Vector2(48, 48)
-	cr_btn.tooltip_text = tr("HUD_TOOLTIP_WORKSHOP")
-	_setup_hud_shortcut_button_style(cr_btn)
-	cr_btn.pressed.connect(_on_workshop_shortcut_pressed)
-	cr_vbox.add_child(cr_btn)
-	cr_vbox.add_child(_create_hotkey_label("[C]"))
-
-
-func _setup_item_name_toast() -> void:
-	_item_name_toast = Label.new()
-	_item_name_toast.name = "ItemNameToast"
-	_item_name_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_item_name_toast.offset_bottom = -135
-	_item_name_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ls := LabelSettings.new()
-	ls.font_size = 16
-	ls.font_color = Color.WHITE
-	ls.outline_size = 5
-	ls.outline_color = Color.BLACK
-	_item_name_toast.label_settings = ls
-	_item_name_toast.modulate.a = 0.0
-	add_child(_item_name_toast)
+	_hotbar_slots.clear()
+	for child in _slots_hbox.get_children():
+		if child is Panel:
+			_hotbar_slots.append(child as Panel)
 
 
 func _on_backpack_shortcut_pressed() -> void:
@@ -268,7 +64,7 @@ func _on_workshop_shortcut_pressed() -> void:
 		hud_orchestrator.toggle_crafting_workshop(true)
 
 
-## Emphasizes the active slot without causing layout shifting.
+## Emphasizes the active slot smoothly
 func update_active_slot(index: int) -> void:
 	for i: int in range(_hotbar_slots.size()):
 		var slot: Panel = _hotbar_slots[i]
@@ -305,78 +101,23 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 					icon_container.visible = true
 					var tex: Texture2D = _get_item_texture(item_id)
 					
-					# Case A: Real 2D PNG texture found!
 					if tex != null:
 						tex_display.texture = tex
 						tex_display.visible = true
 						fallback.visible = false
 						for child: Node in fallback.get_children():
 							child.queue_free()
-					# Case B: No texture exists. Query the domain color dynamically (OCP/SOLID!)
 					else:
 						tex_display.texture = null
 						tex_display.visible = false
 						
 						var def: BlockDefinition = BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
-						# Symmetrical fallback: if not a block, renders a clean dark background
 						fallback.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
-						
 						fallback.visible = true
 						_apply_special_fallback_decoration(fallback, item_id)
 						
 		if is_instance_valid(label):
 			label.text = "" if item_id == -1 or quantity <= 0 else str(quantity)
-
-
-# ==============================================================================
-# DATA-DRIVEN TEXTURE LOADER (SOLID OCP Compliance)
-# ==============================================================================
-
-## Fetches the 2D texture dynamically from the BlockLibrary definitions,
-## removing the hardcoded conversion match table completely.
-func _get_item_texture(item_id: int) -> Texture2D:
-	if _textures_cache.has(item_id):
-		return _textures_cache[item_id] as Texture2D
-		
-	# Query the Domain BlockLibrary to resolve the filename
-	var def := BlockLibrary.get_definition(item_id as BlockType.Type)
-	if def != null and def.texture_file_name != "":
-		var full_path := TEXTURE_DIR + def.texture_file_name
-		if ResourceLoader.exists(full_path):
-			var tex := load(full_path) as Texture2D
-			if tex is Texture2D:
-				_textures_cache[item_id] = tex
-				return tex
-				
-	_textures_cache[item_id] = null 
-	return null
-
-
-## OCP RESOLUTION: Renders custom fallback icons dynamically.
-## Replaces the rigid match-case table with an extensible static dictionary query.
-func _apply_special_fallback_decoration(fallback_node: ColorRect, item_id: int) -> void:
-	for child: Node in fallback_node.get_children():
-		child.queue_free()
-		
-	var symbol := Label.new()
-	symbol.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	symbol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	symbol.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	
-	var ls := LabelSettings.new()
-	ls.font_size = 20
-	ls.outline_size = 3
-	ls.outline_color = Color.BLACK
-	symbol.label_settings = ls
-	
-	# Query the OCP registered fallback symbols
-	if _item_symbols.has(item_id):
-		symbol.text = _item_symbols[item_id] as String
-	else:
-		symbol.text = ""
-		
-	if symbol.text != "":
-		fallback_node.add_child(symbol)
 
 
 func _show_toast_notification(index: int) -> void:
@@ -408,7 +149,6 @@ func update_health_display(hp: int) -> void:
 	for child: Node in _food_container.get_children():
 		child.queue_free()
 	
-	# Hearts rendering
 	for i: int in range(3):
 		var heart := Label.new()
 		var hs := LabelSettings.new()
@@ -424,7 +164,6 @@ func update_health_display(hp: int) -> void:
 		heart.label_settings = hs
 		_hearts_container.add_child(heart)
 		
-	# Food drumsticks rendering
 	var food_count := 0
 	if is_instance_valid(player):
 		var inv: InventoryComponent = player.get("inventory") as InventoryComponent
@@ -444,42 +183,42 @@ func update_health_display(hp: int) -> void:
 		_food_container.add_child(food)
 
 
-func _setup_hud_shortcut_button_style(btn: Button) -> void:
-	var sn := StyleBoxFlat.new()
-	sn.bg_color = Color(0.18, 0.18, 0.22, 0.5)
-	sn.set_corner_radius_all(10)
-	sn.border_width_left = 2; sn.border_width_top = 2
-	sn.border_width_right = 2; sn.border_width_bottom = 2
-	sn.border_color = Color(0.3, 0.3, 0.35, 0.4)
-	
-	var sh := sn.duplicate() as StyleBoxFlat
-	sh.bg_color = Color(0.22, 0.22, 0.28, 0.8)
-	sh.border_color = Color(1.0, 0.85, 0.2, 0.9) 
-	
-	btn.add_theme_stylebox_override("normal", sn)
-	btn.add_theme_stylebox_override("hover", sh)
-	btn.add_theme_stylebox_override("pressed", sn)
-	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	btn.add_theme_font_size_override("font_size", 18)
-	
-	btn.mouse_entered.connect(func() -> void:
-		var tw := create_tween()
-		tw.tween_property(btn, "scale", Vector2(1.1, 1.1), 0.1).set_trans(Tween.TRANS_BACK)
-	)
-	btn.mouse_exited.connect(func() -> void:
-		var tw := create_tween()
-		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.1).set_trans(Tween.TRANS_SINE)
-	)
+func _get_item_texture(item_id: int) -> Texture2D:
+	if _textures_cache.has(item_id):
+		return _textures_cache[item_id] as Texture2D
+		
+	var def := BlockLibrary.get_definition(item_id as BlockType.Type)
+	if def != null and def.texture_file_name != "":
+		var full_path := TEXTURE_DIR + def.texture_file_name
+		if ResourceLoader.exists(full_path):
+			var tex := load(full_path) as Texture2D
+			if tex is Texture2D:
+				_textures_cache[item_id] = tex
+				return tex
+				
+	_textures_cache[item_id] = null 
+	return null
 
 
-func _create_hotkey_label(text_str: String) -> Label:
-	var label := Label.new()
-	label.text = text_str
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+func _apply_special_fallback_decoration(fallback_node: Control, item_id: int) -> void:
+	for child: Node in fallback_node.get_children():
+		child.queue_free()
+		
+	var symbol := Label.new()
+	symbol.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	symbol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	symbol.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	
 	var ls := LabelSettings.new()
-	ls.font_size = 11
-	ls.font_color = Color(0.65, 0.65, 0.7)
-	ls.outline_size = 2
+	ls.font_size = 14
+	ls.outline_size = 3
 	ls.outline_color = Color.BLACK
-	label.label_settings = ls
-	return label
+	symbol.label_settings = ls
+	
+	if _item_symbols.has(item_id):
+		symbol.text = _item_symbols[item_id] as String
+	else:
+		symbol.text = ""
+		
+	if symbol.text != "":
+		fallback_node.add_child(symbol)

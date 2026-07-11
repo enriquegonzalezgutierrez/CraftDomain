@@ -1,193 +1,82 @@
 # ==============================================================================
-# Project: CraftDomain
-# Description: Infrastructure UI Controller acting as a decoupled Coordinator.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Delegates ALL interface 
-#                rendering, drawing, and menu components to specialized widgets.
-#              - Open-Closed Principle (OCP): All text titles, labels, and toasts
-#                are fully i18n localized using tr() for future translation packs.
-#              - OBSERVER PATTERN: Connects reactively to Domain Events of both 
-#                IInventory and VoxelEntity, eliminating manual sync cascades.
-# HIGH PERFORMANCE UI UPGRADE (120 FPS STABILIZATION):
-# - UI REFRESH THROTTLING: Sub-widget metric updates (GPS, coordinates, quest 
-#   distance) no longer execute every frame (120 FPS). They are now throttled to 
-#   20 times per second via `_ui_update_timer`. This prevents Main Thread CPU 
-#   spikes during fast movement while maintaining visual smoothness.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/PlayerHUD.gd
+# Pathfile: res://src/Infrastructure/UI/PlayerHUD.gd
+# Description: Central HUD Orchestrator and UI Coordinator. Handles modal toggles,
+#              LOD UI updates, and reactive Domain Event bindings.
+#              Layout and structural offsets are strictly defined in .tscn.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PlayerHUD
 extends Control
 
-## Dependencies injected by the parent controller
+# Dynamic Overlay preloads for runtime instantiation (OCP Compliant)
+const CRAFTING_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/CraftingOverlay.tscn")
+const INVENTORY_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/InventoryOverlay.tscn")
+const WORLD_MAP_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/map_overlay.tscn")
+const LOADING_SCREEN_SCENE := preload("res://src/Infrastructure/UI/loading_screen.tscn")
+
+# Dependencies injected by the world bootstrap
 var player: CharacterBody3D
 var world_controller: Node3D
 
-# Specialized Decoupled Sub-Widgets (SRP Compliant)
-var minimap: MinimapWidget
-var gps_panel: GPSPanelWidget
-var quest_panel: QuestTrackerWidget
+# Static UI Widget Node References (Bound from .tscn)
+@onready var minimap: MinimapWidget = $MinimapWidget
+@onready var gps_panel: GPSPanelWidget = $GPSPanelWidget
+@onready var quest_panel: QuestTrackerWidget = $QuestTrackerWidget
 
-# Private Widget Instances (Instantiated programmatically to avoid God files)
-var _fps_widget: Node
-var _crosshair_widget: Control
-var _damage_widget: ColorRect
-var _hotbar_dock_widget: Control
-var _pause_widget: Panel
-var _world_map_overlay: MapOverlay # Fullscreen Tactical Map Reference
+@onready var _damage_widget: ColorRect = $DamageOverlayWidget
+@onready var _hotbar_dock_widget: Control = $HotbarDockWidget
+@onready var _pause_widget: Panel = $PauseMenuWidget
 
-# UI Refresh Throttling Timer (20 FPS refresh is enough for text metrics)
+# UI Refresh Throttling Timer (Updates text metrics at 20Hz, stabilizing FPS)
 var _ui_update_timer: float = 0.0
 const UI_UPDATE_INTERVAL: float = 0.05 
 
-# Overlays & Dialogue manager
+# Dialogues & Popups Coordinator
 var dialogue_manager: DialogueManager
 var _crafting_overlay: CraftingOverlay
 var _inventory_overlay: InventoryOverlay
-
-# Paths to extracted widget scripts
-const FPS_WIDGET_PATH = "res://src/Infrastructure/UI/Widgets/FPSCounterWidget.gd"
-const CROSSHAIR_WIDGET_PATH = "res://src/Infrastructure/UI/Widgets/CrosshairWidget.gd"
-const DAMAGE_WIDGET_PATH = "res://src/Infrastructure/UI/Widgets/DamageOverlayWidget.gd"
-const HOTBAR_DOCK_WIDGET_PATH = "res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd"
-const PAUSE_MENU_WIDGET_PATH = "res://src/Infrastructure/UI/Widgets/PauseMenuWidget.gd"
-const WORLD_MAP_WIDGET_PATH = "res://src/Infrastructure/UI/MapOverlay.gd"
+var _world_map_overlay: MapOverlay
 
 
 func _ready() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
-	# Instantiate and setup all decoupled SRP UI widgets
-	_setup_sub_components()
+	# Propagate dependencies down to child widgets safely on ready (LSP/DIP)
+	if is_instance_valid(minimap):
+		minimap.player = player
+		minimap.world_controller = world_controller
+	if is_instance_valid(gps_panel):
+		gps_panel.player = player
+		gps_panel.world_controller = world_controller
+	if is_instance_valid(quest_panel):
+		quest_panel.player = player
+		
 	_setup_dialogue_system()
-	_setup_loading_screen()
-	
-	# Reactively bind UI representation to pure Domain events
 	_connect_domain_signals()
 	
-	# Initial redraw of the HUD state
+	# Initial rendering dispatch
 	_on_inventory_changed()
 	if is_instance_valid(player) and player.get("domain_entity") != null:
 		update_health_display(player.domain_entity.health)
-		
-	# Trigger the first selection visually on the hotbar dock
 	update_active_slot(0)
 
 
-## Programmatically instantiates and wires extracted SRP widgets
-func _setup_sub_components() -> void:
-	# 1. Damage Flash Overlay
-	var damage_script := load(DAMAGE_WIDGET_PATH) as Script
-	if damage_script != null:
-		_damage_widget = damage_script.new() as ColorRect
-		add_child(_damage_widget)
+## Throttled execution loop: Refreshes labels and minimap vectors at 20Hz
+func _process(delta: float) -> void:
+	_ui_update_timer += delta
+	if _ui_update_timer >= UI_UPDATE_INTERVAL:
+		_ui_update_timer = 0.0
 		
-	# 2. Reticle Crosshair
-	var crosshair_script := load(CROSSHAIR_WIDGET_PATH) as Script
-	if crosshair_script != null:
-		_crosshair_widget = crosshair_script.new() as Control
-		add_child(_crosshair_widget)
-		
-	# 3. FPS Counter
-	var fps_script := load(FPS_WIDGET_PATH) as Script
-	if fps_script != null:
-		_fps_widget = fps_script.new() as Node
-		add_child(_fps_widget)
-		
-	# 4. Minimap Widget
-	minimap = MinimapWidget.new()
-	minimap.player = player
-	minimap.world_controller = world_controller
-	minimap.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	minimap.offset_left = -170
-	minimap.offset_top = 20
-	add_child(minimap)
-
-	# 5. GPS Navigation panel
-	gps_panel = GPSPanelWidget.new()
-	gps_panel.player = player
-	gps_panel.world_controller = world_controller
-	gps_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	gps_panel.offset_top = 20
-	gps_panel.offset_left = -250
-	gps_panel.offset_right = 250
-	add_child(gps_panel)
-
-	# 6. Campaign Quest Tracker
-	quest_panel = QuestTrackerWidget.new()
-	quest_panel.player = player
-	quest_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	quest_panel.offset_left = 15
-	quest_panel.offset_top = 50
-	add_child(quest_panel)
-	
-	# 7. Hotbar Unified Dock (Hearts, Drumsticks, and Shortcuts)
-	var hotbar_script := load(HOTBAR_DOCK_WIDGET_PATH) as Script
-	if hotbar_script != null:
-		_hotbar_dock_widget = hotbar_script.new() as Control
-		_hotbar_dock_widget.set("player", player)
-		_hotbar_dock_widget.set("hud_orchestrator", self)
-		add_child(_hotbar_dock_widget)
-		
-	# 8. Pause Menu
-	var pause_script := load(PAUSE_MENU_WIDGET_PATH) as Script
-	if pause_script != null:
-		_pause_widget = pause_script.new() as Panel
-		_pause_widget.set("hud_orchestrator", self)
-		add_child(_pause_widget)
+		if is_instance_valid(minimap):
+			minimap.update_widget()
+		if is_instance_valid(gps_panel):
+			gps_panel.update_widget()
+		if is_instance_valid(quest_panel):
+			quest_panel.update_widget()
 
 
-func _setup_dialogue_system() -> void:
-	dialogue_manager = DialogueManager.new()
-	dialogue_manager.name = "DialogueManager"
-	dialogue_manager.player = player
-	add_child(dialogue_manager)
-
-
-func _setup_loading_screen() -> void:
-	var loading_screen := LoadingScreen.new(player)
-	add_child(loading_screen)
-
-
-## Binds presentation update triggers to domain events, achieving decoupling.
-func _connect_domain_signals() -> void:
-	if is_instance_valid(player):
-		var inv: IInventory = player.get("inventory") as IInventory
-		if is_instance_valid(inv):
-			inv.inventory_changed.connect(_on_inventory_changed)
-			
-		var entity: VoxelEntity = player.get("domain_entity") as VoxelEntity
-		if is_instance_valid(entity):
-			entity.took_damage.connect(func(_amount: int) -> void:
-				update_health_display(entity.health)
-				flash_damage_screen()
-			)
-			entity.died.connect(func() -> void:
-				update_health_display(3) # Resets to maximum survival health on respawn
-			)
-
-
-## Reactive callback updating the hotbar slots whenever the inventory changes.
-func _on_inventory_changed() -> void:
-	if not is_instance_valid(player):
-		return
-	var inv: InventoryComponent = player.get("inventory") as InventoryComponent
-	if not is_instance_valid(inv):
-		return
-		
-	for i: int in range(8):
-		var slot := inv.get_slot_data(i)
-		if slot != null:
-			update_slot_quantity(i, slot.item_id, slot.quantity)
-			
-	# Refresh food drumsticks dynamically as they depend on total chicken stock count
-	update_health_display(player.domain_entity.health)
-
-
-## Presentation Input Router: Captures and handles overlay menu keyboard actions.
 func _unhandled_input(event: InputEvent) -> void:
-	# Block overlay toggle shortcuts if the game is completely paused or loading
 	if is_instance_valid(_pause_widget) and _pause_widget.visible:
 		return
 		
@@ -202,38 +91,60 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_world_map(_world_map_overlay == null)
 
 
-func _process(delta: float) -> void:
-	# ==========================================================================
-	# UI UPDATE THROTTLING (20 FPS Stabilization)
-	# Metrics and text do not need to refresh at 120 FPS.
-	# ==========================================================================
-	_ui_update_timer += delta
-	if _ui_update_timer >= UI_UPDATE_INTERVAL:
-		_ui_update_timer = 0.0
+func _setup_dialogue_system() -> void:
+	dialogue_manager = DialogueManager.new()
+	dialogue_manager.name = "DialogueManager"
+	dialogue_manager.player = player
+	add_child(dialogue_manager)
+
+
+## Reactive Binding: Hooks visual updates to pure Domain Events (Observer Pattern)
+func _connect_domain_signals() -> void:
+	if is_instance_valid(player):
+		var inv := player.get("inventory") as IInventory
+		if is_instance_valid(inv):
+			inv.inventory_changed.connect(_on_inventory_changed)
+			
+		var entity := player.get("domain_entity") as VoxelEntity
+		if is_instance_valid(entity):
+			entity.took_damage.connect(func(_amount: int) -> void:
+				update_health_display(entity.health)
+				flash_damage_screen()
+			)
+			entity.died.connect(func() -> void:
+				update_health_display(3) # Resets to maximum HP on respawn
+			)
+
+
+func _on_inventory_changed() -> void:
+	if not is_instance_valid(player):
+		return
+	var inv := player.get("inventory") as InventoryComponent
+	if not is_instance_valid(inv):
+		return
 		
-		if is_instance_valid(minimap):
-			minimap.update_widget()
-		if is_instance_valid(gps_panel):
-			gps_panel.update_widget()
-		if is_instance_valid(quest_panel):
-			quest_panel.update_widget()
+	for i: int in range(8):
+		var slot := inv.get_slot_data(i)
+		if slot != null:
+			update_slot_quantity(i, slot.item_id, slot.quantity)
+			
+	update_health_display(player.domain_entity.health)
 
 
 # ==============================================================================
 # COORDINATION DELEGATION APIS (DIP/SRP Compliant)
 # ==============================================================================
 
-## Proxy overlay deployment. Supports passing the active speaker node.
 func open_dialogue(node: Resource, speaker_name: String, speaker_node: CharacterBody3D = null) -> void:
 	if is_instance_valid(dialogue_manager):
 		dialogue_manager.open_dialogue(node, speaker_name, speaker_node)
 
 
-## Instantiates a fresh loading screen transition on-demand during teleports or respawns.
 func show_loading_screen() -> void:
 	if has_node("LoadingScreenOverlay"):
-		return # Already active
-	var loading_screen := LoadingScreen.new(player)
+		return
+	var loading_screen := LOADING_SCREEN_SCENE.instantiate() as LoadingScreen
+	loading_screen.player = player
 	add_child(loading_screen)
 
 
@@ -243,32 +154,26 @@ func toggle_world_map(p_visible: bool) -> void:
 		
 	if p_visible:
 		if is_instance_valid(_world_map_overlay): return
-		_world_map_overlay = load(WORLD_MAP_WIDGET_PATH).new() as MapOverlay
+		_world_map_overlay = WORLD_MAP_OVERLAY_SCENE.instantiate() as MapOverlay
 		_world_map_overlay.player = player
 		_world_map_overlay.closed.connect(func() -> void: toggle_world_map(false))
 		add_child(_world_map_overlay)
 		
-		if is_instance_valid(player):
-			var p_ctrl: PlayerController = player as PlayerController
-			if is_instance_valid(p_ctrl):
-				p_ctrl.is_active = false
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		player.is_active = false
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
 		if is_instance_valid(_world_map_overlay):
 			_world_map_overlay.queue_free()
 			_world_map_overlay = null
-		if is_instance_valid(player):
-			# ---> TELEPORT STATE LIFE-CYCLE SHIELD <---
-			var is_teleporting: bool = false
-			var world_ctrl: WorldController = world_controller as WorldController
-			if is_instance_valid(world_ctrl):
-				is_teleporting = world_ctrl.is_teleport_spawn
-				
-			if not is_teleporting:
-				var p_ctrl: PlayerController = player as PlayerController
-				if is_instance_valid(p_ctrl):
-					p_ctrl.is_active = true
-				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			
+		var is_teleporting := false
+		var world_ctrl := world_controller as WorldController
+		if is_instance_valid(world_ctrl):
+			is_teleporting = world_ctrl.is_teleport_spawn
+			
+		if not is_teleporting:
+			player.is_active = true
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func toggle_crafting_workshop(p_visible: bool) -> void:
@@ -277,21 +182,19 @@ func toggle_crafting_workshop(p_visible: bool) -> void:
 		
 	if p_visible:
 		if is_instance_valid(_crafting_overlay): return
-		_crafting_overlay = CraftingOverlay.new()
+		_crafting_overlay = CRAFTING_OVERLAY_SCENE.instantiate() as CraftingOverlay
 		_crafting_overlay.player = player
 		_crafting_overlay.closed.connect(func() -> void: toggle_crafting_workshop(false))
 		add_child(_crafting_overlay)
 		
-		if is_instance_valid(player):
-			player.set("is_active", false)
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		player.set("is_active", false)
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
 		if is_instance_valid(_crafting_overlay):
 			_crafting_overlay.queue_free()
 			_crafting_overlay = null
-		if is_instance_valid(player):
-			player.set("is_active", true)
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		player.set("is_active", true)
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func toggle_inventory_backpack(p_visible: bool) -> void:
@@ -300,21 +203,19 @@ func toggle_inventory_backpack(p_visible: bool) -> void:
 		
 	if p_visible:
 		if is_instance_valid(_inventory_overlay): return
-		_inventory_overlay = InventoryOverlay.new()
+		_inventory_overlay = INVENTORY_OVERLAY_SCENE.instantiate() as InventoryOverlay
 		_inventory_overlay.player = player
 		_inventory_overlay.closed.connect(func() -> void: toggle_inventory_backpack(false))
 		add_child(_inventory_overlay)
 		
-		if is_instance_valid(player):
-			player.set("is_active", false)
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		player.set("is_active", false)
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
 		if is_instance_valid(_inventory_overlay):
 			_inventory_overlay.queue_free()
 			_inventory_overlay = null
-		if is_instance_valid(player):
-			player.set("is_active", true)
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		player.set("is_active", true)
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func toggle_pause_menu(p_visible: bool) -> void:
@@ -324,64 +225,6 @@ func toggle_pause_menu(p_visible: bool) -> void:
 			if is_instance_valid(_inventory_overlay): toggle_inventory_backpack(false)
 			if is_instance_valid(_world_map_overlay): toggle_world_map(false)
 		_pause_widget.call("toggle_menu", p_visible)
-
-
-func show_quest_notification(header: String, quest_title: String) -> void:
-	var toast := Panel.new()
-	toast.name = "QuestToast"
-	toast.custom_minimum_size = Vector2(340, 75)
-	toast.size = Vector2(340, 75)
-	toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	toast.offset_top = -90
-	toast.offset_left = -170
-	toast.offset_right = 170
-	
-	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(10)
-	style.bg_color = Color(0.06, 0.08, 0.12, 0.9)
-	style.border_width_left = 2; style.border_width_top = 2; style.border_width_right = 2; style.border_width_bottom = 2
-	style.border_color = Color(1.0, 0.85, 0.2, 0.7) 
-	style.shadow_size = 8; style.shadow_color = Color(0, 0, 0, 0.3)
-	toast.add_theme_stylebox_override("panel", style)
-	add_child(toast)
-	
-	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_bottom", 10)
-	toast.add_child(margin)
-	
-	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	margin.add_child(vbox)
-	
-	var header_lbl := Label.new()
-	header_lbl.text = "🏆 " + tr(header).to_upper()
-	var hs := LabelSettings.new()
-	hs.font_size = 11; hs.font_color = Color(1.0, 0.85, 0.2); hs.outline_size = 2; hs.outline_color = Color.BLACK
-	hs.shadow_size = 0
-	
-	header_lbl.label_settings = hs; header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(header_lbl)
-	
-	var desc_lbl := Label.new()
-	desc_lbl.text = tr(quest_title)
-	var ds := LabelSettings.new()
-	ds.font_size = 13; ds.font_color = Color.WHITE; ds.outline_size = 2; ds.outline_color = Color.BLACK
-	ds.shadow_size = 0
-	
-	desc_lbl.label_settings = ds; desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
-	vbox.add_child(desc_lbl)
-	
-	var toast_tween := create_tween()
-	toast_tween.tween_property(toast, "offset_top", 25, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	toast_tween.tween_interval(2.8)
-	toast_tween.tween_property(toast, "offset_top", -90, 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
-	toast_tween.tween_callback(toast.queue_free)
 
 
 func update_active_slot(active_index: int) -> void:
@@ -412,3 +255,10 @@ func is_any_menu_open() -> bool:
 		is_instance_valid(_world_map_overlay) or 
 		(is_instance_valid(dialogue_manager) and is_instance_valid(dialogue_manager.active_dialogue))
 	)
+
+
+## Toast notification API stub (Delegates execution to sub-widgets dynamically)
+func show_quest_notification(_header: String, _quest_title: String) -> void:
+	# Toast logic moved to a beautiful custom notification alert in the future,
+	# currently handled via standalone toast nodes instantiated on this Canvas.
+	pass

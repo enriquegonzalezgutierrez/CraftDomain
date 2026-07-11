@@ -1,17 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Crafting System / Services)
+# Class: CraftingService
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Service orchestrating recipe execution.
 #              Checks ingredient requirements and modifies inventory stocks.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Only manages crafting logic.
-#              - Dependency Inversion Principle (DIP): Depends strictly on the
-#                abstract interface `IInventory`, allowing recipe evaluations.
-#              WARNING FIX:
-#              - Added explicit static typing `int` to the inputs keys loop iterators 
-#                (including `item_id`) to completely resolve `UNTYPED_DECLARATION` 
-#                compiler warnings.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Crafting/CraftingService.gd
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Only manages crafting logic.
+# - Dependency Inversion Principle (DIP): Depends strictly on the abstract 
+#   interface `IInventory`, separating recipe evaluations from implementation.
 # ==============================================================================
 class_name CraftingService
 extends RefCounted
@@ -23,11 +21,10 @@ static func can_craft(inventory: IInventory, recipe: Recipe) -> bool:
 		return false
 		
 	# 1. Validate if the inventory contains the total aggregate sum of each ingredient
-	# FIX: Added explicit static typing `int` to the inputs key loop iterator
 	for item_id: int in recipe.inputs.keys():
 		var required_qty := recipe.inputs[item_id] as int
 		
-		# DIP INVERSION: We query the generic total quantity of this ID, regardless of slot placement
+		# DIP INVERSION: Query generic total quantity of this ID, regardless of slot placement
 		if inventory.get_item_total_quantity(item_id) < required_qty:
 			return false
 			
@@ -37,6 +34,7 @@ static func can_craft(inventory: IInventory, recipe: Recipe) -> bool:
 		
 	return true
 
+
 ## Executes the crafting transaction, consuming the inputs and granting the output.
 ## Returns true if the operation completed successfully, false otherwise.
 static func craft(inventory: IInventory, recipe: Recipe) -> bool:
@@ -44,7 +42,6 @@ static func craft(inventory: IInventory, recipe: Recipe) -> bool:
 		return false
 		
 	# 1. Consume input ingredients across the entire backpack grid
-	# FIX: Added explicit static typing `int` to the inputs key loop iterator
 	for item_id: int in recipe.inputs.keys():
 		var required_qty := recipe.inputs[item_id] as int
 		inventory.consume_item(item_id, required_qty)

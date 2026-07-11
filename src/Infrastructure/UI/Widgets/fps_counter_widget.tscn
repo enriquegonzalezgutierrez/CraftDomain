@@ -1,0 +1,27 @@
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/UI/Widgets/fps_counter_widget.tscn
+; Description: Visual scene layout for the FPS Counter. Defines position,
+;              anchors, and initial font styling parameters.
+;              Warning UID stripped to align with Godot local metadata caches.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
+
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/UI/Widgets/FPSCounterWidget.gd" id="1_script"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_fps"]
+font_size = 18
+font_color = Color(0.2, 1, 0.2, 1)
+outline_size = 4
+outline_color = Color(0, 0, 0, 1)
+
+[node name="FPSCounter" type="Label"]
+offset_left = 15.0
+offset_top = 15.0
+offset_right = 115.0
+offset_bottom = 41.0
+text = "FPS: 60"
+label_settings = SubResource("LabelSettings_fps")
+script = ExtResource("1_script")

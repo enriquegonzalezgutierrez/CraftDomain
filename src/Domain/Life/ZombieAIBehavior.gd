@@ -1,20 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: ZombieAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Concrete AI behavior strategy implementing hostile zombie routines,
 #              including player tracking, wall flanking steering, and coordinate bites.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): EXTREME REFACTOR. Declares and manages 
-#   its own local state machine (WANDERING, CHASING, ATTACKING) and telemetry reporting,
+# - Single Responsibility Principle (SRP): Declares and manages its own local 
+#   state machine (WANDERING, CHASING, ATTACKING) and telemetry reporting,
 #   completely independent of monolithic global enums.
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. You can add new zombie 
 #   states (like feeding, hiding) locally in this file without modifying any other 
 #   AI system or the parent presenter.
 # - Liskov Substitution Principle (LSP): Fully compatible with the IAIBehavior 
 #   contract signatures.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/ZombieAIBehavior.gd
 # ==============================================================================
 class_name ZombieAIBehavior
 extends IAIBehavior

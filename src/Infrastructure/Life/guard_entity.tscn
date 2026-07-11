@@ -6,8 +6,8 @@
 [ext_resource type="PackedScene" uid="uid://dqqy0legpibpj" path="res://assets/models/mobs/guard/guard_base.fbx" id="4_fbx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_guard"]
-height = 2.1119142
 radius = 0.3305664
+height = 2.1119142
 
 [node name="GuardEntity" type="CharacterBody3D" unique_id=862353002]
 script = ExtResource("1_guard")

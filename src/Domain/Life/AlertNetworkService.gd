@@ -1,5 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Life & Entities / Services)
+# Class: AlertNetworkService
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Service orchestrating the Village Alert Alarm Network.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively the registration,
@@ -8,8 +12,6 @@
 #   defending node that exposes a combat target property.
 # - Dependency Inversion Principle (DIP): Pure data-oriented RefCounted service,
 #   completely decoupled from Godot's SceneTree or physics engines.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/AlertNetworkService.gd
 # ==============================================================================
 class_name AlertNetworkService
 extends RefCounted
@@ -64,7 +66,7 @@ func broadcast_alarm_local(attacker: CharacterBody3D, victim_pos: Vector3) -> vo
 	var alert_radius_sq := 900.0 # 30 meters squared
 	var dispatched_count := 0
 	
-	# FIX: Explicit static typing on loop defender iterator
+	# Loop through registered active defenders
 	for defender: CharacterBody3D in _defenders:
 		if is_instance_valid(defender):
 			var dist_sq := defender.global_position.distance_squared_to(victim_pos)

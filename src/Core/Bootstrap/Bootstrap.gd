@@ -1,18 +1,15 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Core (Application Bootstrapper / Composition Root)
-# Class: Bootstrap
-# Description: Composition root that bootstraps the DDD application lifecycle, 
-#              handling dynamic, decoupled dependency injection on boot.
-# SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Acts exclusively as the central 
-#   application orchestrator, delegating resource registrations, asset preloading, 
-#   and visual shader setups to specialized registries.
-# - Open-Closed Principle (OCP): Completely open to extensions. Dynamic biomes, 
-#   scenery props, and physical entity scene templates are registered dynamically on startup.
+# Pathfile: res://src/Core/Bootstrap/Bootstrap.gd
+# Description: Central composition root of the application. Orchestrates the 
+#              initialization of global systems, applies user configuration settings,
+#              injects decoupled dependencies, and manages main menu transitions.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name Bootstrap
 extends Node
+
+const MAIN_MENU_SCENE := preload("res://src/Infrastructure/UI/main_menu.tscn")
 
 ## References to active systems, strictly typed for compiler safety
 var main_menu: MainMenu
@@ -24,7 +21,6 @@ var weather_service: WeatherService
 
 # Instantiated RefCounted Services (SRP compliant)
 var ai_telemetry_service: AITelemetryService
-
 var world_repository: WorldRepository
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
@@ -34,22 +30,37 @@ func _ready() -> void:
 	_initialize_application()
 
 
+## Orchestrates the startup phases sequentially.
 func _initialize_application() -> void:
 	print("[Bootstrap] Initializing CraftDomain application composing root...")
-	
-	# --- ACTIVATE HIGH-RESOLUTION AI TELEMETRY (DIP Compliant) ---
+	_init_telemetry_and_settings()
+	_init_registries()
+	_setup_persistence_and_env()
+	_init_audio_and_menu()
+
+
+## Initializes diagnostic telemetry, local settings, and translations.
+func _init_telemetry_and_settings() -> void:
 	ai_telemetry_service = AITelemetryService.new()
-	
 	_load_and_apply_user_settings()
-	
-	# Load localized translation JSON files from disk
 	TranslationRegistry.initialize_translations()
-	
-	# --- PRELOAD GRAPHIC TEXTURE ASSETS (OCP/SRP Compliant) ---
-	# Pre-caches all PBR block textures in RAM before chunks start loading
 	TextureRegistry.initialize_textures()
-	
-	# SOLID COMPLIANCE: Delegate registry startup routines polimorphically
+
+
+## Populates core registry databases for biomes, entities, and blueprints.
+func _init_registries() -> void:
+	_register_biomes()
+	StructureLibrary.initialize_structures()
+	MegaStructureService.initialize_megastructures()
+	VoxelModelRegistry.initialize_registry()
+	_setup_mob_registry()
+	_setup_prop_registry()
+	DialogueRegistry.initialize_dialogue_database()
+	RecipeRegistry.initialize_recipes()
+
+
+## Registers geographic biome strategies in BiomeService.
+func _register_biomes() -> void:
 	BiomeService.register_biome(BayOfSailsBiome.new())
 	BiomeService.register_biome(WarpPlateauBiome.new())
 	BiomeService.register_biome(GoldenBazaarBiome.new())
@@ -60,169 +71,137 @@ func _initialize_application() -> void:
 	BiomeService.register_biome(NeonRuinsBiome.new())
 	BiomeService.register_biome(SwampOfSighsBiome.new())
 	BiomeService.register_biome(CloudKingdomBiome.new())
-	
-	StructureLibrary.initialize_structures()
-	MegaStructureService.initialize_megastructures()
-	
-	# Compile and register the 7 dynamic voxel model builders in RAM
-	VoxelModelRegistry.initialize_registry()
-	
-	# DIP COMPLIANCE: Inject concrete Infrastructure Mob scenes into pure Domain
-	_setup_mob_registry()
-	
-	# DIP COMPLIANCE: Inject concrete Infrastructure prop factories into Domain
-	_setup_prop_registry()
-	
-	_setup_persistence()
-	_setup_environment()
-	
-	DialogueRegistry.initialize_dialogue_database()
-	RecipeRegistry.initialize_recipes()
-	
-	_setup_celestial()
-	_setup_audio()
-	_load_main_menu()
 
 
-## Composition Root: Registers physical entity templates into the Domain MobRegistry.
+## Dispatches mob registration categories.
 func _setup_mob_registry() -> void:
 	print("[Bootstrap] Injecting concrete entity scenes and behaviors into MobRegistry...")
-	
+	_register_fauna()
+	_register_civilians_and_guards()
+
+
+## Registers passive wildlife and pet entities.
+func _register_fauna() -> void:
 	var ai_fauna := FaunaAIBehavior.new()
+	var h_land := MobRegistry.Habitat.TERRESTRIAL
+	var h_both := MobRegistry.Habitat.AMPHIBIOUS
+	var h_water := MobRegistry.Habitat.AQUATIC
+	_register_scene_mob(0, "pig_entity.tscn", PigEntity, h_land, ai_fauna)
+	_register_scene_mob(1, "chicken_entity.tscn", ChickenEntity, h_land, ai_fauna)
+	_register_scene_mob(2, "sheep_entity.tscn", SheepEntity, h_land, ai_fauna)
+	_register_scene_mob(3, "cow_entity.tscn", CowEntity, h_land, ai_fauna)
+	_register_scene_mob(201, "turtle_entity.tscn", TurtleEntity, h_both, ai_fauna)
+	_register_scene_mob(209, "elephant_entity.tscn", ElephantEntity, h_land, ai_fauna)
+	_register_scene_mob(204, "fox_entity.tscn", FoxEntity, h_land, ai_fauna)
+	_register_scene_mob(206, "cat_entity.tscn", CatEntity, h_land, ai_fauna)
+	_register_scene_mob(211, "raccoon_entity.tscn", RaccoonEntity, h_land, ai_fauna)
+	_register_scene_mob(212, "growlithe_entity.tscn", GrowlitheEntity, h_land, ai_fauna)
+	_register_scene_mob(213, "monkey_entity.tscn", MonkeyEntity, h_land, ai_fauna)
+	_register_scene_mob(205, "bird_entity.tscn", BirdEntity, h_land, ai_fauna)
+	_register_scene_mob(207, "parrot_entity.tscn", ParrotEntity, h_land, ai_fauna)
+	_register_scene_mob(208, "crab_entity.tscn", CrabEntity, h_both, ai_fauna)
+	_register_scene_mob(210, "octopus_entity.tscn", OctopusEntity, h_water, ai_fauna)
+
+
+## Registers humanoid civilians, protectors, and hostile monsters.
+func _register_civilians_and_guards() -> void:
 	var ai_zombie := ZombieAIBehavior.new()
 	var ai_guard := GuardAIBehavior.new()
 	var ai_farmer := FarmerAIBehavior.new()
-	
-	var hab_land: int = MobRegistry.Habitat.TERRESTRIAL
-	var hab_both: int = MobRegistry.Habitat.AMPHIBIOUS
-	var hab_water: int = MobRegistry.Habitat.AQUATIC
-	
-	# --------------------------------------------------------------------------
-	# A. WILDERNESS FAUNA AND MONSTERS
-	# --------------------------------------------------------------------------
-	_register_scene_mob(0, "pig_entity.tscn", PigEntity, hab_land, ai_fauna)
-	_register_scene_mob(1, "chicken_entity.tscn", ChickenEntity, hab_land, ai_fauna)
-	_register_scene_mob(2, "sheep_entity.tscn", SheepEntity, hab_land, ai_fauna)
-	_register_scene_mob(3, "cow_entity.tscn", CowEntity, hab_land, ai_fauna)
-	
-	_register_scene_mob(201, "turtle_entity.tscn", TurtleEntity, hab_both, ai_fauna)
-	_register_scene_mob(209, "elephant_entity.tscn", ElephantEntity, hab_land, ai_fauna)
-	_register_scene_mob(204, "fox_entity.tscn", FoxEntity, hab_land, ai_fauna)
-	_register_scene_mob(206, "cat_entity.tscn", CatEntity, hab_land, ai_fauna)
-	_register_scene_mob(211, "raccoon_entity.tscn", RaccoonEntity, hab_land, ai_fauna)
-	_register_scene_mob(212, "growlithe_entity.tscn", GrowlitheEntity, hab_land, ai_fauna)
-	_register_scene_mob(213, "monkey_entity.tscn", MonkeyEntity, hab_land, ai_fauna)
-	_register_scene_mob(205, "bird_entity.tscn", BirdEntity, hab_land, ai_fauna)
-	_register_scene_mob(207, "parrot_entity.tscn", ParrotEntity, hab_land, ai_fauna)
-	_register_scene_mob(208, "crab_entity.tscn", CrabEntity, hab_both, ai_fauna)
-	_register_scene_mob(210, "octopus_entity.tscn", OctopusEntity, hab_water, ai_fauna)
-	_register_scene_mob(11, "shark_entity.tscn", SharkEntity, hab_water, ai_fauna)
-	_register_scene_mob(12, "gargoyle_entity.tscn", GargoyleEntity, hab_land, ai_zombie)
-	_register_scene_mob(13, "goblin_entity.tscn", GoblinEntity, hab_land, ai_zombie)
-	_register_scene_mob(10, "zombie_entity.tscn", HostileEntity, hab_land, ai_zombie)
-	
-	# --------------------------------------------------------------------------
-	# B. HUMAN NPC CIVILIAN AND DEFENDER POPULATIONS
-	# --------------------------------------------------------------------------
-	_register_scene_mob(107, "golem_entity.tscn", GolemEntity, hab_land, ai_guard)
-	_register_scene_mob(100, "villager_entity.tscn", VillagerEntity, hab_land) 
-	_register_scene_mob(102, "guard_entity.tscn", GuardEntity, hab_land, ai_guard)
-	_register_scene_mob(103, "farmer_entity.tscn", FarmerEntity, hab_land, ai_farmer)
-	_register_scene_mob(104, "druid_entity.tscn", DruidEntity, hab_land)
-	_register_scene_mob(101, "merchant_entity.tscn", MerchantEntity, hab_land)
-	_register_scene_mob(105, "miner_entity.tscn", MinerEntity, hab_land)
-	_register_scene_mob(106, "cyber_citizen_entity.tscn", CyberCitizenEntity, hab_land)
+	var h_land := MobRegistry.Habitat.TERRESTRIAL
+	var h_water := MobRegistry.Habitat.AQUATIC
+	_register_scene_mob(11, "shark_entity.tscn", SharkEntity, h_water, ai_zombie)
+	_register_scene_mob(12, "gargoyle_entity.tscn", GargoyleEntity, h_land, ai_zombie)
+	_register_scene_mob(13, "goblin_entity.tscn", GoblinEntity, h_land, ai_zombie)
+	_register_scene_mob(10, "zombie_entity.tscn", HostileEntity, h_land, ai_zombie)
+	_register_scene_mob(107, "golem_entity.tscn", GolemEntity, h_land, ai_guard)
+	_register_scene_mob(100, "villager_entity.tscn", VillagerEntity, h_land)
+	_register_scene_mob(102, "guard_entity.tscn", GuardEntity, h_land, ai_guard)
+	_register_scene_mob(103, "farmer_entity.tscn", FarmerEntity, h_land, ai_farmer)
+	_register_scene_mob(104, "druid_entity.tscn", DruidEntity, h_land)
+	_register_scene_mob(101, "merchant_entity.tscn", MerchantEntity, h_land)
+	_register_scene_mob(105, "miner_entity.tscn", MinerEntity, h_land)
+	_register_scene_mob(106, "cyber_citizen_entity.tscn", CyberCitizenEntity, h_land)
 
 
-## Factory Helper: Automates registration of scene templates with custom fallbacks and behaviors.
+## Instantiates scene templates dynamically or builds fallback entities.
 func _register_scene_mob(spawn_id: int, file_name: String, fallback_class: Variant, habitat: int, default_behavior: IAIBehavior = null) -> void:
-	MobRegistry.register_mob(spawn_id, func(pos: Vector3) -> Node:
+	var factory := func(pos: Vector3) -> Node:
 		var scene_path := "res://src/Infrastructure/Life/" + file_name
 		if ResourceLoader.exists(scene_path):
 			var scene := load(scene_path) as PackedScene
 			if scene != null:
 				var inst := scene.instantiate() as CharacterBody3D
 				inst.position = pos
-				var base_name := file_name.get_basename()
-				var camel_name := base_name.to_camel_case()
-				var pascal_name := camel_name.capitalize().replace(" ", "")
-				inst.name = pascal_name
+				inst.name = file_name.get_basename().to_camel_case().capitalize().replace(" ", "")
 				return inst
 		var fallback_inst := fallback_class.new(pos) as Node
 		if is_instance_valid(fallback_inst):
-			var class_name_str := "PassiveEntity"
-			if fallback_class.resource_path != "":
-				class_name_str = fallback_class.resource_path.get_file().get_basename()
-			fallback_inst.name = class_name_str
+			fallback_inst.name = fallback_class.resource_path.get_file().get_basename() if fallback_class.resource_path != "" else "PassiveEntity"
 		return fallback_inst
-	, habitat, default_behavior)
+	MobRegistry.register_mob(spawn_id, factory, habitat, default_behavior)
 
 
+## Registers interactive scenery props.
 func _setup_prop_registry() -> void:
-	print("[Bootstrap] Injecting concrete scenery prop factories into PropRegistry...")
-	PropRegistry.register_prop(200, func(pos: Vector3) -> Node:
-		var chest := ChestEntity.new()
-		chest.position = pos
-		return chest
-	)
-	PropRegistry.register_prop(202, func(pos: Vector3) -> Node:
-		var light := StreetlightEntity.new()
-		light.position = pos
-		return light
-	)
-	PropRegistry.register_prop(203, func(pos: Vector3) -> Node:
-		var campfire := CampfireEntity.new()
-		campfire.position = pos
-		return campfire
-	)
-	PropRegistry.register_prop(213, func(pos: Vector3) -> Node:
-		var well := WishingWellEntity.new()
-		well.position = pos
-		return well
-	)
-	PropRegistry.register_prop(215, func(pos: Vector3) -> Node:
-		var barrel := BarrelEntity.new()
-		barrel.position = pos
-		return barrel
+	print("[Bootstrap] Injecting prop factories into PropRegistry...")
+	_register_prop(200, ChestEntity)
+	_register_prop(202, StreetlightEntity)
+	_register_prop(203, CampfireEntity)
+	_register_prop(213, WishingWellEntity)
+	_register_prop(215, BarrelEntity)
+
+
+## Binds an instantiation callback to a prop class.
+func _register_prop(prop_id: int, prop_class: Variant) -> void:
+	PropRegistry.register_prop(prop_id, func(pos: Vector3) -> Node:
+		var inst := prop_class.new() as Node3D
+		inst.position = pos
+		return inst
 	)
 
 
+## Evaluates and applies user-preferences loaded from disk.
 func _load_and_apply_user_settings() -> void:
 	var settings := SettingsRepository.load_settings()
 	if settings.is_empty():
 		return
-		
+	_apply_locale_and_buses(settings)
+	_apply_window_settings(settings)
+
+
+## Sets up translations, audio buses, and view distances.
+func _apply_locale_and_buses(settings: Dictionary) -> void:
 	if settings.has("locale"):
-		var locale: String = settings["locale"]
-		TranslationServer.set_locale(locale)
-		
+		TranslationServer.set_locale(settings["locale"])
 	if settings.has("music_volume"):
-		var music_vol: float = settings["music_volume"]
-		var idx := _get_or_create_bus("Music")
-		AudioServer.set_bus_volume_db(idx, music_vol)
-		AudioServer.set_bus_mute(idx, music_vol <= -39.0)
-		
+		_set_bus_volume("Music", float(settings["music_volume"]))
 	if settings.has("sfx_volume"):
-		var sfx_vol: float = settings["sfx_volume"]
-		var idx := _get_or_create_bus("SFX")
-		AudioServer.set_bus_volume_db(idx, sfx_vol)
-		AudioServer.set_bus_mute(idx, sfx_vol <= -39.0)
-		
+		_set_bus_volume("SFX", float(settings["sfx_volume"]))
 	if settings.has("render_distance"):
 		ChunkLoaderService.global_view_distance = int(settings["render_distance"])
-		
-	if not OS.has_feature("editor") and settings.has("window_mode"):
-		var main_window: Window = get_tree().root
-		var mode_val := int(settings["window_mode"])
-		main_window.mode = mode_val as Window.Mode
-		
-		if mode_val != int(Window.MODE_FULLSCREEN) and settings.has("window_size_x") and settings.has("window_size_y"):
-			var size_x := int(settings["window_size_x"])
-			var size_y := int(settings["window_size_y"])
-			main_window.size = Vector2i(size_x, size_y)
-			main_window.move_to_center()
 
 
+## Configures the DB level and mute states of an audio bus.
+func _set_bus_volume(bus_name: String, vol: float) -> void:
+	var idx := _get_or_create_bus(bus_name)
+	AudioServer.set_bus_volume_db(idx, vol)
+	AudioServer.set_bus_mute(idx, vol <= -39.0)
+
+
+## Resizes and structures the game window.
+func _apply_window_settings(settings: Dictionary) -> void:
+	if OS.has_feature("editor") or not settings.has("window_mode"):
+		return
+	var main_window := get_tree().root
+	var mode_val := int(settings["window_mode"])
+	main_window.mode = mode_val as Window.Mode
+	if mode_val != int(Window.MODE_FULLSCREEN) and settings.has("window_size_x") and settings.has("window_size_y"):
+		main_window.size = Vector2i(int(settings["window_size_x"]), int(settings["window_size_y"]))
+		main_window.move_to_center()
+
+
+## Returns the index of an audio bus, creating it if missing.
 func _get_or_create_bus(bus_name: String) -> int:
 	var idx := AudioServer.get_bus_index(bus_name)
 	if idx == -1:
@@ -232,107 +211,126 @@ func _get_or_create_bus(bus_name: String) -> int:
 	return idx
 
 
-func _setup_persistence() -> void:
+## Binds persistence and environment structures.
+func _setup_persistence_and_env() -> void:
 	world_repository = DiskWorldRepository.new()
-
-
-func _setup_environment() -> void:
 	sun_light = EnvironmentBuilder.build_sun()
 	add_child(sun_light)
 	world_environment = EnvironmentBuilder.build_environment()
 	add_child(world_environment)
 
 
+## Mounts celestial systems, weather loops, soundtracks, and loading menu overlays.
 func _setup_celestial() -> void:
 	celestial_service = CelestialService.new()
 	celestial_service.name = "CelestialService"
 	celestial_service.sun_light = sun_light
 	celestial_service.world_environment = world_environment
 	add_child(celestial_service)
-	
-	# Instantiate and register Weather simulation loops
 	weather_service = WeatherService.new()
 	weather_service.name = "WeatherService"
 	add_child(weather_service)
 
 
+## Instantiates the audio player pipeline.
 func _setup_audio() -> void:
 	audio_service = AudioService.new()
 	add_child(audio_service)
 	audio_service.play_menu_music()
 
 
+## Loads the main menu scene (Scene-Based UI instancer)
 func _load_main_menu() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	main_menu = MainMenu.new()
+	main_menu = MAIN_MENU_SCENE.instantiate() as MainMenu
 	main_menu.name = "MainMenu"
 	main_menu.play_pressed.connect(_on_start_game_requested)
 	add_child(main_menu)
 
 
+## Triggers system initializations.
+func _init_audio_and_menu() -> void:
+	_setup_celestial()
+	_setup_audio()
+	_load_main_menu()
+
+
+## Assembles playing nodes and transitions into the viewport.
 func _on_start_game_requested() -> void:
 	if is_instance_valid(main_menu):
 		main_menu.queue_free()
 		main_menu = null
-		
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_world()
-		
-	_bootstrap_world()
-	_bootstrap_player()
+	world_controller = WorldController.new()
+	player_controller = PlayerController.new()
 	_inject_dependencies()
-	
 	add_child(world_controller)
 	add_child(player_controller)
 
 
+## Links decoupled dependency parameters.
+func _inject_dependencies() -> void:
+	if is_instance_valid(world_controller) and is_instance_valid(player_controller):
+		world_controller.repository = world_repository
+		world_controller.player = player_controller
+		player_controller.world_controller = world_controller
+		if is_instance_valid(weather_service):
+			weather_service.player = player_controller
+			weather_service.world_controller = world_controller
+		if is_instance_valid(audio_service):
+			audio_service.player = player_controller
+			audio_service.world_controller = world_controller
+
+
+## Triggers the unload sequence and transitions back to the main menu.
 func return_to_main_menu() -> void:
 	var unload_screen := _create_unload_loading_screen()
 	add_child(unload_screen)
-	
 	await get_tree().process_frame
-	
 	if is_instance_valid(world_controller):
 		world_controller.save_all()
-		
 	await get_tree().process_frame
-	
+	_cleanup_and_load_menu(unload_screen)
+
+
+## Cleans up active game instances and displays the menu.
+func _cleanup_and_load_menu(unload_screen: Panel) -> void:
 	if is_instance_valid(player_controller):
 		player_controller.queue_free()
 		player_controller = null
-		
 	if is_instance_valid(world_controller):
 		world_controller.queue_free()
 		world_controller = null
-		
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_menu()
-		
 	await get_tree().create_timer(0.15).timeout
 	_load_main_menu()
-	
 	var fade_tween := create_tween()
-	fade_tween.tween_property(unload_screen, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	fade_tween.tween_property(unload_screen, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
 	fade_tween.tween_callback(unload_screen.queue_free)
 
 
+## Creates the unloading screen transition.
 func _create_unload_loading_screen() -> Panel:
 	var panel := Panel.new()
 	panel.name = "UnloadLoadingScreen"
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.04, 0.04, 0.06, 1.0)
 	panel.add_theme_stylebox_override("panel", style)
-	
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	panel.add_child(center)
-	
+	_add_unloading_title(center)
+	return panel
+
+
+## Appends the localized unloading text block.
+func _add_unloading_title(parent: Control) -> void:
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	center.add_child(vbox)
-	
+	parent.add_child(vbox)
 	var title := Label.new()
 	title.text = tr("LOADING_UNLOAD_WORLD").to_upper()
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -343,28 +341,3 @@ func _create_unload_loading_screen() -> Panel:
 	ts.outline_color = Color.BLACK
 	title.label_settings = ts
 	vbox.add_child(title)
-	
-	return panel
-
-
-func _bootstrap_world() -> void:
-	world_controller = WorldController.new()
-
-
-func _bootstrap_player() -> void:
-	player_controller = PlayerController.new()
-
-
-func _inject_dependencies() -> void:
-	if is_instance_valid(world_controller) and is_instance_valid(player_controller):
-		world_controller.repository = world_repository
-		world_controller.player = player_controller
-		player_controller.world_controller = world_controller
-		
-		if is_instance_valid(weather_service):
-			weather_service.player = player_controller
-			weather_service.world_controller = world_controller
-			
-		if is_instance_valid(audio_service):
-			audio_service.player = player_controller
-			audio_service.world_controller = world_controller

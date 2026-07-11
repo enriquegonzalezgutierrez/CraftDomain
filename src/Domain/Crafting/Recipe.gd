@@ -1,11 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Crafting System / Value Objects)
+# Class: Recipe
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Resource defining a crafting recipe.
 #              Contains the required input ingredients and the resulting output.
-#              SOLID COMPLIANCE: Pure data structure (Single Responsibility Principle),
-#              completely decoupled from JSON parsing, inventory logic, or UI.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Crafting/Recipe.gd
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Pure data structure completely 
+#   decoupled from JSON parsing, inventory logic, or UI.
 # ==============================================================================
 class_name Recipe
 extends Resource

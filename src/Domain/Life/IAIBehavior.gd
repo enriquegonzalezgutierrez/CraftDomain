@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Pure Business Logic)
+# Layer: Domain (Life & Entities / Abstract Interfaces)
 # Class: IAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Pure Domain Strategy Interface defining the execution contract 
 #              for custom, entity-specific AI behavior routines.
 # SOLID COMPLIANCE:

@@ -1,7 +1,9 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Domain (Behavior Strategies)
+# Layer: Domain (Life & Entities / AI Strategies)
 # Class: CanineAIBehavior
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # Description: Specialized AI behavior strategy implementing loyal canine routines
 #              for the Fiery Growlithe dog. Features active magma tracking (seeking 
 #              surrounding Lava blocks), sitting next to heat vents to play sniff 
@@ -12,8 +14,6 @@
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. New fetch games, 
 #   player taming, or sheep herding can be appended cleanly here.
 # - Liskov Substitution Principle (LSP): Fully compatible with the contract signatures.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Life/CanineAIBehavior.gd
 # ==============================================================================
 class_name CanineAIBehavior
 extends IAIBehavior
@@ -129,8 +129,8 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		else:
 			wander_dir = Vector3.ZERO
 			
-	host.set_meta(META_WANDER_TIMER, wander_timer)
-	host.set_meta(META_WANDER_DIR, wander_dir)
+		host.set_meta(META_WANDER_TIMER, wander_timer)
+		host.set_meta(META_WANDER_DIR, wander_dir)
 
 	if wander_dir != Vector3.ZERO:
 		velocity.x = wander_dir.x * SPEED_WALK
