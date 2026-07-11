@@ -6,9 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and texture configurations for the Red Sand Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Supports 
-#   dynamic independent loading without central registry modifications.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
+#   its local drop variables within the constructor to decouple mining drop tables.
 # ==============================================================================
 class_name RedSandBlock
 extends BlockDefinition
@@ -22,6 +21,10 @@ func _init() -> void:
 	translation_key = "BLOCK_RED_SAND"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Red sand deposits crumble and drop Dirt Blocks (ID 2)
+	drop_item_id = 2
+	drop_quantity = 1
 	
 	# Procedural terracotta orange colors for unshaded fallback rendering
 	color_top = Color(0.88, 0.42, 0.25)

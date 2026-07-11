@@ -6,9 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   translucency, and reflective configurations for the Ice Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Can be added 
-#   independently to the /Blocks/ directory for automatic discovery.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
+#   its local drop variables within the constructor to decouple mining drop tables.
 # ==============================================================================
 class_name IceBlock
 extends BlockDefinition
@@ -24,6 +23,10 @@ func _init() -> void:
 	is_solid = true
 	is_transparent = true # Essential for alpha-blending on the GPU
 	
+	# OCP/SOLID Compliance: Glacial Blue Ice melts on hit to drop Water (ID 6)
+	drop_item_id = 6
+	drop_quantity = 1
+	
 	# Procedural translucent blue colors for unshaded fallback rendering
 	color_top = Color(0.62, 0.88, 0.95, 0.75)
 	color_side = Color(0.55, 0.82, 0.9, 0.75)
@@ -31,12 +34,6 @@ func _init() -> void:
 	
 	# High-fidelity visual descriptions for Infrastructure PBR compilation
 	texture_file_name = "ice.png"
-	
-	# ==========================================================================
-	# PBR SURFACE PARAMETERS:
-	# Low roughness (0.1) creates a glossy, slippery look.
-	# Metallic (0.2) adds subtle specular highlights to the frozen surface.
-	# ==========================================================================
 	roughness = 0.1
 	metallic = 0.2
 	rendering_type = "default"

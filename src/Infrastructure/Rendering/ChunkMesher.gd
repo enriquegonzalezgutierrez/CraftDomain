@@ -11,12 +11,11 @@
 # - Open-Closed Principle (OCP): COMPLETELY DECOUPLED. This class no longer 
 #   contains any hardcoded Block IDs. It polymorphically consumes the 'geometry' 
 #   and 'rendering_type' properties defined in the Domain Block files.
-# BUG FIX (NORMAL GENERATION RESTORED):
-# - Restored `st.generate_normals()` before committing the mesh. This fixes the 
-#   bug where shaders couldn't read `NORMAL.y > 0.5` to animate waves, and 
-#   restores proper PBR transparency and light refraction.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Rendering/ChunkMesher.gd
+# TRANSLUCENT SEAMS OPTIMIZATION:
+# - Disabled the `SEAM_OVERLAP` scaling factor for transparent or liquid blocks.
+#   Keeping their vertices strictly at a 1.0 scale allows transparent faces 
+#   to stitch perfectly at chunk borders without overlapping, completely 
+#   eliminating dark Alpha-Overlapping seam artifacts.
 # ==============================================================================
 class_name ChunkMesher
 extends RefCounted
@@ -31,7 +30,7 @@ const DIRECTIONS: Array[Vector3i] = [
 	Vector3i(0, 0, -1)   # BACK
 ]
 
-## Factor used to slightly overlap faces to prevent sub-pixel light leaks
+## Factor used to slightly overlap faces to prevent sub-pixel light leaks in solid blocks
 const SEAM_OVERLAP: float = 1.002
 
 
@@ -57,7 +56,6 @@ static func generate_special_meshes(chunk: Chunk, world_state: WorldState) -> Di
 				processed_types[b_id] = def
 				
 	# 2. Compile meshes for each unique special type found
-	# FIX: Explicit static typing `int` to the keys loop iterator
 	for b_id: int in processed_types.keys():
 		var def: BlockDefinition = processed_types[b_id]
 		var mesh: ArrayMesh
@@ -110,7 +108,7 @@ static func _generate_liquid_mesh(chunk: Chunk, world_state: WorldState, target_
 	if faces_drawn == 0:
 		return null
 		
-	# BINGO BUG FIX: Generar normales es OBLIGATORIO para que funcionen los shaders y el PBR
+	# Generar normales para permitir luces y desplazamientos en los shaders del agua
 	st.generate_normals()
 	return st.commit()
 
@@ -143,7 +141,7 @@ static func _generate_custom_geometry_mesh(chunk: Chunk, world_state: WorldState
 	if faces_drawn == 0:
 		return null
 		
-	# BINGO BUG FIX: Generar normales es OBLIGATORIO para el cálculo de iluminación PBR
+	# Generar normales para habilitar PBR en geometrías personalizadas
 	st.generate_normals()
 	return st.commit()
 
@@ -172,14 +170,26 @@ static func _add_face_to_tool(st: SurfaceTool, local_pos: Vector3i, direction: V
 		Vector2(uv_rect.position.x, uv_rect.position.y) # TL
 	]
 	
+	# ==========================================================================
+	# TACTICAL SEAM OVERLAP PRESERVATION (GRAPHICS OPTIMIZATION)
+	# Solid opaque blocks require a 1.002 scaling factor to prevent sub-pixel 
+	# light leaks and Z-fighting at chunk borders. However, for transparent/translucent
+	# blocks (like Water, Glass, or Clouds), scaling vertices causes overlapping alpha-blended
+	# faces on joints, creating dark/bright seam artifacts.
+	# We strictly use a factor of 1.0 (no overlap) for transparent materials.
+	# ==========================================================================
+	var overlap_factor: float = SEAM_OVERLAP
+	if def.is_transparent or def.rendering_type.begins_with("liquid"):
+		overlap_factor = 1.0
+	# ==========================================================================
+	
 	# Assemble 2 Triangles per face with CW/CCW winding safety and seam overlap
 	var v_indices: Array[int] = [2, 1, 0, 3, 2, 0] # Standard triangle split
 	
-	# FIX: Added explicit static typing `int` to the index loop iterator
 	for i: int in v_indices:
 		var v_raw: Vector3 = verts[i]
-		# Apply mathematical overlap scaling (1.002 to hermetically seal edges)
-		var v_final := (offset + v_raw - center) * SEAM_OVERLAP + center
+		# Apply calculated overlap scaling
+		var v_final := (offset + v_raw - center) * overlap_factor + center
 		
 		st.set_color(face_color)
 		st.set_uv(uvs[i])

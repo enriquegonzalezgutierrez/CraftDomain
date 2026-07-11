@@ -12,8 +12,10 @@
 #   ensuring no parent code is ever modified to append new voxel materials.
 # - Liskov Substitution Principle (LSP): Subclasses inherit this contract, 
 #   ensuring they can be polymorphically processed by meshing and loading engines.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/BlockDefinition.gd
+# OCP GATHERING UPGRADE:
+# - Added `drop_item_id` and `drop_quantity` properties. Blocks now natively 
+#   encapsulate their own drop tables, removing monolithic hardcoded converter
+#   dictionaries from the Player Interaction and Inventory components.
 # ==============================================================================
 class_name BlockDefinition
 extends RefCounted
@@ -45,6 +47,16 @@ var color_bottom: Color = Color.WHITE
 
 ## Geometry strategy representation determining custom winding boundaries (Slabs, Steps, Fences)
 var geometry: IVoxelGeometry
+
+# ==============================================================================
+# OCP GATHERING PROPERTIES (SOLID OCP Compliance)
+# ==============================================================================
+## The Item ID dropped when this block is broken by the player.
+## Defaults to -1, which automatically resolves to the block's own Type ID.
+var drop_item_id: int = -1
+
+## The quantity of items dropped when broken by the player.
+var drop_quantity: int = 1
 
 # ==============================================================================
 # DECOUPLED VISUAL ATTRIBUTES (DDD Pure Data)
@@ -79,3 +91,20 @@ func _init() -> void:
 ## Returns the dynamically translated block name string based on the active OS locale
 func get_localized_name() -> String:
 	return tr(translation_key)
+
+
+# ==============================================================================
+# OCP GATHERING GETTERS
+# ==============================================================================
+
+## Returns the Item ID dropped by this block.
+## If drop_item_id is left at -1, it defaults to the block's own type.
+func get_drop_item_id() -> int:
+	if drop_item_id == -1:
+		return type
+	return drop_item_id
+
+
+## Returns the quantity of items dropped when mined.
+func get_drop_quantity() -> int:
+	return drop_quantity

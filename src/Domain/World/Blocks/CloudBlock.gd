@@ -6,9 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   transparency, and texture configurations for the Cloud Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Being placed 
-#   inside the /Blocks/ directory allows it to be auto-registered on boot.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
+#   its local drop variables within the constructor to decouple mining drop tables.
 # ==============================================================================
 class_name CloudBlock
 extends BlockDefinition
@@ -23,6 +22,10 @@ func _init() -> void:
 	translation_key = "BLOCK_CLOUD"
 	is_solid = false # Entities pass through vapor
 	is_transparent = true
+	
+	# OCP/SOLID Compliance: Cloud vapor condenses and drops Shrubbery Leaves (ID 5)
+	drop_item_id = 5
+	drop_quantity = 1
 	
 	# Procedural soft white colors with alpha for unshaded fallback rendering
 	color_top = Color(1.0, 1.0, 1.0, 0.65)

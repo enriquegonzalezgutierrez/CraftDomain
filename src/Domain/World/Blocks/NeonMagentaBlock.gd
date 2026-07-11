@@ -6,10 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and wind-sway emissive configurations for Neon Magenta.
-# - Open-Closed Principle (OCP): Extends BlockDefinition. Uses the 'foliage' 
-#   rendering type and 'is_emissive' flags to polymorphically trigger complex 
-#   shaders in Infrastructure without modifying core engines.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
+#   its local drop variables within the constructor to decouple mining drop tables.
 # ==============================================================================
 class_name NeonMagentaBlock
 extends BlockDefinition
@@ -24,6 +22,10 @@ func _init() -> void:
 	translation_key = "BLOCK_NEON_MAGENTA"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Cyber magenta conduit breaks into Stone Blocks (ID 1)
+	drop_item_id = 1
+	drop_quantity = 1
 	
 	# Procedural cyber-magenta colors for unshaded fallback rendering
 	color_top = Color(0.24, 0.04, 0.32)

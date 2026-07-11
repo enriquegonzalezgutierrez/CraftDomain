@@ -6,9 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and emissive configurations for Neon Cyan.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Being placed 
-#   inside the /Blocks/ directory allows it to be auto-registered on boot.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
+#   its local drop variables within the constructor to decouple mining drop tables.
 # ==============================================================================
 class_name NeonCyanBlock
 extends BlockDefinition
@@ -23,6 +22,10 @@ func _init() -> void:
 	translation_key = "BLOCK_NEON_CYAN"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Cyber cian conduit breaks into Stone Blocks (ID 1)
+	drop_item_id = 1
+	drop_quantity = 1
 	
 	# Procedural cyber-cyan colors for unshaded fallback rendering
 	color_top = Color(0.06, 0.38, 0.45)

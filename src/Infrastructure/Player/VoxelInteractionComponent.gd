@@ -8,38 +8,15 @@
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Exclusively manages gaze 
 #   interaction mechanics and block modification triggers.
-# - Open-Closed Principle (OCP): Item behaviors are decoupled into 
-#   parameterized strategies, removing hardcoded logic.
+# - Open-Closed Principle (OCP): EXTREME REFACTOR. Completely removed the 
+#   hardcoded `MINED_BLOCK_TO_ITEM_DROP` dictionary. Block drops are now 
+#   queried polymorphically from the block's active definition in the Domain.
 # - Dependency Inversion Principle (DIP): Connects strictly with 
 #   abstractions (IInventory, ItemUsageStrategy, IWorldModifier) 
 #   instead of concrete scene-tree controllers.
-# 120 FPS PROGRESSIVE MINING:
-# - Integrated the pure domain `BlockDamageService` to manage multihit block mining.
-# - Instanced a dynamic, unshaded transparent overlay mesh (`_cracking_mesh`) 
-#   to render progressive crack textures, avoiding expensive chunk rebuild lags.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # ==============================================================================
 class_name VoxelInteractionComponent
 extends Node3D
-
-# Declarative block collection lookup mapping mined block types directly to dropped item IDs (OCP)
-const MINED_BLOCK_TO_ITEM_DROP: Dictionary = {
-	BlockType.Type.SAND: 2,         # Sand drops Dirt (ID 2)
-	BlockType.Type.RED_SAND: 2,     # Red Sand drops Dirt (ID 2)
-	BlockType.Type.MUD: 6,          # Mud drops Water (ID 6 - Swamp water extraction)
-	BlockType.Type.SNOW: 1,         # Snow drops Stone (ID 1)
-	BlockType.Type.NEON_CYAN: 1,    # Neon Cyan drops Stone (ID 1)
-	BlockType.Type.NEON_MAGENTA: 1, # Neon Magenta drops Stone (ID 1)
-	BlockType.Type.ICE: 6,          # Ice drops Water (ID 6 - Melting glacial ice)
-	BlockType.Type.CLOUD: 5,        # Cloud drops Leaves (ID 5)
-	BlockType.Type.LEAVES: 5,       # Leaves drop Leaves (ID 5)
-	BlockType.Type.STONE_SLAB_BOTTOM: 26, # Slabs drop Stone Slabs (ID 26)
-	BlockType.Type.STONE_SLAB_TOP: 26,
-	BlockType.Type.DIAMOND_ORE: 28, # Diamond Ore drops Diamond (ID 28)
-	BlockType.Type.OAK_PLANKS: 29,  # Oak Planks drop Planks (ID 29)
-	BlockType.Type.GLOWSTONE: 30    # Glowstone drops Glowstone (ID 30)
-}
 
 # Sibling node references (Strictly untyped to prevent compiler circular lock)
 var player: CharacterBody3D
@@ -142,12 +119,12 @@ func _update_target_highlight() -> void:
 		return
 		
 	var hit_normal := raycast.get_collision_normal()
-	var ray_dir := (raycast.get_collision_point() - camera.global_position).normalized()
+	var r_dir := (raycast.get_collision_point() - camera.global_position).normalized()
 	
-	if hit_normal.dot(ray_dir) > 0.0:
+	if hit_normal.dot(r_dir) > 0.0:
 		hit_normal = -hit_normal
 		
-	var hit_pos := raycast.get_collision_point() + (ray_dir * 0.05)
+	var hit_pos := raycast.get_collision_point() + (r_dir * 0.05)
 	var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 	
 	# Hide cracking overlay if the player moves their gaze to a different coordinate
@@ -244,12 +221,12 @@ func _mine_or_attack() -> void:
 	var world_ctrl: WorldController = world_controller as WorldController
 	if is_instance_valid(world_ctrl) and is_instance_valid(inventory):
 		var hit_normal := raycast.get_collision_normal()
-		var ray_dir := (raycast.get_collision_point() - camera.global_position).normalized()
+		var r_dir := (raycast.get_collision_point() - camera.global_position).normalized()
 		
-		if hit_normal.dot(ray_dir) > 0.0:
+		if hit_normal.dot(r_dir) > 0.0:
 			hit_normal = -hit_normal
 			
-		var hit_pos: Vector3 = raycast.get_collision_point() + (ray_dir * 0.05)
+		var hit_pos: Vector3 = raycast.get_collision_point() + (r_dir * 0.05)
 		var block_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 		
 		var world_state_ref: WorldState = world_ctrl.world_state
@@ -261,15 +238,15 @@ func _mine_or_attack() -> void:
 				
 			# ----------------==================================================
 			# DYNAMIC RESILIENCE HIT EVALUATION (SOLID Progressive Mining)
-			# ----------------==================================================
+			# --------------------------------==================================
 			var remaining_hits := _damage_service.register_hit(block_coord, mined_type)
 			
 			if remaining_hits > 0:
 				# Block is still solid: spawn impact debris, play impact thud, update cracks
 				_spawn_mining_particles(Vector3(block_coord), mined_type)
-				AudioService.play_sfx_static("block_place", Vector3(block_coord)) # Local impact sound
+				AudioService.play_sfx_static("block_place", Vector3(block_coord)) 
 				_update_cracking_overlay(block_coord)
-				return # HALT TRANSITION: Do not break the block yet!
+				return 
 				
 			# ----------------==================================================
 			# BLOCK BROKEN: Clean up records and trigger final shatter drops
@@ -291,13 +268,15 @@ func _mine_or_attack() -> void:
 				if is_instance_valid(hud):
 					hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
 			else:
-				if MINED_BLOCK_TO_ITEM_DROP.has(mined_type):
-					target_id = MINED_BLOCK_TO_ITEM_DROP[mined_type] as int
-					
+				# OCP COMPLIANCE: Query BlockDefinition polymorphically for drops!
+				var def := block_library_provider.get_definition(mined_type) as BlockDefinition
+				if def != null:
+					target_id = def.get_drop_item_id()
+					var qty := def.get_drop_quantity()
+					var _un4 := inventory.add_item(target_id, qty)
+				
 				if mined_type == BlockType.Type.LEAVES and randf() < 0.25:
-					var _un4 := inventory.add_item(18, 1)
-					
-				var _un5 := inventory.add_item(target_id, 1)
+					var _un5 := inventory.add_item(18, 1)
 				
 			var active_q: Quest = quest_service_provider.get_active_quest() as Quest
 			if active_q != null and active_q.required_item_index == target_id:
@@ -413,12 +392,12 @@ func _build_or_interact() -> void:
 	var strategy: ItemUsageStrategy = ItemStrategyRegistry.get_strategy(item_id) as ItemUsageStrategy
 	if strategy != null:
 		var hit_normal := raycast.get_collision_normal()
-		var ray_dir := (raycast.get_collision_point() - camera.global_position).normalized()
+		var r_dir := (raycast.get_collision_point() - camera.global_position).normalized()
 		
-		if hit_normal.dot(ray_dir) > 0.0:
+		if hit_normal.dot(r_dir) > 0.0:
 			hit_normal = -hit_normal
 			
-		var hit_pos := raycast.get_collision_point() + (ray_dir * 0.05)
+		var hit_pos := raycast.get_collision_point() + (r_dir * 0.05)
 		var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 		
 		var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
@@ -450,7 +429,7 @@ func _build_or_interact() -> void:
 
 
 # ==============================================================================
-# FALLBACK HELPER GETTERS (To prevent missing reference errors)
+# FALLBACK HELPER GETTERS
 # ==============================================================================
 
 var highlight_mesh: MeshInstance3D:

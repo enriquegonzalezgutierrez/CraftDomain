@@ -7,10 +7,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and texture configurations for the Stone Slab (Bottom).
-# - Open-Closed Principle (OCP): Extends BlockDefinition. Configures its 
-#   mining resistance locally to restore gameplay balance.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/Blocks/StoneSlabBottomBlock.gd
+# - Open-Closed Principle (OCP): Extends BlockDefinition. Overrides 
+#   its local drop variables within the constructor to decouple mining drop tables.
 # ==============================================================================
 class_name StoneSlabBottomBlock
 extends BlockDefinition
@@ -24,6 +22,10 @@ func _init() -> void:
 	
 	# Opaque Culling: Slabs allow adjacent face visibility
 	is_transparent = true 
+	
+	# OCP/SOLID Compliance: Bottom stone slabs drop the Stone Slab Item (ID 26)
+	drop_item_id = 26
+	drop_quantity = 1
 	
 	# OCP/SOLID Compliance: Enforce 2 impacts resistance for half-height stone slabs
 	mining_resistance = 2
