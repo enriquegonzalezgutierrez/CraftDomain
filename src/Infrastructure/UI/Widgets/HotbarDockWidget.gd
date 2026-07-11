@@ -1,18 +1,22 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Infrastructure (UI Widgets / Hotbar Selection)
+# Class: HotbarDockWidget
 # Description: SRP-compliant UI Widget responsible ONLY for building and managing
 #              the unified bottom HUD selection dock (Hotbar).
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively the hotbar slots, 
 #   selection outlines, and civilian shortcuts rendering.
-# - Open-Closed Principle (OCP): Completely deleted the hardcoded, duplicate 
-#   color dictionary. Block fallback colors are dynamically queried from `BlockLibrary`, 
-#   leaving the HUD completely closed to modifications when adding new blocks.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd
+# - Open-Closed Principle (OCP) & DRY: EXTREME REFACTOR. Completely purged the 
+#   hardcoded `match item_id:` table. Textures are now loaded dynamically 
+#   by querying the `BlockLibrary` domain definitions, completely closing 
+#   the UI to modifications when adding new materials.
 # ==============================================================================
 class_name HotbarDockWidget
 extends Control
+
+## Symmetrical texture folder constant
+const TEXTURE_DIR := "res://assets/textures/"
 
 ## Dependencies injected by the HUD orchestrator
 var player: CharacterBody3D
@@ -100,7 +104,7 @@ func _setup_responsive_ui_layout() -> void:
 	var hbox := HBoxContainer.new()
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hbox.add_theme_constant_override("separation", 10)
-	margin.add_child(hbox)
+	margin.add_child(hbox) # CORREGIDO: Ahora se agrega correctamente el hbox al contenedor de margen
 	
 	# A. Left-docked Button: Backpack
 	var bp_vbox := VBoxContainer.new()
@@ -130,7 +134,6 @@ func _setup_responsive_ui_layout() -> void:
 	slots_hbox.add_theme_constant_override("separation", 6)
 	hbox.add_child(slots_hbox)
 	
-	# FIX: Explicit static typing `int` on index range iterator
 	for i: int in range(8):
 		var slot := Panel.new()
 		slot.name = "Slot_%d" % i
@@ -306,33 +309,22 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 			label.text = "" if item_id == -1 or quantity <= 0 else str(quantity)
 
 
+# ==============================================================================
+# DATA-DRIVEN TEXTURE LOADER (SOLID OCP Compliance)
+# ==============================================================================
+
+## Fetches the 2D texture dynamically from the BlockLibrary definitions,
+## removing the hardcoded conversion match table completely.
 func _get_item_texture(item_id: int) -> Texture2D:
 	if _textures_cache.has(item_id):
 		return _textures_cache[item_id] as Texture2D
 		
-	var texture_file := ""
-	match item_id:
-		1: texture_file = "stone.png"
-		2: texture_file = "dirt.png"
-		3: texture_file = "grass_top.png"
-		4: texture_file = "wood.png"
-		5: texture_file = "leaves.png"
-		7: texture_file = "sand.png"
-		8: texture_file = "red_sand.png"
-		9: texture_file = "snow.png"
-		10: texture_file = "ice.png"
-		11: texture_file = "mud.png"
-		13: texture_file = "sakura_leaves.png"
-		15: texture_file = "lava.png"
-		21: texture_file = "coal_ore.png"
-		22: texture_file = "bricks.png"
-		23: texture_file = "glass.png"
-		24: texture_file = "birch_log.png"
-		
-	if texture_file != "":
-		var full_path := "res://assets/textures/" + texture_file
+	# Query the Domain BlockLibrary to resolve the filename
+	var def := BlockLibrary.get_definition(item_id as BlockType.Type)
+	if def != null and def.texture_file_name != "":
+		var full_path := TEXTURE_DIR + def.texture_file_name
 		if ResourceLoader.exists(full_path):
-			var tex: Texture2D = load(full_path) as Texture2D
+			var tex := load(full_path) as Texture2D
 			if tex is Texture2D:
 				_textures_cache[item_id] = tex
 				return tex

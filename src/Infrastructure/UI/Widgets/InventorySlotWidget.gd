@@ -8,13 +8,16 @@
 #   data emission and reception.
 # - Dependency Inversion Principle (DIP): Communicates back to its parent 
 #   coordinating panel strictly via decoupled loose-bound method triggers.
-# - Open-Closed Principle (OCP): Completely deleted the duplicate color dictionary. 
-#   Drag previews now query fallback block colors dynamically from the `BlockLibrary` Domain.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/Widgets/InventorySlotWidget.gd
+# - Open-Closed Principle (OCP) & DRY: EXTREME REFACTOR. Completely removed the 
+#   hardcoded `match item_id:` table. Textures are now loaded dynamically 
+#   by querying the `BlockLibrary` domain definitions, completely closing 
+#   the UI to modifications when adding new materials.
 # ==============================================================================
 class_name InventorySlotWidget
 extends Button
+
+## Symmetrical texture folder constant
+const TEXTURE_DIR := "res://assets/textures/"
 
 # Unique slot identifier and reference to the parent coordinator panel
 var slot_index: int = -1
@@ -80,7 +83,6 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	
 	# Query the domain block library dynamically to resolve fallback colors (OCP/SOLID!)
 	var def: BlockDefinition = BlockLibrary.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
-	# Symmetrical fallback: if not a block, renders a clean dark background
 	backing.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
 	backing.modulate.a = 0.72 
 	container.add_child(backing)
@@ -126,37 +128,21 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 
 
 # ==============================================================================
-# VISUAL TEXTURE & FALLBACK DECORATOR SERVICE
+# DATA-DRIVEN TEXTURE LOADER (SOLID OCP Compliance)
 # ==============================================================================
 
-## Locates and returns cached Texture2D safely under Godot export .pck packages
+## Fetches the 2D texture dynamically from the BlockLibrary definitions,
+## removing the hardcoded conversion match table completely.
 func _get_item_texture(item_id: int) -> Texture2D:
 	if _textures_cache.has(item_id):
 		return _textures_cache[item_id] as Texture2D
 		
-	var texture_file := ""
-	match item_id:
-		1: texture_file = "stone.png"
-		2: texture_file = "dirt.png"
-		3: texture_file = "grass_top.png"
-		4: texture_file = "wood.png"
-		5: texture_file = "leaves.png"
-		7: texture_file = "sand.png"
-		8: texture_file = "red_sand.png"
-		9: texture_file = "snow.png"
-		10: texture_file = "ice.png"
-		11: texture_file = "mud.png"
-		13: texture_file = "sakura_leaves.png"
-		15: texture_file = "lava.png"
-		21: texture_file = "coal_ore.png"
-		22: texture_file = "bricks.png"
-		23: texture_file = "glass.png"
-		24: texture_file = "birch_log.png"
-		
-	if texture_file != "":
-		var full_path := "res://assets/textures/" + texture_file
+	# Query the Domain BlockLibrary to resolve the filename
+	var def := BlockLibrary.get_definition(item_id as BlockType.Type)
+	if def != null and def.texture_file_name != "":
+		var full_path := TEXTURE_DIR + def.texture_file_name
 		if ResourceLoader.exists(full_path):
-			var tex: Texture2D = load(full_path) as Texture2D
+			var tex := load(full_path) as Texture2D
 			if tex is Texture2D:
 				_textures_cache[item_id] = tex
 				return tex
