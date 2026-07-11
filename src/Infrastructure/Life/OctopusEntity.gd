@@ -1,6 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: OctopusEntity
 # Description: Physical character controller for the aquatic Octopus.
 #              Delegates all timed jet propulsions, marine gliding, and 
@@ -9,20 +9,17 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, and underwater ink spray visual particles.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying on its parent physics process and signals.
-# - Dependency Inversion Principle (DIP): Injects the OctopusAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/OctopusEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name OctopusEntity
 extends PassiveEntity
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Octopus spawns with 3 Hearts of health (6 HP)
+	# Octopus spawns with 3 Hearts of health (6 HP) and aquatic boundaries
 	super(spawn_pos, 6)
+	entity_habitat = 2 # Aquatic (Water only)
 	name = "Entity_OCTOPUS"
 
 
@@ -47,11 +44,7 @@ func _ready() -> void:
 		ai_component = NPCAIComponent.new()
 		add_child(ai_component)
 		
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Octopus aquatic pulsing AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
-	# ==========================================================================
+	# Inject the specialized Octopus aquatic pulsing AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = OctopusAIBehavior.new()
 
@@ -61,7 +54,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -88,9 +80,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-## Returns int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
-func _get_habitat() -> int:
-	return 2 # Equivalent to MobRegistry.Habitat.AQUATIC
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_OCTOPUS"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
 
 
 func _drop_loot(inv: IInventory) -> void:
@@ -104,50 +99,3 @@ func _is_avian() -> bool:
 
 func _can_socialize() -> bool:
 	return true
-
-
-# ==============================================================================
-# TACTICAL PRESENTATION & AQUATIC DEFENSIVE INK SPRAY
-# ==============================================================================
-
-## Visual Ink Spray: Spawns thick unshaded charcoal cloud particles to blind threats
-## Note: Invoked via reflective calls by the OctopusAIBehavior strategy
-func _play_ink_spray() -> void:
-	_spawn_black_ink_shroud()
-
-
-## Instantiates dense unshaded black box meshes that drift slowly underwater (Compile-Free CPU)
-func _spawn_black_ink_shroud() -> void:
-	var particles := CPUParticles3D.new()
-	particles.amount = 18
-	particles.one_shot = true
-	particles.explosiveness = 0.95
-	particles.lifetime = 1.2 # Shroud lingers in currents
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 0.3
-	particles.direction = Vector3(0.0, 0.2, 0.0)
-	particles.spread = 180.0
-	particles.initial_velocity_min = 1.0
-	particles.initial_velocity_max = 2.5
-	particles.gravity = Vector3(0.0, -0.4, 0.0) # Slow sink in dense water
-	
-	# Charcoal-black box particles representing the ink mass
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.18, 0.18, 0.18)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.05, 0.05, 0.07) # Thick deep abisal Black
-	mat.roughness = 1.0
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mesh.material = mat
-	particles.mesh = mesh
-	
-	# Native leak-free automatic cleanup on complete emission (Milestone 7)
-	particles.finished.connect(particles.queue_free)
-	
-	# Add to world parent node to prevent particles moving with the octopus
-	var parent := get_parent()
-	if is_instance_valid(parent):
-		parent.add_child(particles)
-		particles.global_position = global_position + Vector3(0.0, 0.2, 0.0)
-		particles.emitting = true

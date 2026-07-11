@@ -1,18 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Civilians)
 # Class: VillagerEntity
-# Description: Physical character controller for the Common Villager NPC.
+# Description: Physical character controller for the Common Gossip Villager NPC.
 #              Delegates all group gossip circles, social chat sways, and 
 #              daytime/nighttime shelter schedules to the decoupled 
 #              VillagerAIBehavior strategy, managing visual chat particles.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, collision shapes, and talking visual chat bubble particles.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base class.
-# - Dependency Inversion Principle (DIP): Injects the VillagerAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
+#   translations, dialogue trees, and talking visual chat bubble particles.
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name VillagerEntity
 extends PassiveEntity
@@ -31,8 +29,11 @@ var player: CharacterBody3D
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Villagers spawn with 3 Hearts of health (3 HP)
-	super(spawn_pos, 3)
+	# Villagers spawn with 3 Hearts of health (6 HP) and terrestrial boundaries
+	super(spawn_pos, 6)
+	entity_habitat = 0 # Terrestrial
+	humanoid_role = 0 # Villager role
+	is_conversational_npc = true
 	name = "Entity_VILLAGER"
 
 
@@ -47,11 +48,7 @@ func _ready() -> void:
 	_build_visual_representation()
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Villager social AI strategy dynamically on ready,
-	# completely overriding the default generic schedules assigned by Bootstrap.
-	# ==========================================================================
+	# Inject the specialized Villager social AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = VillagerAIBehavior.new()
 
@@ -80,26 +77,21 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_VILLAGER"
+
+
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 1.0, 1.0)
+	return Color(0.2, 0.85, 0.2) # Civilian Green (LSP Compliant)
 
 
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
-
-
-func _get_humanoid_role() -> int:
-	return 0 # ProceduralVoxelRepresentation.RoleType.VILLAGER
+## Symmetrical Quest Eligibility check (Resolves base class auto-claim OCP rules)
+func _is_eligible_for_quest(quest_id: String) -> bool:
+	return quest_id == "lost_bazaar" or quest_id == "bazaar_return"
 
 
 func _has_ui_decorations() -> bool:
 	return true
-
-
-func _can_socialize() -> bool:
-	# Socialize is disabled during emergency escapes (night or storms)
-	var is_night: bool = CelestialService.is_night_time_static()
-	return not is_night
 
 
 func _locate_player() -> void:
@@ -109,7 +101,7 @@ func _locate_player() -> void:
 
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	pass # Hostiles do not panic when hit
+	pass # Peaceful civilians do not override combat panics locally
 
 
 func _drop_loot(inv: IInventory) -> void:
@@ -172,7 +164,7 @@ func _detect_current_biome() -> int:
 		if generator_node != null:
 			var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
-				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise) as BiomeService.BiomeProfile
+				var profile: BiomeService.BiomeProfile = world_controller_ref.call("evaluate_coordinate", int(round(global_position.x)), int(round(global_position.z)))
 				return profile.biome_id
 	return default_biome_id
 

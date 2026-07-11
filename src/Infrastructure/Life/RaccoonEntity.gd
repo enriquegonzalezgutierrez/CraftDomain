@@ -1,6 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: RaccoonEntity
 # Description: Physical character controller for the forest Raccoon.
 #              Delegates all daytime sleeps, nighttime village barrel stalking,
@@ -9,20 +9,17 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, and claw scratch visual wood particles.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations.
-# - Dependency Inversion Principle (DIP): Injects the RaccoonAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/RaccoonEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name RaccoonEntity
 extends PassiveEntity
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Raccoons spawn with 2 Hearts of health (4 HP)
+	# Raccoons spawn with 2 Hearts of health (4 HP) and terrestrial boundaries
 	super(spawn_pos, 4)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_RACCOON"
 
 
@@ -42,11 +39,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Raccoon cleptomaniac AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
-	# ==========================================================================
+	# Inject the specialized Raccoon cleptomaniac AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = RaccoonAIBehavior.new()
 
@@ -56,7 +49,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -83,9 +75,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-## Returns int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_RACCOON"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
 
 
 func _drop_loot(inv: IInventory) -> void:
@@ -111,18 +106,15 @@ func _play_scratching_effect(target_node: Node3D) -> void:
 	if not is_instance_valid(target_node):
 		return
 		
-	# Gaze lock towards the target
 	var look_dir := (target_node.global_position - global_position).normalized()
 	look_dir.y = 0.0
 	if is_instance_valid(ai_component):
 		ai_component.wander_direction = look_dir
 		
-	# Gesticulate scratch swipes and throttle wood chip spawn rate
+	# Gesticulate scratch swipes and throttle wood chip spawn rate (10Hz)
 	var frame_stamp := Engine.get_physics_frames()
 	if frame_stamp % 10 == 0:
 		_spawn_claw_wood_particles(target_node.global_position)
-		
-		# Play claw scratch sound statically (Service Locator)
 		AudioService.play_sfx_static("footstep_wood", global_position)
 
 
@@ -134,7 +126,6 @@ func _spawn_claw_wood_particles(target_pos: Vector3) -> void:
 	particles.explosiveness = 0.95
 	particles.lifetime = 0.40
 	
-	# Flying direction: wood shavings bounce back towards the Raccoon
 	var direction_vec := (global_position - target_pos).normalized()
 	
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
@@ -143,10 +134,10 @@ func _spawn_claw_wood_particles(target_pos: Vector3) -> void:
 	particles.spread = 30.0
 	particles.initial_velocity_min = 1.5
 	particles.initial_velocity_max = 2.5
-	particles.gravity = Vector3(0.0, -9.8, 0.0) # Wood chips fall under gravity
+	particles.gravity = Vector3(0.0, -9.8, 0.0)
 	
 	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.03, 0.03, 0.03) # Tiny wood shavings
+	mesh.size = Vector3(0.03, 0.03, 0.03)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.45, 0.30, 0.15) # Wood Oak Brown
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -156,11 +147,8 @@ func _spawn_claw_wood_particles(target_pos: Vector3) -> void:
 	# Native leak-free automatic cleanup on complete emission (Milestone 7)
 	particles.finished.connect(particles.queue_free)
 	
-	# Add to world parent node to prevent particles moving with the raccoon
 	var parent := get_parent()
 	if is_instance_valid(parent):
 		parent.add_child(particles)
-		
-		# Symmetrical start pos: spawn right in between raccoon and targeted prop
 		particles.global_position = global_position.lerp(target_pos, 0.6) + Vector3(0.0, 0.2, 0.0)
 		particles.emitting = true

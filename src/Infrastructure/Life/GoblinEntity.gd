@@ -1,20 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Hostiles)
 # Class: GoblinEntity
 # Description: Physical character controller for the hostile skirmisher Goblin.
 #              Delegates all rapid chasing vectors, skirmishing retreats, 
-#              and combat cooldowns to the decoupled GoblinAIBehavior strategy, 
-#              focusing on physical translations and visual animations.
+#              and combat cooldowns to the decoupled GoblinAIBehavior strategy.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, and entity nameplate styling.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers.
-# - Dependency Inversion Principle (DIP): Injects the GoblinAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/GoblinEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and red color.
 # ==============================================================================
 class_name GoblinEntity
 extends PassiveEntity
@@ -26,12 +21,15 @@ var player: CharacterBody3D
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	# Goblins spawn with 2 Hearts of health (4 HP, fragile skirmisher)
 	super(spawn_pos, 4)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_GOBLIN"
 
 
 func _ready() -> void:
 	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
+	if is_in_group("passives"):
+		remove_from_group("passives") # Unregister from peaceful list (OCP/LSP)
 	
 	# Cache component references pre-configured in the scene
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
@@ -47,11 +45,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Goblin skirmisher AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
-	# ==========================================================================
+	# Inject the specialized Goblin skirmisher AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GoblinAIBehavior.new()
 
@@ -61,7 +55,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -88,12 +81,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_GOBLIN"
+
+
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 0.15, 0.15) # Red warning nameplate
-
-
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+	return Color(0.95, 0.15, 0.15) # Hostile Red (LSP Compliant)
 
 
 func _has_ui_decorations() -> bool:

@@ -1,28 +1,24 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: ChickenEntity
 # Description: Physical character controller for the passive Prairie Chicken.
-#              Exclusively manages walking translations, simple avian sways, 
-#              and dynamic, scale-aware nameplate floating.
+#              Delegates its visual clay-voxel representation and physical 
+#              translations completely to the Godot Editor (.tscn).
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates exclusively physical 
 #   movement loops, flight bobs, and life-signals, delegating visual and 
 #   collision parameters to the Godot Editor (.tscn).
-# - Liskov Substitution Principle (LSP): Subclasses PassiveEntity and satisfies 
-#   the base contracts without code-based instantiation overrides.
-# - Dependency Inversion Principle (DIP): Relies on abstract interfaces 
-#   (IInventory) to process loot drops.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/ChickenEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name ChickenEntity
 extends PassiveEntity
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Chickens spawn with 1 Heart of health (2 HP, fragile)
-	super(spawn_pos, 2) 
+	super(spawn_pos, 2)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_CHICKEN"
 
 
@@ -43,14 +39,22 @@ func _build_visual_representation() -> void:
 	pass # Visual model is instanced directly in the .tscn scene file
 
 
-func _drop_loot(inv: IInventory) -> void:
-	# Item ID 16: Fried Chicken
-	inv.add_item(16, 1)
-
-
 # ==============================================================================
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_CHICKEN"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
+
+
+func _drop_loot(inv: IInventory) -> void:
+	# Item ID 16: Fried Chicken (acting as raw chicken proxy)
+	inv.add_item(16, 1)
+
 
 func _is_avian() -> bool:
 	return true # Triggers slight procedural walking tilts inside base class

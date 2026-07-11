@@ -1,22 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: BirdEntity
 # Description: Physical character controller for the flying Yellow Bird.
 #              Delegates all flight and perching decisions to the AvianAIBehavior 
-#              strategy, managing procedural wing flap sways and dynamic, 
-#              scale-aware nameplate floating.
+#              strategy, managing procedural wing flap sways.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, coordinate-facing rotations, wing flap sways, and local audio 
 #   chatter timers, keeping the shared Domain flight strategy pristine.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers.
-# - Open-Closed Principle (OCP): Nameplate tracking and ambient vocalization 
-#   cooldowns are managed internally. New bird species can be added with unique 
-#   vocal timers without modifying shared engines.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/BirdEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name BirdEntity
 extends PassiveEntity
@@ -29,7 +23,6 @@ var _model_node: Node3D
 const MODEL_BASE_Y: float = 0.0
 
 # --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
-# Throttled interval preventing the bird audio from overlapping
 const COOLDOWN_CHAT_MIN_SEC: float = 15.0
 const COOLDOWN_CHAT_MAX_SEC: float = 25.0
 
@@ -38,8 +31,9 @@ var _chat_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Birds spawn with 1 Heart of health (2 HP)
+	# Birds spawn with 1 Heart of health (2 HP) and custom flight/air boundaries
 	super(spawn_pos, 2)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_BIRD"
 
 
@@ -64,14 +58,17 @@ func _build_visual_representation() -> void:
 	pass # Visual model is instanced directly in the .tscn scene file
 
 
-func _drop_loot(inv: IInventory) -> void:
-	# Drops 1x Fried Chicken (acting as soft avian meat proxy)
-	inv.add_item(16, 1)
-
-
 # ==============================================================================
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_BIRD"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
+
 
 func _is_avian() -> bool: 
 	return true
@@ -85,18 +82,17 @@ func _can_socialize() -> bool:
 	return true
 
 
+func _drop_loot(inv: IInventory) -> void:
+	# Drops 1x Fried Chicken (acting as soft avian meat proxy)
+	inv.add_item(16, 1)
+
+
 # ==============================================================================
 # TACTICAL AUDIO & FX PRESENTATION
 # ==============================================================================
 
 ## Visual/Audio Avian Chatter: Plays the designated long 3D spatial bird song
 func _play_avian_chatter() -> void:
-	# ==========================================================================
-	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
-	# Plays the bird song with a custom 60.0 meters spatial distance.
-	# Slower, log-attenuated fade makes it sound faintly as background forest
-	# ambience when far away, without interfering with closer combat/action sounds.
-	# ==========================================================================
 	AudioService.play_sfx_static("bird_chatter", global_position, 60.0)
 
 
@@ -108,10 +104,7 @@ func _process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
 
-	# ==========================================================================
-	# AMBIENT CHATTER TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain flight nodes
-	# ==========================================================================
+	# Process ambient chatter timer locally in the presenter to decouple audio
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true

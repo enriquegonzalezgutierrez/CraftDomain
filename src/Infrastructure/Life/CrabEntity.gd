@@ -1,6 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: CrabEntity
 # Description: Physical character controller for the Amphibious Beach Crab.
 #              Delegates all movement decisions, beach scuttling, and water 
@@ -9,20 +9,17 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, and entity nameplate height styling.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers.
-# - Dependency Inversion Principle (DIP): Injects the AmphibiousAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/CrabEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name CrabEntity
 extends PassiveEntity
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Crabs spawn with 2 Hearts of health (4 HP)
+	# Crabs spawn with 2 Hearts of health (4 HP) and amphibious boundaries
 	super(spawn_pos, 4)
+	entity_habitat = 1 # Amphibious (Water, Sand, Mud)
 	name = "Entity_CRAB"
 
 
@@ -42,11 +39,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Amphibious AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
-	# ==========================================================================
+	# Inject the specialized Amphibious AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = AmphibiousAIBehavior.new()
 
@@ -56,7 +49,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -83,10 +75,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-## Returns int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
-## This perfectly complies with LSP overrides and stops circular import compilation deadlocks.
-func _get_habitat() -> int:
-	return 1 # Equivalent to MobRegistry.Habitat.AMPHIBIOUS
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_CRAB"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
 
 
 func _drop_loot(inv: IInventory) -> void:

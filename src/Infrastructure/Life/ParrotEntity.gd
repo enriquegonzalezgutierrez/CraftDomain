@@ -1,23 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: ParrotEntity
 # Description: Physical character controller for the flying Tropical Parrot.
 #              Delegates all flight and perching decisions to the AvianAIBehavior 
-#              strategy, managing wing flap sways and dynamic, 
-#              scale-aware nameplate floating.
+#              strategy, managing wing flap sways.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, coordinate-facing rotations, wing flap sways, and local audio 
 #   chatter timers, keeping the shared Domain flight strategy pristine.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying on parent signal connections polymorphically.
-# - Open-Closed Principle (OCP): Nameplate tracking and ambient vocalization 
-#   cooldowns are managed internally.
-# - Dependency Inversion Principle (DIP): Injects the AvianAIBehavior strategy 
-#   during ready state initialization and utilizes our OCP AudioService locator.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/ParrotEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name ParrotEntity
 extends PassiveEntity
@@ -30,7 +23,6 @@ var _model_node: Node3D
 const MODEL_BASE_Y: float = 0.0
 
 # --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
-# Throttled interval preventing the 7-second audio from overlapping
 const COOLDOWN_CHAT_MIN_SEC: float = 15.0
 const COOLDOWN_CHAT_MAX_SEC: float = 25.0
 
@@ -39,8 +31,9 @@ var _chat_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Parrots spawn with 1 Heart of health (2 HP, fragile)
+	# Parrots spawn with 1 Heart of health (2 HP, fragile) and custom flight/air boundaries
 	super(spawn_pos, 2)
+	entity_habitat = 0 # Terrestrial (perches on leaves)
 	name = "Entity_PARROT"
 
 
@@ -62,11 +55,7 @@ func _ready() -> void:
 	# Fetch nameplate configurations from inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Avian flight/perch AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior.
-	# ==========================================================================
+	# Inject the specialized Avian flight/perch AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = AvianAIBehavior.new()
 
@@ -76,7 +65,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -103,6 +91,14 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_PARROT"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
+
+
 func _is_avian() -> bool:
 	return true
 
@@ -126,12 +122,6 @@ func _drop_loot(inv: IInventory) -> void:
 
 ## Visual/Audio Avian Chatter: Plays the designated long 3D spatial squawk
 func _play_avian_chatter() -> void:
-	# ==========================================================================
-	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
-	# Plays the parrot sound with a custom 60.0 meters spatial distance.
-	# Slower, log-attenuated fade makes it sound faintly as background forest
-	# ambience when far away, without interfering with closer combat/action sounds.
-	# ==========================================================================
 	AudioService.play_sfx_static("parrot_squawk", global_position, 60.0)
 
 
@@ -143,10 +133,7 @@ func _process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 		
-	# ==========================================================================
-	# AMBIENT CHATTER TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain flight nodes
-	# ==========================================================================
+	# Process ambient chatter timer locally in the presenter to decouple audio
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true

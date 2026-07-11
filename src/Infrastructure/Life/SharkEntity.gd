@@ -1,23 +1,17 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Hostiles)
 # Class: SharkEntity
 # Description: Physical character controller for the hostile Great White Shark.
 #              Delegates all coordinate scent tracking, player chase paths, 
-#              and surface leap attacks to the decoupled SharkAIBehavior strategy,
-#              focusing on swimming tail-wag oscillations and damage.
+#              and surface leap attacks to the decoupled SharkAIBehavior strategy.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, local audio vocal timers, and procedural 
 #   mesh tail-wag animations.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers without compilation conflicts.
-# - Open-Closed Principle (OCP): Mesh yaw-wagging calculations and ambient vocalization 
-#   cooldowns are managed internally.
-# - Dependency Inversion Principle (DIP): Injects the SharkAIBehavior strategy 
-#   during ready state initialization and utilizes our OCP AudioService locator.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/SharkEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key, red color,
+#   and overriding `_physics_tick()` to avoid parent `super()` compilation errors.
 # ==============================================================================
 class_name SharkEntity
 extends PassiveEntity
@@ -32,7 +26,6 @@ var _model_node: Node3D
 var _model_base_y: float = 0.0
 
 # --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
-# Sharks are silent hunters but make low-pitch subaquatic growls or water-thrashing sounds
 const COOLDOWN_ATTACK_MIN_SEC: float = 18.0
 const COOLDOWN_ATTACK_MAX_SEC: float = 35.0
 
@@ -41,14 +34,17 @@ var _attack_sound_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Sharks spawn with 4 Hearts of health (8 HP)
+	# Sharks spawn with 4 Hearts of health (8 HP) and aquatic boundaries
 	super(spawn_pos, 8)
+	entity_habitat = 2 # Aquatic (Water only)
 	name = "Entity_SHARK"
 
 
 func _ready() -> void:
 	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
+	if is_in_group("passives"):
+		remove_from_group("passives") # Unregister from peaceful list (OCP/LSP)
 	
 	# Cache component references pre-configured in the scene
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
@@ -57,8 +53,6 @@ func _ready() -> void:
 	# TANGENT SHIELD FIX: Strip materials of tangent-requiring shaders to avoid C++ warnings
 	if is_instance_valid(_model_node):
 		_register_glb_materials(_model_node)
-		
-		# Cache the initial editor rotation to compute dynamic tail wags (OCP compliant)
 		_model_base_y = _model_node.rotation.y
 	
 	_locate_player()
@@ -66,11 +60,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Shark aquatic predator AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
-	# ==========================================================================
+	# Inject the specialized Shark aquatic predator AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = SharkAIBehavior.new()
 
@@ -106,12 +96,18 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_SHARK"
+
+
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 0.15, 0.15) # Red warning nameplate
+	return Color(0.95, 0.15, 0.15) # Hostile Red (LSP Compliant)
 
 
-func _get_habitat() -> int:
-	return 2 # Equivalent to MobRegistry.Habitat.AQUATIC
+## SOLID RESOLUTION (LSP/OCP): Overrides the custom virtual physics hook.
+## Completely avoids calling `super(delta)` inside engine virtual callbacks.
+func _physics_tick(delta: float) -> void:
+	_process_procedural_swimming(delta)
 
 
 func _has_ui_decorations() -> bool:
@@ -138,9 +134,6 @@ func _drop_loot(inv: IInventory) -> void:
 
 ## Visual/Audio Shark Vocalization: Plays the designated subaquatic growl
 func _play_shark_vocal() -> void:
-	# Plays the dynamic subaquatic growl using our refactored OCP service locator.
-	# The AudioService automatically handles max spatial distance (20m) and 
-	# auto-frees the player when finished to guarantee no memory leaks!
 	AudioService.play_sfx_static("shark_attack", global_position)
 
 
@@ -148,28 +141,15 @@ func _play_shark_vocal() -> void:
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var dir := (player.global_position - global_position).normalized()
-		# High vertical-diagonal propulsion to push the player away in water
 		var knockback := Vector3(dir.x * 6.5, 2.5, dir.z * 6.5)
-		
-		# --- PLAY SPATIAL ATTACK ROAR ON BITE (OCP/DIP Compliant) ---
 		_play_shark_vocal()
-		
 		if player.has_method("take_damage"):
 			player.call("take_damage", 3, knockback)
 
 
 # ==============================================================================
-# MAIN PHYSICS LOOP & PROCEDURAL TAIL-WAG OSCILLATION
+# PROCEDURAL TAIL-WAG OSCILLATION
 # ==============================================================================
-
-func _physics_process(delta: float) -> void:
-	if domain_entity.is_dead:
-		return
-		
-	# Process procedural tail wave animations before standard translations
-	_process_procedural_swimming(delta)
-	super(delta)
-
 
 func _process_procedural_swimming(delta: float) -> void:
 	if is_instance_valid(_model_node):
@@ -178,26 +158,18 @@ func _process_procedural_swimming(delta: float) -> void:
 		var is_moving := flat_velocity.length_squared() > 0.1
 		
 		if is_moving:
-			# Tail-wagging frequency scales dynamically with active movement speed
 			var swim_speed := flat_velocity.length() * 2.5
-			# Symmetrical Gaze Wagging: Apply sinus wave relative to pre-saved editor transform
 			_model_node.rotation.y = _model_base_y + sin(anim_time * swim_speed) * 0.22
 			_model_node.rotation.z = cos(anim_time * swim_speed * 0.5) * 0.08 
 		else:
-			# Slow resting ocean current sways
 			_model_node.rotation.y = lerp_angle(_model_node.rotation.y, _model_base_y, delta * 5.0)
 			_model_node.rotation.z = sin(anim_time * 1.5) * 0.03
 
 
 func _process(delta: float) -> void:
-	# REMOVED: super(delta) because PassiveEntity does not implement _process()
 	if domain_entity.is_dead:
 		return
 		
-	# ==========================================================================
-	# AMBIENT SHARK SOUND TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain swim nodes
-	# ==========================================================================
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true

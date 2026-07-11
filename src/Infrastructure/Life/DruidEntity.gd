@@ -1,21 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Civilians)
 # Class: DruidEntity
 # Description: Physical character controller for the forest guardian Druid.
 #              Delegates all wildlife scanning, magical spellcasting timers, 
-#              and healing triggers to the decoupled DruidAIBehavior strategy,
-#              focusing on dialogues, physical translations, and 
-#              unshaded compile-free éter particles generation.
+#              and healing triggers to the decoupled DruidAIBehavior strategy.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, dialogue trees, and magical visual feedback.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers.
-# - Dependency Inversion Principle (DIP): Injects the DruidAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/DruidEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name DruidEntity
 extends PassiveEntity
@@ -31,8 +25,11 @@ var gaze_rotation_offset: float = PI
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Druids spawn with 4 Hearts of health (8 HP)
+	# Druids spawn with 4 Hearts of health (8 HP) and terrestrial boundaries
 	super(spawn_pos, 8)
+	entity_habitat = 0 # Terrestrial
+	humanoid_role = 5 # Druid role
+	is_conversational_npc = true
 	name = "Entity_DRUID"
 
 
@@ -44,11 +41,8 @@ func _ready() -> void:
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
-	# ==========================================================================
-	# T-POSE & ALIGNMENT OVERHAUL
-	# Load skeletal animation rigs dynamically and bind the visual component.
-	# ==========================================================================
 	_build_visual_representation()
+	_setup_nameplate_height()
 	
 	# Inject the specialized Druid magical overwatch AI strategy
 	if is_instance_valid(ai_component):
@@ -75,13 +69,21 @@ func _build_visual_representation() -> void:
 		visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
-## Concrete Implementation (DIP): Injects the modular Druid Role ID into the strategy compiler
-func _get_humanoid_role() -> int:
-	return 5 # Matches ProceduralVoxelRepresentation.RoleType.DRUID
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_DRUID"
 
 
-func _get_habitat() -> int:
-	return 0 # 0 = Habitat.TERRESTRIAL
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Civilian Green (LSP Compliant)
+
+
+## Symmetrical Quest Eligibility check
+func _is_eligible_for_quest(_quest_id: String) -> bool:
+	return false # Druids are not targeted by campaign milestones currently
 
 
 # ==============================================================================
@@ -123,7 +125,7 @@ func _play_healing_visuals(target_node: Node3D) -> void:
 	if not is_instance_valid(target_node):
 		return
 		
-	# Throttle particle spawning: spawn particles at 10Hz to prevent clutter and CPU stress
+	# Throttle particle spawning (10Hz) to prevent clutter and CPU stress
 	var frame_stamp := Engine.get_physics_frames()
 	if frame_stamp % 12 == 0:
 		_spawn_magical_heal_particle(target_node.global_position)

@@ -1,27 +1,23 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: SheepEntity
 # Description: Physical character controller for the passive grasslands Sheep.
 #              Delegates its visual clay-voxel representation and physical 
 #              translations completely to the Godot Editor (.tscn).
-# SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Handles exclusively physical
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates exclusively physical 
 #   passive movement, panic bounces, and signal-bound loot drops.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers.
-# - Dependency Inversion Principle (DIP): Relies on abstract interfaces 
-#   (IInventory) to process loot drops.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/SheepEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name SheepEntity
 extends PassiveEntity
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Sheep spawn with 1 Heart of health (2 HP)
 	super(spawn_pos, 2)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_SHEEP"
 
 
@@ -47,7 +43,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -74,8 +69,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_SHEEP"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
 
 
 func _drop_loot(inv: IInventory) -> void:

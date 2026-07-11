@@ -1,28 +1,24 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Defenders)
 # Class: GolemEntity
 # Description: Physical character controller for the village protector Iron Golem.
 #              Delegates all pro-active scans, chasing speed multipliers, 
-#              and combat schedules to the decoupled GolemAIBehavior strategy,
-#              focusing on physical translations, nameplates, and mass launcher slams.
+#              and combat schedules to the decoupled GolemAIBehavior strategy.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical mass 
 #   translations, heavy box cylinder colliders, and ballistical strikes.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations.
-# - Dependency Inversion Principle (DIP): Injects the GolemAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/GolemEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name GolemEntity
 extends PassiveEntity
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Heavy colossus initialized with 15 Hearts of health (30 HP)
+	# Heavy colossus initialized with 15 Hearts of health (30 HP) and terrestrial boundaries
 	super(spawn_pos, 30)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_GOLEM"
 
 
@@ -47,11 +43,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Golem protective AI strategy dynamically on ready,
-	# completely overriding the default generic guard behavior.
-	# ==========================================================================
+	# Inject the specialized Golem protective AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GolemAIBehavior.new()
 
@@ -61,7 +53,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -88,9 +79,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-## Returns int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_GOLEM"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Symmetrical Protector Green (Friendly)
 
 
 func _has_ui_decorations() -> bool:
@@ -98,8 +92,7 @@ func _has_ui_decorations() -> bool:
 
 
 func _can_socialize() -> bool:
-	# Golems are silent defenders, socializing is disabled
-	return false
+	return false # Golems are silent, non-gossiping protectors
 
 
 func _is_avian() -> bool:

@@ -1,25 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: PigEntity
 # Description: Physical character controller for the passive grasslands Pig.
 #              Delegates its visual clay-voxel representation and physical 
 #              translations completely to the Godot Editor (.tscn).
-# SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Handles exclusively physical
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates exclusively physical 
 #   passive movement, panic bounces, local audio vocal timers, and signal-bound loot drops.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers without compilation conflicts.
-# - Dependency Inversion Principle (DIP): Relies on abstract interfaces 
-#   (IInventory) to process loot drops and our OCP AudioService locator.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/PigEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name PigEntity
 extends PassiveEntity
 
 # --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
-# Pigs oink occasionally while tilling the topsoil looking for roots
 const COOLDOWN_OINK_MIN_SEC: float = 18.0
 const COOLDOWN_OINK_MAX_SEC: float = 35.0
 
@@ -28,8 +23,8 @@ var _oink_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Pigs spawn with 2 Hearts of health (4 HP)
 	super(spawn_pos, 4)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_PIG"
 
 
@@ -55,7 +50,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -82,8 +76,16 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_PIG"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
+
+
 func _drop_loot(inv: IInventory) -> void:
-	# Item ID 16: Fried Chicken (acting as soft pork meat proxy)
+	# Drops 1x raw pork meat (Fried Chicken proxy ID 16)
 	inv.add_item(16, 1)
 
 
@@ -101,25 +103,14 @@ func _can_socialize() -> bool:
 
 ## Visual/Audio Pig Vocalization: Plays the designated 3D spatial oink grunt
 func _play_pig_vocal() -> void:
-	# ==========================================================================
-	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
-	# Plays the pig oink sound with a custom 40.0 meters spatial distance.
-	# Slower, log-attenuated fade makes it sound faintly as background pasture
-	# ambience when far away, without interfering with closer combat/action sounds.
-	# ==========================================================================
 	AudioService.play_sfx_static("pig_oink", global_position, 40.0)
 
 
 func _process(delta: float) -> void:
-	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
-	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		
-	# ==========================================================================
-	# AMBIENT OINK TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain walk nodes
-	# ==========================================================================
+	# Process ambient oink timer locally in the presenter to decouple audio
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true

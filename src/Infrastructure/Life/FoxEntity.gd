@@ -1,6 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: FoxEntity
 # Description: Physical character controller for the forest predator Fox.
 #              Delegates all leaves scans, crawling crouches, and pounce leaps
@@ -9,13 +9,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, local audio vocal timers, and dynamic crouching mesh scales.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations
-#   without compiling conflicts.
-# - Dependency Inversion Principle (DIP): Injects the FoxAIBehavior strategy 
-#   during ready state initialization and utilizes our OCP AudioService locator.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/FoxEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name FoxEntity
 extends PassiveEntity
@@ -30,13 +25,14 @@ var _chat_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Foxes spawn with 2 Hearts of health (4 HP)
+	# Foxes spawn with 2 Hearts of health (4 HP) and terrestrial boundaries
 	super(spawn_pos, 4)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_FOX"
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the passive group for target lookups
+	# HIGH PERFORMANCE: Register in the passive group for target scans
 	add_to_group("passives")
 	
 	# Cache component references pre-configured in the scene
@@ -51,11 +47,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Fox predator AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
-	# ==========================================================================
+	# Inject the specialized Fox predator AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = FoxAIBehavior.new()
 
@@ -90,6 +82,14 @@ func _build_visual_representation() -> void:
 # ==============================================================================
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_FOX"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
+
 
 func _is_avian() -> bool:
 	return false
@@ -135,11 +135,7 @@ func _execute_pounce_strike(target: Node3D) -> void:
 	if not is_instance_valid(target):
 		return
 		
-	# ==========================================================================
-	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
 	# Plays the fox hunt screech sound with a custom 35.0 meters spatial distance
-	# to represent close-combat hunting exertion.
-	# ==========================================================================
 	AudioService.play_sfx_static("fox_screech", global_position, 35.0)
 	
 	# Execute damage strike upon landing
@@ -151,22 +147,14 @@ func _execute_pounce_strike(target: Node3D) -> void:
 
 ## Visual/Audio Fox Vocalization: Plays the designated ambient spatial screech
 func _play_fox_vocal() -> void:
-	# Plays the dynamic ambient fox screech using our refactored OCP service locator.
-	# The AudioService automatically handles max spatial distance (45m) and 
-	# auto-frees the player when finished to guarantee no memory leaks!
 	AudioService.play_sfx_static("fox_screech", global_position, 45.0)
 
 
 func _process(delta: float) -> void:
-	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
-	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		
-	# ==========================================================================
-	# AMBIENT SCREECH TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain stalk nodes
-	# ==========================================================================
+	# Process ambient screech timer locally in the presenter to decouple audio
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true

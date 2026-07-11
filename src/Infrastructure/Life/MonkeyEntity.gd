@@ -1,28 +1,22 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: MonkeyEntity
 # Description: Physical character controller for the acrobatic Tropical Monkey.
 #              Delegates all leaf clambering, branches perching, and backflip 
 #              cooldowns to the decoupled MonkeyAIBehavior strategy, managing
-#              procedural visual mesh rolls and spatial audio cues.
+#              procedural visual mesh rolls.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, local audio vocal timers, and programmatic 
 #   mesh rolls, keeping the shared Domain clambering strategy pristine.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations
-#   without compiling conflicts.
-# - Dependency Inversion Principle (DIP): Injects the MonkeyAIBehavior strategy 
-#   during ready state initialization and utilizes our OCP AudioService locator.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/MonkeyEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name MonkeyEntity
 extends PassiveEntity
 
 # --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
-# Throttled interval preventing the audio from overlapping
 const COOLDOWN_CHAT_MIN_SEC: float = 15.0
 const COOLDOWN_CHAT_MAX_SEC: float = 25.0
 
@@ -31,8 +25,9 @@ var _chat_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Monkeys spawn with 3 Hearts of health (6 HP)
+	# Monkeys spawn with 3 Hearts of health (6 HP) and terrestrial boundaries
 	super(spawn_pos, 6)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_MONKEY"
 
 
@@ -52,11 +47,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Monkey acrobatic AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
-	# ==========================================================================
+	# Inject the specialized Monkey acrobatic AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = MonkeyAIBehavior.new()
 
@@ -66,7 +57,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -93,9 +83,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-## Returns int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_MONKEY"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
 
 
 func _drop_loot(inv: IInventory) -> void:
@@ -117,22 +110,14 @@ func _can_socialize() -> bool:
 
 ## Visual/Audio Monkey Chatter: Plays the designated ambient spatial monkey sound
 func _play_monkey_chatter() -> void:
-	# ==========================================================================
-	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
-	# Plays the monkey sound with a custom 55.0 meters spatial distance.
-	# Slower, log-attenuated fade makes it sound faintly as background forest
-	# ambience when far away, without interfering with closer combat/action sounds.
-	# ==========================================================================
 	AudioService.play_sfx_static("monkey_chatter", global_position, 55.0)
 
 
 ## Visual Backflip: Propels vertically and rotates 360 degrees on X-axis (Pitch roll)
 ## Note: Invoked via reflective calls by the MonkeyAIBehavior strategy
 func _play_backflip_effect() -> void:
-	# Propel physically upward with extra spring force
 	velocity.y = JUMP_VELOCITY * 1.3
 	
-	# Symmetrical visual twirl rotation loop using Godot's Tween engine
 	if is_instance_valid(visual_component) and is_instance_valid(visual_component.visual_root):
 		var flip_tween := create_tween()
 		
@@ -149,15 +134,10 @@ func _play_backflip_effect() -> void:
 
 
 func _process(delta: float) -> void:
-	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
-	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		
-	# ==========================================================================
-	# AMBIENT CHATTER TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain climb nodes
-	# ==========================================================================
+	# Process ambient chatter timer locally in the presenter to decouple audio
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true

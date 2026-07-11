@@ -1,6 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Hostiles)
 # Class: GargoyleEntity
 # Description: Physical character controller for the hostile nocturnal Gargoyle.
 #              Delegates all day/night stone transitions, flight sways, and 
@@ -9,14 +9,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical movement, 
 #   gravity damping during active flight, and visual billboarding.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers.
-# - Open-Closed Principle (OCP): Mesh petrification yaw rotations are fully 
-#   dynamic, adapting automatically to any rotation configured in the .tscn editor.
-# - Dependency Inversion Principle (DIP): Injects the GargoyleAIBehavior strategy 
-#   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/GargoyleEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and red color.
 # ==============================================================================
 class_name GargoyleEntity
 extends PassiveEntity
@@ -42,26 +36,24 @@ var _model_base_rot: Vector3 = Vector3.ZERO
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	# Gargoyles spawn with 6 Hearts of health (high stone defense: 12 HP)
 	super(spawn_pos, 12)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_GARGOYLE"
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting
+	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
+	if is_in_group("passives"):
+		remove_from_group("passives") # Unregister from peaceful list (OCP/LSP)
 	
 	# Cache component references pre-configured in the scene
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/gargoyle") as Node3D
 	
-	# ==========================================================================
-	# T-POSE & TANGENT FIX: Extract the embedded GLB AnimationPlayer 
-	# and apply the material shield to suppress C++ console errors.
-	# ==========================================================================
+	# Extract the embedded GLB AnimationPlayer and apply the material shield
 	if is_instance_valid(_model_node):
 		_anim_player = _model_node.find_child("AnimationPlayer", true, false) as AnimationPlayer
 		_register_glb_materials(_model_node)
-		
-		# Cache the initial editor transform rotation vector (OCP compliant)
 		_model_base_rot = _model_node.rotation
 	
 	_locate_player()
@@ -78,7 +70,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -105,12 +96,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_GARGOYLE"
+
+
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 0.15, 0.15) # Red warning nameplate
-
-
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+	return Color(0.95, 0.15, 0.15) # Hostile Red (LSP Compliant)
 
 
 func _has_ui_decorations() -> bool:
@@ -180,9 +171,6 @@ func _process(delta: float) -> void:
 			state = get_meta(GargoyleAIBehavior.META_STATE) as int
 		
 		if state == 1: # AWAKE / FLYING
-			# ==================================================================
-			# PLAY FLIGHT ANIMATION
-			# ==================================================================
 			if is_instance_valid(_anim_player):
 				var anims := _anim_player.get_animation_list()
 				if anims.size() > 0:
@@ -204,14 +192,10 @@ func _process(delta: float) -> void:
 				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
 				_model_node.rotation.x = 0.0
 		else: # STONE STATUE (Sits flat on floor)
-			# ==================================================================
-			# FREEZE ANIMATION (Turned into stone!)
-			# ==================================================================
 			if is_instance_valid(_anim_player):
 				_anim_player.stop() 
 				
 			_model_node.position.y = lerp(_model_node.position.y, MODEL_BASE_Y, delta * 5.0)
-			# Interpolate towards the pre-saved editor transform rotation vector (OCP compliant)
 			_model_node.rotation = _model_node.rotation.lerp(_model_base_rot, delta * 5.0)
 			
 		# ======================================================================

@@ -167,11 +167,14 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 		_ensure_mesh_instance(b_id, mesh, p_is_distant)
 
 	# 3. Clean-up inactive segments
-	for b_id: int in _multimeshes.keys():
+	# FIXED: Erasure sweeps from dictionary to prevent memory leaks and freed-instance crashes!
+	var registered_keys := _multimeshes.keys()
+	for b_id: int in registered_keys:
 		if not active_ids.has(b_id):
 			var node := _multimeshes[b_id] as Node
 			if is_instance_valid(node):
-				node.queue_free() # Complete cleanup on inactive layers
+				node.queue_free() 
+			_multimeshes.erase(b_id) # <--- CRITICAL GODOT 4 MEMORY FIX
 
 	# 4. Collision management
 	_update_collision(p_collision_body)
@@ -199,7 +202,9 @@ func set_collision_body(body: StaticBody3D) -> void:
 
 func _ensure_multimesh_instance(b_id: int, count: int, buffer: PackedFloat32Array, is_distant: bool) -> void:
 	var mm_inst: MultiMeshInstance3D
-	if _multimeshes.has(b_id) and _multimeshes[b_id] is MultiMeshInstance3D:
+	
+	# GODOT 4 MEMORY SAFETY SHIELD: Wrap 'is' checks with is_instance_valid to prevent crashes!
+	if _multimeshes.has(b_id) and is_instance_valid(_multimeshes[b_id]) and _multimeshes[b_id] is MultiMeshInstance3D:
 		mm_inst = _multimeshes[b_id] as MultiMeshInstance3D
 	else:
 		mm_inst = MultiMeshInstance3D.new()
@@ -221,7 +226,9 @@ func _ensure_multimesh_instance(b_id: int, count: int, buffer: PackedFloat32Arra
 
 func _ensure_mesh_instance(b_id: int, mesh: ArrayMesh, is_distant: bool) -> void:
 	var mi: MeshInstance3D
-	if _multimeshes.has(b_id) and _multimeshes[b_id] is MeshInstance3D:
+	
+	# GODOT 4 MEMORY SAFETY SHIELD: Wrap 'is' checks with is_instance_valid to prevent crashes!
+	if _multimeshes.has(b_id) and is_instance_valid(_multimeshes[b_id]) and _multimeshes[b_id] is MeshInstance3D:
 		mi = _multimeshes[b_id] as MeshInstance3D
 	else:
 		mi = MeshInstance3D.new()

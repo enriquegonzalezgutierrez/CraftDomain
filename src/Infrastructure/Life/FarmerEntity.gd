@@ -1,18 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Civilians)
 # Class: FarmerEntity
 # Description: Physical character controller representing an agricultural Farmer NPC. 
 #              Schedules modular skeletal animation rigging and dynamically registers 
 #              its specialized farming AI behavior.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical body 
-#   movement structures and conversational interactions, delegating logical decisions 
-#   to the injected FarmerAIBehavior.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   parent class, utilizing its base physics and save loops transparently.
-# - Dependency Inversion Principle (DIP): Receives its behavioral decision tree 
-#   via dynamic strategy injection on startup.
+#   movement structures, harvesting hoe joints, and conversational interactions.
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name FarmerEntity
 extends PassiveEntity
@@ -31,8 +28,11 @@ var player: CharacterBody3D
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Initialize with 3 Hearts of health (6 HP)
+	# Initialize with 3 Hearts of health (6 HP) and terrestrial boundaries
 	super(spawn_pos, 6)
+	entity_habitat = 0 # Terrestrial
+	humanoid_role = 3 # Farmer role
+	is_conversational_npc = true
 	name = "Entity_FARMER"
 
 
@@ -40,7 +40,7 @@ func _ready() -> void:
 	# HIGH PERFORMANCE: Register in the passive group for target lookups
 	add_to_group("passives")
 	
-	# Cache components pre-configured in the scene
+	# Cache component references pre-configured in the scene
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
@@ -51,10 +51,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
 	# Inject the specialized farming strategy dynamically into the AI component
-	# ==========================================================================
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = FarmerAIBehavior.new()
 
@@ -83,6 +80,23 @@ func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
+
+
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_FARMER"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Civilian Green (LSP Compliant)
+
+
+## Symmetrical Quest Eligibility check
+func _is_eligible_for_quest(_quest_id: String) -> bool:
+	return false # Farmers are not targeted by campaign milestones currently
 
 
 # ==============================================================================
@@ -140,7 +154,3 @@ func _detect_current_biome() -> int:
 				return profile.biome_id
 				
 	return default_biome_id
-
-
-func _get_humanoid_role() -> int:
-	return 3 # ProceduralVoxelRepresentation.RoleType.FARMER

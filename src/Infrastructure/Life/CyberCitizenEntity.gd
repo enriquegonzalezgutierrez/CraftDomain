@@ -1,20 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Civilians)
 # Class: CyberCitizenEntity
 # Description: Physical character controller for the tech-noir Cyber Citizen Android.
-#              Delegates paved road tracking, security rotations, and 
+#              Delegates all paved road tracking, security rotations, and 
 #              diagnostic laser triggers to the decoupled CyberCitizenAIBehavior 
 #              strategy, managing unshaded compile-free laser scanning particles.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   movement, custom mesh alignments, and laser scan visual feedback.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations.
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # - Dependency Inversion Principle (DIP): Injects the CyberCitizenAIBehavior strategy 
 #   during ready state initialization to keep code decoupled.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/CyberCitizenEntity.gd
 # ==============================================================================
 class_name CyberCitizenEntity
 extends PassiveEntity
@@ -24,7 +22,7 @@ const BASE_MODEL_PATH := "res://assets/models/mobs/cyber/cyber_base.fbx"
 # ==============================================================================
 # MIXAMO ORIENTATION COMPENSATOR (OCP SHIELD)
 # Compensates for this specific FBX skeleton export direction by adding 180 degrees
-# of offset, aligning his face directly with his walking velocity and lasers.
+# of offset, aligning his face directly with his walking velocity.
 # ==============================================================================
 var gaze_rotation_offset: float = PI
 
@@ -33,8 +31,11 @@ var player: CharacterBody3D
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Androids spawn with 5 Hearts of health (10 HP)
+	# Androids spawn with 5 Hearts of health (10 HP) and terrestrial boundaries
 	super(spawn_pos, 10)
+	entity_habitat = 0 # Terrestrial
+	humanoid_role = 0 # Villager role proxy
+	is_conversational_npc = true
 	name = "Entity_CYBER"
 
 
@@ -52,16 +53,12 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Cyber Citizen Android AI strategy dynamically on ready,
-	# completely overriding the default generic civilian schedules.
-	# ==========================================================================
+	# Inject the specialized Cyber Citizen Android AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = CyberCitizenAIBehavior.new()
 
 
-## Binds the Skeletal strategy dynamically to avoid static compiler circular dependency locks
+## Binds the Skeletal strategy dynamically and registers FBX animation tracks
 func _setup_graphics_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -81,8 +78,21 @@ func _setup_graphics_representation() -> void:
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
-func _get_humanoid_role() -> int:
-	return 0 # Classified as VILLAGER for schedule loops
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_ANDROID"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Civilian Green (LSP Compliant)
+
+
+## Symmetrical Quest Eligibility check
+func _is_eligible_for_quest(_quest_id: String) -> bool:
+	return false # Androids are not targeted by campaign milestones currently
 
 
 func _locate_player() -> void:
@@ -126,7 +136,7 @@ func _can_socialize() -> bool:
 # TACTICAL PRESENTATION & CYBER LASER DIAGNOSTICS
 # ==============================================================================
 
-## Visual Laser Scan: Spawns high-intensity data rays straight forward
+## Visual Laser Scan: Spawns high-intensity data data rays straight forward
 ## Note: Invoked via reflective calls by the CyberCitizenAIBehavior strategy
 func _play_security_scan() -> void:
 	_spawn_cyan_laser_particles()
@@ -140,7 +150,6 @@ func _spawn_cyan_laser_particles() -> void:
 	particles.explosiveness = 0.95
 	particles.lifetime = 0.35
 	
-	# Determine directional heading
 	var forward_dir := Vector3.FORWARD
 	if is_instance_valid(ai_component):
 		forward_dir = ai_component.wander_direction

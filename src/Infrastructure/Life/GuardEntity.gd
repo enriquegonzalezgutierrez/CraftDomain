@@ -1,20 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Defenders)
 # Class: GuardEntity
 # Description: Physical character controller representing a village defender Guard.
 #              Schedules modular skeletal animation rigging and dynamically registers 
 #              its specialized GuardAIBehavior strategy.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical body 
-#   movement structures and conversational interactions, delegating patrol and 
-#   combat logic to the injected GuardAIBehavior.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   parent class, utilizing its base physics and save loops transparently.
-# - Dependency Inversion Principle (DIP): Receives its behavioral decision tree 
-#   via dynamic strategy injection on startup.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/GuardEntity.gd
+#   movement structures, sheathed weapon positions, and conversational interactions.
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name GuardEntity
 extends PassiveEntity
@@ -33,8 +28,11 @@ var player: CharacterBody3D
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Initialize with 5 Hearts of health for elite durability (10 HP)
+	# Initialize with 5 Hearts of health for elite durability (10 HP) and terrestrial boundaries
 	super(spawn_pos, 10)
+	entity_habitat = 0 # Terrestrial
+	humanoid_role = 2 # Guard role
+	is_conversational_npc = true
 	name = "Entity_GUARD"
 
 
@@ -57,10 +55,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
 	# Inject the specialized guard overwatch strategy dynamically on ready
-	# ==========================================================================
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GuardAIBehavior.new()
 
@@ -85,8 +80,21 @@ func _setup_graphics_representation() -> void:
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
-func _get_humanoid_role() -> int:
-	return ProceduralVoxelRepresentation.RoleType.GUARD
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_GUARD"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Symmetrical Protector Green (Friendly)
+
+
+## Symmetrical Quest Eligibility check
+func _is_eligible_for_quest(_quest_id: String) -> bool:
+	return false # Guards are not targeted by campaign milestones currently
 
 
 func _has_ui_decorations() -> bool:
@@ -166,7 +174,6 @@ func _detect_current_biome() -> int:
 		if generator_node != null:
 			var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
-				# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise) as BiomeService.BiomeProfile
 				return profile.biome_id
 				

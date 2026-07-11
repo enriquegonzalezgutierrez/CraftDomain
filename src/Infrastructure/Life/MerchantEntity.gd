@@ -1,6 +1,6 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Civilians)
 # Class: MerchantEntity
 # Description: Physical character controller for the Village Merchant NPC.
 #              Delegates all marketplace shop-tending and nighttime shelter
@@ -9,8 +9,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, custom mesh alignments, and gold coin visual particles.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations.
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # - Dependency Inversion Principle (DIP): Injects the MerchantAIBehavior strategy 
 #   during ready state initialization to keep code decoupled.
 # ==============================================================================
@@ -28,8 +28,11 @@ var gaze_rotation_offset: float = PI
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Keep base health matching 3 Hearts (6 HP)
+	# Keep base health matching 3 Hearts (6 HP) and terrestrial boundaries
 	super(spawn_pos, 6)
+	entity_habitat = 0 # Terrestrial
+	humanoid_role = 1 # Merchant role
+	is_conversational_npc = true
 	name = "Entity_MERCHANT"
 
 
@@ -47,11 +50,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Merchant business AI strategy dynamically on ready,
-	# completely overriding the default generic civilian schedules.
-	# ==========================================================================
+	# Inject the specialized Merchant business AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = MerchantAIBehavior.new()
 
@@ -77,6 +76,29 @@ func _build_visual_representation() -> void:
 
 
 # ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_MERCHANT"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Civilian Green (LSP Compliant)
+
+
+## Symmetrical Quest Eligibility check
+func _is_eligible_for_quest(quest_id: String) -> bool:
+	return quest_id == "fuel_fryer"
+
+
+func _can_socialize() -> bool:
+	# Socialize is disabled during nighttime accounting counting
+	var is_night: bool = CelestialService.is_night_time_static()
+	return not is_night
+
+
+# ==============================================================================
 # CONVERSATION BARK & DIALOGUES
 # ==============================================================================
 func interact(player_node: CharacterBody3D) -> void:
@@ -89,16 +111,6 @@ func interact(player_node: CharacterBody3D) -> void:
 			
 		if intro_node != null:
 			hud.open_dialogue(intro_node, "NPC_NAME_MERCHANT", self)
-
-
-func _get_humanoid_role() -> int:
-	return 1 # ProceduralVoxelRepresentation.RoleType.MERCHANT
-
-
-func _can_socialize() -> bool:
-	# Socialize is disabled during nighttime accounting counting
-	var is_night: bool = CelestialService.is_night_time_static()
-	return not is_night
 
 
 # ==============================================================================

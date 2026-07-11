@@ -1,27 +1,21 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: ElephantEntity
 # Description: Physical character controller for the Colossal Elephant.
 #              Delegates slow walk cycles, canyon limits, and stomp 
 #              impacts to the decoupled ElephantAIBehavior strategy, managing
-#              knockback immunities, dynamic player camera screen shake, and local audio timers.
+#              knockback immunities, dynamic player camera screen shake.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, heavy box colliders, local audio vocal timers, and ground-thud screen shake feedback.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, preserving base damage hooks while enforcing customized weight
-#   and calling 'super(delta)' on overrides.
-# - Dependency Inversion Principle (DIP): Injects the ElephantAIBehavior strategy 
-#   during ready state initialization and utilizes our OCP AudioService locator.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/ElephantEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name ElephantEntity
 extends PassiveEntity
 
 # --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
-# Colossal elephants trumpet rarely to maintain their majestic silence
 const COOLDOWN_CHAT_MIN_SEC: float = 25.0
 const COOLDOWN_CHAT_MAX_SEC: float = 45.0
 
@@ -30,13 +24,14 @@ var _chat_timer: float = randf_range(8.0, 20.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Heavy elephant initialized with 10 Hearts of health (20 HP)
+	# Heavy elephant initialized with 10 Hearts of health (20 HP) and terrestrial boundaries
 	super(spawn_pos, 20)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_ELEPHANT"
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the passive group for target lookups
+	# HIGH PERFORMANCE: Register in the passive group for target scans
 	add_to_group("passives")
 	
 	# Cache component references pre-configured in the scene
@@ -46,11 +41,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Elephant colossal AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior.
-	# ==========================================================================
+	# Inject the specialized Elephant colossal AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = ElephantAIBehavior.new()
 
@@ -64,6 +55,14 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_ELEPHANT"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
+
+
 ## Symmetrical Heavy Stature: Elephants ignore standard physics recoil knockbacks!
 func take_damage(amount: int, _knockback_force: Vector3, attacker: Node = null) -> void:
 	# Passes Vector3.ZERO to base class, completely absorbing all push forces
@@ -72,10 +71,9 @@ func take_damage(amount: int, _knockback_force: Vector3, attacker: Node = null) 
 
 ## Reactive callback triggered when the Domain Entity registers a successful hit.
 func _on_domain_entity_took_damage(amount: int) -> void:
-	# 1. Restore the base class signal chains (Alert network and Panic logic)
 	super(amount)
 	
-	# 2. Dampen the jump velocity afterward to enforce colossal mass
+	# Dampen the jump velocity afterward to enforce colossal mass
 	velocity.y = JUMP_VELOCITY * 0.75
 
 
@@ -94,7 +92,7 @@ func _can_socialize() -> bool:
 
 
 # ==============================================================================
-# TACTICAL PRESENTATION & HEAVY PISOTÓN TEMBLOR DE PANTALLA
+# TACTICAL PRESENTATION & HEAVY STOMP SCREEN SHAKE
 # ==============================================================================
 
 ## Step Stomp Impact: Evaluates player proximity and injects direct camera shake
@@ -108,7 +106,6 @@ func _play_heavy_step_impact() -> void:
 			
 			# If player is near (within 12 meters), trigger physical camera vibration
 			if dist < 12.0:
-				# Remap distance to shake intensity [0.0 to 12.0m translates to 0.18 to 0.02 shake intensity]
 				var intensity := remap(dist, 0.0, 12.0, 0.18, 0.02)
 				player_node.set("_shake_intensity", intensity)
 				
@@ -118,25 +115,14 @@ func _play_heavy_step_impact() -> void:
 
 ## Visual/Audio Elephant Trumpet: Plays the designated deep trumpet sound
 func _play_elephant_chatter() -> void:
-	# ==========================================================================
-	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
-	# Plays the elephant barrito sound with a custom 75.0 meters spatial distance.
-	# Slower, log-attenuated fade makes it sound faintly as background canyon
-	# ambience when far away, without interfering with closer combat/action sounds.
-	# ==========================================================================
 	AudioService.play_sfx_static("elephant_chatter", global_position, 75.0)
 
 
 func _process(delta: float) -> void:
-	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
-	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		
-	# ==========================================================================
-	# AMBIENT TRUMPET TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain walk nodes
-	# ==========================================================================
+	# Process ambient trumpet timer locally in the presenter to decouple audio
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true

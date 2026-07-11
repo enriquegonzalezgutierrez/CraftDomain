@@ -1,25 +1,20 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: CowEntity
 # Description: Physical character controller for the passive Clay Cow.
-#              Delegates its visual voxel/clay representation and physical 
+#              Delegates its visual clay-voxel representation and physical 
 #              translations completely to the Godot Editor (.tscn).
 # SOLID COMPLIANCE: 
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   passive movement, panic bounces, local audio vocal timers, and signal-bound loot drops.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers without compilation conflicts.
-# - Dependency Inversion Principle (DIP): Relies on abstract interfaces 
-#   (IInventory) to process loot drops and our OCP AudioService locator.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/CowEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name CowEntity
 extends PassiveEntity
 
 # --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
-# Cows moo less frequently to keep the pasture peaceful
 const COOLDOWN_MOO_MIN_SEC: float = 20.0
 const COOLDOWN_MOO_MAX_SEC: float = 35.0
 
@@ -28,8 +23,8 @@ var _moo_timer: float = randf_range(5.0, 20.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Cows spawn with 3 Hearts of health (6 HP)
 	super(spawn_pos, 6)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_COW"
 
 
@@ -55,7 +50,6 @@ func _register_glb_materials(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		# Multi-Surface Sweep: Sanitize every material index on the mesh
 		for i: int in range(node.mesh.get_surface_count()):
-			# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 			var mat: Material = node.get_active_material(i)
 			if mat == null:
 				mat = node.mesh.surface_get_material(i)
@@ -82,8 +76,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_COW"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
 
 
 func _drop_loot(inv: IInventory) -> void:
@@ -106,25 +104,14 @@ func _can_socialize() -> bool:
 
 ## Visual/Audio Cow Vocalization: Plays the designated 3D spatial low-pitch moo
 func _play_cow_vocal() -> void:
-	# ==========================================================================
-	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
-	# Plays the cow moo sound with a custom 50.0 meters spatial distance.
-	# Slower, log-attenuated fade makes it sound faintly as background pasture
-	# ambience when far away, without interfering with closer combat/action sounds.
-	# ==========================================================================
 	AudioService.play_sfx_static("cow_moo", global_position, 50.0)
 
 
 func _process(delta: float) -> void:
-	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
-	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		
-	# ==========================================================================
-	# AMBIENT MOO TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain walk nodes
-	# ==========================================================================
+	# Process ambient moo timer locally in the presenter to decouple audio
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true

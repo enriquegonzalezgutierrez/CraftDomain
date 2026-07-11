@@ -1,20 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Hostiles)
 # Class: HostileEntity
 # Description: Physical character controller representing a hostile Cave Zombie.
-#              Schedules modular skeletal animation rigging, handles loot drops, 
-#              and registers its specialized ZombieAIBehavior strategy dynamically on ready.
+#              Delegates all rapid chasing vectors, and combat cooldowns 
+#              to the decoupled ZombieAIBehavior strategy.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively physical body 
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical body 
 #   movement structures, target visual attachments, local audio vocal timers, 
 #   and quest-state checks.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, utilizing inherited dynamic height solvers without compilation conflicts.
-# - Dependency Inversion Principle (DIP): Injects the ZombieAIBehavior strategy 
-#   during ready state initialization and utilizes our OCP AudioService locator.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/HostileEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and red color.
 # ==============================================================================
 class_name HostileEntity
 extends PassiveEntity
@@ -28,7 +24,6 @@ var player: CharacterBody3D
 var _quest_bubble: Node3D
 
 # --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
-# Zombies groan often to build terror and suspense in caves and nighttime
 const COOLDOWN_GROAN_MIN_SEC: float = 10.0
 const COOLDOWN_GROAN_MAX_SEC: float = 22.0
 
@@ -37,14 +32,17 @@ var _groan_timer: float = randf_range(3.0, 10.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Initialize with 3 Hearts of health (6 HP)
+	# Initialize with 3 Hearts of health (6 HP) and terrestrial boundaries
 	super(spawn_pos, 6)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_ZOMBIE"
 
 
 func _ready() -> void:
 	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
+	if is_in_group("passives"):
+		remove_from_group("passives") # Unregister from peaceful list (OCP/LSP)
 	
 	# Cache components pre-configured in the scene
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
@@ -55,10 +53,7 @@ func _ready() -> void:
 	_setup_nameplate_height()
 	_setup_quest_bubble()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
 	# Programmatically instantiates NPCAIComponent if missing from old scenes
-	# ==========================================================================
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	if not is_instance_valid(ai_component):
 		ai_component = NPCAIComponent.new()
@@ -129,12 +124,20 @@ func _setup_quest_bubble() -> void:
 			_quest_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
 
 
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_ZOMBIE"
+
+
 func _get_nameplate_color() -> Color:
-	return Color(1.0, 0.15, 0.15)
+	return Color(0.95, 0.15, 0.15) # Hostile Red (LSP Compliant)
 
 
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+func _get_humanoid_role() -> int:
+	return -1 # Wild monster, no humanoid schedules
 
 
 func _has_ui_decorations() -> bool:
@@ -167,22 +170,14 @@ func _drop_loot(inv: IInventory) -> void:
 
 ## Visual/Audio Zombie Groan: Plays the designated spooky ambient groan
 func _play_zombie_groan() -> void:
-	# Plays the dynamic spooky zombie groan using our refactored OCP service locator.
-	# The AudioService automatically handles max spatial distance (20m) and 
-	# auto-frees the player when finished to guarantee no memory leaks!
 	AudioService.play_sfx_static("zombie_groan", global_position)
 
 
 func _process(delta: float) -> void:
-	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
-	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		
-	# ==========================================================================
-	# AMBIENT GROAN TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain pathing nodes
-	# ==========================================================================
+	# Process ambient groan timer locally in the presenter to decouple audio
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true

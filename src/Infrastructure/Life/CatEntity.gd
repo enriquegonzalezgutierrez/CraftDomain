@@ -1,27 +1,21 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & Physics (Entities)
+# Layer: Infrastructure (Presentation & Physics / Wildlife)
 # Class: CatEntity
 # Description: Physical character controller for the domestic companion Cat.
 #              Delegates player-following vectors, campfire snuggling loops,
 #              and zombie hiss warnings to the CatAIBehavior strategy,
-#              managing visual exclamation particles, meow audio cues, and local audio timers.
+#              managing visual exclamation particles, meow audio cues.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   translations, collision shapes, local audio vocal timers, and warning visual particles.
-# - Liskov Substitution Principle (LSP): Fully compatible with the PassiveEntity 
-#   base contract, relying 100% on the base physics loop for standard translations
-#   without compiling conflicts.
-# - Dependency Inversion Principle (DIP): Injects the CatAIBehavior strategy 
-#   during ready state initialization and utilizes our OCP AudioService locator.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/CatEntity.gd
+# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
+#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
 # ==============================================================================
 class_name CatEntity
 extends PassiveEntity
 
 # --- TACTICAL AUDIO COOLDOWN TIMERS (SRP / OCP Compliant) ---
-# Cats meow occasionally to get attention
 const COOLDOWN_MEOW_MIN_SEC: float = 15.0
 const COOLDOWN_MEOW_MAX_SEC: float = 30.0
 
@@ -30,8 +24,9 @@ var _meow_timer: float = randf_range(5.0, 15.0)
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Cats spawn with 2 Hearts of health (4 HP)
+	# Cats spawn with 2 Hearts of health (4 HP) and terrestrial boundaries
 	super(spawn_pos, 4)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_CAT"
 
 
@@ -46,11 +41,7 @@ func _ready() -> void:
 	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# ==========================================================================
-	# BEHAVIOR STRATEGY INJECTION (SOLID / OCP COMPLIANCE)
-	# Inject the specialized Cat companion AI strategy dynamically on ready,
-	# completely overriding the default generic wildlife behavior assigned by Bootstrap.
-	# ==========================================================================
+	# Inject the specialized Cat companion AI strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = CatAIBehavior.new()
 
@@ -64,9 +55,12 @@ func _build_visual_representation() -> void:
 # SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-## Returns int directly (0 = TERRESTRIAL, 1 = AMPHIBIOUS, 2 = AQUATIC)
-func _get_habitat() -> int:
-	return 0 # Equivalent to MobRegistry.Habitat.TERRESTRIAL
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_CAT"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green
 
 
 func _drop_loot(inv: IInventory) -> void:
@@ -88,12 +82,6 @@ func _can_socialize() -> bool:
 
 ## Visual/Audio Cat Vocalization: Plays the designated 3D spatial cozy meow
 func _play_cat_vocal() -> void:
-	# ==========================================================================
-	# HIGH-FIDELITY ATMOSPHERE AMBIENT RANGE (OCP Compliant)
-	# Plays the cat meow sound with a custom 40.0 meters spatial distance.
-	# Slower, log-attenuated fade makes it sound faintly as background village
-	# ambience when far away, without interfering with closer combat/action sounds.
-	# ==========================================================================
 	AudioService.play_sfx_static("cat_meow", global_position, 40.0)
 
 
@@ -152,15 +140,10 @@ func _spawn_hiss_alert_particles() -> void:
 
 
 func _process(delta: float) -> void:
-	# No 'super(delta)' is called here because PassiveEntity does not implement _process().
-	# This ensures compiling is 100% clean and free of crashes.
 	if domain_entity.is_dead:
 		return
 		
-	# ==========================================================================
-	# AMBIENT MEOW TIMER (OCP / SRP Compliant)
-	# Processed locally in the presenter to decouple audio from domain walk nodes
-	# ==========================================================================
+	# Process ambient meow timer locally in the presenter to decouple audio
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5: # TASK_PANIC = 5
 		is_panicking = true
