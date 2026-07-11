@@ -61,6 +61,12 @@ func _initialize_application() -> void:
 	StructureLibrary.initialize_structures()
 	MegaStructureService.initialize_megastructures()
 	
+	# ==========================================================================
+	# COGNITIVE REGISTRY STARTUP (SOLID OCP Compliance)
+	# Compile and register the 7 dynamic voxel model builders in RAM on boot
+	# ==========================================================================
+	VoxelModelRegistry.initialize_registry()
+	
 	# DIP COMPLIANCE: Inject concrete Infrastructure Mob scenes into pure Domain
 	_setup_mob_registry()
 	
