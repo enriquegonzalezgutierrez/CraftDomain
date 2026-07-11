@@ -74,3 +74,14 @@ func get_wilderness_wildlife_ids() -> Array[int]:
 ## Concrete Implementation: Returns true if within the southern sector step slice
 func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
 	return angle_rad >= 1.178 and angle_rad < 1.963
+
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+func requires_terrain_smoothing() -> bool:
+	return false # Uses rigid math steps for plateaus, blurring ruins the effect!
+
+func get_water_level() -> int:
+	return -1 # No sea-level water in high plateaus

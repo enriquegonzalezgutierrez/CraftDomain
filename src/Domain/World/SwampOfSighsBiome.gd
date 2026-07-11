@@ -72,3 +72,14 @@ func get_streetlight_theme() -> Dictionary:
 		"lantern_glow": Color(0.42, 0.85, 0.25),      # Glowing poison-green bulb emission
 		"light_tint": Color(0.42, 0.85, 0.25)         # Swampy green OmniLight3D color
 	}
+
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+func requires_terrain_smoothing() -> bool:
+	return false # Swamps are flat lowlands, no smoothing required
+
+func get_water_level() -> int:
+	return 4 # Murky bay water levels out at Y = 4

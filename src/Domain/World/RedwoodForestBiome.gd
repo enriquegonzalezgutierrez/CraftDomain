@@ -81,3 +81,14 @@ func get_wilderness_wildlife_ids() -> Array[int]:
 ## Concrete Implementation: Returns true if within the southeastern forest slice
 func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
 	return angle_rad >= 0.392 and angle_rad < 1.178
+
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+func requires_terrain_smoothing() -> bool:
+	return false # Gentle hills, no hard smoothing required
+
+func get_water_level() -> int:
+	return -1 # Forest valleys do not intersect sea-level

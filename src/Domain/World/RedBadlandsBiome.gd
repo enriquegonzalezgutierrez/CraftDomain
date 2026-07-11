@@ -89,3 +89,14 @@ func get_streetlight_theme() -> Dictionary:
 		"lantern_glow": Color(1.0, 0.55, 0.0),         # Glowing amber-orange bulb emission
 		"light_tint": Color(1.0, 0.55, 0.0)           # Warm amber-orange OmniLight3D color
 	}
+
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+func requires_terrain_smoothing() -> bool:
+	return true # Extreme canyon vertical drops require smoothing
+
+func get_water_level() -> int:
+	return -1 # Arid desert, no sea level

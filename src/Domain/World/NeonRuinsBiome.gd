@@ -99,3 +99,14 @@ func get_streetlight_theme() -> Dictionary:
 		"lantern_glow": Color(0.95, 0.0, 0.95),      # Glowing magenta bulb emission
 		"light_tint": Color(0.0, 0.95, 0.95)         # High-contrast cyan OmniLight3D color
 	}
+
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+func requires_terrain_smoothing() -> bool:
+	return true # Cyber craters require heavy smoothing
+
+func get_water_level() -> int:
+	return -1 # No sea-level water in the technological basin

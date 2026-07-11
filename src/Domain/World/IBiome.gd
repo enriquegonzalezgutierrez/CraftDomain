@@ -16,7 +16,10 @@
 # STREETLIGHT PORTABLE THEME UPGRADE (Phase 4):
 # - Added `get_streetlight_theme()` virtual contract returning a default 
 #   rustic-plains lighting color palette. Concrete biomes can override this 
-#   to customize surrounding block lamp assemblies polimorphically.
+#   to customize surrounding block lamp assemblies polymorphically.
+# PROCEDURAL GENERATOR OVERHAUL (Phase 5):
+# - Added `requires_terrain_smoothing()` and `get_water_level()` to completely
+#   decouple the WorldGenerator from hardcoded biome IDs, strictly enforcing OCP.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/IBiome.gd
 # ==============================================================================
@@ -92,3 +95,18 @@ func get_streetlight_theme() -> Dictionary:
 		"lantern_glow": Color(1.0, 0.72, 0.2),      # Bulb emission
 		"light_tint": Color(1.0, 0.72, 0.3)         # OmniLight3D color
 	}
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+## Virtual Contract: Returns true if this biome contains jagged or stepped 
+## noise generation that requires 3x3 box-blur smoothing across chunk boundaries.
+## By default, flat plains and flat oceans do not require smoothing.
+func requires_terrain_smoothing() -> bool:
+	return false
+
+## Virtual Contract: Returns the Y altitude level where water naturally settles in this biome.
+## Returns -1 if this biome does not generate natural sea-level water bodies.
+func get_water_level() -> int:
+	return -1

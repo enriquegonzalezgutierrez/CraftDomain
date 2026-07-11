@@ -71,3 +71,14 @@ func get_wilderness_wildlife_ids() -> Array[int]:
 ## Concrete Implementation: Returns true if within the eastern corridor plain slice
 func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
 	return angle_rad >= -0.392 and angle_rad < 0.392
+
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+func requires_terrain_smoothing() -> bool:
+	return false # Flat plains do not require multi-chunk edge blurring
+
+func get_water_level() -> int:
+	return -1 # No sea-level water in the plains

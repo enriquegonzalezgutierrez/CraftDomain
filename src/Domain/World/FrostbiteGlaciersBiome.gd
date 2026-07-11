@@ -86,3 +86,14 @@ func get_streetlight_theme() -> Dictionary:
 		"lantern_glow": Color(0.75, 0.85, 1.0),      # Silver-blue ice bulb emission
 		"light_tint": Color(0.75, 0.85, 1.0)         # Cold silver-blue OmniLight3D color
 	}
+
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+func requires_terrain_smoothing() -> bool:
+	return false # Glaciers maintain a stepped, rigid ice-shelf profile
+
+func get_water_level() -> int:
+	return -1 # Ice caps are frozen, no liquid water

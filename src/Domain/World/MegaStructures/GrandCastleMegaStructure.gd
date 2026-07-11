@@ -14,10 +14,11 @@
 # - Single Responsibility Principle (SRP): Only coordinates the multi-chunk 
 #   architectural block blueprint and entity allocations.
 # - Liskov Substitution Principle (LSP): Fully implements IMegaStructure.
-# FLUSH CARPET FIX:
-# - Replaced the procedural terrain base logic. The interior floor and the 
-#   Red Carpet are now explicitly forced to `base_y` (Y=12) regardless of 
-#   underlying terrain noise, keeping the royal halls perfectly flat.
+# FLUSH CARPET FIX (A ras del suelo):
+# - Modified the Throne Hall carpet generation. It now explicitly targets `base_y` 
+#   (Y=12) to replace the stone floor with Red Sand, leaving `current_y` (Y=13) 
+#   as Air. This ensures the carpet is perfectly flush and embedded in the ground,
+#   mimicking the exact same flat-paving logic used for highways.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/MegaStructures/GrandCastleMegaStructure.gd
 # ==============================================================================
@@ -167,13 +168,13 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 						if is_throne_hall_core:
 							# A. Ground Floor (Throne, Carpet, Pillars, and Stairs)
 							if wy <= 5:
-								# PERFECTLY FLUSH RED CARPET (Overwriting the floor block at Y=12 / wy=0 logically, 
-								# but physically replacing the block at Y=13 if we want it to be a slab or full block on the floor)
-								# We set it at wy=1 so it acts as the floor layer.
+								# PERFECTLY FLUSH RED CARPET (Replacing the actual floor at Y=12)
 								if keep_dist_x <= 1 and gz >= keep_center_z - KEEP_LENGTH_HALF + 3:
 									if wy == 1:
-										# Overwrites the space right above the stone floor to create a walkable carpet
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.RED_SAND)
+										# Overwrites the base_y (Y=12) stone floor with RED_SAND to embed it flush!
+										set_global_block(chunk, offset, gx, base_y, gz, BlockType.Type.RED_SAND)
+										# Ensure the space directly above (Y=13) is AIR so it's walkable
+										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
 									else:
 										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
 								
@@ -190,7 +191,6 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 								elif gz >= 185 and gz <= 196:
 									# West branch ascending North
 									if gx >= 189 and gx <= 191:
-										# PRECISION FIXED: Use floori(float()) to prevent compiler warnings
 										var step_req: int = floori(float(196 - gz) / 2.0) + 1
 										if wy <= step_req:
 											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
@@ -198,7 +198,6 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
 									# East branch ascending North
 									elif gx >= 209 and gx <= 211:
-										# PRECISION FIXED: Use floori(float()) to prevent compiler warnings
 										var step_req: int = floori(float(196 - gz) / 2.0) + 1
 										if wy <= step_req:
 											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
@@ -240,7 +239,6 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 								if is_railing:
 									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.WOOD)
 								elif is_roof_stair:
-									# PRECISION FIXED: Use floori(float()) to prevent compiler warnings
 									var step_req: int = 195 - gx # gx=194 -> height 1 (wy=7), gx=189 -> height 6 (wy=12)
 									if (wy - 6) <= step_req:
 										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)

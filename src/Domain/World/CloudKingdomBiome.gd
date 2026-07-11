@@ -58,3 +58,14 @@ func get_wilderness_wildlife_ids() -> Array[int]:
 ## Concrete Implementation: Ignored horizontally as sky islands use vertical boundaries
 func is_coordinate_inside(_pos_flat: Vector2, _distance: float, _angle_rad: float) -> bool:
 	return false
+
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+func requires_terrain_smoothing() -> bool:
+	return false # Sky clouds do not interact with ground smoothing
+
+func get_water_level() -> int:
+	return -1 # No oceans in the sky

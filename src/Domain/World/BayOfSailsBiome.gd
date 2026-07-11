@@ -63,3 +63,14 @@ func get_wilderness_wildlife_ids() -> Array[int]:
 ## Concrete Implementation: Returns true if within the 130-meter spawning core
 func is_coordinate_inside(_pos_flat: Vector2, distance: float, _angle_rad: float) -> bool:
 	return distance < 130.0
+
+
+# ==============================================================================
+# PROCEDURAL WORLD GENERATION RULES (OCP Compliant)
+# ==============================================================================
+
+func requires_terrain_smoothing() -> bool:
+	return false # Smooth sandy shores, no blur required
+
+func get_water_level() -> int:
+	return 5 # Ocean water level is fixed at Y = 5
