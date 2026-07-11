@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
 [ext_resource type="PackedScene" uid="uid://j4r5rpcad8cc" path="res://assets/models/mobs/goblin.glb" id="4_glb"]
 
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_goblin"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_goblin"]
 height = 1.4831543
 radius = 0.5205078
 
@@ -14,7 +14,7 @@ script = ExtResource("1_goblin")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=166422272]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7437271, 0)
-shape = SubResource("CylinderShape3D_goblin")
+shape = SubResource("CapsuleShape3D_goblin")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
 script = ExtResource("2_ai")

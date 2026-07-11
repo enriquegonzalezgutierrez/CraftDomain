@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
 [ext_resource type="PackedScene" uid="uid://7q5xdvymm073" path="res://assets/models/mobs/shark.glb" id="4_glb"]
 
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_shark"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_shark"]
 height = 1.7584503
 radius = 1.3251953
 
@@ -14,7 +14,7 @@ script = ExtResource("1_shark")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=515123654]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6609113, 0.9518685)
-shape = SubResource("CylinderShape3D_shark")
+shape = SubResource("CapsuleShape3D_shark")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
 script = ExtResource("2_ai")

@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
 [ext_resource type="PackedScene" uid="uid://tijk5hikb3mb" path="res://assets/models/mobs/pig.glb" id="4_glb"]
 
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_pig"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_pig"]
 height = 0.8100586
 radius = 0.3642578
 
@@ -14,7 +14,7 @@ script = ExtResource("1_pig")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1902404766]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4050293, 0)
-shape = SubResource("CylinderShape3D_pig")
+shape = SubResource("CapsuleShape3D_pig")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
 script = ExtResource("2_ai")

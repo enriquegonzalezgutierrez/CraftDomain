@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
 [ext_resource type="PackedScene" uid="uid://dx2ayiec4ehf6" path="res://assets/models/mobs/crab.glb" id="4_glb"]
 
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_crab"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_crab"]
 height = 0.58935547
 radius = 0.5029297
 
@@ -14,7 +14,7 @@ script = ExtResource("1_crab")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=709227876]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.31420898, 0)
-shape = SubResource("CylinderShape3D_crab")
+shape = SubResource("CapsuleShape3D_crab")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=216752869]
 script = ExtResource("2_ai")

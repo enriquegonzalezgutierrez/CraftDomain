@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
 [ext_resource type="PackedScene" uid="uid://b6ph7o17seehi" path="res://assets/models/mobs/villager/villager_base.fbx" id="4_fbx"]
 
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_villager"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_villager"]
 height = 2.5357423
 radius = 0.4897461
 
@@ -14,7 +14,7 @@ script = ExtResource("1_villager")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1324781141]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2678711, 0)
-shape = SubResource("CylinderShape3D_villager")
+shape = SubResource("CapsuleShape3D_villager")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
 script = ExtResource("2_ai")

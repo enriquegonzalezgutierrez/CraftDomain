@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
 [ext_resource type="PackedScene" uid="uid://mpl17ec8va0j" path="res://assets/models/mobs/parrot.glb" id="4_glb"]
 
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_parrot"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_parrot"]
 height = 1.6491992
 radius = 1.0014648
 
@@ -14,7 +14,7 @@ script = ExtResource("1_parrot")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1500928181]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8245996, 0)
-shape = SubResource("CylinderShape3D_parrot")
+shape = SubResource("CapsuleShape3D_parrot")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=2025960289]
 script = ExtResource("2_ai")

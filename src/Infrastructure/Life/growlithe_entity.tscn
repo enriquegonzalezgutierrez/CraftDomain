@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
 [ext_resource type="PackedScene" uid="uid://0jt23bg8hwcr" path="res://assets/models/mobs/growlithe.glb" id="4_glb"]
 
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_growlithe"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_growlithe"]
 height = 0.8218994
 radius = 0.19140625
 
@@ -14,7 +14,7 @@ script = ExtResource("1_growlithe")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1801402479]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.42315674, 0)
-shape = SubResource("CylinderShape3D_growlithe")
+shape = SubResource("CapsuleShape3D_growlithe")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=610911647]
 script = ExtResource("2_ai")
