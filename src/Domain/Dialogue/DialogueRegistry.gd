@@ -7,10 +7,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Isolates dialogue compilation and 
 #   declarative node linking away from visual and text rendering overlays.
-# - Open-Closed Principle (OCP): Completely open to extension. Baseline story loops 
-#   are populated automatically, but developers can register and link infinite 
-#   new dialog lines and branching trees dynamically via public APIs, 
-#   completely closing existing logic to manual source modifications.
+# - Open-Closed Principle (OCP): Decoupled from hardcoded source code lines. 
+#   Conversations are loaded dynamically from an external JSON file.
 # - Dependency Inversion Principle (DIP): Resolves dialogue nodes polimorphically 
 #   by storing references to abstract domain resources ('DialogueNode', 'DialogueChoice'), 
 #   decoupling data structures from frame-bound user interfaces.
@@ -18,18 +16,19 @@
 class_name DialogueRegistry
 extends RefCounted
 
+const DIALOGUES_FILE_PATH := "res://assets/dialogues/dialogues.json"
+
 ## Static map holding registered conversation nodes: String (node_id) -> DialogueNode
 static var _nodes: Dictionary = {}
 
 
-## Startup Initializer: Instantiates, compiles, and registers the standard 
-## dialogue trees of the game world on boot.
+## Startup Initializer: Parses and registers the standard 
+## dialogue trees from the external JSON database.
 static func initialize_dialogue_database() -> void:
-	print("[DialogueRegistry] Compiling baseline conversational dialogue database...")
+	print("[DialogueRegistry] Compiling dialogue database from external JSON asset...")
 	_nodes.clear()
 	
-	# Compile and register default Bazaar Merchant story flow
-	_build_merchant_dialogue_tree()
+	_load_dialogues_from_json()
 
 
 ## Public OCP Extension API: Registers a custom DialogueNode dynamically.
@@ -49,76 +48,60 @@ static func get_dialogue_node(node_id: String) -> DialogueNode:
 	return null
 
 
-# ==============================================================================
-# INTERNAL COMBAT & STORY TREES ASSEMBLY (SRP Compliant)
-# ==============================================================================
-
-## Symmetrical compilation of the branching Merchant dialogue tree (Bazaar Act I)
-static func _build_merchant_dialogue_tree() -> void:
-	# --------------------------------------------------------------------------
-	# NODE 1: MAIN ENTRANCE
-	# --------------------------------------------------------------------------
-	var intro := DialogueNode.new()
-	intro.node_id = "merchant_intro"
-	intro.text = "DIALOGUE_MERCHANT_INTRO" # Localized key
+## Internal Parser: Reads the JSON definition file and builds the concrete resources.
+static func _load_dialogues_from_json() -> void:
+	if not FileAccess.file_exists(DIALOGUES_FILE_PATH):
+		push_error("[DialogueRegistry ERROR] Dialogues configuration file missing at: " + DIALOGUES_FILE_PATH)
+		return
+		
+	var file := FileAccess.open(DIALOGUES_FILE_PATH, FileAccess.READ)
+	if file == null:
+		push_error("[DialogueRegistry ERROR] Failed to open dialogues file: " + DIALOGUES_FILE_PATH)
+		return
+		
+	var json_string := file.get_as_text()
+	file.close()
 	
-	var c1 := DialogueChoice.new()
-	c1.option_text = "DIALOGUE_MERCHANT_CHOICE_TRADE"
-	c1.target_node_id = "merchant_trade_info"
+	var json := JSON.new()
+	var error_code := json.parse(json_string)
+	if error_code != OK:
+		push_error("[DialogueRegistry ERROR] JSON parsing failed. Line: %d | Error: %s" % [json.get_error_line(), json.get_error_message()])
+		return
+		
+	var raw_data: Variant = json.data
+	if not (raw_data is Array):
+		push_error("[DialogueRegistry ERROR] Root JSON element is not a valid Array.")
+		return
+		
+	var nodes_array := raw_data as Array
 	
-	var c2 := DialogueChoice.new()
-	c2.option_text = "DIALOGUE_MERCHANT_CHOICE_WHO"
-	c2.target_node_id = "merchant_about"
-	
-	var c3 := DialogueChoice.new()
-	c3.option_text = "DIALOGUE_MERCHANT_CHOICE_CLOSE"
-	c3.target_node_id = "" # Closes interface
-	
-	intro.choices = [c1, c2, c3]
-	register_dialogue_node(intro)
-	
-	# --------------------------------------------------------------------------
-	# NODE 2: LORE INFORMATION
-	# --------------------------------------------------------------------------
-	var about := DialogueNode.new()
-	about.node_id = "merchant_about"
-	about.text = "DIALOGUE_MERCHANT_ABOUT"
-	
-	var a1 := DialogueChoice.new()
-	a1.option_text = "DIALOGUE_MERCHANT_CHOICE_BACK"
-	a1.target_node_id = "merchant_intro"
-	
-	about.choices = [a1]
-	register_dialogue_node(about)
-	
-	# --------------------------------------------------------------------------
-	# NODE 3: TRADE DESCRIPTION AND DETAILS
-	# --------------------------------------------------------------------------
-	var trade_info := DialogueNode.new()
-	trade_info.node_id = "merchant_trade_info"
-	trade_info.text = "DIALOGUE_MERCHANT_TRADE_INFO"
-	
-	var t1 := DialogueChoice.new()
-	t1.option_text = "DIALOGUE_MERCHANT_CHOICE_EXECUTE"
-	t1.target_node_id = "merchant_trade_execute"
-	
-	var t2 := DialogueChoice.new()
-	t2.option_text = "DIALOGUE_MERCHANT_CHOICE_BACK"
-	t2.target_node_id = "merchant_intro"
-	
-	trade_info.choices = [t1, t2]
-	register_dialogue_node(trade_info)
-	
-	# --------------------------------------------------------------------------
-	# NODE 4: TRADE RUNTIME EXECUTION (State evaluation resolved by controller)
-	# --------------------------------------------------------------------------
-	var trade_exec := DialogueNode.new()
-	trade_exec.node_id = "merchant_trade_execute"
-	trade_exec.text = "DIALOGUE_MERCHANT_TRADE_FAILED" # Default failure callback
-	
-	var e1 := DialogueChoice.new()
-	e1.option_text = "DIALOGUE_MERCHANT_CHOICE_BACK"
-	e1.target_node_id = "merchant_intro"
-	
-	trade_exec.choices = [e1]
-	register_dialogue_node(trade_exec)
+	for node_any: Variant in nodes_array:
+		if not (node_any is Dictionary):
+			continue
+		var node_data := node_any as Dictionary
+		
+		var node := DialogueNode.new()
+		node.node_id = node_data.get("node_id", "") as String
+		node.text = node_data.get("text", "") as String
+		
+		var choices_list: Array = []
+		
+		if node_data.has("choices") and node_data["choices"] is Array:
+			var choices_array := node_data["choices"] as Array
+			for choice_any: Variant in choices_array:
+				if not (choice_any is Dictionary):
+					continue
+				var choice_data := choice_any as Dictionary
+				
+				var choice := DialogueChoice.new()
+				choice.option_text = choice_data.get("option_text", "") as String
+				choice.target_node_id = choice_data.get("target_node_id", "") as String
+				choice.required_quest_id = choice_data.get("required_quest_id", "") as String
+				choice.reward_recipe_id = choice_data.get("reward_recipe_id", "") as String
+				
+				choices_list.append(choice)
+				
+		node.choices = choices_list
+		register_dialogue_node(node)
+		
+	print("[DialogueRegistry] Successfully loaded %d dialogue nodes from JSON." % _nodes.size())

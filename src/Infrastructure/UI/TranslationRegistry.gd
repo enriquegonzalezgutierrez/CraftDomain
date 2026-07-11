@@ -2,17 +2,13 @@
 # Project: CraftDomain
 # Description: Pure Infrastructure Registry responsible for dynamically loading
 #              and compiling translation files from external JSON packs.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Only handles file parsing,
-#                guaranteeing this class will never become a God Object.
-#              - Open-Closed Principle (OCP): Closed to code modification. Adding
-#                new languages (e.g., fr.json) is done purely via external assets.
-#              WARNING FIX:
-#              - Added explicit static typing `String` to the locale dictionary key 
-#                loop iterator on line 76 to completely resolve the 
-#                `UNTYPED_DECLARATION` compiler warning.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/TranslationRegistry.gd
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Only handles file parsing,
+#   guaranteeing this class will never become a God Object.
+# - Open-Closed Principle (OCP): Closed to code modification. Adding
+#   new languages (e.g., fr.json) is done purely via external assets.
+# - Safe Type Validation: Uses explicit type checks before casting to prevent
+#   GDScript engine invalid cast crashes on unaligned files.
 # ==============================================================================
 class_name TranslationRegistry
 extends RefCounted
@@ -25,10 +21,12 @@ static func initialize_translations() -> void:
 	_ensure_directory_exists()
 	_scan_and_load_translation_files()
 
+
 static func _ensure_directory_exists() -> void:
 	if not DirAccess.dir_exists_absolute(TRANSLATIONS_DIR):
 		DirAccess.make_dir_recursive_absolute(TRANSLATIONS_DIR)
 		print("[TranslationRegistry] Created missing translations directory: ", TRANSLATIONS_DIR)
+
 
 ## Dynamically registers every translation JSON into Godot's TranslationServer
 static func _scan_and_load_translation_files() -> void:
@@ -53,6 +51,7 @@ static func _scan_and_load_translation_files() -> void:
 	dir.list_dir_end()
 	print("[TranslationRegistry] Dynamic scan finished. Language packs loaded: ", loaded_files_count)
 
+
 ## Parses a specific JSON file and binds it to the engine translation service
 static func _load_translation_pack(file_path: String, locale_code: String) -> void:
 	var file := FileAccess.open(file_path, FileAccess.READ)
@@ -69,15 +68,16 @@ static func _load_translation_pack(file_path: String, locale_code: String) -> vo
 		push_error("[TranslationRegistry] Error parsing JSON " + file_path + ". Line: " + str(json.get_error_line()) + " | Error: " + json.get_error_message())
 		return
 		
-	var translation_data := json.data as Dictionary
-	if translation_data == null:
+	var raw_data: Variant = json.data
+	if not (raw_data is Dictionary):
+		push_warning("[TranslationRegistry] Skipping non-dictionary translation file: " + file_path)
 		return
 		
+	var translation_data := raw_data as Dictionary
 	var translation := Translation.new()
 	translation.locale = locale_code
 	
 	# Seed the translations mapping dynamically
-	# FIX: Added explicit static typing `String` to translation keys loop iterator
 	for key: String in translation_data.keys():
 		translation.add_message(key, str(translation_data[key]))
 		

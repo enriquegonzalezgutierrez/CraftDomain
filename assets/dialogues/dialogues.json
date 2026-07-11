@@ -1,0 +1,54 @@
+[
+  {
+	"node_id": "merchant_intro",
+	"text": "DIALOGUE_MERCHANT_INTRO",
+	"choices": [
+	  {
+		"option_text": "DIALOGUE_MERCHANT_CHOICE_TRADE",
+		"target_node_id": "merchant_trade_info"
+	  },
+	  {
+		"option_text": "DIALOGUE_MERCHANT_CHOICE_WHO",
+		"target_node_id": "merchant_about"
+	  },
+	  {
+		"option_text": "DIALOGUE_MERCHANT_CHOICE_CLOSE",
+		"target_node_id": ""
+	  }
+	]
+  },
+  {
+	"node_id": "merchant_about",
+	"text": "DIALOGUE_MERCHANT_ABOUT",
+	"choices": [
+	  {
+		"option_text": "DIALOGUE_MERCHANT_CHOICE_BACK",
+		"target_node_id": "merchant_intro"
+	  }
+	]
+  },
+  {
+	"node_id": "merchant_trade_info",
+	"text": "DIALOGUE_MERCHANT_TRADE_INFO",
+	"choices": [
+	  {
+		"option_text": "DIALOGUE_MERCHANT_CHOICE_EXECUTE",
+		"target_node_id": "merchant_trade_execute"
+	  },
+	  {
+		"option_text": "DIALOGUE_MERCHANT_CHOICE_BACK",
+		"target_node_id": "merchant_intro"
+	  }
+	]
+  },
+  {
+	"node_id": "merchant_trade_execute",
+	"text": "DIALOGUE_MERCHANT_TRADE_FAILED",
+	"choices": [
+	  {
+		"option_text": "DIALOGUE_MERCHANT_CHOICE_BACK",
+		"target_node_id": "merchant_intro"
+	  }
+	]
+  }
+]
