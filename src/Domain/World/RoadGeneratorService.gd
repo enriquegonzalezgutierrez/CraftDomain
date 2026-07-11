@@ -1,5 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Pure Business Logic)
+# Class: RoadGeneratorService
 # Description: Pure Domain Service responsible for calculating and sculpting paved 
 #              connecting roads and roadside streetlight placements deterministically.
 # SOLID COMPLIANCE:
@@ -7,8 +9,6 @@
 #   projection formulas of road layouts and roadside lamp intervals.
 # - Open-Closed Principle (OCP): Extensible with new highway segments by 
 #   appending vector coordinates to the _road_segments database.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/RoadGeneratorService.gd
 # ==============================================================================
 class_name RoadGeneratorService
 extends RefCounted
@@ -22,7 +22,6 @@ class RoadSegment:
 	
 	func _init(p_start: Vector2, p_end: Vector2, p_width: float = 2.5, p_interval: float = 20.0) -> void:
 		start_point = p_start
-		p_end = p_end # Avoid parameter shadow warning
 		end_point = p_end
 		road_width = p_width
 		lamp_interval = p_interval
@@ -54,6 +53,31 @@ static func is_on_road(global_x: float, global_z: float) -> bool:
 	if distance_from_center < 25.0:
 		return false # Safe zone around spawning sandy shoreline
 		
+	# ==========================================================================
+	# TACTICAL BOUNDING BOX EXCLUSIONS (OCP / SOLID COMPLIANCE)
+	# Terminates the road generator exactly where the outer gates/entrances
+	# of the handcrafted global landmark structures begin, preventing 
+	# highway pavement from breaking internal rooms or creating y+1 steps.
+	# ==========================================================================
+	
+	# 1. Grand Castle [Center: (200, 200) | Outer boundary radius: 24]
+	if abs(global_x - 200.0) <= 24.0 and abs(global_z - 200.0) <= 24.0:
+		return false
+		
+	# 2. Steve's Settlement [Center: (300, -300) | Outer boundary radius: 20]
+	if abs(global_x - 300.0) <= 20.0 and abs(global_z - (-300.0)) <= 20.0:
+		return false
+		
+	# 3. Seaport & Galleon [Center: (-150, 0) | Outer boundary radius: 20]
+	if abs(global_x - (-150.0)) <= 20.0 and abs(global_z - 0.0) <= 20.0:
+		return false
+		
+	# 4. Nether Portal Outpost [Center: (-300, -300) | Outer boundary radius: 18]
+	if abs(global_x - (-300.0)) <= 18.0 and abs(global_z - (-300.0)) <= 18.0:
+		return false
+		
+	# --------------------------------------------------------------------------
+	
 	for segment: RoadSegment in _road_segments:
 		var v := segment.end_point - segment.start_point
 		var w := p - segment.start_point

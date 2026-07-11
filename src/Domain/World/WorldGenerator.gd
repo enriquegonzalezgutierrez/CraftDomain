@@ -1,6 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
 # Layer: Domain (Pure Business Logic / World Generation)
+# Class: WorldGenerator
 # Description: Domain Generator responsible for procedurally carving chunk block data.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Only handles world carving rules.
@@ -22,8 +23,6 @@
 #                growing realistic chiseled 3D clusters (Coal & glowing Diamond geode chambers).
 #              - Added Deep Lava Pools: Caverns intersecting Y < 4 will automatically 
 #                fill with Lava, creating natural underground danger zones.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/WorldGenerator.gd
 # ==============================================================================
 class_name WorldGenerator
 extends RefCounted
@@ -149,12 +148,13 @@ func generate_chunk(chunk: Chunk) -> void:
 			var idx: int = x + Chunk.SIZE * z
 			var b_id: int = current_profile.biomes[idx]
 			
+			# Uniform terrain smoothing applied to everything including roads
 			if b_id == 3 or b_id == 6 or b_id == 7:
 				smoothed_heights[idx] = int(lerp(float(current_profile.heights[idx]), float(blur_height), 0.40))
 			else:
 				smoothed_heights[idx] = blur_height
 
-	# PASS 3: Sculpt blocks polymorphically and pave roads
+	# PASS 3: Sculpt blocks polymorphically and pave flush roads
 	for x in range(Chunk.SIZE):
 		var global_x: int = chunk_offset_x + x
 		for z in range(Chunk.SIZE):
@@ -166,33 +166,47 @@ func generate_chunk(chunk: Chunk) -> void:
 			
 			var on_road := current_profile.on_road[idx] == 1
 			
+			# ==================================================================
+			# PRE-EMPTIVE ROAD BRIDGE FILL
+			# If a road is projecting over an ocean or swamp, we artificially 
+			# raise the target height to the water surface level to build a flush bridge.
+			# ==================================================================
+			if on_road:
+				if biome_id == 0 and target_height < 5:
+					target_height = 5
+				elif biome_id == 8 and target_height < 4:
+					target_height = 4
+			
 			for y in range(Chunk.SIZE):
 				var global_y: int = chunk_offset_y + y
 				var block_type: BlockType.Type = BlockType.Type.AIR
 				
 				if global_y <= target_height:
+					# Determine what the natural block of the terrain would be at this height
+					if global_y == target_height:
+						block_type = _determine_surface_block(x, z, global_x, global_z, target_height, biome, biome_id, smoothed_heights)
+					else:
+						block_type = biome.get_block_for_depth(global_y, target_height)
+						
+					# ==========================================================
+					# FLUSH SURFACE PAVING SYSTEM (OCP / SOLID COMPLIANCE)
+					# If on a road, we replace the top solid ground block (grass/sand)
+					# OR water surface with ROAD, and the block below with STONE. 
+					# This ensures the road forms bridges over oceans and embeds flush into land.
+					# ==========================================================
 					if on_road:
 						if global_y == target_height:
-							block_type = BlockType.Type.ROAD
-						elif global_y == target_height - 1:
-							block_type = BlockType.Type.STONE
-						else:
-							var natural_block := biome.get_block_for_depth(global_y, target_height)
-							if natural_block == BlockType.Type.WATER or natural_block == BlockType.Type.AIR:
+							# Paves over EVERYTHING (including Water and Grass), except Air!
+							if block_type != BlockType.Type.AIR:
+								block_type = BlockType.Type.ROAD
+						elif global_y >= target_height - 2:
+							if block_type != BlockType.Type.AIR:
 								block_type = BlockType.Type.STONE
-							else:
-								block_type = natural_block
-					else:
-						if global_y == target_height:
-							block_type = _determine_surface_block(x, z, global_x, global_z, target_height, biome, biome_id, smoothed_heights)
-						else:
-							block_type = biome.get_block_for_depth(global_y, target_height)
+					# ==========================================================
 							
 					# ==========================================================
 					# MILESTONE 8: 3D CAVE CARVING SYSTEM (RESTRUCTURED)
-					# Only carve tunnels in deep chiseled stone. OCP Compliant:
-					# individual ore roll injections are deleted; replaced 
-					# by the dedicated Pass 4B subterranean strategies below.
+					# Only carve tunnels in deep chiseled stone. OCP Compliant.
 					# ==========================================================
 					if block_type == BlockType.Type.STONE and global_y < target_height - 4 and global_y > 0:
 						var cave_density := _cave_noise.get_noise_3d(float(global_x), float(global_y * 1.5), float(global_z))
@@ -204,6 +218,7 @@ func generate_chunk(chunk: Chunk) -> void:
 								block_type = BlockType.Type.AIR
 
 				else:
+					# Natural water filling for remaining empty blocks below sea level (only if NOT on a road)
 					if not on_road:
 						if biome_id == 0 and global_y <= 5:
 							block_type = BlockType.Type.WATER
@@ -303,11 +318,11 @@ func _get_or_calculate_chunk_profile(cx: int, cz: int) -> ChunkProfileCache:
 			var detail_val: float = _detail_noise.get_noise_2d(float(global_x), float(global_z))
 			var detail_modifier: int = int(detail_val * 2.2) 
 			
-			var final_height: int = bio_profile.base_height + detail_modifier
 			var on_road := RoadGeneratorService.is_on_road(float(global_x), float(global_z))
 			
-			if on_road and final_height < 6:
-				final_height = 6
+			# Symmetrical height alignment: roads share the exact same height 
+			# as the natural terrain, ensuring they remain completely flush on all sides.
+			var final_height: int = bio_profile.base_height + detail_modifier
 				
 			profile.heights[idx] = final_height
 			profile.biomes[idx] = bio_profile.biome_id

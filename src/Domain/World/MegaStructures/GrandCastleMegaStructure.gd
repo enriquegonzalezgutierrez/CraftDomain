@@ -14,6 +14,10 @@
 # - Single Responsibility Principle (SRP): Only coordinates the multi-chunk 
 #   architectural block blueprint and entity allocations.
 # - Liskov Substitution Principle (LSP): Fully implements IMegaStructure.
+# FLUSH CARPET FIX:
+# - Replaced the procedural terrain base logic. The interior floor and the 
+#   Red Carpet are now explicitly forced to `base_y` (Y=12) regardless of 
+#   underlying terrain noise, keeping the royal halls perfectly flat.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/MegaStructures/GrandCastleMegaStructure.gd
 # ==============================================================================
@@ -55,9 +59,17 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 			var lz: int = gz - offset.z
 			
 			# ==================================================================
-			# PASS 1: FLATTEN MOUNTAIN BASELINE
+			# PASS 1: FLATTEN MOUNTAIN BASELINE & FORCE FLAT FLOORS
 			# ==================================================================
-			for gy: int in range(0, 32):
+			# To ensure the castle floors (and carpets) never get bumpy from terrain noise,
+			# we explicitly clear all blocks above base_y inside the castle radius.
+			if dist_x <= CASTLE_RADIUS and dist_z <= CASTLE_RADIUS:
+				for gy: int in range(base_y + 1, 32):
+					var ly: int = gy - offset.y
+					if chunk.is_within_bounds(lx, ly, lz):
+						chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
+						
+			for gy: int in range(0, base_y + 1):
 				var ly: int = gy - offset.y
 				if chunk.is_within_bounds(lx, ly, lz):
 					if gy < base_y:
@@ -71,8 +83,6 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 							chunk.set_block(lx, ly, lz, BlockType.Type.STONE)
 						else:
 							chunk.set_block(lx, ly, lz, BlockType.Type.GRASS)
-					else:
-						chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
 
 			# ==================================================================
 			# PASS 2: SECURE OUTER DEFENSE WALLS (With almenas/crenellations)
@@ -157,9 +167,12 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 						if is_throne_hall_core:
 							# A. Ground Floor (Throne, Carpet, Pillars, and Stairs)
 							if wy <= 5:
-								# Red carpet ONLY on ground floor (wy == 1)
+								# PERFECTLY FLUSH RED CARPET (Overwriting the floor block at Y=12 / wy=0 logically, 
+								# but physically replacing the block at Y=13 if we want it to be a slab or full block on the floor)
+								# We set it at wy=1 so it acts as the floor layer.
 								if keep_dist_x <= 1 and gz >= keep_center_z - KEEP_LENGTH_HALF + 3:
 									if wy == 1:
+										# Overwrites the space right above the stone floor to create a walkable carpet
 										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.RED_SAND)
 									else:
 										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
