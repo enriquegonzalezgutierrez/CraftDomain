@@ -1,14 +1,15 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure Repository concrete implementation handling file I/O,
-#              and delta chunk saving to Godot's user directory.
+# Layer: Infrastructure (Persistence / Repository Implementation)
+# Class: DiskWorldRepository
+# Description: Concrete World Repository implementation managing file I/O streams, 
+#              and delta chunk JSON saving within Godot's safe user folder.
 # SOLID COMPLIANCE:
-# - Liskov Substitution Principle (LSP): Fully implements WorldRepository contract.
-# - Single Responsibility Principle (SRP): Handles exclusively physical directory 
-#   verification, file opening, reading, and stream writing. All data-structure 
-#   formatting and JSON packing are delegated to `VoxelSaveSerializer`.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Persistence/DiskWorldRepository.gd
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
+#   file creation, directory scans, and stream reads/writes. All data-structure 
+#   formatting is delegated to `VoxelSaveSerializer`, and save wipes are encapsulated here.
+# - Liskov Substitution Principle (LSP): Fully satisfies the abstract contracts 
+#   declared in `WorldRepository`.
 # ==============================================================================
 class_name DiskWorldRepository
 extends WorldRepository
@@ -25,6 +26,26 @@ func _init() -> void:
 func _ensure_directories_exist() -> void:
 	if not DirAccess.dir_exists_absolute(CHUNKS_DIR):
 		DirAccess.make_dir_recursive_absolute(CHUNKS_DIR)
+
+
+## Static helper to purge all saved world chunks and global state files from disk (SRP).
+## Completely insulates menu overlays and UI screens from file-system manipulation.
+static func delete_save_game_files() -> void:
+	if FileAccess.file_exists(GLOBAL_SAVE_PATH):
+		DirAccess.remove_absolute(GLOBAL_SAVE_PATH)
+		
+	if DirAccess.dir_exists_absolute(CHUNKS_DIR):
+		var dir := DirAccess.open(CHUNKS_DIR)
+		if dir != null:
+			dir.list_dir_begin()
+			var file_name := dir.get_next()
+			while file_name != "":
+				if not dir.current_is_dir() and file_name.ends_with(".json"):
+					dir.remove(file_name)
+				file_name = dir.get_next()
+			dir.list_dir_end()
+			
+	print("[DiskWorldRepository] Purged all save files and chunks from disk successfully.")
 
 
 ## Concrete Implementation: Saves modifications for a specific chunk.

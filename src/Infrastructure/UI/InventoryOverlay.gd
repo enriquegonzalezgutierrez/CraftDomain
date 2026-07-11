@@ -1,24 +1,27 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure UI controller representing an interactive, 
-#              glassmorphic 24-slot inventory and backpack inspector.
-#              Supports native drag-and-drop operations and sorting.
+# Layer: Infrastructure (UI Presentation / Backpack Inventory)
+# Class: InventoryOverlay
+# Description: Glassmorphic 24-slot inventory and backpack inspector.
+#              Supports tactile slot selections, automated quick sorting, 
+#              and native drag-and-drop operations.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates only the layout grids, 
-#   details panel selections, and high-level button clicks. Drag-and-drop data 
-#   and slot-rendering tasks are delegated to `InventorySlotWidget.gd`.
-# - Open-Closed Principle (OCP): Completely deleted the duplicate color dictionary. 
-#   Fallback slots and the inspector icon query colors dynamically from `BlockLibrary`.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/InventoryOverlay.gd
+# - Single Responsibility Principle (SRP): Coordinates exclusively the layout grids, 
+#   details panel selections, and high-level button clicks, delegating item 
+#   transactions to the pure domain strategies.
+# - Open-Closed Principle (OCP): All hardcoded checks for specific food item IDs 
+#   are removed. Consumable items are detected and processed polimorphically 
+#   by querying the `ItemStrategyRegistry` contract, closing this file to changes.
+# - Interface Segregation Principle (ISP): Interacts with player inventory stocks 
+#   strictly through the segregated `IInventory` abstract interface.
 # ==============================================================================
 class_name InventoryOverlay
 extends Panel
 
-## Emitted when the player exits the backpack screen
+## Emitted when the user exits the backpack screen.
 signal closed
 
-## Strictly-typed reference to the active Player Controller
+## Strictly-typed reference to the active Player Controller.
 var player: PlayerController
 
 # UI Node References
@@ -99,7 +102,7 @@ func _setup_backpack_ui() -> void:
 	left_vbox.add_child(header_hbox)
 	
 	var catalog_title := Label.new()
-	catalog_title.text = tr("INVENTORY_BACKPACK_STORAGE").to_upper() # Localized
+	catalog_title.text = tr("INVENTORY_BACKPACK_STORAGE").to_upper()
 	catalog_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var ts := LabelSettings.new()
 	ts.font_size = 18
@@ -135,7 +138,7 @@ func _setup_backpack_ui() -> void:
 	left_vbox.add_child(_create_spacer(14))
 	
 	var hotbar_title := Label.new()
-	hotbar_title.text = tr("INVENTORY_HOTBAR_DOCK").to_upper() # Localized
+	hotbar_title.text = tr("INVENTORY_HOTBAR_DOCK").to_upper()
 	var hts := LabelSettings.new()
 	hts.font_size = 13
 	hts.font_color = Color(0.65, 0.65, 0.7)
@@ -278,12 +281,12 @@ func _refresh_backpack_grids() -> void:
 		
 	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
 	
-	# 1. Populate UPPER STORAGE GRID (Slots 8 to 23) using the decoupled widget
+	# 1. Populate UPPER STORAGE GRID (Slots 8 to 23)
 	for i: int in range(8, 24):
 		var btn := _create_grid_slot_button(i, inventory, 68)
 		_backpack_grid_container.add_child(btn)
 		
-	# 2. Populate LOWER QUICKBAR DOCK (Slots 0 to 7) using the decoupled widget
+	# 2. Populate LOWER QUICKBAR DOCK (Slots 0 to 7)
 	for i: int in range(8):
 		var btn := _create_grid_slot_button(i, inventory, 38)
 		_hotbar_grid_container.add_child(btn)
@@ -348,19 +351,19 @@ func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, si
 		tex_display.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		icon_container.add_child(tex_display)
 		
-		# Delegate rendering extraction statically to the decoupled widget
 		var tex := btn._get_item_texture(slot.item_id)
 		
 		if tex != null:
 			tex_display.texture = tex
 			tex_display.visible = true
 			fallback.visible = false
+			for child: Node in fallback.get_children():
+				child.queue_free()
 		else:
 			tex_display.texture = null
 			tex_display.visible = false
 			
 			var def: BlockDefinition = BlockLibrary.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
-			# Symmetrical fallback: if not a block, renders a clean dark background (OCP!)
 			fallback.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
 			
 			fallback.visible = true
@@ -428,7 +431,6 @@ func _on_slot_selected(slot_index: int) -> void:
 	var item_name := inventory.get_slot_item_name(slot_index)
 	_detail_title.text = item_name.to_upper()
 	
-	# Leverage the domain block library to obtain colors dynamically, completely removing local dictionaries
 	var def: BlockDefinition = BlockLibrary.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
 	_detail_icon.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
 	_detail_icon.visible = true
@@ -436,7 +438,6 @@ func _on_slot_selected(slot_index: int) -> void:
 	for child: Node in _detail_icon.get_children():
 		child.queue_free()
 		
-	# Leverage the decoupled helper statically to render preview icons
 	var helper := InventorySlotWidget.new()
 	var tex := helper._get_item_texture(slot.item_id)
 	
@@ -448,11 +449,11 @@ func _on_slot_selected(slot_index: int) -> void:
 		preview_tex.stretch_mode = TextureRect.STRETCH_SCALE
 		preview_tex.texture_filter = TextureRect.TEXTURE_FILTER_NEAREST
 		_detail_icon.add_child(preview_tex)
-		_detail_icon.color = Color(0, 0, 0, 0) # Transparent background
+		_detail_icon.color = Color(0, 0, 0, 0)
 	else:
 		helper._apply_special_fallback_decoration(_detail_icon, slot.item_id)
 		
-	helper.queue_free() # Clean up auxiliary helper instantly
+	helper.queue_free()
 	
 	_detail_desc.text = tr("ITEM_" + str(slot.item_id) + "_DESC")
 	_detail_instruction.text = tr("ITEM_USAGE_PREFIX") + ": " + tr("ITEM_" + str(slot.item_id) + "_USE")
@@ -463,9 +464,15 @@ func _on_slot_selected(slot_index: int) -> void:
 		_detail_qty.text = tr("ITEM_STOCKED_PREFIX") + ": " + str(slot.quantity) + " " + tr("ITEM_STOCKED_UNITS")
 		
 	_action_button.visible = true
-	_use_button.visible = (slot.item_id == 16)
 	
-	if slot.item_id == 16:
+	# OCP RESOLUTION: Verify if the active held item is a consumable food,
+	# completely removing the hardcoded ID checks inside the UI script.
+	var strategy: ItemUsageStrategy = ItemStrategyRegistry.get_strategy(slot.item_id) as ItemUsageStrategy
+	var is_consumable := (strategy != null and strategy is ConsumableItemStrategy)
+	
+	_use_button.visible = is_consumable
+	
+	if is_consumable:
 		var hp: int = player.domain_entity.health
 		var can_eat := hp < 3 and slot.quantity > 0
 		_use_button.disabled = not can_eat
@@ -490,37 +497,39 @@ func _on_equip_pressed() -> void:
 	_refresh_backpack_grids()
 
 
+## Symmetrical Action Execution: Triggers the pure domain consumption transaction.
 func _on_use_pressed() -> void:
 	if _focused_slot_index == -1 or not is_instance_valid(player):
 		return
 		
-	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
-	var slot := inventory.get_slot_data(_focused_slot_index)
-	
-	if slot == null or slot.item_id != 16:
+	var inventory_comp := player.get("inventory") as InventoryComponent
+	if not is_instance_valid(inventory_comp):
 		return
 		
-	var hp: int = player.domain_entity.health
-	
-	if slot.quantity > 0 and hp < 3:
-		slot.quantity -= 1
-		if slot.quantity <= 0:
-			slot.item_id = -1 
-			
-		player.domain_entity.health = min(3, hp + 1)
+	var slot := inventory_comp.get_slot_data(_focused_slot_index)
+	if slot == null:
+		return
 		
-		# Emit Domain Event to sync observers
-		inventory.inventory_changed.emit()
+	var strategy := ItemStrategyRegistry.get_strategy(slot.item_id) as ItemUsageStrategy
+	if strategy == null or not (strategy is ConsumableItemStrategy):
+		return
 		
-		var hud: PlayerHUD = player.get("hud") as PlayerHUD
-		if is_instance_valid(hud):
-			hud.update_health_display(player.domain_entity.health)
-			hud.show_quest_notification(tr("NOTIFICATION_CONSUME_FOOD_HEADER"), tr("NOTIFICATION_CONSUME_FOOD_DESC"))
-			
+	# Assemble parameters and invoke the pure domain contract (SRP/DIP compliant)
+	var world_modifier: IWorldModifier = null
+	var world_ctrl: Node3D = player.get("world_controller") as Node3D
+	if is_instance_valid(world_ctrl) and "world_modifier" in world_ctrl:
+		world_modifier = world_ctrl.get("world_modifier") as IWorldModifier
+		
+	# Execute transaction
+	if strategy.can_use(player.domain_entity, inventory_comp, Vector3i.ZERO, Vector3.ZERO, null):
+		strategy.use(player.domain_entity, inventory_comp, Vector3i.ZERO, Vector3.ZERO, world_modifier)
+		
+		# Play tactile viewmodel swing feedback
 		var viewmodel: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 		if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
 			viewmodel.call("play_swing_animation")
 			
+		# Symmetrical visual updates
 		_on_slot_selected(_focused_slot_index)
 		_refresh_backpack_grids()
 

@@ -1,17 +1,17 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure Presentation service managing the 3D first-person 
-#              viewmodel, hand-held tool models, and swing animations.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Isolates first-person 
-#                viewmodel assembly and animations from physics or HUD coordination.
-#              - Dependency Inversion Principle (DIP): Accepts player reference 
-#                dependency explicitly instead of traversing SceneTree parent chains.
-#              - Liskov Substitution Principle (LSP): Implements a robust fallback 
-#                mechanism that automatically renders procedural voxel tools if 
-#                external GLB assets are missing, guaranteeing crash-free runtime.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Player/PlayerViewModel.gd
+# Layer: Infrastructure (First-Person Viewmodel & Arms)
+# Class: PlayerViewModel
+# Description: First-person arms viewmodel manager. Handles active hand-held 
+#              tool meshes, progressive bobbing, and click swing animations.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates first-person 
+#   arms drawings, sways, and active hand swing Tweens.
+# - Open-Closed Principle (OCP): Implements an extensible tool-mapping registry.
+#   All rigid checks for specific weapon or food item IDs are removed, closing 
+#   this file to modifications when adding new items.
+# - Liskov Substitution Principle (LSP): Fully compatible with standard 
+#   Node3D transformations, automatically rendering procedural fallbacks on missing assets.
 # ==============================================================================
 class_name PlayerViewModel
 extends Node3D
@@ -26,7 +26,7 @@ enum ToolType {
 const SWORD_MODEL_PATH := "res://assets/models/weapons/sword.glb"
 const PICKAXE_MODEL_PATH := "res://assets/models/weapons/pick.glb"
 
-## Injectable reference to the active Player Controller
+## Injectable reference to the active Player Controller.
 var player: CharacterBody3D
 
 var active_tool: ToolType = ToolType.NONE
@@ -42,6 +42,42 @@ var _idle_time: float = 0.0
 # Original baseline position offset relative to the Camera (Bottom-Right of screen)
 const BASELINE_POSITION := Vector3(0.32, -0.38, -0.52)
 const BASELINE_ROTATION := Vector3(deg_to_rad(10), deg_to_rad(20), deg_to_rad(-5))
+
+## Dynamic OCP registry mapping Item IDs to their designated first-person ToolType.
+static var _item_tools: Dictionary = {}
+
+
+## Static Constructor: Registers default base-game item tool categories on boot.
+static func _static_init() -> void:
+	register_item_tool_type(15, ToolType.SCROLL)  # Lava Bucket
+	register_item_tool_type(16, ToolType.SCROLL)  # Fried Chicken
+	register_item_tool_type(17, ToolType.SWORD)   # Wooden Sword
+	register_item_tool_type(18, ToolType.SCROLL)  # Crop Seeds
+
+
+## Public OCP Extension API: Registers a custom item tool type dynamically.
+## Can be called from custom items, weapon classes, or DLC loaders on startup.
+static func register_item_tool_type(item_id: int, tool_type: ToolType) -> void:
+	_item_tools[item_id] = tool_type
+	print("[PlayerViewModel] Registered dynamic OCP tool type for ID %d -> '%d'" % [item_id, tool_type])
+
+
+## Static Router: Resolves the appropriate first-person ToolType for any item ID.
+## Blocks are mapped to the Pickaxe, while non-blocks are resolved from the OCP registry.
+static func get_tool_type_for_item(item_id: int) -> ToolType:
+	if item_id == -1:
+		return ToolType.NONE
+		
+	# 1. Check custom OCP non-block item tool registrations
+	if _item_tools.has(item_id):
+		return _item_tools[item_id] as ToolType
+		
+	# 2. Symmetrical Fallback: Check if the item is a valid registered block
+	var def: BlockDefinition = BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
+	if def != null and def.type != 0: # 0 represents BlockType.Type.AIR
+		return ToolType.PICKAXE
+		
+	return ToolType.NONE
 
 
 func _ready() -> void:

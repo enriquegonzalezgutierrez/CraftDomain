@@ -1,24 +1,25 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure UI controller representing an interactive, 
-#              glassmorphic dual-pane Crafting and Blueprint Workshop overlay.
+# Layer: Infrastructure (UI Presentation / Crafting Interface)
+# Class: CraftingOverlay
+# Description: Glassmorphic dual-pane Crafting and Blueprint Workshop overlay.
+#              Displays available blueprints, lists aggregated inventory requirements, 
+#              and dispatches manufacturing transactions.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively the layout representation 
-#   and UI events, delegating the transaction rules to `CraftingService`.
-# - Open-Closed Principle (OCP): Completely deleted the duplicate color dictionary. 
-#   Blueprint list cards and the preview panel query block colors dynamically from `BlockLibrary`.
+# - Single Responsibility Principle (SRP): Handles exclusively layout rendering 
+#   and UI click events, delegating the core transaction rules to `CraftingService`.
+# - Open-Closed Principle (OCP): No longer hardcodes block-to-color mappings. 
+#   Blueprint list cards and the preview panel query colors dynamically from `BlockLibrary`.
 # - Interface Segregation Principle (ISP): Queries player total stock safely using 
 #   the segregated `IInventory` interface, resolving the legacy slot-quantity mapping bug.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/CraftingOverlay.gd
 # ==============================================================================
 class_name CraftingOverlay
 extends Panel
 
-## Emitted when the user closes the crafting workshop
+## Emitted when the user closes the crafting workshop.
 signal closed
 
-## Reference to the player (injected on instantiation)
+## Reference to the player (injected on instantiation).
 var player: CharacterBody3D
 
 # UI Nodes
@@ -55,7 +56,7 @@ func _setup_workshop_ui() -> void:
 	main_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	main_card.grow_vertical = Control.GROW_DIRECTION_BOTH
 	
-	# Center adjustment
+	# Center adjustment offsets
 	main_card.offset_left = -400
 	main_card.offset_right = 400
 	main_card.offset_top = -240
@@ -200,7 +201,6 @@ func _setup_workshop_ui() -> void:
 
 
 func _populate_recipes_list() -> void:
-	# FIX: Explicit static typing on Recipes registry list iteration
 	for recipe: Recipe in RecipeRegistry.get_all_recipes():
 		var btn := Button.new()
 		btn.text = "  " + recipe.recipe_name
@@ -215,7 +215,7 @@ func _populate_recipes_list() -> void:
 		sn.border_width_left = 4
 		
 		var def: BlockDefinition = BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
-		# Color-coded strip dynamically sourced from the Domain BlockLibrary (OCP Compliant!)
+		# Color-coded strip dynamically sourced from the Domain BlockLibrary (OCP Compliant)
 		sn.border_color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.15, 0.15, 0.18)
 		
 		var sh := sn.duplicate() as StyleBoxFlat
@@ -243,7 +243,7 @@ func _on_recipe_selected(recipe: Recipe) -> void:
 	_selected_recipe = recipe
 	_detail_title.text = recipe.recipe_name.to_upper() + " (x" + str(recipe.output_quantity) + ")"
 	
-	# Dynamically sourced color-top from BlockLibrary (OCP Compliant!)
+	# Dynamically sourced color-top from BlockLibrary (OCP Compliant)
 	var def: BlockDefinition = BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
 	_detail_icon.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.15, 0.15, 0.18)
 	
@@ -262,27 +262,19 @@ func _refresh_checklist() -> void:
 	for child in _detail_requirements_box.get_children():
 		child.queue_free()
 		
-	# FIX: Explicit static typing on player inventory reference
-	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+	var inventory := player.get("inventory") as IInventory
 	var can_craft_current := CraftingService.can_craft(inventory, _selected_recipe)
 	
 	# Populate visual ingredient cards
-	# FIX: Explicit static typing on recipe ingredients dictionary key iterator
 	for item_id: int in _selected_recipe.inputs.keys():
 		var required_qty := _selected_recipe.inputs[item_id] as int
 		
-		# COMPLIANCE FIX: Checks global total item ID quantities instead of fixed slot indexes!
+		# COMPLIANCE RESOLUTION: Checks global total item ID quantities (ISP)
 		var current_qty := inventory.get_item_total_quantity(item_id) as int
 		
-		# Fetch localized name safely using index helper
-		var item_name := inventory.get_slot_item_name(inventory._find_first_empty_slot_index() if current_qty == 0 else inventory._slots.find_custom(func(s: InventoryComponent.SlotData) -> bool: return s.item_id == item_id))
-		if current_qty == 0:
-			# If the player has none, construct the fallback nameplate manually (safe OCP lookup)
-			if InventoryComponent.NON_BLOCK_ITEM_NAMES.has(item_id):
-				item_name = tr(InventoryComponent.NON_BLOCK_ITEM_NAMES[item_id])
-			else:
-				var block_def := BlockLibrary.get_definition(item_id as BlockType.Type)
-				item_name = block_def.get_localized_name() if block_def != null else tr("INVENTORY_UNKNOWN")
+		# OCP RESOLUTION: Query the centralized Inventory static name helper directly.
+		# Safely resolves both block and non-block localization names in one single step.
+		var item_name: String = InventoryComponent.get_item_name_by_id(item_id)
 		
 		var row := Panel.new()
 		row.custom_minimum_size = Vector2(0, 36)
@@ -324,22 +316,19 @@ func _on_craft_pressed() -> void:
 	if _selected_recipe == null or not is_instance_valid(player):
 		return
 		
-	# FIX: Explicit static typing on player inventory reference
-	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
+	var inventory := player.get("inventory") as IInventory
 	if CraftingService.craft(inventory, _selected_recipe):
 		
 		# Play tactile viewmodel swing feedback
-		# FIX: Explicit static typing on player viewmodel reference
-		var viewmodel: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
+		var viewmodel := player.get("viewmodel") as PlayerViewModel
 		if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
 			viewmodel.call("play_swing_animation")
 			
-		# --- PLAY CRAFTING CLINK SFX OBSERVER (Milestone 10) ---
+		# Play dynamic spatial craft audio (Service Locator)
 		AudioService.play_sfx_static("craft_clink")
 			
 		# Toast notification on HUD
-		# FIX: Explicit static typing on player HUD reference
-		var hud: PlayerHUD = player.get("hud") as PlayerHUD
+		var hud := player.get("hud") as PlayerHUD
 		if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
 			hud.call("show_quest_notification", "NOTIFICATION_CRAFTING_SUCCESS_HEADER", tr("NOTIFICATION_CRAFTING_SUCCESS_DESC") + ": " + _selected_recipe.recipe_name + "!")
 			

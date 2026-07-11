@@ -1,37 +1,31 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure Coordinator orchestrating high-level world state,
-#              delegating chunk compilation, multi-threading, and persistent saving.
-# SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): No longer manages threads, 
-#   queues, file formatting, or visual compilations. All heavy lifting 
-#   is delegated to specialized services.
-# - Dependency Inversion Principle (DIP): Exposes a domain-compliant 
-#   IWorldModifier adapter, decoupling domain strategies from this 
-#   concrete infrastructure coordinator.
-# - Open-Closed Principle (OCP): Easily extensible with new auxiliary 
-#   services without modifying core coordination loops.
-# - Domain-Driven Design (DDD): Defers player spawn height calculations
-#   strictly to the WorldState Domain Aggregate.
-# NAVIGATION DECOUPLING (Phase 4):
-# - Removed the synchronous 3D A* coordinate scanning (`build_navigation_for_chunk()`) 
-#   from `spawn_entities_for_chunk()`.
-# - Navigation registration is now handled completely within the ChunkManagerService 
-#   rendering pipeline, making entity spawning highly decoupled and lightweight.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/World/WorldController.gd
+# Layer: Infrastructure (World Coordination & Redraw Orchestrator)
+# Class: WorldController
+# Description: Central world controller node. Orchestrates active chunks loading,
+#              LOD updates, player spawn coordinates drops, and save triggers.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Acts exclusively as a high-level 
+#   coordinating orchestrator for world lifecycle events, delegating concrete 
+#   tasks (climatology, spawning, and fluid dynamics) to sub-services.
+# - Open-Closed Principle (OCP): Closed to modifications. Sibling sub-services 
+#   listen to the `block_modified` and twilight signals reactively, allowing 
+#   new systems to be added without modifying this coordinator.
+# - Dependency Inversion Principle (DIP): Exposes an abstract `IWorldModifier` 
+#   adapter, completely decoupling domain strategies from this concrete class.
 # ==============================================================================
 class_name WorldController
 extends Node3D
 
-## Signal emitted when a block is broken (AIR) or placed globally (Milestone 10)
+## Signal emitted when a block is broken (AIR) or placed globally.
+## Sibling services (like Fluids, Agriculture, and Audio) listen to this event.
 signal block_modified(global_pos: Vector3i, type: BlockType.Type)
 
-## Core World modules (Domain States)
+# Core World modules (Domain States)
 var world_state: WorldState
 var generator: WorldGenerator
 var loader_service: ChunkLoaderService
-var navigation_service: VoxelNavigationService # Mapped dynamically
+var navigation_service: VoxelNavigationService
 
 ## Dependency-injected repository abstraction (DIP compliant)
 var repository: WorldRepository
@@ -49,7 +43,7 @@ var _mob_spawning_service: MobSpawningService
 var _prop_spawning_service: PropSpawningService
 var _streetlight_service: StreetlightService
 var _agriculture_service: AgricultureService
-var _fluid_service: FluidSimulationService # Fluid Cellular Automata Service
+var _fluid_service: FluidSimulationService
 
 # Throttling timer variables
 var _update_timer: float = 0.0
@@ -70,7 +64,7 @@ var _is_startup_phase: bool = true
 # Public trigger flag for vertical height recalculations on teleport
 var is_teleport_spawn: bool = false
 
-# Cached inventory data loaded from save file, to be deserialized upon player activation
+# Cached inventory data loaded from save file
 var _loaded_inventory_data: Array = []
 
 
@@ -83,7 +77,7 @@ func _ready() -> void:
 func _initialize_systems() -> void:
 	world_state = WorldState.new()
 	loader_service = ChunkLoaderService.new()
-	navigation_service = VoxelNavigationService.new() # Initialized
+	navigation_service = VoxelNavigationService.new()
 	
 	# Instantiate our domain modifier adapter to protect layering rules (DIP)
 	world_modifier = WorldModifierAdapter.new(self)
@@ -92,23 +86,15 @@ func _initialize_systems() -> void:
 	_mob_spawning_service = MobSpawningService.new()
 	_prop_spawning_service = PropSpawningService.new()
 	
-	_setup_persistence()
-	
-	# Setup environment settings
-	_setup_environment()
-	
-	# Load dialogue trees
-	DialogueRegistry.initialize_dialogue_database()
-	
-	# Load dynamic crafting recipes
-	RecipeRegistry.initialize_recipes()
-	
-	# Fixed constructor parameters: services require references to the world controller and world state
+	# Instantiate our specialized simulations services (SRP)
 	_streetlight_service = StreetlightService.new(self, world_state)
 	_agriculture_service = AgricultureService.new(self, world_state)
 	_fluid_service = FluidSimulationService.new(self, world_state)
 	
-	# Create the RefCounted Chunk Manager Service (Not a Node, do not call add_child)
+	# Reactively bind sibling services using the Observer Pattern (DIP/SRP)
+	block_modified.connect(_fluid_service._on_block_modified)
+	
+	# Create the RefCounted Chunk Manager Service
 	chunk_manager = ChunkManagerService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
 	
@@ -118,15 +104,15 @@ func _initialize_systems() -> void:
 	# Attempt to load saved global game parameters from the repository
 	var saved_global: Dictionary = repository.load_global_state() as Dictionary
 	var active_seed: int
-	var spawn_pos: Vector3 = Vector3(8.5, 14.0, 8.5)
-	var spawn_rot: Vector3 = Vector3.ZERO
+	var spawn_pos := Vector3(8.5, 14.0, 8.5)
+	var spawn_rot := Vector3.ZERO
 	
 	# Celestial restoration parameters
 	var current_time := 0.5
-	var calendar_days := 14 # Start at day 14 (Full Moon) for immediate visual feedback!
+	var calendar_days := 14
 	
 	if saved_global.has("seed"):
-		_is_restored_save = true # Mark as active save to protect Y coordinates on load
+		_is_restored_save = true
 		active_seed = saved_global["seed"] as int
 		if saved_global.has("player_pos"): 
 			spawn_pos = saved_global["player_pos"] as Vector3
@@ -184,11 +170,11 @@ func _process(delta: float) -> void:
 	if not player.get("is_active") and (_is_startup_phase or is_teleport_spawn):
 		check_player_spawn_activation()
 		
-	# 1. Agriculture Tick
+	# 1. Agriculture Tick (SRP)
 	if is_instance_valid(_agriculture_service):
 		_agriculture_service.process_agriculture_ticks(delta)
 		
-	# 2. Fluid Cellular Simulation Tick (Real-time update)
+	# 2. Fluid Cellular Simulation Tick (SRP)
 	if is_instance_valid(_fluid_service):
 		_fluid_service.process_fluid_simulation(delta)
 	
@@ -253,13 +239,6 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	if is_instance_valid(world_state):
 		world_state.set_block(global_pos, type)
 	
-	# --- IMMEDIATE FLUID QUEUE REGISTRATION ---
-	if is_instance_valid(_fluid_service):
-		if type == BlockType.Type.WATER or type == BlockType.Type.LAVA:
-			_fluid_service.register_fluid_block(global_pos, type)
-		else:
-			_fluid_service.unregister_fluid_block(global_pos)
-	
 	# Increment version of modified chunk immediately on the Main Thread
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	var _chunk_versions: Dictionary = chunk_manager._chunk_versions
@@ -306,24 +285,22 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	if type == BlockType.Type.AIR:
 		_check_and_resolve_floating_props(global_pos)
 		
-	# --- EMIT MODIFICATION SIGNAL FOR AUDIO OBSERVERS (Milestone 10) ---
+	# --- EMIT MODIFICATION SIGNAL FOR AUDIO & SIMULATION OBSERVERS ---
 	block_modified.emit(global_pos, type)
 
 
 ## Scans all active child nodes to find props resting on the newly mined block coordinate
 func _check_and_resolve_floating_props(mined_pos: Vector3i) -> void:
-	# Define target trigger checks (Props are centered at X+0.5, Z+0.5)
-	var expected_x: float = float(mined_pos.x) + 0.5
-	var expected_z: float = float(mined_pos.z) + 0.5
-	var expected_y_min: float = float(mined_pos.y) + 0.9
-	var expected_y_max: float = float(mined_pos.y) + 1.1
+	var expected_x := float(mined_pos.x) + 0.5
+	var expected_z := float(mined_pos.z) + 0.5
+	var expected_y_min := float(mined_pos.y) + 0.9
+	var expected_y_max := float(mined_pos.y) + 1.1
 	
 	for child: Node in get_children():
 		if child is StaticBody3D and child.name.begins_with("Prop_"):
 			var prop_node := child as StaticBody3D # Secure Casting
 			var c_pos: Vector3 = prop_node.global_position
 			
-			# Compare positions with a small tolerance (to avoid float precision issues)
 			var match_x: bool = abs(c_pos.x - expected_x) < 0.1
 			var match_z: bool = abs(c_pos.z - expected_z) < 0.1
 			var match_y: bool = c_pos.y >= expected_y_min - 0.2 and c_pos.y <= expected_y_max + 0.2
@@ -340,15 +317,15 @@ func _resolve_unsupported_prop(prop: StaticBody3D) -> void:
 			prop.call("interact", player)
 	else:
 		# Structural Drop: Slides down Wells and Lampposts to the next solid surface
-		var gx: int = floori(prop.global_position.x)
-		var gz: int = floori(prop.global_position.z)
-		var safe_y: float = world_state.get_highest_solid_y(gx, gz)
+		var gx := floori(prop.global_position.x)
+		var gz := floori(prop.global_position.z)
+		var safe_y := world_state.get_highest_solid_y(gx, gz)
 		
 		# Compute the surface level relative to the safe air-space coordinate
-		var target_y: float = safe_y - 1.0
+		var target_y := safe_y - 1.0
 		
 		# Animate falling with an organic bounce landing Tween!
-		var tween: Tween = create_tween()
+		var tween := create_tween()
 		tween.tween_property(prop, "global_position:y", target_y, 0.4).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 		
 		# Play a heavy stone thud sound upon landing
@@ -376,7 +353,6 @@ func save_all() -> void:
 
 
 ## Proxy helper allowing ChunkManager to trigger procedural entity spawning (mobs + props)
-## SOLID SRP COMPLIANCE: Gathers and merges both living beings and scenery decorations.
 func spawn_entities_for_chunk(chunk: Chunk) -> Array[Node]:
 	var spawned_nodes: Array[Node] = []
 	
@@ -393,7 +369,7 @@ func spawn_entities_for_chunk(chunk: Chunk) -> Array[Node]:
 func check_player_spawn_activation() -> void:
 	if is_instance_valid(player) and not player.get("is_active"):
 		if is_instance_valid(chunk_manager):
-			var _all_rendered: bool = true
+			var _all_rendered := true
 			
 			for x in range(-1, 2):
 				for z in range(-1, 2):
@@ -415,9 +391,9 @@ func _activate_player_spawn() -> void:
 	if not _is_restored_save or is_teleport_spawn:
 		is_teleport_spawn = false # Reset the trigger flag
 		
-		var block_x: int = floori(player.position.x)
-		var block_z: int = floori(player.position.z)
-		var found_safe_y: float = 14.0 # Fallback
+		var block_x := floori(player.position.x)
+		var block_z := floori(player.position.z)
+		var found_safe_y := 14.0 # Fallback
 		
 		if is_instance_valid(world_state):
 			found_safe_y = world_state.get_highest_solid_y(block_x, block_z)
@@ -433,8 +409,8 @@ func _activate_player_spawn() -> void:
 		
 	if _is_startup_phase:
 		_is_startup_phase = false
-		var settings: Dictionary = SettingsRepository.load_settings() as Dictionary
-		var target_distance: int = 8 # Default
+		var settings := SettingsRepository.load_settings() as Dictionary
+		var target_distance := 8 # Default
 		if settings.has("render_distance"):
 			target_distance = int(settings["render_distance"])
 		
@@ -444,9 +420,9 @@ func _activate_player_spawn() -> void:
 ## Deserializes cached backpack quantities back into the player's inventory
 func _restore_player_inventory() -> void:
 	if _loaded_inventory_data.size() > 0 and is_instance_valid(player):
-		var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
-		if is_instance_valid(inventory):
-			inventory.deserialize_data(_loaded_inventory_data)
+		var inventory_comp := player.get("inventory") as InventoryComponent
+		if is_instance_valid(inventory_comp):
+			inventory_comp.deserialize_data(_loaded_inventory_data)
 
 
 func _setup_persistence() -> void:
@@ -490,7 +466,7 @@ class WorldModifierAdapter extends IWorldModifier:
 
 	func get_block_globally(global_pos: Vector3i) -> BlockType.Type:
 		if is_instance_valid(_controller):
-			var world_state_ref: WorldState = _controller.get("world_state") as WorldState
+			var world_state_ref := _controller.get("world_state") as WorldState
 			if is_instance_valid(world_state_ref):
 				return world_state_ref.get_block(global_pos)
 		return BlockType.Type.AIR

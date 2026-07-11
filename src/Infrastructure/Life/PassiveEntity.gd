@@ -2,19 +2,37 @@
 # Project: CraftDomain
 # Layer: Infrastructure / Presentation & Physics (Entities)
 # Class: PassiveEntity
-# Description: Abstract base class representing physical entities. Manages movement 
-#              vectors, gravity calculations, safe boundary checks, 
+# Description: Abstract base class representing physical entities. Manages movement
+#              vectors, gravity calculations, safe boundary checks,
 #              and dynamic nameplate/quest-arrow UI attachments.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical motion loops
 #   and UI attachments.
-# - Liskov Substitution Principle (LSP): Fully compatible with all passive/hostile subclasses,
-#   utilizing inherited dynamic height solvers.
+# - Liskov Substitution Principle (LSP): Fully compatible with all passive and
+#   hostile subclasses, utilizing inherited dynamic height solvers.
 # - Open-Closed Principle (OCP): Dynamic nameplate mapping and habitat constraint checks
-#   adapt automatically to subclasses.
+#   adapt automatically to subclasses using polymorphic properties and virtual methods,
+#   closing this base class to modifications when adding new entities.
 # ==============================================================================
 class_name PassiveEntity
 extends CharacterBody3D
+
+# --- SOLID POLYMORPHIC DESIGN CONFIGURATIONS (OCP COMPLIANT) ---
+## The localization key representing this entity's display name.
+@export var entity_name_key: String = "NPC_NAME_VILLAGER"
+
+## True if this NPC can engage in branching dialogue trees.
+@export var is_conversational_npc: bool = false
+
+## Classifies the humanoid role type (e.g. 0: Villager, 1: Merchant, 2: Guard, etc.).
+## Set to -1 for non-humanoid wild animals.
+@export var humanoid_role: int = -1
+
+## Represents the physical habitat/movement boundaries (0: Terrestrial, 1: Amphibious, 2: Aquatic).
+@export var entity_habitat: int = 0
+
+## The text color used to render this entity's floating nameplate.
+@export var nameplate_color: Color = Color.WHITE
 
 # Base physical movement constants
 const BASE_SPEED: float = 1.3
@@ -104,10 +122,8 @@ func _execute_lifecycle_initialization() -> void:
 	_auto_claim_registered_quest_target()
 
 
-## Scans static JSON coordinates at birth to permanently claim quest ownership
+## Scans static JSON coordinates at birth to claim quest ownership polimorphically.
 func _auto_claim_registered_quest_target() -> void:
-	var nameplate_key := _get_nameplate_translation_key()
-	
 	if QuestService._quests.is_empty():
 		return
 		
@@ -117,19 +133,9 @@ func _auto_claim_registered_quest_target() -> void:
 			var dist := global_position.distance_to(q.target_position)
 			
 			if dist <= 25.0:
-				var is_matching_role := false
-				
-				# STRICT NARRATIVE FILTERING:
-				if q_id == "lost_bazaar" and nameplate_key.contains("VILLAGER"):
-					is_matching_role = true
-				elif q_id == "fuel_fryer" and nameplate_key.contains("MERCHANT"):
-					is_matching_role = true
-				elif q_id == "plains_defender" and nameplate_key.contains("ZOMBIE"):
-					is_matching_role = true
-				elif q_id == "bazaar_return" and nameplate_key.contains("VILLAGER"):
-					is_matching_role = true
-				
-				if is_matching_role:
+				# OCP RESOLUTION: Delegate the eligibility verification polimorphically to subclasses.
+				# Avoids hardcoding specific quest strings or matching rigid class names in the base class.
+				if _is_eligible_for_quest(q_id):
 					quest_target_id = q_id
 					break
 
@@ -142,13 +148,12 @@ func _setup_nameplate() -> void:
 	_nameplate = Label3D.new()
 	_nameplate.name = "FloatingNameplate"
 	
-	var key := _get_nameplate_translation_key()
-	_nameplate.text = tr(key).to_upper()
+	_nameplate.text = tr(entity_name_key).to_upper()
 	_nameplate.pixel_size = 0.005 
 	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_nameplate.no_depth_test = false 
 	_nameplate.render_priority = 5
-	_nameplate.modulate = _get_nameplate_color()
+	_nameplate.modulate = nameplate_color
 	
 	_nameplate.outline_modulate = Color(0, 0, 0)
 	_nameplate.outline_size = 5
@@ -186,16 +191,15 @@ func _setup_nameplate_height() -> void:
 
 ## Instantiates the 3D SpeechBubble and places it above the entity's head.
 func _setup_floating_bubble() -> void:
-	if _is_conversational() and not is_instance_valid(_bubble):
+	if is_conversational_npc and not is_instance_valid(_bubble):
 		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
 		if sb_script != null:
 			_bubble = sb_script.new() as Node3D
 			add_child(_bubble)
 			
-			var key := _get_nameplate_translation_key()
-			if key == "NPC_NAME_MERCHANT":
+			if entity_name_key == "NPC_NAME_MERCHANT":
 				_bubble.call("set_text", tr("BUBBLE_TRADE"))
-			elif key == "NPC_NAME_FARMER":
+			elif entity_name_key == "NPC_NAME_FARMER":
 				_bubble.call("set_text", tr("BUBBLE_FARMER"))
 			else:
 				_bubble.call("set_text", tr("BUBBLE_TALK"))
@@ -270,24 +274,17 @@ func _apply_uniform_ui_scaling() -> void:
 
 
 # ==============================================================================
-# STRICT CONVERSATIONAL FILTERING
+# SOLID POLYMORPHIC CONTRACTS & ABSTRACT HOOKS (LSP / OCP COMPLIANCE)
 # ==============================================================================
-func _is_conversational() -> bool:
-	var key := _get_nameplate_translation_key()
-	var talking_npcs: Array[String] = [
-		"NPC_NAME_VILLAGER", 
-		"NPC_NAME_MERCHANT", 
-		"NPC_NAME_GUARD", 
-		"NPC_NAME_FARMER", 
-		"NPC_NAME_MINER", 
-		"NPC_NAME_DRUID", 
-		"NPC_NAME_ANDROID"
-	]
-	return talking_npcs.has(key)
+
+## Virtual method to determine if this entity is eligible for a given quest ID.
+## Overridden by subclasses to handle specific narrative campaign targeting.
+func _is_eligible_for_quest(_quest_id: String) -> bool:
+	return false
 
 
 func _get_humanoid_role() -> int:
-	return -1
+	return humanoid_role
 
 
 func _has_ui_decorations() -> bool:
@@ -295,52 +292,7 @@ func _has_ui_decorations() -> bool:
 
 
 func _get_habitat() -> int:
-	return 0
-
-
-# ==============================================================================
-# SOLID POLYMORPHIC ABSTRACT HOOKS & FALLBACKS (OCP / LSP COMPLIANCE)
-# ==============================================================================
-
-## Virtual Hook: Returns the translation key representing this entity's nameplate.
-func _get_nameplate_translation_key() -> String:
-	var script_name := ""
-	var active_script := get_script() as Script
-	if active_script != null:
-		script_name = active_script.resource_path.get_file().get_basename()
-		
-	match script_name:
-		"PigEntity": return "NPC_NAME_PIG"
-		"ChickenEntity": return "NPC_NAME_CHICKEN"
-		"SheepEntity": return "NPC_NAME_SHEEP"
-		"CowEntity": return "NPC_NAME_COW"
-		"TurtleEntity": return "NPC_NAME_TURTLE"
-		"FoxEntity": return "NPC_NAME_FOX"
-		"BirdEntity": return "NPC_NAME_BIRD"
-		"CatEntity": return "NPC_NAME_CAT"
-		"ParrotEntity": return "NPC_NAME_PARROT"
-		"CrabEntity": return "NPC_NAME_CRAB"
-		"ElephantEntity": return "NPC_NAME_ELEPHANT"
-		"OctopusEntity": return "NPC_NAME_OCTOPUS"
-		"RaccoonEntity": return "NPC_NAME_RACCOON"
-		"GrowlitheEntity": return "NPC_NAME_GROWLITHE"
-		"MonkeyEntity": return "NPC_NAME_MONKEY"
-		"SharkEntity": return "NPC_NAME_SHARK"
-		"GargoyleEntity": return "NPC_NAME_GARGOYLE"
-		"GoblinEntity": return "NPC_NAME_GOBLIN"
-		"HostileEntity": return "NPC_NAME_ZOMBIE"
-		"GolemEntity": return "NPC_NAME_GOLEM"
-		"VillagerEntity": return "NPC_NAME_VILLAGER"
-		"GuardEntity": return "NPC_NAME_GUARD"
-		"FarmerEntity": return "NPC_NAME_FARMER"
-		"DruidEntity": return "NPC_NAME_DRUID"
-		"MerchantEntity": return "NPC_NAME_MERCHANT"
-		"CyberCitizenEntity": return "NPC_NAME_ANDROID"
-		_: return "NPC_NAME_VILLAGER"
-
-
-func _get_nameplate_color() -> Color:
-	return Color(1.0, 1.0, 1.0)
+	return entity_habitat
 
 
 func _is_avian() -> bool:
@@ -430,9 +382,6 @@ func _find_closest_hostile_threat() -> CharacterBody3D:
 	var min_dist_sq := 64.0
 	
 	for child: Node in hostiles:
-		# ======================================================================
-		# ANTI-SELF-SENSING SHIELD (BUG FIX)
-		# ======================================================================
 		if child == self:
 			continue
 			
@@ -537,7 +486,7 @@ func _drop_loot(_inv: IInventory) -> void:
 	pass
 
 
-## Projects the next physics step and cancels velocity if attempting to cross 
+## Projects the next physics step and cancels velocity if attempting to cross
 ## into an invalid habitat (e.g., land animals walking into deep oceans).
 func _apply_absolute_boundary_forcefield(delta: float) -> void:
 	var world_controller_ref := get_parent()
@@ -606,14 +555,14 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 
 
 ## Evaluates the active quest state and continuously syncs tracking if this NPC is the target.
-## Also appends the current AI Task State as a subtitle inside the Nameplate.
+## Also appends the current active AI Task State as a subtitle inside the Nameplate.
 func _update_quest_bubble_state() -> void:
-	var active_q := QuestService.get_active_quest()
+	var active_quest := QuestService.get_active_quest()
 	var is_target := false
 	
-	if active_q != null and quest_target_id == active_q.quest_id:
+	if active_quest != null and quest_target_id == active_quest.quest_id:
 		is_target = true
-		active_q.target_position = global_position 
+		active_quest.target_position = global_position 
 
 	if is_instance_valid(_quest_arrow):
 		_quest_arrow.visible = is_target
@@ -644,14 +593,14 @@ func _update_quest_bubble_state() -> void:
 
 	# Nameplate X-Ray Star highlight and dynamic subtitle
 	if is_instance_valid(_nameplate):
-		var base_text := tr(_get_nameplate_translation_key()).to_upper()
+		var base_text := tr(entity_name_key).to_upper()
 		if is_target:
 			_nameplate.text = "⭐ " + base_text + " ⭐" + task_subtitle
 			_nameplate.modulate = Color(1.0, 0.85, 0.2) # Gold Highlight
 			_nameplate.no_depth_test = true
 		else:
 			_nameplate.text = base_text + task_subtitle
-			_nameplate.modulate = _get_nameplate_color() 
+			_nameplate.modulate = nameplate_color
 			_nameplate.no_depth_test = false
 
 	# Ensures continuous scale normalizations
@@ -665,14 +614,12 @@ func _update_quest_bubble_state() -> void:
 		return
 		
 	# Dynamic Text Router
-	var key := _get_nameplate_translation_key()
-	match key:
-		"NPC_NAME_MERCHANT":
-			_bubble.call("set_text", tr("BUBBLE_TRADE"))
-		"NPC_NAME_FARMER":
-			_bubble.call("set_text", tr("BUBBLE_FARMER"))
-		_:
-			_bubble.call("set_text", tr("BUBBLE_TALK"))
+	if entity_name_key == "NPC_NAME_MERCHANT":
+		_bubble.call("set_text", tr("BUBBLE_TRADE"))
+	elif entity_name_key == "NPC_NAME_FARMER":
+		_bubble.call("set_text", tr("BUBBLE_FARMER"))
+	else:
+		_bubble.call("set_text", tr("BUBBLE_TALK"))
 
 
 # ==============================================================================
@@ -707,10 +654,7 @@ func _physics_process(delta: float) -> void:
 		return
 		
 	# ==========================================================================
-	# HYDRODYNAMIC FLUID BYPASS (Godot Physics Sinking Fix)
-	# Verifies dynamically if the entity is submerged inside liquid blocks.
-	# If so, standard gravity is bypassed and fluid drag is applied, allowing 
-	# amphibious entities to float and swim smoothly on their AI thread.
+	# HYDRODYNAMIC FLUID BYPASS (Sinking/Water Physics Fix)
 	# ==========================================================================
 	var is_in_liquid := false
 	var parent_node_ref := get_parent()

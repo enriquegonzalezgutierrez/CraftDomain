@@ -1,20 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Infrastructure (World / Fluid Cellular Automata)
+# Class: FluidSimulationService
 # Description: Infrastructure Service responsible for simulating high-performance
 #              cellular automata fluid dynamics (Water & Lava flow/fusion rules).
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively fluid 
-#                update loops, flow mathematics, and stone fusion rules.
-#              - Dependency Inversion Principle (DIP): Modifies blocks globally 
-#                through the abstract WorldController/WorldState networks.
-# PERFORMANCE OPTIMIZATIONS:
-#              - Queue-Based Simulation: Only evaluates "unstable" coordinates 
-#                stored in a dynamic active dictionary, completely avoiding 
-#                expensive full-world chunk scanning.
-#              - Time-Slicing: Processes a maximum of 64 fluid ticks per frame, 
-#                preventing physics or frame spikes even during massive floods.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/World/FluidSimulationService.gd
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively fluid update loops,
+#   flow mathematics, and stone fusion rules.
+# - Open-Closed Principle (OCP): Works dynamically. Listens to block changes via 
+#   the Observer Pattern, keeping the world controller closed to modifications.
+# - Dependency Inversion Principle (DIP): Modifies blocks globally through the 
+#   abstract WorldController/WorldState networks.
 # ==============================================================================
 class_name FluidSimulationService
 extends RefCounted
@@ -35,7 +31,7 @@ var world_state: WorldState
 # Unstable coordinate queue: Vector3i (global_pos) -> FluidState (metadata)
 var _active_fluids: Dictionary = {}
 
-## Small helper struct to track fluid source origin and remaining flow energy
+## Small helper struct to track fluid source origin and remaining flow energy.
 class FluidState:
 	var type: BlockType.Type
 	var remaining_spread: int
@@ -62,11 +58,28 @@ func register_fluid_block(global_pos: Vector3i, type: BlockType.Type, max_spread
 	_active_fluids[global_pos] = FluidState.new(type, spread)
 
 
-## Unregisters a block if it gets mined or overwritten by another solid block
+## Unregisters a block if it gets mined or overwritten by another solid block.
 func unregister_fluid_block(global_pos: Vector3i) -> void:
 	if _active_fluids.has(global_pos):
 		_active_fluids.erase(global_pos)
 
+
+# ==============================================================================
+# OBSERVATION INJECTION RECEPTORS (DIP / OCP Compliance)
+# ==============================================================================
+
+## Symmetrical Observer Callback: Automatically registers or unregisters fluid 
+## blocks on the simulation queue when WorldController fires block updates.
+func _on_block_modified(global_pos: Vector3i, type: BlockType.Type) -> void:
+	if type == BlockType.Type.WATER or type == BlockType.Type.LAVA:
+		register_fluid_block(global_pos, type)
+	else:
+		unregister_fluid_block(global_pos)
+
+
+# ==============================================================================
+# CELLULAR AUTOMATA CORE LOOPS
+# ==============================================================================
 
 ## Public API: Called every frame by the WorldController. Updates timers and processes the queue.
 func process_fluid_simulation(delta: float) -> void:
@@ -129,7 +142,7 @@ func _simulate_cellular_tick() -> void:
 		# RULE 2: LATERAL SPREAD FLOW (Only if bottom is solid and we have spread energy)
 		# ======================================================================
 		if is_stable and state.remaining_spread > 0:
-			var directions := [
+			var directions: Array[Vector3i] = [
 				Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
 				Vector3i(0, 0, 1), Vector3i(0, 0, -1)
 			]

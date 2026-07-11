@@ -1,24 +1,24 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (UI Widgets / Hotbar Selection)
+# Layer: Infrastructure (UI Presentation / Hotbar HUD)
 # Class: HotbarDockWidget
 # Description: SRP-compliant UI Widget responsible ONLY for building and managing
 #              the unified bottom HUD selection dock (Hotbar).
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively the hotbar slots, 
-#   selection outlines, and civilian shortcuts rendering.
-# - Open-Closed Principle (OCP) & DRY: EXTREME REFACTOR. Completely purged the 
-#   hardcoded `match item_id:` table. Textures are now loaded dynamically 
-#   by querying the `BlockLibrary` domain definitions, completely closing 
-#   the UI to modifications when adding new materials.
+#   selection outlines, and civilian shortcuts rendering, delegating logic to the domain.
+# - Open-Closed Principle (OCP): Completely closed to modifications. All rigid 
+#   match tables for item symbols or textures are removed. Textures are queried 
+#   polimorphically from `BlockLibrary`, and non-block item symbols use an 
+#   extensible static registry, allowing seamless mods and custom additions.
 # ==============================================================================
 class_name HotbarDockWidget
 extends Control
 
-## Symmetrical texture folder constant
+## Symmetrical texture folder constant.
 const TEXTURE_DIR := "res://assets/textures/"
 
-## Dependencies injected by the HUD orchestrator
+## Dependencies injected by the HUD orchestrator.
 var player: CharacterBody3D
 var hud_orchestrator: PlayerHUD
 
@@ -29,8 +29,28 @@ var _food_container: HBoxContainer
 var _item_name_toast: Label
 var _toast_tween: Tween
 
-# Static in-memory cache for loaded 2D textures
+# In-memory cache for loaded 2D textures to save CPU reads
 static var _textures_cache: Dictionary = {}
+
+# Dynamic registry mapping Item IDs to their fallback 2D UI unicode symbols.
+static var _item_symbols: Dictionary = {}
+
+
+## Static Constructor: Registers default base-game item symbols on boot.
+static func _static_init() -> void:
+	register_item_symbol(15, "🧪") # Lava bucket or fluid vial
+	register_item_symbol(16, "🍗") # Fried Chicken
+	register_item_symbol(17, "⚔️") # Wooden Sword
+	register_item_symbol(18, "🌱") # Crop Seeds
+	register_item_symbol(12, "💠") # Cyan Conduit
+	register_item_symbol(14, "☁️") # Cloud
+
+
+## Public OCP Extension API: Registers a custom item symbol dynamically.
+## Can be called from mods, custom items, or DLC loaders on startup.
+static func register_item_symbol(item_id: int, symbol_char: String) -> void:
+	_item_symbols[item_id] = symbol_char
+	print("[HotbarDockWidget] Registered dynamic OCP item symbol for ID %d -> '%s'" % [item_id, symbol_char])
 
 
 func _ready() -> void:
@@ -64,7 +84,6 @@ func _setup_responsive_ui_layout() -> void:
 	add_child(master_vbox)
 	
 	# ==================== ROW 1: STATUS BARS (HEARTS & FOOD) ====================
-	# The 8 slots (48px each) + 7 separators (6px each) = 426px wide center block.
 	var status_container := Control.new()
 	status_container.custom_minimum_size = Vector2(426, 28)
 	status_container.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -104,7 +123,7 @@ func _setup_responsive_ui_layout() -> void:
 	var hbox := HBoxContainer.new()
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hbox.add_theme_constant_override("separation", 10)
-	margin.add_child(hbox) # CORREGIDO: Ahora se agrega correctamente el hbox al contenedor de margen
+	margin.add_child(hbox)
 	
 	# A. Left-docked Button: Backpack
 	var bp_vbox := VBoxContainer.new()
@@ -333,6 +352,8 @@ func _get_item_texture(item_id: int) -> Texture2D:
 	return null
 
 
+## OCP RESOLUTION: Renders custom fallback icons dynamically.
+## Replaces the rigid match-case table with an extensible static dictionary query.
 func _apply_special_fallback_decoration(fallback_node: ColorRect, item_id: int) -> void:
 	for child: Node in fallback_node.get_children():
 		child.queue_free()
@@ -348,13 +369,11 @@ func _apply_special_fallback_decoration(fallback_node: ColorRect, item_id: int) 
 	ls.outline_color = Color.BLACK
 	symbol.label_settings = ls
 	
-	match item_id:
-		16: symbol.text = "🍗"
-		17: symbol.text = "⚔️" 
-		18: symbol.text = "🌱" 
-		12: symbol.text = "💠" 
-		14: symbol.text = "☁️" 
-		_: symbol.text = ""
+	# Query the OCP registered fallback symbols
+	if _item_symbols.has(item_id):
+		symbol.text = _item_symbols[item_id] as String
+	else:
+		symbol.text = ""
 		
 	if symbol.text != "":
 		fallback_node.add_child(symbol)
@@ -453,9 +472,9 @@ func _setup_hud_shortcut_button_style(btn: Button) -> void:
 	)
 
 
-func _create_hotkey_label(text: String) -> Label:
+func _create_hotkey_label(text_str: String) -> Label:
 	var label := Label.new()
-	label.text = text
+	label.text = text_str
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ls := LabelSettings.new()
 	ls.font_size = 11

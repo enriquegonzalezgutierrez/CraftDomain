@@ -1,21 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (Rendering / Presentation)
+# Layer: Infrastructure (Rendering / Chunk Node Representation)
 # Class: ChunkNode
 # Description: High-performance rendering node representing a single 3D Chunk.
 #              Orchestrates MultiMeshInstance3D segments and PBR materials.
 # SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Handles exclusively mesh assembly 
-#   and material binding, delegating block data to the Domain BlockLibrary.
-# - Open-Closed Principle (OCP): COMPLETELY DECOUPLED. All hardcoded texture 
-#   maps and 'if/elif' material chains have been purged. The renderer now 
-#   dynamically consumes visual attributes from the BlockDefinition strategies.
-# SHADER ARCHITECTURE FIX:
-# - Extracted the inline water shader logic into an external .gdshader file 
-#   (`liquid_water.gdshader`), matching the architecture of the foliage and sky 
-#   shaders, keeping GDScript clean.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Rendering/ChunkNode.gd
+# - Single Responsibility Principle (SRP): Handles exclusively 3D mesh compilation 
+#   and material binding, delegating physical disk I/O and texture loading to 
+#   the decoupled `TextureRegistry` service.
+# - Open-Closed Principle (OCP): Completely closed to modifications. All rigid 
+#   material-type conditional checks are removed. The renderer queries visual 
+#   PBR attributes polimorphically from the block definitions.
+# - Liskov Substitution Principle (LSP): Fully compatible with standard Node3D 
+#   hierarchies, managing active visibility and culling.
 # ==============================================================================
 class_name ChunkNode
 extends Node3D
@@ -26,52 +23,23 @@ var chunk: Chunk
 ## Collision body reference.
 var _collision_body: StaticBody3D
 
-## Active registered MultiMeshInstance3D and MeshInstance3D children: int -> Node
+## Active registered MultiMeshInstance3D and MeshInstance3D children: int (block_id) -> Node
 var _multimeshes: Dictionary = {}
 
-## Static caches to minimize GPU state changes and prevent frame stiction
+## Static material caches to minimize GPU state changes and prevent frame stiction
 static var _materials_cache: Dictionary = {}
 static var _distant_materials_cache: Dictionary = {} 
-static var _loaded_textures: Dictionary = {}
-static var _textures_preloaded: bool = false
 static var _shared_box_mesh: BoxMesh = null
 
 ## Static references to compiled Shader resources
 static var _leaves_wind_shader: Shader
 static var _water_shader: Shader 
 
-const TEXTURE_DIR := "res://assets/textures/"
-
 
 func _init(p_chunk: Chunk) -> void:
 	chunk = p_chunk
 	name = "Chunk_%d_%d_%d" % [chunk.position.x, chunk.position.y, chunk.position.z]
 	position = Vector3(chunk.position * Chunk.SIZE)
-	_preload_dynamic_textures()
-
-
-## OCP PRELOADER: Scans the BlockLibrary and caches all required assets dynamically.
-static func _preload_dynamic_textures() -> void:
-	if _textures_preloaded:
-		return
-	_textures_preloaded = true
-	
-	print("[ChunkNode] Starting OCP dynamic texture preloading...")
-	var success_count := 0
-	
-	for b_id: int in BlockLibrary._definitions.keys():
-		var def: BlockDefinition = BlockLibrary.get_definition(b_id)
-		if def.texture_file_name == "":
-			continue
-			
-		var path := TEXTURE_DIR + def.texture_file_name
-		if ResourceLoader.exists(path):
-			var tex := load(path) as Texture2D
-			if tex != null:
-				_loaded_textures[b_id] = tex
-				success_count += 1
-				
-	print("[ChunkNode] Dynamic preloading finished. Total assets cached: ", success_count)
 
 
 static func _get_shared_box_mesh() -> BoxMesh:
@@ -82,22 +50,24 @@ static func _get_shared_box_mesh() -> BoxMesh:
 
 
 ## POLYMORPHIC MATERIAL FACTORY:
-## Instead of match-casing IDs, it evaluates the 'rendering_type' and PBR 
-## properties defined in the Domain.
+## Instead of matching specific IDs, it evaluates the 'rendering_type' and PBR 
+## properties defined in the Domain Block files.
 func _get_material_for_block(block_id: int, is_distant: bool) -> Material:
-	var def := BlockLibrary.get_definition(block_id)
-	
+	var def := BlockLibrary.get_definition(block_id) as BlockDefinition
+	if def == null:
+		return null
+		
 	# 1. Check Distant LOD Cache (Vertex Shading Optimization)
 	if is_distant:
 		if _distant_materials_cache.has(block_id):
-			return _distant_materials_cache[block_id]
+			return _distant_materials_cache[block_id] as Material
 			
 		var d_mat := StandardMaterial3D.new()
 		d_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 		d_mat.albedo_color = def.color_top
 		d_mat.roughness = 1.0
 		
-		# For distant transparent units, we force opaqueness to save fillrate
+		# For distant transparent units, force opaqueness to save fillrate
 		if def.is_transparent:
 			d_mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 			
@@ -106,11 +76,10 @@ func _get_material_for_block(block_id: int, is_distant: bool) -> Material:
 		
 	# 2. Check Standard Material Cache
 	if _materials_cache.has(block_id):
-		return _materials_cache[block_id]
+		return _materials_cache[block_id] as Material
 		
 	# 3. CONSTRUCT NEW MATERIAL BASED ON DOMAIN CONTRACT
 	var mat: Material
-	
 	match def.rendering_type:
 		"foliage":
 			mat = _create_foliage_material(def, block_id)
@@ -133,8 +102,10 @@ func _create_standard_pbr_material(def: BlockDefinition, block_id: int) -> Stand
 	if def.is_transparent:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	
-	if _loaded_textures.has(block_id):
-		m.albedo_texture = _loaded_textures[block_id]
+	# SRP RESOLUTION: Fetch texture dynamically from the decoupled static TextureRegistry
+	var tex := TextureRegistry.get_block_texture(block_id)
+	if tex != null:
+		m.albedo_texture = tex
 		
 	if def.is_emissive:
 		m.emission_enabled = true
@@ -148,19 +119,22 @@ func _create_standard_pbr_material(def: BlockDefinition, block_id: int) -> Stand
 
 func _create_foliage_material(def: BlockDefinition, block_id: int) -> ShaderMaterial:
 	if _leaves_wind_shader == null:
-		_leaves_wind_shader = load("res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader")
+		_leaves_wind_shader = load("res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader") as Shader
 		
 	var sm := ShaderMaterial.new()
 	sm.shader = _leaves_wind_shader
 	sm.set_shader_parameter("block_color", def.color_top)
-	if _loaded_textures.has(block_id):
-		sm.set_shader_parameter("albedo_texture", _loaded_textures[block_id])
+	
+	# SRP RESOLUTION: Fetch texture dynamically from the decoupled static TextureRegistry
+	var tex := TextureRegistry.get_block_texture(block_id)
+	if tex != null:
+		sm.set_shader_parameter("albedo_texture", tex)
 	return sm
 
 
 func _create_liquid_material(def: BlockDefinition) -> ShaderMaterial:
 	if _water_shader == null:
-		_water_shader = load("res://src/Infrastructure/Rendering/Shaders/liquid_water.gdshader")
+		_water_shader = load("res://src/Infrastructure/Rendering/Shaders/liquid_water.gdshader") as Shader
 		
 	var sm := ShaderMaterial.new()
 	sm.shader = _water_shader
@@ -187,7 +161,7 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 
 	# 2. Update Custom Meshes (Liquids/Slabs)
 	for b_id: int in p_custom_meshes.keys():
-		var mesh: ArrayMesh = p_custom_meshes[b_id]
+		var mesh := p_custom_meshes[b_id] as ArrayMesh
 		if mesh == null: continue
 		active_ids[b_id] = true
 		_ensure_mesh_instance(b_id, mesh, p_is_distant)
@@ -195,28 +169,30 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 	# 3. Clean-up inactive segments
 	for b_id: int in _multimeshes.keys():
 		if not active_ids.has(b_id):
-			var node: Node = _multimeshes[b_id] as Node
+			var node := _multimeshes[b_id] as Node
 			if is_instance_valid(node):
-				node.visible = false
+				node.queue_free() # Complete cleanup on inactive layers
 
 	# 4. Collision management
 	_update_collision(p_collision_body)
 
 
-## Updates Level-of-Detail materials across all sub-meshes polymorphically
+## Updates Level-of-Detail materials across all sub-meshes polymorphically.
 func update_lod_materials(is_distant: bool) -> void:
 	for b_id: int in _multimeshes.keys():
-		var node: Node = _multimeshes[b_id] as Node
+		var node := _multimeshes[b_id] as Node
 		if node is GeometryInstance3D:
-			(node as GeometryInstance3D).material_override = _get_material_for_block(b_id, is_distant)
+			var mat := _get_material_for_block(b_id, is_distant)
+			if mat != null:
+				(node as GeometryInstance3D).material_override = mat
 
 
-## Returns true if a valid collision body is currently attached
+## Returns true if a valid collision body is currently attached.
 func has_collision_body() -> bool:
 	return is_instance_valid(_collision_body)
 
 
-## Sets or clears the collision body
+## Sets or clears the collision body.
 func set_collision_body(body: StaticBody3D) -> void:
 	_update_collision(body)
 
@@ -224,7 +200,7 @@ func set_collision_body(body: StaticBody3D) -> void:
 func _ensure_multimesh_instance(b_id: int, count: int, buffer: PackedFloat32Array, is_distant: bool) -> void:
 	var mm_inst: MultiMeshInstance3D
 	if _multimeshes.has(b_id) and _multimeshes[b_id] is MultiMeshInstance3D:
-		mm_inst = _multimeshes[b_id]
+		mm_inst = _multimeshes[b_id] as MultiMeshInstance3D
 	else:
 		mm_inst = MultiMeshInstance3D.new()
 		add_child(mm_inst)
@@ -236,21 +212,26 @@ func _ensure_multimesh_instance(b_id: int, count: int, buffer: PackedFloat32Arra
 	mm.instance_count = count
 	mm.buffer = buffer
 	mm_inst.multimesh = mm
-	mm_inst.material_override = _get_material_for_block(b_id, is_distant)
+	
+	var mat := _get_material_for_block(b_id, is_distant)
+	if mat != null:
+		mm_inst.material_override = mat
 	mm_inst.visible = true
 
 
 func _ensure_mesh_instance(b_id: int, mesh: ArrayMesh, is_distant: bool) -> void:
 	var mi: MeshInstance3D
 	if _multimeshes.has(b_id) and _multimeshes[b_id] is MeshInstance3D:
-		mi = _multimeshes[b_id]
+		mi = _multimeshes[b_id] as MeshInstance3D
 	else:
 		mi = MeshInstance3D.new()
 		add_child(mi)
 		_multimeshes[b_id] = mi
 		
 	mi.mesh = mesh
-	mi.material_override = _get_material_for_block(b_id, is_distant)
+	var mat := _get_material_for_block(b_id, is_distant)
+	if mat != null:
+		mi.material_override = mat
 	mi.visible = true
 
 

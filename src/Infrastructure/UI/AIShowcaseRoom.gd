@@ -1,23 +1,22 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / Presentation & UI (Developer Diagnostics)
+# Layer: Infrastructure (UI Presentation / Developer Diagnostics)
 # Class: AIShowcaseRoom
-# Description: High-performance, self-contained AI and Entity Sandbox Laboratory.
+# Description: Self-contained AI and Entity Sandbox Laboratory. Generates mock 
+#              surroundings, A* navigation nodes, and a diagnostic panel to 
+#              test dynamic NPC behaviors in real-time.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates the mock
-#   testing ground environment, dynamic spawner decks, and simulation parameters.
-# BUG FIXES:
-# - Deepened the simulated WorldState floor from Y=8 to Y=11. This prevents the 
-#   AI pathfinding algorithms from thinking they are walking on a 1-block thin sheet 
-#   over an infinite void, which previously caused them to freeze in IDLE state 
-#   out of survival self-preservation.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/AIShowcaseRoom.gd
+# - Single Responsibility Principle (SRP): Coordinates exclusively the diagnostic 
+#   laboratory environment, spawning decks, and telemetry panel refreshes.
+# - Open-Closed Principle (OCP): Dynamically populates spawning buttons by scanning 
+#   the global MobRegistry, closing this class to future mob-type additions.
+# - Liskov Substitution Principle (LSP): Fully compatible with standard 
+#   Node3D scene structures.
 # ==============================================================================
 class_name AIShowcaseRoom
 extends Node3D
 
-# --- MOCK DDD WORLD REQUIREMENTS (Allows strategies to run without crashes) ---
+# --- MOCK DDD WORLD REQUIREMENTS ---
 var world_state: WorldState
 var navigation_service: VoxelNavigationService
 var generator: WorldGenerator
@@ -38,7 +37,7 @@ var _mock_weather_service: Node = null
 
 # Core constants
 const PLATFORM_SIZE: int = 16
-const PLATFORM_Y: int = 11
+const PLATFORM_Y: int = 11 # Dynamic floor height limit
 
 
 func _ready() -> void:
@@ -63,8 +62,9 @@ func _setup_mock_world_state() -> void:
 	generator = WorldGenerator.new(42) 
 	
 	# ==========================================================================
-	# AI SURVIVAL FIX: Populate a solid 16x16 column of Stone blocks (ID 1) 
-	# from Y=8 to Y=11 so the entities don't think they are falling into the void!
+	# PATHFINDING STABILIZATION RESOLUTION (OCP/SRP Fix)
+	# Build a solid 4-block deep stone foundation (Y=8 to Y=11) so that the 
+	# A* pathfinding and boundary checks detect a safe terrestrial floor.
 	# ==========================================================================
 	for x: int in range(PLATFORM_SIZE):
 		for z: int in range(PLATFORM_SIZE):
@@ -76,10 +76,12 @@ func _setup_mock_world_state() -> void:
 			var top_pos := Vector3i(x - 8, PLATFORM_Y, z - 8)
 			navigation_service.add_navigation_node(top_pos, false)
 			
+	# Connect adjacent A* nodes horizontally (4-directional)
 	for x: int in range(-8, 8):
 		for z: int in range(-8, 8):
 			var node_pos := Vector3i(x, PLATFORM_Y, z)
-			for offset: Vector3i in [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,0,1), Vector3i(0,0,-1)]:
+			var directions: Array[Vector3i] = [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
+			for offset: Vector3i in directions:
 				var neighbor: Vector3i = node_pos + offset
 				if navigation_service._coord_to_id.has(neighbor):
 					navigation_service.connect_nodes(node_pos, neighbor)
@@ -96,14 +98,17 @@ func _setup_mock_player_dummy() -> void:
 	
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.4; cap.height = 1.8
+	cap.radius = 0.4
+	cap.height = 1.8
 	col.shape = cap
 	col.position = Vector3(0.0, 0.9, 0.0)
 	player.add_child(col)
 	
 	var mesh := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.4; cyl.bottom_radius = 0.4; cyl.height = 1.8
+	cyl.top_radius = 0.4
+	cyl.bottom_radius = 0.4
+	cyl.height = 1.8
 	mesh.mesh = cyl
 	mesh.position = Vector3(0.0, 0.9, 0.0)
 	
@@ -170,12 +175,14 @@ func _build_3d_testing_pad() -> void:
 	floor_body.add_child(floor_col) 
 	checker_root.add_child(floor_body)
 	
-	for w_data: Array in [
+	# Wall barriers around the 16x16 deck to prevent entities from slipping off
+	var walls_config: Array[Array] = [
 		[Vector3(0, PLATFORM_Y + 5.0, -9.0), Vector3(18, 10, 2)], 
 		[Vector3(0, PLATFORM_Y + 5.0, 9.0), Vector3(18, 10, 2)],  
 		[Vector3(9.0, PLATFORM_Y + 5.0, 0), Vector3(2, 10, 18)],  
 		[Vector3(-9.0, PLATFORM_Y + 5.0, 0), Vector3(2, 10, 18)]  
-	]:
+	]
+	for w_data: Array in walls_config:
 		var wb := StaticBody3D.new()
 		var wc := CollisionShape3D.new()
 		var ws := BoxShape3D.new()
@@ -335,7 +342,7 @@ func _build_developer_dashboard() -> void:
 
 
 func _populate_developer_mobs_deck() -> void:
-	var keys := MobRegistry._spawners.keys()
+	var keys: Array = MobRegistry._spawners.keys()
 	keys.sort()
 	for spawn_id: int in keys:
 		var btn := Button.new()

@@ -1,27 +1,23 @@
 # ==============================================================================
 # Project: CraftDomain
-# Description: Infrastructure controller node representing the first-person player.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Delegates all voxel raycasting, 
-#                mining, building, eating, and NPC interactions to VoxelInteractionComponent.
-#                Delegates third-person skeleton drawing to PlayerVisualComponent.
-#              - Dependency Inversion Principle (DIP): Injects loose component dependencies
-#                explicitly during startup.
-#              - Domain-Driven Design (DDD): Defers player spawn height calculations
-#                strictly to the WorldState Domain Aggregate.
-# MILESTONE 8 UPGRADE:
-#              - Decoupled type hints: Keeping world_controller typed as Node3D 
-#                and utilizing loose-binding calls (`call("save_all")`) to completely 
-#                prevent cyclic compilation locks on startup.
-#              - Dynamic Footstep Audio Accumulator: Triggers material-specific 3D SFX 
-#                based on the exact block type beneath the player's feet.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Player/PlayerController.gd
+# Layer: Infrastructure (Player Controller & Physics)
+# Class: PlayerController
+# Description: First-person player physics controller. Manages movement vectors,
+#              camera rotations, view bobs, and input actions.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
+#   movement translations, camera rotations, and post-processed sways, 
+#   delegating raycast mining and block placements to the interaction component.
+# - Open-Closed Principle (OCP): All hardcoded item-to-viewmodel matches are 
+#   completely removed. Active held tools and build-types are resolved polimorphically 
+#   by querying the static registries, closing this class to modifications.
+# - Liskov Substitution Principle (LSP): Fully compatible with standard 
+#   CharacterBody3D physics, utilizing smooth linear interpolations.
 # ==============================================================================
 class_name PlayerController
 extends CharacterBody3D
 
-## Signal emitted when the player swings their active weapon or tool
+## Signal emitted when the player swings their active weapon or tool.
 signal sword_swung
 
 # Movement configurations
@@ -47,10 +43,10 @@ var camera: Camera3D
 var world_controller: Node3D # Typed as Node3D base class to prevent compiler circular dependencies
 var hud: PlayerHUD
 var viewmodel: PlayerViewModel
-var interaction_component: VoxelInteractionComponent
+var interaction_component: Node3D # Bound loosely to prevent cyclic compile locks
 var visual_component: PlayerVisualComponent
 
-# Build inventory selection state (0 to 7 matches our 8 slots)
+# Build inventory selection state (0 to 7 matches our 8 hotbar slots)
 var active_slot_index: int = 0
 var active_build_type: BlockType.Type = BlockType.Type.STONE
 var is_item_selected: bool = true 
@@ -85,7 +81,6 @@ func _ready() -> void:
 	floor_snap_length = 0.25           # Keeps the player glued down step edges smoothly
 	wall_min_slide_angle = 0.0         # Guarantees sliding against absolute 90-degree voxel vertical seams
 	safe_margin = 0.015                # 1.5cm safety boundary prevents capsule seam cling and corner traps
-	# ==========================================================================
 	
 	_setup_inputs()
 	_setup_player_geometry()
@@ -100,8 +95,7 @@ func _ready() -> void:
 	_apply_hotbar_selection(0)
 
 
-## Public API (DIP/Observer): Called by child components to emit the sword swing internally,
-## resolving the unused signal compiler warning.
+## Public API (DIP/Observer): Called by child components to emit the sword swing internally.
 func swing_sword() -> void:
 	sword_swung.emit()
 
@@ -136,14 +130,16 @@ func _setup_sub_components() -> void:
 	
 	# Instantiate first-person arms viewmodel
 	viewmodel = PlayerViewModel.new()
-	viewmodel.player = self  # <--- DIP COMPLIANT: Explicit dependency injection
+	viewmodel.player = self  # <--- DIP COMPLIANCE: Explicit dependency injection
 	camera.add_child(viewmodel)
 	
 	# Instantiate raycasting and placement component under the camera
-	interaction_component = VoxelInteractionComponent.new()
-	interaction_component.player = self
-	interaction_component.world_controller = world_controller
-	camera.add_child(interaction_component)
+	var interaction_script := load("res://src/Infrastructure/Player/VoxelInteractionComponent.gd") as GDScript
+	if interaction_script != null:
+		interaction_component = interaction_script.new() as Node3D
+		interaction_component.set("player", self)
+		interaction_component.set("world_controller", world_controller)
+		camera.add_child(interaction_component)
 	
 	# Instantiate HUD overlay
 	hud = PlayerHUD.new()
@@ -245,8 +241,8 @@ func _physics_process(delta: float) -> void:
 
 	_process_hotbar_keys()
 
-	if is_instance_valid(interaction_component):
-		interaction_component.process_interaction()
+	if is_instance_valid(interaction_component) and interaction_component.has_method("process_interaction"):
+		interaction_component.call("process_interaction")
 
 	if not is_on_floor():
 		velocity.y -= gravity * delta
@@ -376,6 +372,7 @@ func _process_hotbar_keys() -> void:
 	elif Input.is_action_just_pressed("select_sword"): _apply_hotbar_selection(7)
 
 
+## Refactored Hotbar Alignment: Dynamically resolves viewmodel tools and held meshes (OCP compliant).
 func _apply_hotbar_selection(slot: int) -> void:
 	active_slot_index = slot
 	if is_instance_valid(hud):
@@ -384,7 +381,7 @@ func _apply_hotbar_selection(slot: int) -> void:
 	if inventory == null:
 		return
 		
-	var inv_comp: InventoryComponent = inventory as InventoryComponent
+	var inv_comp := inventory as InventoryComponent
 	var slot_data := inv_comp.get_slot_data(slot)
 	
 	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:
@@ -403,26 +400,19 @@ func _apply_hotbar_selection(slot: int) -> void:
 	if is_instance_valid(visual_component):
 		visual_component.update_held_tool(item_id)
 		
-	if item_id >= 1 and item_id <= 15:
+	# OCP RESOLUTION: Query the static Viewmodel API to resolve the tool type polimorphically,
+	# completely removing the hardcoded list of item IDs.
+	var tool_type: PlayerViewModel.ToolType = PlayerViewModel.get_tool_type_for_item(item_id)
+	_set_viewmodel_tool(tool_type)
+	
+	# Check if the item is a structural block by validating its definition registry
+	var block_def := BlockLibrary.get_definition(item_id)
+	if block_def != null and block_def.type != 0: # 0 represents BlockType.Type.AIR
 		is_item_selected = true
 		active_build_type = item_id as BlockType.Type
-		if item_id == 15: 
-			_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
-		else:
-			_set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
-	elif item_id >= 28 and item_id <= 30: # Milestone 8 Blocks
-		is_item_selected = true
-		active_build_type = item_id as BlockType.Type
-		_set_viewmodel_tool(PlayerViewModel.ToolType.PICKAXE)
 	else:
 		is_item_selected = false
 		active_build_type = BlockType.Type.AIR
-		if item_id == 16: 
-			_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
-		elif item_id == 17: 
-			_set_viewmodel_tool(PlayerViewModel.ToolType.SWORD)
-		else:
-			_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
 
 
 func _set_viewmodel_tool(tool_id: PlayerViewModel.ToolType) -> void:

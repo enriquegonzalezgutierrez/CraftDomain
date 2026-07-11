@@ -5,14 +5,11 @@
 # Description: Composition root that bootstraps the DDD application lifecycle, 
 #              handling dynamic, decoupled dependency injection on boot.
 # SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Acts exclusively as the 
-#   application orchestrator, delegating resource registrations 
-#   and visual shader setups to specialized managers.
-# - Open-Closed Principle (OCP): Completely open to extensions. Dynamic scenery 
-#   props and physical entity scene templates are registered dynamically on startup.
-# LAZY TELEMETRY INITIALIZATION:
-# - Instantiates the custom RefCounted `AITelemetryService` on application boot, 
-#   allocating its RAM buffer and enabling diagnostics logs to stream to disk.
+# - Single Responsibility Principle (SRP): Acts exclusively as the central 
+#   application orchestrator, delegating resource registrations, asset preloading, 
+#   and visual shader setups to specialized registries.
+# - Open-Closed Principle (OCP): Completely open to extensions. Dynamic biomes, 
+#   scenery props, and physical entity scene templates are registered dynamically on startup.
 # ==============================================================================
 class_name Bootstrap
 extends Node
@@ -44,9 +41,15 @@ func _initialize_application() -> void:
 	ai_telemetry_service = AITelemetryService.new()
 	
 	_load_and_apply_user_settings()
+	
+	# Load localized translation JSON files from disk
 	TranslationRegistry.initialize_translations()
 	
-	# SOLID COMPLIANCE: Delegate registry startup routines
+	# --- PRELOAD GRAPHIC TEXTURE ASSETS (OCP/SRP Compliant) ---
+	# Pre-caches all PBR block textures in RAM before chunks start loading
+	TextureRegistry.initialize_textures()
+	
+	# SOLID COMPLIANCE: Delegate registry startup routines polimorphically
 	BiomeService.register_biome(BayOfSailsBiome.new())
 	BiomeService.register_biome(WarpPlateauBiome.new())
 	BiomeService.register_biome(GoldenBazaarBiome.new())
@@ -61,10 +64,7 @@ func _initialize_application() -> void:
 	StructureLibrary.initialize_structures()
 	MegaStructureService.initialize_megastructures()
 	
-	# ==========================================================================
-	# COGNITIVE REGISTRY STARTUP (SOLID OCP Compliance)
-	# Compile and register the 7 dynamic voxel model builders in RAM on boot
-	# ==========================================================================
+	# Compile and register the 7 dynamic voxel model builders in RAM
 	VoxelModelRegistry.initialize_registry()
 	
 	# DIP COMPLIANCE: Inject concrete Infrastructure Mob scenes into pure Domain
@@ -102,8 +102,6 @@ func _setup_mob_registry() -> void:
 	# --------------------------------------------------------------------------
 	_register_scene_mob(0, "pig_entity.tscn", PigEntity, hab_land, ai_fauna)
 	_register_scene_mob(1, "chicken_entity.tscn", ChickenEntity, hab_land, ai_fauna)
-	
-	# FIX: Correctly registered Sheep and Cow to load their .tscn files!
 	_register_scene_mob(2, "sheep_entity.tscn", SheepEntity, hab_land, ai_fauna)
 	_register_scene_mob(3, "cow_entity.tscn", CowEntity, hab_land, ai_fauna)
 	
@@ -136,7 +134,7 @@ func _setup_mob_registry() -> void:
 	_register_scene_mob(106, "cyber_citizen_entity.tscn", CyberCitizenEntity, hab_land)
 
 
-## Factory Helper: Automates registration of scene templates with custom fallbacks and behaviors
+## Factory Helper: Automates registration of scene templates with custom fallbacks and behaviors.
 func _register_scene_mob(spawn_id: int, file_name: String, fallback_class: Variant, habitat: int, default_behavior: IAIBehavior = null) -> void:
 	MobRegistry.register_mob(spawn_id, func(pos: Vector3) -> Node:
 		var scene_path := "res://src/Infrastructure/Life/" + file_name
@@ -145,7 +143,6 @@ func _register_scene_mob(spawn_id: int, file_name: String, fallback_class: Varia
 			if scene != null:
 				var inst := scene.instantiate() as CharacterBody3D
 				inst.position = pos
-				# Assign a clean, recognizable name from the scene file name (e.g. "zombie_entity" -> "ZombieEntity")
 				var base_name := file_name.get_basename()
 				var camel_name := base_name.to_camel_case()
 				var pascal_name := camel_name.capitalize().replace(" ", "")
@@ -153,7 +150,6 @@ func _register_scene_mob(spawn_id: int, file_name: String, fallback_class: Varia
 				return inst
 		var fallback_inst := fallback_class.new(pos) as Node
 		if is_instance_valid(fallback_inst):
-			# Extract a clean alphanumeric class name from the script resource path (e.g., "SharkEntity")
 			var class_name_str := "PassiveEntity"
 			if fallback_class.resource_path != "":
 				class_name_str = fallback_class.resource_path.get_file().get_basename()
@@ -254,6 +250,7 @@ func _setup_celestial() -> void:
 	celestial_service.world_environment = world_environment
 	add_child(celestial_service)
 	
+	# Instantiate and register Weather simulation loops
 	weather_service = WeatherService.new()
 	weather_service.name = "WeatherService"
 	add_child(weather_service)

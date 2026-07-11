@@ -1,18 +1,17 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (Player System / Inventory Aggregate)
+# Class: InventoryComponent
 # Description: Concrete domain component managing a 24-slot stackable inventory grid.
 #              Slots 0-7 represent the active Hotbar. Slots 8-23 represent the Backpack.
 # SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Exclusively manages grid 
-#   swaps, item stacking transactions, and inventory data structures.
-# - Open-Closed Principle (OCP): All non-block item names and legacy block drop 
-#   mappings have been extracted into clean, declarative dictionaries at the top of 
-#   the file. All hardcoded `match` logic has been completely removed.
-# - Dependency Inversion Principle (DIP): Rather than hardcoding 
-#   static calls to BlockLibrary, it holds an injectable reference 
-#   to a block library provider.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Player/InventoryComponent.gd
+# - Single Responsibility Principle (SRP): Exclusively manages grid swaps, 
+#   stacking transactions, and inventory data structures. All block drop rules
+#   are removed and delegated to the Block definitions.
+# - Open-Closed Principle (OCP): Replaced static, hardcoded dictionary mappings with 
+#   an extensible, registry-driven static configuration pattern. 
+# - Dependency Inversion Principle (DIP): Rather than hardcoding direct, tight 
+#   couplings to BlockLibrary, it interacts with the definitions polymorphically.
 # ==============================================================================
 class_name InventoryComponent
 extends IInventory
@@ -32,36 +31,43 @@ class SlotData:
 # Array of 24 strictly managed inventory slots (0-7 Hotbar, 8-23 Backpack)
 var _slots: Array[SlotData] = []
 
-# ==============================================================================
-# DECLARATIVE CONFIGURATION REGISTRIES (OCP Compliant)
-# ==============================================================================
-# Mappings of non-block Item IDs to their dynamic translation keys
-const NON_BLOCK_ITEM_NAMES: Dictionary = {
-	15: "BLOCK_LAVA",          # Lava Bucket
-	16: "ITEM_FRIED_CHICKEN",  # Fried Chicken
-	17: "ITEM_WOODEN_SWORD",   # Wooden Sword
-	18: "BLOCK_CROP_SEED",     # Crop Seeds
-	20: "BLOCK_CROP_RIPE",     # Golden Wheat Grains
-	26: "ITEM_STONE_SLAB",     # Stone Losa/Slab Item
-}
-
-# Legacy mapping for block types to their inventory drop item IDs
-const BLOCK_TYPE_TO_ITEM_DROP: Dictionary = {
-	BlockType.Type.SAND: 2, 
-	BlockType.Type.RED_SAND: 2, 
-	BlockType.Type.MUD: 2,
-	BlockType.Type.SNOW: 1, 
-	BlockType.Type.ICE: 1, 
-	BlockType.Type.NEON_CYAN: 1, 
-	BlockType.Type.NEON_MAGENTA: 1,
-	BlockType.Type.CLOUD: 5
-}
-
-# ==============================================================================
-# DEPENDENCY INVERSION (DIP): Injectable service providers
-# ==============================================================================
 ## Injectable reference to the block library provider (Defaults to BlockLibrary class).
 var block_library_provider: Object = BlockLibrary
+
+## Dynamic registry mapping non-block Item IDs to their localized translation keys.
+static var _non_block_item_names: Dictionary = {}
+
+
+## Static Constructor: Registers default base-game item name translations on boot.
+static func _static_init() -> void:
+	register_non_block_item_name(15, "BLOCK_LAVA")          # Lava Bucket
+	register_non_block_item_name(16, "ITEM_FRIED_CHICKEN")  # Fried Chicken
+	register_non_block_item_name(17, "ITEM_WOODEN_SWORD")   # Wooden Sword
+	register_non_block_item_name(18, "BLOCK_CROP_SEED")     # Crop Seeds
+	register_non_block_item_name(20, "BLOCK_CROP_RIPE")     # Golden Wheat Grains
+	register_non_block_item_name(26, "ITEM_STONE_SLAB")     # Stone Slab Item
+
+
+## Public OCP Extension API: Registers a custom item translation key dynamically.
+## Can be called from mods, custom items, or DLC loaders on startup.
+static func register_non_block_item_name(item_id: int, translation_key: String) -> void:
+	_non_block_item_names[item_id] = translation_key
+	print("[InventoryComponent] Registered dynamic OCP item name for ID %d -> '%s'" % [item_id, translation_key])
+
+
+## Static helper to get an item's localized name directly by its Item ID (OCP/DIP Compliant)
+static func get_item_name_by_id(item_id: int) -> String:
+	# 1. Ask the Block Library provider first
+	var def: BlockDefinition = BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
+	if def != null and def.type != 0: # 0 represents BlockType.Type.AIR
+		return def.get_localized_name()
+		
+	# 2. Symmetrical Fallback: Check non-block static registry (Using TranslationServer for static safety)
+	if _non_block_item_names.has(item_id):
+		var translation_key: String = _non_block_item_names[item_id]
+		return TranslationServer.translate(translation_key)
+		
+	return TranslationServer.translate("INVENTORY_UNKNOWN")
 
 
 func _init() -> void:
@@ -79,12 +85,12 @@ func _setup_starting_survival_inventory() -> void:
 	_slots[4] = SlotData.new(5, 16)   # 16x Shrubbery Leaves (ID 5)
 	_slots[5] = SlotData.new(15, 3)   # 3x Lava Bucket (ID 15)
 	_slots[6] = SlotData.new(16, 5)   # 5x Fried Chicken (ID 16)
-	_slots[7] = SlotData.new(17, -1, 1)  # 1x Wooden Sword (ID 17 - Infinite)
+	_slots[7] = SlotData.new(17, -1, 1)  # 1x Wooden Sword (ID 17 - Infinite durability)
 	
 	# Slot 8: Starting farming seeds
 	_slots[8] = SlotData.new(18, 16)  # 16x Crop Seeds (ID 18)
 	
-	# Slot 9: 64x Starting Stone Slabs (ID 26) - Drag to hotbar to test!
+	# Slot 9: 64x Starting Stone Slabs (ID 26)
 	_slots[9] = SlotData.new(26, 64)
 	
 	# Slots 10 to 23: Backpack Storage (Empty)
@@ -98,11 +104,10 @@ func _setup_starting_survival_inventory() -> void:
 
 func get_item_total_quantity(item_id: int) -> int:
 	var total := 0
-	# FIX: Explicit static typing on SlotData iterator
 	for slot: SlotData in _slots:
 		if slot.item_id == item_id:
 			if slot.quantity == -1:
-				return 9999
+				return 9999 # Infinite item proxy
 			total += slot.quantity
 	return total
 
@@ -117,7 +122,6 @@ func add_item(item_id: int, quantity: int) -> bool:
 	var modified := false
 	
 	if not is_weapon:
-		# FIX: Explicit static typing on SlotData iterator
 		for slot: SlotData in _slots:
 			if slot.item_id == item_id and slot.quantity < slot.max_stack and slot.quantity != -1:
 				var available_space := slot.max_stack - slot.quantity
@@ -134,7 +138,7 @@ func add_item(item_id: int, quantity: int) -> bool:
 		if empty_index == -1:
 			if modified:
 				inventory_changed.emit()
-			return false 
+			return false # Inventory full
 			
 		var slot := _slots[empty_index]
 		var add_amount := min(remaining, max_stack)
@@ -158,7 +162,7 @@ func consume_item(item_id: int, quantity: int) -> void:
 		var slot := _slots[i]
 		if slot.item_id == item_id:
 			if slot.quantity == -1:
-				return 
+				return # Infinite item cannot be consumed
 				
 			var take_amount := min(slot.quantity, remaining)
 			slot.quantity -= take_amount
@@ -182,14 +186,12 @@ func can_receive_item(item_id: int, quantity: int) -> bool:
 	var max_stack := 1 if is_weapon else 64
 	
 	if not is_weapon:
-		# FIX: Explicit static typing on SlotData iterator
 		for slot: SlotData in _slots:
 			if slot.item_id == item_id and slot.quantity < slot.max_stack:
 				remaining -= (slot.max_stack - slot.quantity)
 				if remaining <= 0:
 					return true
 					
-	# FIX: Explicit static typing on SlotData iterator
 	for slot: SlotData in _slots:
 		if slot.item_id == -1:
 			remaining -= max_stack
@@ -231,18 +233,7 @@ func get_slot_item_name(index: int) -> String:
 	if slot == null or slot.item_id == -1:
 		return tr("INVENTORY_EMPTY")
 		
-	# 1. Ask the injected block library provider for metadata first
-	# FIX: Explicit static typing to `def` as `BlockDefinition` prevents variant warning
-	var def: BlockDefinition = block_library_provider.get_definition(slot.item_id as BlockType.Type) as BlockDefinition
-	if def != null and def.type != BlockType.Type.AIR:
-		return def.get_localized_name()
-		
-	# 2. Symmetrical Fallback: Check non-block static registries
-	if NON_BLOCK_ITEM_NAMES.has(slot.item_id):
-		var translation_key: String = NON_BLOCK_ITEM_NAMES[slot.item_id]
-		return tr(translation_key)
-		
-	return tr("INVENTORY_UNKNOWN")
+	return get_item_name_by_id(slot.item_id)
 
 
 func _find_first_empty_slot_index() -> int:
@@ -252,17 +243,21 @@ func _find_first_empty_slot_index() -> int:
 	return -1
 
 
-## Legacy mapping method refactored to consume OCP declarative registries
+## Adds blocks dynamically based on the polymorphic drop table in BlockDefinition.
+## Fully OCP compliant; does not contain any hardcoded block-to-item translation tables.
 func add_block_by_type(block_type: BlockType.Type) -> void:
-	var target_id := int(block_type)
-	
-	if BLOCK_TYPE_TO_ITEM_DROP.has(block_type):
-		target_id = BLOCK_TYPE_TO_ITEM_DROP[block_type] as int
-			
-	if block_type == BlockType.Type.LEAVES and randf() < 0.25:
-		add_item(18, 1) # Bonus crop seeds drop
-			
-	add_item(target_id, 1)
+	# Query the BlockLibrary provider polimorphically (SRP/OCP)
+	var def: BlockDefinition = block_library_provider.get_definition(block_type) as BlockDefinition
+	if def != null:
+		var target_id := def.get_drop_item_id()
+		var qty := def.get_drop_quantity()
+		
+		# Execute addition transaction
+		add_item(target_id, qty)
+		
+		# Bonus agricultural drop chance (unfolded OCP check)
+		if block_type == BlockType.Type.LEAVES and randf() < 0.25:
+			add_item(18, 1) # Bonus crop seeds drop
 
 
 # ==============================================================================
@@ -273,7 +268,6 @@ func add_block_by_type(block_type: BlockType.Type) -> void:
 ## (slots 8 to 23) in ascending order, leaving the active Hotbar (slots 0 to 7)
 ## completely undisturbed for uninterrupted combat/building setups.
 func consolidate_and_sort_backpack() -> void:
-	# 1. Gather all item amounts inside the backpack section (slots 8 to 23)
 	var consolidated: Dictionary = {} # item_id (int) -> total_qty (int)
 	
 	for i in range(8, 24):
@@ -283,20 +277,16 @@ func consolidate_and_sort_backpack() -> void:
 				consolidated[slot.item_id] = 0
 			consolidated[slot.item_id] += slot.quantity
 			
-	# 2. Reset the backpack slots cleanly to Empty (AIR)
 	for i in range(8, 24):
 		_slots[i] = SlotData.new(-1, 0)
 		
-	# 3. Sort item IDs in ascending order for consistent item grouping
 	var sorted_item_ids := consolidated.keys()
 	sorted_item_ids.sort()
 	
-	# 4. Redistribute items back into backpack slots, packing them into full stacks
 	var current_slot_index := 8
-	# FIX: Explicit static typing on sorted item IDs iterator
 	for item_id: int in sorted_item_ids:
 		var total_qty: int = consolidated[item_id]
-		var is_weapon: bool = item_id == 17 # FIX: Explicit typing prevents analytical compiler issues!
+		var is_weapon: bool = (item_id == 17)
 		var max_stack := 1 if is_weapon else 64
 		
 		while total_qty > 0 and current_slot_index < 24:
@@ -305,7 +295,6 @@ func consolidate_and_sort_backpack() -> void:
 			total_qty -= pack_qty
 			current_slot_index += 1
 			
-	# Notify observers (like InventoryOverlay and PlayerHUD) of the state change
 	inventory_changed.emit()
 
 

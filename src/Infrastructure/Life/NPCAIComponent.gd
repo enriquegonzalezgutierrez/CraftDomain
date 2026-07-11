@@ -1,14 +1,16 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure (AI Logic Rig)
+# Layer: Infrastructure (NPC Sensory AI Brain)
 # Class: NPCAIComponent
 # Description: Rigging component managing task timers, obstacle avoidance, 
 #              and physical step-climbing assistance.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Actively manages the physical translation
-#   and pathing state of the NPC, delegating complex behaviors to isolated strategies.
-# - Open-Closed Principle (OCP): Integrates cleanly with interchangeable 
-#   IAIBehavior strategies, closing the core component to modification.
+# - Single Responsibility Principle (SRP): Actively manages the physical translation,
+#   whisker raycast steering, and pathing state of the NPC, delegating complex 
+#   behavior schedules to isolated domain strategies.
+# - Open-Closed Principle (OCP): Completely decoupled from concrete humanoid roles. 
+#   Exclusions from weather/night shelter-seeking are queried polimorphically 
+#   from the host's `can_take_shelter()` contract, closing this file to changes.
 # - Liskov Substitution Principle (LSP): Functions uniformly across all passive and
 #   hostile entity classes.
 # ==============================================================================
@@ -41,7 +43,7 @@ var social_cooldown: float = 0.0
 
 # Performance Lod tracker
 var _ai_timer_accum: float = 0.0
-var _ai_tick_rate: float = 0.25 # Standard throttled tick rate for decisions
+var _ai_tick_rate: float = 0.25 # Standard throttled tick rate for decisions (4Hz)
 
 # Fallback movement and sensory ranges (OCP/SOLID compliant)
 var SIGHT_RANGE_SQ: float = 64.0
@@ -79,13 +81,10 @@ func process_ai(delta: float) -> void:
 	# ==========================================================================
 	_process_movement_avoidance(delta)
 	
-	var has_override := false # Declared at the top level of the function to resolve shadowed warning
+	var has_override := false
 
 	_ai_timer_accum += delta
 	if _ai_timer_accum < _ai_tick_rate:
-		# UNFREEZE PATROLLER GALE (SOLID OCP Fix)
-		# If the active strategy does NOT override wandering, apply the fallback 
-		# movement forces every frame to keep them sliding on screen smoothly.
 		has_override = false
 		if active_behavior != null and active_behavior.get("overrides_wandering") == true:
 			has_override = true
@@ -104,7 +103,6 @@ func process_ai(delta: float) -> void:
 	# Execute the active behavior strategy, letting it decide its own states,
 	# velocities, and write into the animation data carriers.
 	# ==========================================================================
-	has_override = false
 	if active_behavior != null:
 		active_behavior.evaluate_and_execute(_host, _ai_tick_rate)
 		has_override = active_behavior.get("overrides_wandering") == true
@@ -112,7 +110,6 @@ func process_ai(delta: float) -> void:
 	# ==========================================================================
 	# UNFREEZE SCHEDULER: RUN FALLBACK VILLAGE PATROLS
 	# Only run standard wandering routines for entities that do NOT override them 
-	# (e.g. Guards, Golems, Farmers, Miners, Druids in repose).
 	# ==========================================================================
 	if not has_override:
 		_process_fallback_village_routines()
@@ -156,12 +153,17 @@ func _process_fallback_village_routines() -> void:
 				var w_val: int = int(cur_weather)
 				is_storming = (w_val == 1 or w_val == 2)
 			
-	var is_civilian := false
-	if _host.has_method("_get_humanoid_role"):
+	# OCP RESOLUTION: Determine if the entity needs shelter polimorphically.
+	# Removes hardcoded role indexes and excludes guards/golems dynamically.
+	var can_take_shelter := false
+	if _host.has_method("can_take_shelter"):
+		can_take_shelter = _host.call("can_take_shelter") as bool
+	elif _host.has_method("_get_humanoid_role"):
 		var role: int = _host.call("_get_humanoid_role")
-		is_civilian = (role >= 0 and role != 2 and role != 6)
+		# Legacy fallback check: civilians (role >= 0, excluding guards (2) and golems (6))
+		can_take_shelter = (role >= 0 and role != 2 and role != 6)
 		
-	if (is_night or is_storming) and is_civilian:
+	if (is_night or is_storming) and can_take_shelter:
 		_seek_shelter_routine()
 		_apply_movement_vectors()
 		return
@@ -376,7 +378,7 @@ func _process_movement_avoidance(_delta: float) -> void:
 			
 			# ----------------==================================================
 			# ANTI-CEILING SMASHING SOLVER (SOLID Physics boundary scan)
-			# ----------------==================================================
+			# --------------------------------==================================
 			var head_coord := Vector3i(
 				floori(_host.global_position.x),
 				floori(_host.global_position.y) + 2, # Block directly above head (2.0m height)
@@ -642,13 +644,9 @@ func _dispatch_active_telemetry() -> void:
 		)
 
 
+## Mps task indexes safely to string tokens (OCP Compliant)
 func _get_task_state_name(task_val: int) -> String:
-	match task_val:
-		0: return "IDLE"
-		1: return "WANDERING"
-		2: return "EXAMINING"
-		3: return "GREETING"
-		4: return "CHATTING"
-		5: return "PANIC"
-		6: return "WORKING"
-		_: return "IDLE"
+	var names := ["IDLE", "WANDERING", "EXAMINING", "GREETING", "CHATTING", "PANIC", "WORKING"]
+	if task_val >= 0 and task_val < names.size():
+		return names[task_val]
+	return "IDLE"

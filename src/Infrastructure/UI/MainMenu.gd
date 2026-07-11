@@ -1,23 +1,22 @@
 # ==============================================================================
 # Project: CraftDomain
-# Layer: Infrastructure / UI (Main Menu Controls)
+# Layer: Infrastructure (UI Presentation / Main Menu)
 # Class: MainMenu
-# Description: Modern, glassmorphic Main Menu controller. It coordinates the 
-#              initial application entry point and binds transitions to launch 
-#              either the infinite sandbox world, the system configuration settings, 
-#              or the developer's dynamic AI Showcase testing Sandbox Laboratory.
+# Description: Glassmorphic Main Menu controller. Coordinates game boots, 
+#              system settings overlays, and launches the diagnostic AI Showcase.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively Main Menu visual 
-#   card animations, translation selections, and scenes routing.
-# - Open-Closed Principle (OCP): Dynamic button bindings allow adding new scene 
-#   modes without altering base input loaders.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/MainMenu.gd
+# - Single Responsibility Principle (SRP): Coordinates exclusively main menu 
+#   card animations, button clicks, and layout transitions, delegating 
+#   low-level file deletion transactions to the repository.
+# - Open-Closed Principle (OCP): Dynamically reacts to localized translation 
+#   swaps at runtime, closing the core class to modifications.
+# - Liskov Substitution Principle (LSP): Fully compatible with standard Control 
+#   nodes, utilizing responsive margins and centered anchors.
 # ==============================================================================
 class_name MainMenu
 extends Control
 
-## Emitted when the player requests to launch the world
+## Emitted when the player requests to launch the world.
 signal play_pressed
 
 # References to sub-overlays
@@ -140,7 +139,7 @@ func _ready() -> void:
 		_reset_btn.pressed.connect(_on_new_game_clicked_with_save)
 		box.add_child(_reset_btn)
 		
-	# Restored and bounded diagnostic laboratory button!
+	# Bounded diagnostic laboratory button
 	_showcase_btn = _create_tactile_button(default_color)
 	_showcase_btn.pressed.connect(_on_showcase_pressed)
 	box.add_child(_showcase_btn)
@@ -371,7 +370,10 @@ func _on_overwrite_confirmed() -> void:
 	_has_save_game = false
 	if is_instance_valid(_reset_btn):
 		_reset_btn.queue_free()
-	_delete_save_files_on_disk()
+	
+	# SRP RESOLUTION: Delegating the low-level save wiping operation to a static
+	# helper inside the concrete DiskWorldRepository class, isolating disk I/O.
+	DiskWorldRepository.delete_save_game_files()
 	play_pressed.emit()
 
 
@@ -382,33 +384,12 @@ func _on_overwrite_cancelled() -> void:
 	tween.chain().tween_callback(func() -> void: _confirm_modal.visible = false)
 
 
-func _delete_save_files_on_disk() -> void:
-	var global_path: String = "user://world_save/global_save.json"
-	if FileAccess.file_exists(global_path):
-		DirAccess.remove_absolute(global_path)
-		
-	var chunks_dir: String = "user://world_save/chunks/"
-	if DirAccess.dir_exists_absolute(chunks_dir):
-		var dir := DirAccess.open(chunks_dir)
-		if dir != null:
-			dir.list_dir_begin()
-			var file_name: String = dir.get_next()
-			while file_name != "":
-				if not dir.current_is_dir() and file_name.ends_with(".json"):
-					dir.remove(file_name)
-				file_name = dir.get_next()
-			dir.list_dir_end()
-			
-	print("[MainMenu] Save wiping finished successfully. Ready for a new world!")
-
-
 ## Symmetrical transition into the new, fully isolated AIShowcaseRoom testing sandbox!
 func _on_showcase_pressed() -> void:
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(self, "modulate:a", 0.0, 0.20).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	
 	tween.chain().tween_callback(func() -> void:
-		# Direct dynamic instantiation of the diagnostic sandbox room
 		var room := AIShowcaseRoom.new()
 		get_parent().add_child(room)
 		queue_free()

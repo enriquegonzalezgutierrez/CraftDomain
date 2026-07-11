@@ -1,16 +1,18 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Infrastructure (World Generation Services)
+# Class: PropSpawningService
 # Description: Infrastructure Service responsible for calculating and spawning
-#              inert scenery props and interactive decorations inside newly loaded chunks.
+#              inert scenery props and interactive decorations inside loaded chunks.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates procedural 
-#   decorative prop placements.
-# - Open-Closed Principle (OCP): Works dynamically based on the global PropRegistry.
-# CLEANUP NOTE:
-#              - Removed RitualStoneEntity (ID 214) from the redwood forest 
-#                procedural spawning pool, re-balancing the remaining prop probabilities.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/World/PropSpawningService.gd
+# - Single Responsibility Principle (SRP): Coordinates exclusively the physical 
+#   spawning coordinates of decorative props, leaving structure blueprints to 
+#   their own strategy classes.
+# - Open-Closed Principle (OCP): Completely closed to modifications. All rigid 
+#   checks for specific biomes (Plains, Redwoods) are removed. Wilderness 
+#   props scatter choices are delegated polimorphically to the active Biome strategies.
+# - Liskov Substitution Principle (LSP): Works uniformly across all biomes 
+#   implementing the IBiome interface.
 # ==============================================================================
 class_name PropSpawningService
 extends RefCounted
@@ -22,8 +24,8 @@ func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldSta
 	var chunk_pos := chunk.position
 	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	
-	var is_real_village: bool = false
-	var active_biome_id: int = 2 # Default Golden Bazaar plains
+	var is_real_village := false
+	var active_biome_id := 2 # Default Golden Bazaar plains
 	
 	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator
 	if is_instance_valid(generator):
@@ -36,7 +38,11 @@ func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldSta
 			is_real_village = (profile.landmark_id == 3)
 			active_biome_id = profile.biome_id
 
-	# 1. Spawning inside Village Outposts (Chests, streetlights, campfires, wells, and loot barrels)
+	var biome: IBiome = BiomeService.get_biome(active_biome_id)
+
+	# --------------------------------------------------------------------------
+	# 1. VILLAGE OUTPOST DECORATION SPAWNING
+	# --------------------------------------------------------------------------
 	if is_real_village:
 		# Loot chest spawns in all outposts (ID 200)
 		_spawn_and_register_prop(200, chunk_offset, 4.5, 8.5, world_state, world_node, entities_list)
@@ -54,21 +60,25 @@ func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldSta
 		_spawn_and_register_prop(215, chunk_offset, 6.5, 9.5, world_state, world_node, entities_list)
 		_spawn_and_register_prop(215, chunk_offset, 11.5, 6.5, world_state, world_node, entities_list)
 	else:
-		# 2. Spawning organically in the wilderness (Out of villages)
+		# --------------------------------------------------------------------------
+		# 2. WILDERNESS ORGANIC SCATTER SPAWNING
+		# --------------------------------------------------------------------------
 		var roll := randf()
 		if roll < 0.12:
-			if active_biome_id == 2: # Plains (Rare Wishing Wells and Wild Barrels)
-				if roll < 0.03:
-					_spawn_and_register_prop(213, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
-				elif roll < 0.06: 
-					_spawn_and_register_prop(215, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
-			elif active_biome_id == 5: # Redwood Forest (Wishing Wells and Barrels)
-				if roll < 0.03: # 3% chance for a wishing well (Adjusted)
-					_spawn_and_register_prop(213, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
-				elif roll < 0.06: # 3% chance for a hidden loot barrel
-					_spawn_and_register_prop(215, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
+			var scatter_hash: int = abs(chunk_pos.x * 93856093 ^ chunk_pos.z * 29349663)
+			
+			# OCP RESOLUTION: Query the active biome strategy for the appropriate prop ID.
+			# Removes hardcoded biome checks and nested random rolls from this service loop.
+			var target_prop_id := 0
+			if is_instance_valid(biome) and biome.has_method("get_wilderness_prop_id"):
+				target_prop_id = biome.call("get_wilderness_prop_id", scatter_hash) as int
+				
+			if target_prop_id > 0 and PropRegistry.has_prop(target_prop_id):
+				_spawn_and_register_prop(target_prop_id, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
 
+	# --------------------------------------------------------------------------
 	# 3. HIGHWAY LIGHTING: Spawns streetlights along the paved roads shoulders
+	# --------------------------------------------------------------------------
 	var road_lamps := RoadGeneratorService.get_roadside_lamps_for_chunk(chunk_pos)
 	for lamp_pos: Vector3 in road_lamps:
 		_spawn_and_register_prop(202, Vector3.ZERO, lamp_pos.x, lamp_pos.z, world_state, world_node, entities_list)
@@ -86,7 +96,7 @@ func _spawn_and_register_prop(prop_id: int, offset: Vector3, lx: float, lz: floa
 		return 
 		
 	var pos := offset + Vector3(lx, gy, lz)
-	var prop: Node = PropRegistry.create_prop(prop_id, pos)
+	var prop := PropRegistry.create_prop(prop_id, pos)
 	if prop != null:
 		world_node.add_child(prop)
 		list.append(prop)
@@ -98,12 +108,10 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		var check_pos := Vector3i(global_x, y, global_z)
 		var block_type := world_state.get_block(check_pos)
 		
-		if block_type == BlockType.Type.GRASS or block_type == BlockType.Type.DIRT or \
-		   block_type == BlockType.Type.STONE or block_type == BlockType.Type.SAND or \
-		   block_type == BlockType.Type.RED_SAND or block_type == BlockType.Type.MUD or \
-		   block_type == BlockType.Type.SNOW or block_type == BlockType.Type.ICE or \
-		   block_type == BlockType.Type.BRICKS: 
-			
+		# OCP COMPLIANCE: Mobs and props can only spawn on blocks that explicitly declare is_spawnable_soil = true.
+		# This prevents spawning on structural blocks, roofs, or glass, keeping placements natural.
+		var def := BlockLibrary.get_definition(block_type) as BlockDefinition
+		if def != null and def.is_spawnable_soil:
 			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
 			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
 			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):

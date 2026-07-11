@@ -1,20 +1,35 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Infrastructure (UI Widgets / Minimap Radar)
+# Class: MinimapWidget
 # Description: SRP-compliant UI Widget responsible ONLY for rendering the 
 #              circular minimap radar, player direction arrow, and active markers.
-#              UX OVERHAUL (3D ALTITUDE RADAR):
-#              - Implemented 3D altitude-aware depth-sensing pins. Entities on 
-#                different vertical levels (caves or cliffs) fade automatically 
-#                and display vertical chevron indicators (^ or v) on the radar.
-# EXTREME PERFORMANCE UPGRADE (120 FPS STABILIZATION):
-# - ELIMINATED MAIN-THREAD BOTTLENECK: The 13x13 radar grid is calculated 
-#   ONLY when the player physically crosses a chunk boundary.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/UI/Widgets/MinimapWidget.gd
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Focuses exclusively on radar canvas 
+#   drawings and coordinate-to-pixel translations.
+# - Open-Closed Principle (OCP): Completely closed to modifications. All rigid 
+#   type-checks (e.g. 'child is CampfireEntity') have been removed. Pin types 
+#   are resolved polimorphically through metadata or virtual methods, allowing 
+#   infinite new trackable props and entities.
+# - Liskov Substitution Principle (LSP): Works uniformly on any trackable Node3D 
+#   that registers in standard engine groups or exposes pin traits.
 # ==============================================================================
 class_name MinimapWidget
 extends Control
 
+# --- PIN TYPES ENUM ---
+enum PinType {
+	NONE = -1,
+	ANIMAL = 0,
+	NPC = 1,
+	DEFENDER = 2,
+	HOSTILE = 3,
+	CHEST = 4,
+	CAMPFIRE = 5,
+	LIGHT = 6
+}
+
+# Dependencies injected by the HUD orchestrator
 var player: CharacterBody3D
 var world_controller: Node3D
 
@@ -33,18 +48,21 @@ const MAX_RADIUS: float = (SIZE_DIM / 2.0) - 2.0
 const MAX_RADIUS_SQ: float = (MAX_RADIUS - 2.0) * (MAX_RADIUS - 2.0)
 
 const RADAR_BIOME_COLORS: Dictionary = {
-	0: Color(0.12, 0.55, 0.82), 1: Color(0.38, 0.85, 0.28), 2: Color(0.92, 0.85, 0.35), 
-	3: Color(0.48, 0.48, 0.48), 4: Color(0.98, 0.98, 0.98), 5: Color(0.18, 0.45, 0.15), 
-	6: Color(0.85, 0.38, 0.22), 7: Color(0.0, 0.85, 0.85),  8: Color(0.28, 0.22, 0.15), 
-	9: Color(1.0, 1.0, 1.0)
+	0: Color(0.12, 0.55, 0.82), # Ocean
+	1: Color(0.38, 0.85, 0.28), # Plateau
+	2: Color(0.92, 0.85, 0.35), # Plains
+	3: Color(0.48, 0.48, 0.48), # Mountains
+	4: Color(0.98, 0.98, 0.98), # Glaciers
+	5: Color(0.18, 0.45, 0.15), # Forest
+	6: Color(0.85, 0.38, 0.22), # Badlands
+	7: Color(0.0, 0.85, 0.85),  # Neon Ruins
+	8: Color(0.28, 0.22, 0.15), # Swamp
+	9: Color(1.0, 1.0, 1.0)     # Clouds
 }
 
 # --- PERFORMANCE CACHE VARIABLES ---
 var _cached_biome_colors: Dictionary = {} # Vector2i -> Color
 var _last_chunk_center: Vector2 = Vector2(-99999, -99999)
-
-# --- PIN TYPES ENUM ---
-enum PinType { ANIMAL, NPC, DEFENDER, HOSTILE, CHEST, CAMPFIRE, LIGHT }
 
 
 func _ready() -> void:
@@ -71,7 +89,7 @@ func _setup_rendering_layers() -> void:
 	_mask_panel.clip_children = CanvasItem.CLIP_CHILDREN_ONLY
 	add_child(_mask_panel)
 	
-	# 2. Radar Canvas
+	# 2. Radar Canvas (Draws biomes, grid, and entities)
 	_radar_canvas = Control.new()
 	_radar_canvas.name = "RadarCanvas"
 	_radar_canvas.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -79,7 +97,7 @@ func _setup_rendering_layers() -> void:
 	_radar_canvas.draw.connect(_on_radar_draw)
 	_mask_panel.add_child(_radar_canvas)
 	
-	# 3. Border Canvas
+	# 3. Border Canvas (Draws frame vignette, compass plates, and central player arrow)
 	_border_canvas = Control.new()
 	_border_canvas.name = "BorderCanvas"
 	_border_canvas.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -159,32 +177,38 @@ func _on_radar_draw() -> void:
 	_radar_canvas.draw_circle(CENTER, MAX_RADIUS * 0.4, grid_color, false, 1.0)
 	_radar_canvas.draw_circle(CENTER, MAX_RADIUS * 0.75, grid_color, false, 1.0)
 
-	# 3. DRAW TACTICAL ENTITY PINS (3D DEPTH TRACKING OVERHAUL)
+	# 3. DRAW TACTICAL ENTITY PINS (OCP COMPLIANT)
 	for child: Node in world_controller.get_children():
-		if not is_instance_valid(child):
+		if not is_instance_valid(child) or not (child is Node3D):
 			continue
 			
-		var child_pos: Vector3 = Vector3.ZERO
-		var pin_type: PinType = PinType.NPC
+		var child_pos: Vector3 = child.get("global_position") as Vector3
+		var pin_type: PinType = PinType.NONE
 		var is_valid_entity: bool = false
 		
-		# Classify entity for Symbology
-		if child is CampfireEntity or child is WishingWellEntity:
-			child_pos = child.global_position; pin_type = PinType.CAMPFIRE; is_valid_entity = true
-		elif child is ChestEntity:
-			child_pos = child.global_position; pin_type = PinType.CHEST; is_valid_entity = true
-		elif child is StreetlightEntity:
-			child_pos = child.global_position; pin_type = PinType.LIGHT; is_valid_entity = true
-		elif child is GuardEntity or child is GolemEntity:
-			child_pos = child.global_position; pin_type = PinType.DEFENDER; is_valid_entity = true
-		elif child is CowEntity or child is PigEntity or child is SheepEntity or child is ChickenEntity or child is TurtleEntity or child is FoxEntity or child is CatEntity or child is RaccoonEntity or child is GrowlitheEntity:
-			child_pos = child.global_position; pin_type = PinType.ANIMAL; is_valid_entity = true
-		elif child is HostileEntity or child is SharkEntity or child is GargoyleEntity or child is GoblinEntity:
-			child_pos = child.global_position; pin_type = PinType.HOSTILE; is_valid_entity = true
-		elif child is PassiveEntity: 
-			child_pos = child.global_position; pin_type = PinType.NPC; is_valid_entity = true
+		# OCP RESOLUTION: Query the tracking properties polimorphically.
+		# A. Check metadata overrides (set_meta("minimap_pin_type", PinType.*))
+		if child.has_meta("minimap_pin_type"):
+			pin_type = child.get_meta("minimap_pin_type") as PinType
+			is_valid_entity = true
+		# B. Check virtual method overrides
+		elif child.has_method("get_minimap_pin_type"):
+			pin_type = child.call("get_minimap_pin_type") as PinType
+			is_valid_entity = true
+		# C. Group Fallback scanning (un-coupled, fully robust)
+		else:
+			if child.is_in_group("hostiles"):
+				pin_type = PinType.HOSTILE
+				is_valid_entity = true
+			elif child.is_in_group("passives"):
+				# Distinguish animals from humanoids polimorphically
+				if child.has_method("_get_humanoid_role") and child.call("_get_humanoid_role") == -1:
+					pin_type = PinType.ANIMAL
+				else:
+					pin_type = PinType.NPC
+				is_valid_entity = true
 			
-		if is_valid_entity:
+		if is_valid_entity and pin_type != PinType.NONE:
 			var diff: Vector2 = Vector2(child_pos.x - player_pos.x, child_pos.z - player_pos.z)
 			
 			if diff.length_squared() < MAX_RADIUS_SQ:
@@ -239,7 +263,7 @@ func _draw_tactical_symbol(draw_pos: Vector2, type: PinType, delta_y: float) -> 
 			_radar_canvas.draw_polyline(PackedVector2Array([diamond[0], diamond[1], diamond[2], diamond[3], diamond[0]]), Color(0,0,0, alpha), 1.0)
 			
 		PinType.NPC:
-			# 🧑 Cyan Hexagon with inner white core (Shadowing fixed: shape_size used consistently)
+			# 🧑 Cyan Hexagon with inner white core
 			base_color = Color(0.0, 0.85, 0.85, alpha)
 			var shape_size: float = 2.6
 			var hex: PackedVector2Array = PackedVector2Array([
