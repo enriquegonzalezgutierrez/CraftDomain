@@ -1,58 +1,31 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (Player Raycasting & Interactions)
-# Class: VoxelInteractionComponent
-# Description: Component managing player gaze raycasting, targeted block 
-#              highlighting, voxel progressive mining, placing, 
-#              food consumption, and seed planting.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates first-person 
-#   raycasting sweeps, active highlights, block break timers, and placements, 
-#   delegating transaction logic to specialized strategies.
-# - Open-Closed Principle (OCP): Completely closed to modifications. Mononlithic 
-#   hardcoded item exclusions and crop drop splits are removed, querying item 
-#   strategies and block definitions polimorphically.
-# - Dependency Inversion Principle (DIP): Communicates back to the world controller 
-#   strictly through the `IWorldModifier` abstract interface contract.
+# Pathfile: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
+# Description: Component managing first-person raycasting, target highlights,
+#              mining ticks, placing blocks, eating, and planting.
+#              Delegates crack rendering to BlockCrackingVisuals (SRP).
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name VoxelInteractionComponent
 extends Node3D
 
-# Dependencies injected by the Player Controller
 var player: CharacterBody3D
 var world_controller: Node3D
 var raycast: RayCast3D
 
-# Pure Domain Voxel Damage Service (SRP)
+# Decoupled Sub-Components (SRP Compliant)
 var _damage_service: BlockDamageService
+var _cracking_visuals: BlockCrackingVisuals
 
-# 3D Visual overlay mesh representing cracks
-var _cracking_mesh: MeshInstance3D
-var _cracking_textures: Array[Texture2D] = []
-
-# Tracker coordinate currently targeted by the raycast
-var _last_targeted_coord: Vector3i = Vector3i(0, -999, 0)
+var _last_targeted_coord := Vector3i(0, -999, 0)
 
 
 func _ready() -> void:
 	name = "VoxelInteractionComponent"
 	_damage_service = BlockDamageService.new()
 	
-	_preload_cracking_textures()
 	_setup_raycast()
-	_setup_cracking_mesh_overlay()
-
-
-## Preloads progressive cracking textures into RAM to prevent in-game lag spikes.
-func _preload_cracking_textures() -> void:
-	_cracking_textures.clear()
-	for i: int in range(4):
-		var path := "res://assets/textures/cracks_%d.png" % i
-		if ResourceLoader.exists(path):
-			_cracking_textures.append(load(path) as Texture2D)
-		else:
-			# Fallback empty texture if generation assets are missing
-			_cracking_textures.append(PlaceholderTexture2D.new())
+	_setup_cracking_visuals()
 
 
 func _setup_raycast() -> void:
@@ -60,7 +33,7 @@ func _setup_raycast() -> void:
 	raycast.name = "InteractionRayCast"
 	raycast.target_position = Vector3(0, 0, -5.0) # 5-meter reach distance
 	raycast.enabled = true
-	raycast.collision_mask = 1 # Collides with static terrain blocks (Layer 1)
+	raycast.collision_mask = 1 
 	raycast.collide_with_areas = false
 	raycast.collide_with_bodies = true
 	raycast.hit_back_faces = true
@@ -70,32 +43,17 @@ func _setup_raycast() -> void:
 		player.set("raycast", raycast)
 
 
-## Instantiates an unshaded, transparent box mesh floated 1.004x larger than a standard block.
-func _setup_cracking_mesh_overlay() -> void:
-	_cracking_mesh = MeshInstance3D.new()
-	_cracking_mesh.name = "VisualCrackingOverlay"
-	
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(1.004, 1.004, 1.004) # Slightly larger to prevent Z-fighting
-	_cracking_mesh.mesh = box_mesh
-	
-	var mat := StandardMaterial3D.new()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.roughness = 1.0
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED # Low cost, bypasses real-time shadows
-	_cracking_mesh.material_override = mat
-	_cracking_mesh.visible = false
-	
-	add_child(_cracking_mesh)
+func _setup_cracking_visuals() -> void:
+	_cracking_visuals = BlockCrackingVisuals.new()
+	add_child(_cracking_visuals)
 
 
 func _process(delta: float) -> void:
-	# Process block self-healing updates
 	if is_instance_valid(_damage_service):
 		var healed_coords := _damage_service.process_healing(delta)
 		for coord: Vector3i in healed_coords:
-			if coord == _last_targeted_coord:
-				_hide_cracking_overlay()
+			if coord == _last_targeted_coord and is_instance_valid(_cracking_visuals):
+				_cracking_visuals.hide_cracking_overlay()
 
 
 func process_interaction() -> void:
@@ -107,218 +65,181 @@ func process_interaction() -> void:
 		_build_or_interact()
 
 
-## Positions the highlighting reticle and green/red preview boxes on targeted block faces.
 func _update_target_highlight() -> void:
 	if not is_instance_valid(raycast) or not raycast.is_colliding() or not is_instance_valid(camera):
-		if is_instance_valid(highlight_mesh):
-			highlight_mesh.visible = false
-		if is_instance_valid(placement_highlight_mesh):
-			placement_highlight_mesh.visible = false
-		_hide_cracking_overlay()
+		_clear_all_highlights()
 		return
 		
 	var hit_normal := raycast.get_collision_normal()
 	var r_dir := (raycast.get_collision_point() - camera.global_position).normalized()
-	
 	if hit_normal.dot(r_dir) > 0.0:
 		hit_normal = -hit_normal
 		
 	var hit_pos := raycast.get_collision_point() + (r_dir * 0.05)
 	var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
 	
-	# Hide cracking overlay if the player moves their gaze to a different coordinate
 	if target_coord != _last_targeted_coord:
 		_last_targeted_coord = target_coord
-		_update_cracking_overlay(target_coord)
+		if is_instance_valid(_cracking_visuals):
+			var ratio := _damage_service.get_damage_ratio(target_coord)
+			_cracking_visuals.update_cracking_overlay(target_coord, ratio)
 	
-	# 1. Update Mining Target Highlight (White Box)
 	if is_instance_valid(highlight_mesh):
 		highlight_mesh.global_position = Vector3(target_coord) + Vector3(0.5, 0.5, 0.5)
 		highlight_mesh.visible = true
 		
-	# 2. Update Placement Preview (Green/Red Dynamic Box)
-	if is_instance_valid(placement_highlight_mesh) and is_instance_valid(player):
-		var is_buildable := false
-		var active_slot: int = player.get("active_slot_index") as int
-		var inventory_comp: InventoryComponent = player.get("inventory") as InventoryComponent
+	_process_placement_preview(target_coord, hit_normal)
+
+
+func _clear_all_highlights() -> void:
+	if is_instance_valid(highlight_mesh):
+		highlight_mesh.visible = false
+	if is_instance_valid(placement_highlight_mesh):
+		placement_highlight_mesh.visible = false
+	if is_instance_valid(_cracking_visuals):
+		_cracking_visuals.hide_cracking_overlay()
+
+
+func _process_placement_preview(target_coord: Vector3i, hit_normal: Vector3) -> void:
+	if not is_instance_valid(placement_highlight_mesh) or not is_instance_valid(player):
+		return
 		
-		if is_instance_valid(inventory_comp):
-			var slot_data := inventory_comp.get_slot_data(active_slot)
-			if slot_data != null and slot_data.item_id != -1:
-				var item_id := slot_data.item_id
-				var strategy := ItemStrategyRegistry.get_strategy(item_id)
-				is_buildable = (strategy != null and not (strategy is ConsumableItemStrategy))
-				
-		if is_buildable:
-			var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
-			var world_ctrl := world_controller as WorldController
+	var is_buildable := false
+	var active_slot: int = player.get("active_slot_index") as int
+	var inventory_comp: InventoryComponent = player.get("inventory") as InventoryComponent
+	
+	if is_instance_valid(inventory_comp):
+		var slot_data := inventory_comp.get_slot_data(active_slot)
+		if slot_data != null and slot_data.item_id != -1:
+			var strategy := ItemStrategyRegistry.get_strategy(slot_data.item_id)
+			is_buildable = (strategy != null and not (strategy is ConsumableItemStrategy))
 			
-			if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
-				var world_state := world_ctrl.world_state
-				var target_block := world_state.get_block(build_coord)
-				
-				var is_spot_free := target_block == BlockType.Type.AIR or target_block == BlockType.Type.WATER
-				var aimed_block := world_state.get_block(target_coord)
-				
-				var is_mergeable_bottom: bool = aimed_block == BlockType.Type.STONE_SLAB_BOTTOM and int(round(hit_normal.y)) == 1
-				var is_mergeable_top: bool = aimed_block == BlockType.Type.STONE_SLAB_TOP and int(round(hit_normal.y)) == -1
-				
-				var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
-				var player_aabb := AABB(
-					player.global_position - Vector3(0.35, 0.05, 0.35),
-					Vector3(0.70, 1.85, 0.70)
-				)
-				var player_collides := player_aabb.intersects(block_aabb)
-				
-				placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
-				placement_highlight_mesh.visible = true
-				
-				if (is_spot_free and not player_collides) or is_mergeable_bottom or is_mergeable_top:
-					placement_material.albedo_color = Color(0.2, 0.95, 0.35, 0.18)
-					placement_material.emission = Color(0.2, 0.95, 0.35)
-				else:
-					placement_material.albedo_color = Color(0.95, 0.2, 0.2, 0.18)
-					placement_material.emission = Color(0.95, 0.2, 0.2)
-		else:
-			placement_highlight_mesh.visible = false
+	if is_buildable:
+		var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
+		var world_ctrl := world_controller as WorldController
+		
+		if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
+			var ws := world_ctrl.world_state
+			var target_block := ws.get_block(build_coord)
+			var is_spot_free := target_block == BlockType.Type.AIR or target_block == BlockType.Type.WATER
+			
+			var aimed_block := ws.get_block(target_coord)
+			var is_mergeable_bottom: bool = aimed_block == BlockType.Type.STONE_SLAB_BOTTOM and int(round(hit_normal.y)) == 1
+			var is_mergeable_top: bool = aimed_block == BlockType.Type.STONE_SLAB_TOP and int(round(hit_normal.y)) == -1
+			
+			var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
+			var player_aabb := AABB(player.global_position - Vector3(0.35, 0.05, 0.35), Vector3(0.70, 1.85, 0.70))
+			var player_collides := player_aabb.intersects(block_aabb)
+			
+			placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
+			placement_highlight_mesh.visible = true
+			
+			if (is_spot_free and not player_collides) or is_mergeable_bottom or is_mergeable_top:
+				placement_material.albedo_color = Color(0.2, 0.95, 0.35, 0.18)
+				placement_material.emission = Color(0.2, 0.95, 0.35)
+			else:
+				placement_material.albedo_color = Color(0.95, 0.2, 0.2, 0.18)
+				placement_material.emission = Color(0.95, 0.2, 0.2)
+	else:
+		placement_highlight_mesh.visible = false
 
 
-## Executes left-click actions: mining targeted blocks progressively or swinging the sword.
 func _mine_or_attack() -> void:
 	var viewmodel_node: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 	if is_instance_valid(viewmodel_node):
 		viewmodel_node.play_swing_animation()
-	
 	if is_instance_valid(player) and player.has_method("swing_sword"):
 		player.swing_sword()
-	
 	if not raycast.is_colliding() or not is_instance_valid(camera): 
 		return
 		
 	var collider: Node = raycast.get_collider() as Node
-	var active_slot: int = player.get("active_slot_index") as int if is_instance_valid(player) else 0
-	var inventory_comp: InventoryComponent = player.get("inventory") as InventoryComponent if is_instance_valid(player) else null
-	
+	var active_slot: int = player.get("active_slot_index") as int
+	var inventory_comp: InventoryComponent = player.get("inventory") as InventoryComponent
 	var slot_data := inventory_comp.get_slot_data(active_slot) if is_instance_valid(inventory_comp) else null
 	var item_id := slot_data.item_id if slot_data != null else -1
 	
-	# COMBAT INTERACTION: Strike physical characters
-	if is_instance_valid(inventory_comp) and is_instance_valid(collider) and (collider is CharacterBody3D):
-		# Combat is enabled only if holding the active Sword item (ID 17)
-		if item_id == 17:
-			var entity_domain: VoxelEntity = collider.get("domain_entity") as VoxelEntity
-			if is_instance_valid(entity_domain):
-				var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
-				knockback_dir.y = 2.5
-				if collider.has_method("take_damage"):
-					collider.call("take_damage", 1, knockback_dir, player)
-				return
-
-	# OCP RESOLUTION: Verify if the active held tool is capable of block mining.
-	# Completely removes hardcoded item exclusions, validating tool types polimorphically.
+	if is_instance_valid(collider) and (collider is CharacterBody3D):
+		_process_combat_strike(collider, item_id)
+		return
+		
 	var active_tool_type: PlayerViewModel.ToolType = PlayerViewModel.get_tool_type_for_item(item_id)
-	if active_tool_type == PlayerViewModel.ToolType.NONE or active_tool_type == PlayerViewModel.ToolType.SWORD:
-		return # Swords and empty hands do not mine blocks
+	if active_tool_type != PlayerViewModel.ToolType.NONE and active_tool_type != PlayerViewModel.ToolType.SWORD:
+		_process_mining_strike(inventory_comp)
 
-	# PROGRESSIVE BLOCK MINING
+
+func _process_combat_strike(collider: Node, item_id: int) -> void:
+	if item_id == 17: # Sword
+		var entity_domain: VoxelEntity = collider.get("domain_entity") as VoxelEntity
+		if is_instance_valid(entity_domain):
+			var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
+			knockback_dir.y = 2.5
+			if collider.has_method("take_damage"):
+				collider.call("take_damage", 1, knockback_dir, player)
+
+
+func _process_mining_strike(inventory_comp: InventoryComponent) -> void:
 	var world_ctrl := world_controller as WorldController
-	if is_instance_valid(world_ctrl) and is_instance_valid(inventory_comp):
+	if is_instance_valid(world_ctrl):
 		var hit_normal := raycast.get_collision_normal()
 		var r_dir := (raycast.get_collision_point() - camera.global_position).normalized()
-		
 		if hit_normal.dot(r_dir) > 0.0:
 			hit_normal = -hit_normal
 			
 		var hit_pos: Vector3 = raycast.get_collision_point() + (r_dir * 0.05)
 		var block_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
+		var ws := world_ctrl.world_state
+		var mined_type := ws.get_block(block_coord) if is_instance_valid(ws) else BlockType.Type.AIR
 		
-		var world_state_ref: WorldState = world_ctrl.world_state
-		if is_instance_valid(world_state_ref):
-			var mined_type := world_state_ref.get_block(block_coord)
+		if mined_type == BlockType.Type.AIR:
+			return
 			
-			if mined_type == BlockType.Type.AIR:
-				return
-				
-			# 1. Register progress hit
-			var remaining_hits := _damage_service.register_hit(block_coord, mined_type)
-			
-			if remaining_hits > 0:
-				# Block is still solid: spawn impact debris, play impact thud, update cracks
-				_spawn_mining_particles(Vector3(block_coord), mined_type)
-				AudioService.play_sfx_static("block_place", Vector3(block_coord)) 
-				_update_cracking_overlay(block_coord)
-				return 
-				
-			# 2. Block broken: Clean up overlays, spawn shatter particles, and process drops
-			_hide_cracking_overlay()
+		var remaining_hits := _damage_service.register_hit(block_coord, mined_type)
+		if remaining_hits > 0:
 			_spawn_mining_particles(Vector3(block_coord), mined_type)
+			AudioService.play_sfx_static("block_place", Vector3(block_coord)) 
+			if is_instance_valid(_cracking_visuals):
+				var ratio := _damage_service.get_damage_ratio(block_coord)
+				_cracking_visuals.update_cracking_overlay(block_coord, ratio)
+			return 
 			
-			# OCP RESOLUTION: Query the block definition polimorphically to resolve its drops,
-			# completely removing all hardcoded crop and seed block check match tables.
-			var def := block_library_provider.get_definition(mined_type) as BlockDefinition
-			if def != null:
-				var drop_id := def.get_drop_item_id()
-				var qty := def.get_drop_quantity()
-				
-				# Generate custom crop harvest notifications
-				if mined_type == BlockType.Type.CROP_RIPE:
-					# Ripe wheat drops a harvest bonus (grains + seeds)
-					inventory_comp.add_item(20, 1) # Wheat grains (ID 20)
-					inventory_comp.add_item(18, randi_range(1, 2)) # Seeds (ID 18)
-					if is_instance_valid(hud):
-						hud.show_quest_notification("NOTIFICATION_HARVEST_SUCCESS_HEADER", "NOTIFICATION_HARVEST_SUCCESS_DESC")
-				elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
-					inventory_comp.add_item(18, 1) # Recovers the seed (ID 18)
-					if is_instance_valid(hud):
-						hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
-				else:
-					# Standard OCP drop transaction
-					inventory_comp.add_item(drop_id, qty)
-					
-				# Add extra organic bonus drops
-				if mined_type == BlockType.Type.LEAVES and randf() < 0.25:
-					inventory_comp.add_item(18, 1) # Seeds bonus
-				
-				# Increment active campaign quest progress on item drop
-				var active_q: Quest = quest_service_provider.get_active_quest() as Quest
-				if active_q != null and active_q.required_item_index == drop_id:
-					active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + qty)
-				
+		if is_instance_valid(_cracking_visuals):
+			_cracking_visuals.hide_cracking_overlay()
+			
+		_spawn_mining_particles(Vector3(block_coord), mined_type)
+		_process_block_drops(mined_type, block_coord, inventory_comp)
 		world_ctrl.set_block_globally(block_coord, BlockType.Type.AIR)
 
 
-## Synchronizes the cracking overlay texture based on the current damage ratio
-func _update_cracking_overlay(coord: Vector3i) -> void:
-	if not is_instance_valid(_damage_service) or not is_instance_valid(_cracking_mesh):
-		return
+func _process_block_drops(mined_type: BlockType.Type, _block_coord: Vector3i, inventory_comp: InventoryComponent) -> void:
+	var def := block_library_provider.get_definition(mined_type) as BlockDefinition
+	if def != null:
+		var drop_id := def.get_drop_item_id()
+		var qty := def.get_drop_quantity()
 		
-	var ratio := _damage_service.get_damage_ratio(coord)
-	if ratio <= 0.01:
-		_hide_cracking_overlay()
-		return
+		if mined_type == BlockType.Type.CROP_RIPE:
+			inventory_comp.add_item(20, 1) 
+			inventory_comp.add_item(18, randi_range(1, 2)) 
+			if is_instance_valid(hud):
+				hud.show_quest_notification("NOTIFICATION_HARVEST_SUCCESS_HEADER", "NOTIFICATION_HARVEST_SUCCESS_DESC")
+		elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
+			inventory_comp.add_item(18, 1) 
+			if is_instance_valid(hud):
+				hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
+		else:
+			inventory_comp.add_item(drop_id, qty)
+			
+		if mined_type == BlockType.Type.LEAVES and randf() < 0.25:
+			inventory_comp.add_item(18, 1) 
 		
-	# Float the cracking box exactly over the block's world coordinates
-	_cracking_mesh.global_position = Vector3(coord) + Vector3(0.5, 0.5, 0.5)
-	_cracking_mesh.visible = true
-	
-	# Determine progressive texture index [0 to 3] based on damage percentage
-	var tex_index := clampi(floori(ratio * 4.0), 0, 3)
-	
-	var mat: StandardMaterial3D = _cracking_mesh.material_override as StandardMaterial3D
-	if is_instance_valid(mat) and _cracking_textures.size() > tex_index:
-		mat.albedo_texture = _cracking_textures[tex_index]
+		var active_q: Quest = quest_service_provider.get_active_quest() as Quest
+		if active_q != null and active_q.required_item_index == drop_id:
+			active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + qty)
 
 
-func _hide_cracking_overlay() -> void:
-	if is_instance_valid(_cracking_mesh):
-		_cracking_mesh.visible = false
-
-
-## Instantiates a temporary, compile-free CPU debris emitter on block destruction.
 func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) -> void:
 	if block_type == BlockType.Type.AIR:
 		return
-		
 	var def: BlockDefinition = block_library_provider.get_definition(block_type) as BlockDefinition
 	if def == null:
 		return
@@ -331,15 +252,17 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	particles.explosiveness = 0.95
 	particles.lifetime = 0.45
 	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	particles.emission_box_extents = Vector3(0.35, 0.35, 0.35)
-	particles.direction = Vector3(0.0, 1.0, 0.0) 
-	particles.spread = 50.0
-	particles.initial_velocity_min = 2.5
-	particles.initial_velocity_max = 4.5
-	particles.gravity = Vector3(0.0, -9.8, 0.0) 
-	particles.scale_amount_min = 0.6
-	particles.scale_amount_max = 1.3
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(0.35, 0.35, 0.35)
+	pm.direction = Vector3(0.0, 1.0, 0.0) 
+	pm.spread = 50.0
+	pm.initial_velocity_min = 2.5
+	pm.initial_velocity_max = 4.5
+	pm.gravity = Vector3(0.0, -9.8, 0.0) 
+	pm.scale_min = 0.6
+	pm.scale_max = 1.3
+	particles.process_material = pm
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.12, 0.12, 0.12)
@@ -349,34 +272,28 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mesh.material = mat
 	particles.mesh = mesh
-	
-	# Native leak-free automatic cleanup on complete emission (Milestone 7)
 	particles.finished.connect(particles.queue_free)
 	
 	if is_instance_valid(world_controller):
 		world_controller.add_child(particles)
 		particles.global_position = global_pos + Vector3(0.5, 0.5, 0.5)
-		
 	particles.emitting = true
 
 
-## Executes right-click actions: placing blocks, planting crops, or speaking with NPCs.
 func _build_or_interact() -> void:
 	var viewmodel_node: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 	if is_instance_valid(viewmodel_node):
 		viewmodel_node.play_swing_animation()
-	
 	if not raycast.is_colliding() or not is_instance_valid(camera): 
 		return
 		
 	var collider := raycast.get_collider()
-	
 	if is_instance_valid(collider) and (collider is CharacterBody3D) and collider.has_method("interact"):
 		collider.call("interact", player)
 		return
 		
-	var active_slot: int = player.get("active_slot_index") as int if is_instance_valid(player) else 0
-	var inventory_comp: InventoryComponent = player.get("inventory") as InventoryComponent if is_instance_valid(player) else null
+	var active_slot: int = player.get("active_slot_index") as int
+	var inventory_comp: InventoryComponent = player.get("inventory") as InventoryComponent
 	var world_ctrl: WorldController = world_controller as WorldController
 	
 	if not is_instance_valid(inventory_comp) or not is_instance_valid(world_ctrl):
@@ -395,13 +312,11 @@ func _build_or_interact() -> void:
 	if strategy != null:
 		var hit_normal := raycast.get_collision_normal()
 		var r_dir := (raycast.get_collision_point() - camera.global_position).normalized()
-		
 		if hit_normal.dot(r_dir) > 0.0:
 			hit_normal = -hit_normal
 			
 		var hit_pos := raycast.get_collision_point() + (r_dir * 0.05)
 		var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
-		
 		var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
 		
 		var fractional_y := hit_pos.y - floori(hit_pos.y)
@@ -410,13 +325,9 @@ func _build_or_interact() -> void:
 			modifier.set("last_hit_fractional_y", fractional_y)
 		
 		if strategy.can_use(player.domain_entity, inventory_comp, target_coord, hit_normal, world_state):
-			
 			if strategy is PlaceableBlockStrategy:
 				var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
-				var player_aabb := AABB(
-					player.global_position - Vector3(0.35, 0.05, 0.35),
-					Vector3(0.70, 1.85, 0.70)
-				)
+				var player_aabb := AABB(player.global_position - Vector3(0.35, 0.05, 0.35), Vector3(0.70, 1.85, 0.70))
 				if player_aabb.intersects(block_aabb):
 					return
 					

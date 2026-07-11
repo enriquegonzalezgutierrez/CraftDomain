@@ -1,44 +1,25 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (Player Character / Entity Base)
-# Class: PassiveEntity
-# Description: Abstract base class representing physical entities. Manages movement
-#              vectors, gravity calculations, safe boundary checks,
-#              and dynamic nameplate/quest-arrow UI attachments.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates physical motion loops
-#   and UI attachments.
-# - Open-Closed Principle (OCP): Completely closed to modifications. It has zero
-#   knowledge of its subclasses, their names, or their hostile/friendly alignments.
-# - Liskov Substitution Principle (LSP): Defines abstract virtual contracts
-#   `_get_entity_name_key()` and `_get_nameplate_color()` that every concrete 
-#   subclass must implement polimorphically to ensure correct state rendering.
-# - Dependency Inversion Principle (DIP): Interfaces with abstract systems,
-#   keeping dependencies inverted towards abstractions.
+# Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
+# Description: Abstract physical base class representing NPCs and Wildlife.
+#              Coordinates physics translations, life-signals, and tethers.
+#              Delegates floating UI decorations to EntityUIComponent (SRP).
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
+@warning_ignore("unused_private_class_variable")
 class_name PassiveEntity
 extends CharacterBody3D
 
-# --- SOLID POLYMORPHIC DESIGN CONFIGURATIONS (OCP COMPLIANT) ---
-## The localization key representing this entity's display name.
-## Initialized dynamically on startup by querying the subclass contract.
+# --- SOLID POLYMORPHIC DESIGN CONFIGURATIONS ---
 var entity_name_key: String = ""
 
-## True if this NPC can engage in branching dialogue trees.
 @export var is_conversational_npc: bool = false
-
-## Classifies the humanoid role type (e.g. 0: Villager, 1: Merchant, 2: Guard, etc.).
-## Set to -1 for non-humanoid wild animals.
 @export var humanoid_role: int = -1
-
-## Represents the physical habitat/movement boundaries (0: Terrestrial, 1: Amphibious, 2: Aquatic).
 @export var entity_habitat: int = 0
 
 # Base physical movement constants
 const BASE_SPEED: float = 1.3
 const JUMP_VELOCITY: float = 5.0
-
-# Base animation asset root folder
 const ANIM_DIR := "res://assets/models/mobs/"
 
 # Sibling Component references (Composite Pattern)
@@ -49,26 +30,11 @@ var visual_component: NPCVisualComponent
 var domain_entity: VoxelEntity
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
-# Original Spawn Point used to anchor human NPCs so they never get lost (Tethering)
 var _spawn_point: Vector3
-
-# Dynamic floating Speech Bubble & Nameplate references
-var _bubble: Node3D
-var _nameplate: Label3D
-
-# WARNING RESOLUTION: Renamed to public context to clear UNUSED_PRIVATE_CLASS_VARIABLE
 var quest_check_timer: float = 0.5
-
-# 3D Floating Quest Indicator Arrow (Golden Prism pointing down)
-var _quest_arrow: MeshInstance3D
-
-# Deterministic unique Seed computed on coordinate hashes
 var npc_seed: int = 0
 
-# Injected Visual Representation Strategy (DIP Compliant)
 var visual_representation: IEntityVisualRepresentation
-
-# Cached height tracker for dynamic UI positioning
 var _collision_height: float = 1.5
 
 # Conversation State Machine: Dynamic player gaze-lock variables
@@ -77,25 +43,28 @@ var _talking_partner: CharacterBody3D = null
 
 # Reputation and combat trackers
 var _last_attacker: Node = null
-
-# Physics LOD status flag
 var _is_physically_sleeping: bool = false
 
-# Binds this specific NPC instance permanently to a Quest ID if spawned at the target location
 var quest_target_id: String = ""
-
-# Lazy Initialization Engine
 var _is_lifecycle_initialized: bool = false
+
+# Decoupled UI presenting sub-component
+var _ui_component: EntityUIComponent
+
+# Symmetrical backwards compatibility properties for child classes (LSP)
+@warning_ignore("unused_private_class_variable")
+var _nameplate: Label3D
+@warning_ignore("unused_private_class_variable")
+var _bubble: Node3D
+@warning_ignore("unused_private_class_variable")
+var _quest_arrow: MeshInstance3D
 
 
 func _init(spawn_pos: Vector3, initial_health: int = 1) -> void:
 	position = spawn_pos
 	_spawn_point = spawn_pos
-	
-	# Compute a deterministic seed based on coordinate hashes
 	npc_seed = abs(int(spawn_pos.x * 73856093) ^ int(spawn_pos.z * 19349663))
 	
-	# Pure Domain Model initialization and signals binding
 	domain_entity = VoxelEntity.new(initial_health)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
@@ -112,70 +81,16 @@ func _execute_lifecycle_initialization() -> void:
 		return
 	_is_lifecycle_initialized = true
 	
-	# ==========================================================================
-	# PURE SOLID RESOLUTION (OCP/LSP)
-	# Queries the abstract virtual method implemented by each subclass.
-	# Completely decouples the base class from subclass file names.
-	# ==========================================================================
 	entity_name_key = _get_entity_name_key()
-	
-	# Cache components dynamically
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
 	_setup_nameplate_height()
-	_setup_quest_arrow()
-	_setup_floating_bubble()
-	
-	# Scans coordinates to bind to designated campaign quests
+	_setup_ui_component()
 	_auto_claim_registered_quest_target()
 
 
-## Scans static JSON coordinates at birth to claim quest ownership polimorphically.
-func _auto_claim_registered_quest_target() -> void:
-	if QuestService._quests.is_empty():
-		return
-		
-	for q_id: String in QuestService._quests.keys():
-		var q := QuestService._quests[q_id] as Quest
-		if q != null and q.target_position != Vector3.ZERO:
-			var dist := global_position.distance_to(q.target_position)
-			
-			if dist <= 25.0:
-				# OCP RESOLUTION: Delegate the eligibility verification polimorphically to subclasses.
-				# Avoids hardcoding specific quest strings or matching rigid class names in the base class.
-				if _is_eligible_for_quest(q_id):
-					quest_target_id = q_id
-					break
-
-
-## Instantiates a dynamic Label3D billboard to display creature name above head.
-func _setup_nameplate() -> void:
-	if is_instance_valid(_nameplate):
-		return 
-		
-	_nameplate = Label3D.new()
-	_nameplate.name = "FloatingNameplate"
-	
-	_nameplate.text = tr(entity_name_key).to_upper()
-	_nameplate.pixel_size = 0.005 
-	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_nameplate.no_depth_test = false 
-	_nameplate.render_priority = 5
-	
-	# LSP RESOLUTION: Query the abstract virtual method polimorphically.
-	# Dynamically applies Red for hostiles and Green for passive/friendly.
-	_nameplate.modulate = _get_nameplate_color()
-	
-	_nameplate.outline_modulate = Color(0, 0, 0)
-	_nameplate.outline_size = 5
-	_nameplate.position = Vector3(0.0, _collision_height + 0.35, 0.0)
-	
-	add_child(_nameplate)
-	_apply_uniform_ui_scaling()
-
-
-## Decoupled height calculation sourcing boundaries directly from the scene setup
+## Computes the physical collision capsule height dynamically (Kept for child compatibility)
 func _setup_nameplate_height() -> void:
 	var col := get_node_or_null("EntityCollider") as CollisionShape3D
 	if is_instance_valid(col):
@@ -187,131 +102,52 @@ func _setup_nameplate_height() -> void:
 		elif col.shape is CapsuleShape3D:
 			shape_height = col.shape.height
 			
-		# TRUE LOCAL HEIGHT SOLVER: Position.y + Half of (Raw Height * Local Scale)
 		var local_y_center := col.position.y
 		var scaled_half_height := (shape_height * col.scale.y) / 2.0
-		
 		_collision_height = local_y_center + scaled_half_height
 	else:
 		_collision_height = 1.5
-		
-	_setup_nameplate()
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.position.y = _collision_height + 0.35
 
 
-## Instantiates the 3D SpeechBubble and places it above the entity's head.
-func _setup_floating_bubble() -> void:
-	if is_conversational_npc and not is_instance_valid(_bubble):
-		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
-		if sb_script != null:
-			_bubble = sb_script.new() as Node3D
-			add_child(_bubble)
-			
-			if entity_name_key == "NPC_NAME_MERCHANT":
-				_bubble.call("set_text", tr("BUBBLE_TRADE"))
-			elif entity_name_key == "NPC_NAME_FARMER":
-				_bubble.call("set_text", tr("BUBBLE_FARMER"))
-			else:
-				_bubble.call("set_text", tr("BUBBLE_TALK"))
-				
-			# Guaranteed placement strictly above the computed collision boundary
-			_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
-			_apply_uniform_ui_scaling()
+## Instantiates and initializes the UI decoupled presenter
+func _setup_ui_component() -> void:
+	_ui_component = EntityUIComponent.new()
+	add_child(_ui_component)
+	_ui_component.initialize(self, _collision_height)
 
 
-## Programmatically constructs the 3D rotating quest arrow (PrismMesh).
-func _setup_quest_arrow() -> void:
-	if is_instance_valid(_quest_arrow):
-		return 
-		
-	_quest_arrow = MeshInstance3D.new()
-	_quest_arrow.name = "FloatingQuestArrow"
-	
-	var prism := PrismMesh.new()
-	prism.size = Vector3(0.35, 0.45, 0.22)
-	
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.85, 0.2)
-	mat.roughness = 0.1
-	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.85, 0.2)
-	mat.emission_energy_multiplier = 2.4
-	mat.no_depth_test = true 
-	mat.render_priority = 10
-	
-	prism.material = mat
-	_quest_arrow.mesh = prism
-	_quest_arrow.rotation.z = PI
-	_quest_arrow.position = Vector3(0.0, _collision_height + 1.15, 0.0)
-	_quest_arrow.visible = false
-	
-	add_child(_quest_arrow)
-	_apply_uniform_ui_scaling()
-
-
-func _build_visual_representation() -> void:
-	pass
-
-
-func _get_collision_box_size() -> Vector3:
-	return Vector3(0.6, 0.8, 0.6)
-
-
-func _get_collision_box_position() -> Vector3:
-	return Vector3(0.0, 0.4, 0.0)
-
-
-# ==============================================================================
-# UNIFORM SCALE MATRIX NORMALIZER
-# ==============================================================================
-func _apply_uniform_ui_scaling() -> void:
-	var global_scale_vec := global_transform.basis.get_scale()
-	
-	if global_scale_vec.x < 0.001 or global_scale_vec.y < 0.001 or global_scale_vec.z < 0.001:
+## Scans static JSON coordinates at birth to claim quest ownership polimorphically
+func _auto_claim_registered_quest_target() -> void:
+	if QuestService._quests.is_empty():
 		return
 		
-	# Mathematically invert parent scaling matrix to lock global size at 1.0
-	var inverse_scale := Vector3.ONE / global_scale_vec
-	
-	if is_instance_valid(_nameplate):
-		_nameplate.scale = inverse_scale
-		
-	if is_instance_valid(_bubble):
-		_bubble.scale = inverse_scale
-		
-	if is_instance_valid(_quest_arrow):
-		_quest_arrow.scale = inverse_scale
+	for q_id: String in QuestService._quests.keys():
+		var q := QuestService._quests[q_id] as Quest
+		if q != null and q.target_position != Vector3.ZERO:
+			var dist := global_position.distance_to(q.target_position)
+			if dist <= 25.0 and _is_eligible_for_quest(q_id):
+				quest_target_id = q_id
+				break
 
 
 # ==============================================================================
-# SOLID POLYMORPHIC ABSTRACT HOOKS & FALLBACKS (OCP / LSP COMPLIANCE)
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
 # ==============================================================================
 
-## Abstract Virtual Method (LSP Contract): Returns the translation key representing 
-## this specific entity's name. Must be implemented by every concrete subclass.
 func _get_entity_name_key() -> String:
-	assert(false, "[PassiveEntity] _get_entity_name_key() must be implemented by concrete subclass.")
+	assert(false, "[PassiveEntity] _get_entity_name_key() must be implemented.")
 	return ""
 
 
-## Abstract Virtual Method (LSP Contract): Returns the color representing 
-## this entity's nameplate (e.g., Green for friendly, Red for hostile).
-## Must be implemented by every concrete subclass.
 func _get_nameplate_color() -> Color:
-	assert(false, "[PassiveEntity] _get_nameplate_color() must be implemented by concrete subclass.")
+	assert(false, "[PassiveEntity] _get_nameplate_color() must be implemented.")
 	return Color.WHITE
 
 
-## Virtual physics tick hook. Overridden by subclasses (like Shark or Gargoyle)
-## to execute customized physical translations without engine-level super chaining (Godot 4 Fix).
 func _physics_tick(_delta: float) -> void:
 	pass
 
 
-## Virtual method to determine if this entity is eligible for a given quest ID.
-## Overridden by subclasses to handle specific narrative campaign targeting.
 func _is_eligible_for_quest(_quest_id: String) -> bool:
 	return false
 
@@ -342,9 +178,8 @@ func _can_jump_to(target_coord: Vector3i) -> bool:
 		var world_controller_ref := get_parent()
 		if is_instance_valid(world_controller_ref) and "world_state" in world_controller_ref:
 			var ws: WorldState = world_controller_ref.world_state
-			if ws != null:
-				var block_type: int = ws.get_block(target_coord)
-				return block_type == 6 # 6 = WATER
+			if is_instance_valid(ws):
+				return ws.get_block(target_coord) == 6 # 6 = WATER
 		return false
 	return true 
 
@@ -366,7 +201,6 @@ func stop_talking() -> void:
 		ai_component.task_timer = 1.0
 
 
-## Tracks the direct attacker Node for karma deductions
 func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -> void:
 	if domain_entity.is_dead: 
 		return
@@ -377,7 +211,6 @@ func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -
 		_last_attacker = attacker
 		
 	_is_physically_sleeping = false
-		
 	velocity += knockback_force
 	domain_entity.take_damage(amount)
 
@@ -386,7 +219,6 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
 	
 	if is_instance_valid(ai_component):
-		# AI component task state PANIC = 5
 		ai_component.current_task = NPCAIComponent.TaskState.PANIC
 		ai_component.task_timer = randf_range(3.0, 5.0)
 		var angle := randf() * TAU
@@ -405,7 +237,6 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 		AlertNetworkService.broadcast_alarm(closest_attacker, global_position)
 
 
-## Proximity Scanner: Identifies the closest active zombie within an 8-meter combat radius
 func _find_closest_hostile_threat() -> CharacterBody3D:
 	if not is_inside_tree():
 		return null
@@ -440,12 +271,10 @@ func _on_domain_entity_died() -> void:
 	var col := get_node_or_null("EntityCollider") as CollisionShape3D
 	if is_instance_valid(col):
 		col.queue_free()
-	if is_instance_valid(_bubble):
-		_bubble.queue_free()
-	if is_instance_valid(_quest_arrow):
-		_quest_arrow.queue_free()
-	if is_instance_valid(_nameplate):
-		_nameplate.queue_free()
+		
+	if is_instance_valid(_ui_component):
+		_ui_component.cleanup()
+		_ui_component.queue_free()
 		
 	var alert_net := AlertNetworkService.instance
 	if is_instance_valid(alert_net):
@@ -502,7 +331,7 @@ func _spawn_death_particles() -> void:
 		world_node.add_child(particles)
 		particles.global_position = global_position + Vector3(0, 0.5, 0)
 		particles.emitting = true
-		get_tree().create_timer(1.0).timeout.connect(particles.queue_free)
+		get_tree().create_timer(0.7).timeout.connect(particles.queue_free)
 
 
 func _try_drop_player_loot() -> void:
@@ -519,8 +348,6 @@ func _drop_loot(_inv: IInventory) -> void:
 	pass
 
 
-## Projects the next physics step and cancels velocity if attempting to cross
-## into an invalid habitat (e.g., land animals walking into deep oceans).
 func _apply_absolute_boundary_forcefield(delta: float) -> void:
 	var world_controller_ref := get_parent()
 	if not is_instance_valid(world_controller_ref) or not "world_state" in world_controller_ref:
@@ -539,9 +366,9 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 	var habitat := _get_habitat()
 	var is_crossing := false
 	
-	if habitat == 2: # AQUATIC (Only Water)
+	if habitat == 2: # AQUATIC
 		is_crossing = (block_at_feet != BlockType.Type.WATER and block_below_feet != BlockType.Type.WATER)
-	elif habitat == 1: # AMPHIBIOUS (Water, Sand, Mud)
+	elif habitat == 1: # AMPHIBIOUS
 		var is_water_or_shore_at_feet := (
 			block_at_feet == BlockType.Type.WATER or 
 			block_at_feet == BlockType.Type.SAND or 
@@ -556,7 +383,7 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 			is_crossing = true
 		elif block_at_feet == BlockType.Type.LAVA or block_below_feet == BlockType.Type.LAVA:
 			is_crossing = true
-	else: # TERRESTRIAL (No Water, No Lava, No Void)
+	else: # TERRESTRIAL
 		var is_liquid := (
 			block_at_feet == BlockType.Type.WATER or 
 			block_at_feet == BlockType.Type.LAVA or 
@@ -566,7 +393,6 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 		
 		if is_liquid:
 			is_crossing = true
-			
 		elif block_below_feet == BlockType.Type.AIR and not _can_fly():
 			var max_fall_scan := 3
 			var solid_found := false
@@ -587,7 +413,6 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 		velocity.z = 0.0
 
 
-## Un-throttled physics and navigation compiler.
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
 		return
@@ -598,16 +423,11 @@ func _physics_process(delta: float) -> void:
 	if Engine.get_physics_frames() % 15 == 0:
 		var player_node: CharacterBody3D = null
 		var parent_node := get_parent()
-		
 		if is_instance_valid(parent_node) and "player" in parent_node:
 			player_node = parent_node.get("player") as CharacterBody3D
 			
 		if is_instance_valid(player_node):
-			var dist_sq := global_position.distance_squared_to(player_node.global_position)
-			var sleep_state := dist_sq > 1600.0 # 40 meters
-			
-			if sleep_state != _is_physically_sleeping:
-				_is_physically_sleeping = sleep_state
+			_is_physically_sleeping = global_position.distance_squared_to(player_node.global_position) > 1600.0
 		else:
 			_is_physically_sleeping = false
 			
@@ -621,9 +441,7 @@ func _physics_process(delta: float) -> void:
 		var ws: WorldState = parent_node_ref.world_state
 		if ws != null:
 			var my_coord := Vector3i(floori(global_position.x), floori(global_position.y), floori(global_position.z))
-			var block_at := ws.get_block(my_coord)
-			var block_below := ws.get_block(my_coord + Vector3i(0, -1, 0))
-			is_in_liquid = (block_at == 6 or block_at == 15 or block_below == 6 or block_below == 15)
+			is_in_liquid = (ws.get_block(my_coord) == 6 or ws.get_block(my_coord) == 15 or ws.get_block(my_coord + Vector3i(0, -1, 0)) == 6 or ws.get_block(my_coord + Vector3i(0, -1, 0)) == 15)
 
 	if not is_on_floor() and _get_habitat() != 2 and not is_in_liquid:
 		velocity.y -= gravity * delta
@@ -643,81 +461,16 @@ func _physics_process(delta: float) -> void:
 	_apply_absolute_boundary_forcefield(delta)
 
 	var flat_velocity := Vector2(velocity.x, velocity.z)
-
 	if is_instance_valid(visual_representation):
 		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)
 
-	# SOLID RESOLUTION: Invoking the clean virtual physics tick hook
 	_physics_tick(delta)
-
 	move_and_slide()
 
 
-func _get_task_state_name(task_val: int) -> String:
-	var names := ["IDLE", "WANDERING", "EXAMINING", "GREETING", "CHATTING", "PANIC", "WORKING"]
-	if task_val >= 0 and task_val < names.size():
-		return names[task_val]
-	return "IDLE"
-
-
-## Symmetrical, OCP-compliant update method.
-## Receives coordinates and updates nameplate labels and active indicators.
 func _update_quest_bubble_state() -> void:
-	var active_q := QuestService.get_active_quest()
-	var is_target := false
-	
-	if active_q != null and quest_target_id == active_q.quest_id:
-		is_target = true
-		active_q.target_position = global_position 
-
-	if is_instance_valid(_quest_arrow):
-		_quest_arrow.visible = is_target
-
-	# ----------------==================================================
-	# DYNAMIC AI TASK STATE SUBTITLE (SOLID/OCP COMPLIANCE)
-	# ----------------==================================================
-	var task_subtitle := ""
-	if is_instance_valid(ai_component):
-		var active_task_name := "IDLE"
-		var active_behavior: IAIBehavior = ai_component.active_behavior as IAIBehavior
-		if active_behavior != null and active_behavior.has_method("get_active_state_name"):
-			active_task_name = str(active_behavior.call("get_active_state_name", self))
-		else:
-			active_task_name = _get_task_state_name(ai_component.current_task)
-			
-		var lookup_key := active_task_name
-		if lookup_key == "WANDERING":
-			lookup_key = "WANDER"
-		elif lookup_key == "CHATTING":
-			lookup_key = "CHAT"
-			
-		var translated_name := tr("SHOWCASE_TASK_" + lookup_key).to_upper()
-		task_subtitle = "\n[ " + translated_name + " ]"
-
-	if is_instance_valid(_nameplate):
-		var base_text := tr(entity_name_key).to_upper()
-		if is_target:
-			_nameplate.text = "⭐ " + base_text + " ⭐" + task_subtitle
-			_nameplate.modulate = Color(1.0, 0.85, 0.2) # Gold Highlight for active quest target
-			_nameplate.no_depth_test = true
-		else:
-			_nameplate.text = base_text + task_subtitle
-			_nameplate.modulate = _get_nameplate_color() # Symmetrical OCP color
-			_nameplate.no_depth_test = false
-
-	_apply_uniform_ui_scaling()
-
-	if not is_instance_valid(_bubble):
-		return
-			
-	if is_target:
-		_bubble.call("set_text", "⭐ [ " + tr("BUBBLE_ACTIVE_MISSION").to_upper() + " ] ⭐")
-		return
-		
-	# Dynamic Text Router (OCP/SRP Compliant)
-	if entity_name_key == "NPC_NAME_MERCHANT":
-		_bubble.call("set_text", tr("BUBBLE_TRADE"))
-	elif entity_name_key == "NPC_NAME_FARMER":
-		_bubble.call("set_text", tr("BUBBLE_FARMER"))
-	else:
-		_bubble.call("set_text", tr("BUBBLE_TALK"))
+	if is_instance_valid(_ui_component):
+		var active_q := QuestService.get_active_quest()
+		if active_q != null and quest_target_id == active_q.quest_id:
+			active_q.target_position = global_position
+		_ui_component.update_ui_state(active_q, quest_target_id)

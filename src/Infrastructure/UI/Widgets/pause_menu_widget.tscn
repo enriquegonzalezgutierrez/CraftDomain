@@ -1,13 +1,4 @@
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/UI/Widgets/pause_menu_widget.tscn
-; Description: Visual scene layout for the Pause Menu.
-;              Defines glassmorphic card styles, tactile button offsets,
-;              and responsive margins to center the overlay perfectly.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
-
-[gd_scene load_steps=13 format=3 uid="uid://c6b7v8m9k1q3"]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/UI/Widgets/PauseMenuWidget.gd" id="1_script"]
 
@@ -75,9 +66,9 @@ corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_gray_hover"]
-bg_color = Color(0.25, 0.25, 0.30, 1)
+bg_color = Color(0.25, 0.25, 0.3, 1)
 border_width_bottom = 4
-border_color = Color(0.16, 0.16, 0.20, 1)
+border_color = Color(0.16, 0.16, 0.2, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
@@ -149,7 +140,7 @@ theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_green_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_green_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_green_pressed")
-text = "Resume Game"
+text = "HUD_PAUSE_RESUME"
 
 [node name="SettingsButton" type="Button" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 52)
@@ -158,7 +149,7 @@ theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_gray_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_gray_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_gray_pressed")
-text = "Settings"
+text = "HUD_PAUSE_SETTINGS"
 
 [node name="QuitButton" type="Button" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 52)
@@ -167,4 +158,4 @@ theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_gray_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_gray_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_gray_pressed")
-text = "Save & Exit"
+text = "HUD_PAUSE_QUIT"

@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/Widgets/PauseMenuWidget.gd
-# Description: SRP-compliant UI Widget strictly managing Pause Menu input routing 
-#              and transition animations. Layout and styling are defined in .tscn.
+# Description: SRP-compliant UI Widget strictly managing Pause Menu input routing,
+#              dynamic translations, and transition animations. Layout is defined in .tscn.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -23,7 +23,24 @@ func _ready() -> void:
 	_resume_btn.pressed.connect(_on_resume_pressed)
 	_settings_btn.pressed.connect(_on_settings_pressed)
 	_quit_btn.pressed.connect(_on_quit_pressed)
+	
+	_refresh_localized_text()
 	visible = false
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED:
+		_refresh_localized_text()
+
+
+## Dynamically translates the pause buttons texts (i18n compliant)
+func _refresh_localized_text() -> void:
+	if is_instance_valid(_resume_btn):
+		_resume_btn.text = tr("HUD_PAUSE_RESUME")
+	if is_instance_valid(_settings_btn):
+		_settings_btn.text = tr("HUD_PAUSE_SETTINGS")
+	if is_instance_valid(_quit_btn):
+		_quit_btn.text = tr("HUD_PAUSE_QUIT")
 
 
 ## Plays an organic, elastic transition in/out of the pause overlay
