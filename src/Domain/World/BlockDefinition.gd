@@ -12,10 +12,10 @@
 #   ensuring no parent code is ever modified to append new voxel materials.
 # - Liskov Substitution Principle (LSP): Subclasses inherit this contract, 
 #   ensuring they can be polymorphically processed by meshing and loading engines.
-# OCP GATHERING UPGRADE:
-# - Added `drop_item_id` and `drop_quantity` properties. Blocks now natively 
-#   encapsulate their own drop tables, removing monolithic hardcoded converter
-#   dictionaries from the Player Interaction and Inventory components.
+# OCP SPAWNING UPGRADE:
+# - Added `is_spawnable_soil` property. Blocks now natively decide if they are 
+#   organic/natural enough to support spawning life on top of them, removing
+#   hardcoded block-type lists from MobSpawningService.
 # ==============================================================================
 class_name BlockDefinition
 extends RefCounted
@@ -57,6 +57,13 @@ var drop_item_id: int = -1
 
 ## The quantity of items dropped when broken by the player.
 var drop_quantity: int = 1
+
+# ==============================================================================
+# OCP SPAWNING PROPERTIES (SOLID OCP Compliance)
+# ==============================================================================
+## Physical spawning property: true if life/mobs can spawn on top of this block type.
+## Defaults to false. Natural ground blocks (Grass, Sand, Snow) override this to true.
+var is_spawnable_soil: bool = false
 
 # ==============================================================================
 # DECOUPLED VISUAL ATTRIBUTES (DDD Pure Data)

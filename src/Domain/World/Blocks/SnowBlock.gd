@@ -7,7 +7,7 @@
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and texture configurations for the Snow Block.
 # - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
-#   its local drop variables within the constructor to decouple mining drop tables.
+#   its local drop and spawn variables within the constructor.
 # ==============================================================================
 class_name SnowBlock
 extends BlockDefinition
@@ -25,6 +25,9 @@ func _init() -> void:
 	# OCP/SOLID Compliance: Snow drops Stone (ID 1) to satisfy alchemical rules
 	drop_item_id = 1
 	drop_quantity = 1
+	
+	# OCP/SOLID Compliance: Mobs can spawn on snowy cap shelves
+	is_spawnable_soil = true
 	
 	# Procedural pristine white colors for unshaded fallback rendering
 	color_top = Color(0.98, 0.98, 0.98)

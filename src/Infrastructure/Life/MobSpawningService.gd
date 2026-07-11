@@ -7,16 +7,10 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates procedural 
 #   wildlife and living outpost populations.
-# - Open-Closed Principle (OCP): Dynamically queries biome strategies 
-#   for spawning pools, completely free of hardcoded match tables.
+# - Open-Closed Principle (OCP): EXTREME REFACTOR. Completely removed the 
+#   hardcoded `is_natural_terrain` block-type checks. Spawning soil eligibility 
+#   is now queried polymorphically from the block's active definition in the Domain.
 # - Liskov Substitution Principle (LSP): Works flawlessly on any IBiome strategy.
-# ANTI-DROWNING LAND SPAWNER (SOLID / OCP):
-# - Upgraded `_get_ground_surface_y()`. Now inspects the absolute topmost non-air 
-#   block first. If it detects liquid (Water or Lava), it strictly FORBIDS 
-#   spawning terrestrial land fauna (Cows, Pigs, Chickens, Sheep) on the ocean 
-#   floor, keeping land animals dry on the meadows.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Life/MobSpawningService.gd
 # ==============================================================================
 class_name MobSpawningService
 extends RefCounted
@@ -57,13 +51,12 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 				_spawn_and_register_entity(population[0], chunk_offset, 6.5, 6.5, world_state, world_node, entities_list)
 				_spawn_and_register_entity(population[1], chunk_offset, 4.5, 4.5, world_state, world_node, entities_list)
 		
-		# FIXED OVERLAP: Moved the Golem (107) coordinate from 8.5, 3.5 (Campfire) to 8.5, 5.5
+		# Golem (107) coordinate from 8.5, 3.5 (Campfire) to 8.5, 5.5
 		_spawn_and_register_entity(107, chunk_offset, 8.5, 5.5, world_state, world_node, entities_list)
 	else:
-		# 2. Spawning organically in the wilderness (OCP/LSP compliant, zero hardcoding)
+		# 2. Spawning organically in the wilderness (Out of villages)
 		var roll: float = randf()
-		# DENSITY OVERHAUL: Boost spawning probability in Ocean (ID 0) and Swamp (ID 8) 
-		# to 35% to fill aquatic horizons beautifully!
+		# Boost spawning probability in Ocean (ID 0) and Swamp (ID 8) to fill aquatic horizons beautifully
 		var spawn_threshold: float = 0.35 if (active_biome_id == 0 or active_biome_id == 8) else 0.12
 		
 		if roll < spawn_threshold:
@@ -117,7 +110,7 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	elif habitat == MobRegistry.Habitat.AQUATIC:
 		gy = _get_water_surface_y(world_state, global_x, global_z)
 	else:
-		# AMPHIBIOUS: Attempt to spawn directly in water; fallback to dry sand/mud shores if unavailable!
+		# AMPHIBIOUS: Attempt to spawn directly in water; fallback to dry sand/mud shores if unavailable
 		gy = _get_water_surface_y(world_state, global_x, global_z)
 		if gy < 0.0:
 			gy = _get_ground_surface_y(world_state, global_x, global_z)
@@ -138,7 +131,7 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 ## Helper: Scans vertical columns downward from absolute sky limit (Y=31) 
 ## to find the absolute topmost solid ground block.
 func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
-	# 1. LIQUID SURFACE DETECTOR (OCP / SOLID):
+	# 1. LIQUID SURFACE DETECTOR:
 	# First, verify what is the absolute topmost non-air block on this column.
 	# If it is Water or Lava, we strictly FORBID spawning land animals here,
 	# preventing pigs and cows from appearing underwater on the ocean seabed.
@@ -174,20 +167,11 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		
 	var surface_block: BlockType.Type = world_state.get_block(Vector3i(global_x, hit_y, global_z))
 	
-	# 3. SOLID TERRAIN VERIFIER:
-	# Humanoids and land fauna must ONLY spawn on natural flat terrain (Grass, Dirt, Road, Sand, Snow).
-	# This prevents spawning on Bricks, Wood Logs, Planks, or Glass, blocking roof/castle traps!
-	var is_natural_terrain: bool = (
-		surface_block == BlockType.Type.GRASS or 
-		surface_block == BlockType.Type.DIRT or 
-		surface_block == BlockType.Type.SAND or 
-		surface_block == BlockType.Type.RED_SAND or 
-		surface_block == BlockType.Type.SNOW or 
-		surface_block == BlockType.Type.MUD or 
-		surface_block == BlockType.Type.ROAD
-	)
-	
-	if not is_natural_terrain:
+	# 3. SOLID TERRAIN VERIFIER (OCP COMPLIANT):
+	# Mobs can only spawn on blocks that explicitly declare is_spawnable_soil = true.
+	# This prevents spawning on Bricks, Planks, or Glass, blocking roof/castle traps!
+	var def := BlockLibrary.get_definition(surface_block)
+	if def == null or not def.is_spawnable_soil:
 		return -1.0
 		
 	# 4. STANDING CLEARANCE VERIFIER:
@@ -232,7 +216,6 @@ func _is_physics_spawn_space_free(world_node: Node, spawn_pos: Vector3) -> bool:
 	if not world_node.is_inside_tree():
 		return true
 		
-	# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 	var space_state: PhysicsDirectSpaceState3D = world_node.get_world_3d().direct_space_state
 	if space_state == null:
 		return true
@@ -245,6 +228,5 @@ func _is_physics_spawn_space_free(world_node: Node, spawn_pos: Vector3) -> bool:
 	query.transform = Transform3D(Basis(), spawn_pos + Vector3(0.0, 0.4, 0.0))
 	query.collision_mask = 1 # Collides with static terrain (Layer 1) and active props
 	
-	# FIXED: Explicitly typed variable declaration to satisfy strict static compiler
 	var results: Array = space_state.intersect_shape(query, 1)
 	return results.is_empty()

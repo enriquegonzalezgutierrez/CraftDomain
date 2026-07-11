@@ -7,7 +7,7 @@
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and texture configurations for the Sand Block.
 # - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
-#   its local drop variables within the constructor to decouple mining drop tables.
+#   its local drop and spawn variables within the constructor.
 # ==============================================================================
 class_name SandBlock
 extends BlockDefinition
@@ -25,6 +25,9 @@ func _init() -> void:
 	# OCP/SOLID Compliance: Sand deposits crumble and drop Dirt Blocks (ID 2)
 	drop_item_id = 2
 	drop_quantity = 1
+	
+	# OCP/SOLID Compliance: Mobs can spawn on sandy shores
+	is_spawnable_soil = true
 	
 	# Procedural yellow-sand colors for unshaded fallback rendering
 	color_top = Color(0.95, 0.90, 0.65)

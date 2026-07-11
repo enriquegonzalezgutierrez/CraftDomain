@@ -6,9 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and texture configurations for the Dirt Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Can be safely
-#   added or removed from the project without modifying any central codebases.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
+#   its local spawn variables within the constructor.
 # ==============================================================================
 class_name DirtBlock
 extends BlockDefinition
@@ -22,6 +21,9 @@ func _init() -> void:
 	translation_key = "BLOCK_DIRT"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Mobs can spawn on fertile dirt soil
+	is_spawnable_soil = true
 	
 	# Procedural organic brown colors for unshaded fallback rendering
 	color_top = Color(0.55, 0.38, 0.25)

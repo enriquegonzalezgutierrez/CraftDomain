@@ -6,9 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and texture configurations for the Grass Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Being placed 
-#   inside the /Blocks/ directory allows it to be auto-registered on boot.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
+#   its local spawn variables within the constructor.
 # ==============================================================================
 class_name GrassBlock
 extends BlockDefinition
@@ -23,6 +22,9 @@ func _init() -> void:
 	translation_key = "BLOCK_GRASS"
 	is_solid = true
 	is_transparent = false
+	
+	# OCP/SOLID Compliance: Mobs can spawn on grassy plains
+	is_spawnable_soil = true
 	
 	# ==========================================================================
 	# PROCEDURAL COLOR PALETTE:

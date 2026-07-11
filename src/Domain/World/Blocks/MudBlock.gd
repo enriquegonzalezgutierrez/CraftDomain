@@ -7,7 +7,7 @@
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and texture configurations for the Mud Block.
 # - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
-#   its local drop variables within the constructor to decouple mining drop tables.
+#   its local drop and spawn variables within the constructor.
 # ==============================================================================
 class_name MudBlock
 extends BlockDefinition
@@ -26,6 +26,9 @@ func _init() -> void:
 	# OCP/SOLID Compliance: Mud blocks dissolve to yield Water blocks (ID 6)
 	drop_item_id = 6
 	drop_quantity = 1
+	
+	# OCP/SOLID Compliance: Mobs can spawn on mud swamp banks
+	is_spawnable_soil = true
 	
 	# Procedural dark-brown colors for unshaded fallback rendering
 	color_top = Color(0.32, 0.25, 0.18)
