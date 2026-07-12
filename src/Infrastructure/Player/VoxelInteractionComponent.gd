@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # Description: Component managing first-person raycasting, target highlights,
 #              mining ticks, placing blocks, eating, and planting.
-#              Delegates crack rendering to BlockCrackingVisuals (SRP).
+#              Delegates geometric math coordinates checks to VoxelInteractionSolver (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -66,17 +66,12 @@ func process_interaction() -> void:
 
 
 func _update_target_highlight() -> void:
-	if not is_instance_valid(raycast) or not raycast.is_colliding() or not is_instance_valid(camera):
+	var resolved := VoxelInteractionSolver.resolve_targeted_coords(raycast, camera)
+	if resolved.is_empty():
 		_clear_all_highlights()
 		return
 		
-	var hit_normal := raycast.get_collision_normal()
-	var r_dir := (raycast.get_collision_point() - camera.global_position).normalized()
-	if hit_normal.dot(r_dir) > 0.0:
-		hit_normal = -hit_normal
-		
-	var hit_pos := raycast.get_collision_point() + (r_dir * 0.05)
-	var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
+	var target_coord: Vector3i = resolved["target_coord"]
 	
 	if target_coord != _last_targeted_coord:
 		_last_targeted_coord = target_coord
@@ -88,7 +83,7 @@ func _update_target_highlight() -> void:
 		highlight_mesh.global_position = Vector3(target_coord) + Vector3(0.5, 0.5, 0.5)
 		highlight_mesh.visible = true
 		
-	_process_placement_preview(target_coord, hit_normal)
+	_process_placement_preview(resolved)
 
 
 func _clear_all_highlights() -> void:
@@ -100,39 +95,18 @@ func _clear_all_highlights() -> void:
 		_cracking_visuals.hide_cracking_overlay()
 
 
-func _process_placement_preview(target_coord: Vector3i, hit_normal: Vector3) -> void:
+func _process_placement_preview(resolved: Dictionary) -> void:
 	if not is_instance_valid(placement_highlight_mesh) or not is_instance_valid(player):
 		return
 		
 	var active_slot := player.active_slot_index
 	var inventory_comp := player.inventory as InventoryComponent
-	var is_buildable := _is_active_tool_placeable(inventory_comp, active_slot) if is_instance_valid(inventory_comp) else false
+	var is_placeable := VoxelInteractionSolver.is_active_tool_placeable(inventory_comp, active_slot)
 	
-	if is_buildable:
-		_update_placement_preview_geometry(target_coord, hit_normal, inventory_comp)
+	if is_placeable:
+		_update_placement_preview_geometry(resolved)
 	else:
 		placement_highlight_mesh.visible = false
-
-
-func _is_active_tool_placeable(inventory_comp: InventoryComponent, active_slot: int) -> bool:
-	var slot_data := inventory_comp.get_slot_data(active_slot)
-	if slot_data != null and slot_data.item_id != -1:
-		var strategy := ItemStrategyRegistry.get_strategy(slot_data.item_id)
-		return strategy != null and not (strategy is ConsumableItemStrategy)
-	return false
-
-
-func _does_block_collide_with_player(build_coord: Vector3i) -> bool:
-	var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
-	var player_aabb := AABB(player.global_position - Vector3(0.35, 0.05, 0.35), Vector3(0.70, 1.85, 0.70))
-	return player_aabb.intersects(block_aabb)
-
-
-func _is_slab_mergeable(ws: WorldState, target_coord: Vector3i, hit_normal: Vector3) -> bool:
-	var aimed_block := ws.get_block(target_coord)
-	var is_mergeable_bottom: bool = aimed_block == BlockType.Type.STONE_SLAB_BOTTOM and int(round(hit_normal.y)) == 1
-	var is_mergeable_top: bool = aimed_block == BlockType.Type.STONE_SLAB_TOP and int(round(hit_normal.y)) == -1
-	return is_mergeable_bottom or is_mergeable_top
 
 
 func _set_preview_color(albedo: Color, emission: Color) -> void:
@@ -141,15 +115,17 @@ func _set_preview_color(albedo: Color, emission: Color) -> void:
 		placement_material.emission = emission
 
 
-func _update_placement_preview_geometry(target_coord: Vector3i, hit_normal: Vector3, _inventory_comp: InventoryComponent) -> void:
-	var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
+func _update_placement_preview_geometry(resolved: Dictionary) -> void:
+	var target_coord: Vector3i = resolved["target_coord"]
+	var hit_normal: Vector3 = resolved["hit_normal"]
+	var build_coord: Vector3i = resolved["build_coord"]
 	var world_ctrl := world_controller as WorldController
 	
 	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
 		var ws := world_ctrl.world_state
 		var is_spot_free := ws.get_block(build_coord) == BlockType.Type.AIR or ws.get_block(build_coord) == BlockType.Type.WATER
-		var is_mergeable := _is_slab_mergeable(ws, target_coord, hit_normal)
-		var player_collides := _does_block_collide_with_player(build_coord)
+		var is_mergeable := VoxelInteractionSolver.is_slab_mergeable(ws, target_coord, hit_normal)
+		var player_collides := VoxelInteractionSolver.does_block_collide_with_player(build_coord, player)
 		
 		placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
 		placement_highlight_mesh.visible = true
@@ -197,13 +173,11 @@ func _process_combat_strike(collider: Node, item_id: int) -> void:
 func _process_mining_strike(inventory_comp: InventoryComponent) -> void:
 	var world_ctrl := world_controller as WorldController
 	if is_instance_valid(world_ctrl):
-		var hit_normal := raycast.get_collision_normal()
-		var r_dir := (raycast.get_collision_point() - camera.global_position).normalized()
-		if hit_normal.dot(r_dir) > 0.0:
-			hit_normal = -hit_normal
+		var resolved := VoxelInteractionSolver.resolve_targeted_coords(raycast, camera)
+		if resolved.is_empty():
+			return
 			
-		var hit_pos: Vector3 = raycast.get_collision_point() + (r_dir * 0.05)
-		var block_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
+		var block_coord: Vector3i = resolved["target_coord"]
 		var ws := world_ctrl.world_state
 		var mined_type := ws.get_block(block_coord) if is_instance_valid(ws) else BlockType.Type.AIR
 		
@@ -324,25 +298,23 @@ func _build_or_interact() -> void:
 		
 	var strategy: ItemUsageStrategy = ItemStrategyRegistry.get_strategy(item_id) as ItemUsageStrategy
 	if strategy != null:
-		var hit_normal := raycast.get_collision_normal()
-		var r_dir := (raycast.get_collision_point() - camera.global_position).normalized()
-		if hit_normal.dot(r_dir) > 0.0:
-			hit_normal = -hit_normal
+		var resolved := VoxelInteractionSolver.resolve_targeted_coords(raycast, camera)
+		if resolved.is_empty():
+			return
 			
-		var hit_pos := raycast.get_collision_point() + (r_dir * 0.05)
-		var target_coord := Vector3i(floori(hit_pos.x), floori(hit_pos.y), floori(hit_pos.z))
-		var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
+		var target_coord: Vector3i = resolved["target_coord"]
+		var hit_normal: Vector3 = resolved["hit_normal"]
+		var build_coord: Vector3i = resolved["build_coord"]
+		var hit_pos_y: float = resolved["hit_pos_y"]
 		
-		var fractional_y := hit_pos.y - floori(hit_pos.y)
+		var fractional_y := hit_pos_y - floori(hit_pos_y)
 		var modifier := world_ctrl.world_modifier
 		if modifier != null:
 			modifier.set("last_hit_fractional_y", fractional_y)
 		
 		if strategy.can_use(player.domain_entity, inventory_comp, target_coord, hit_normal, world_state):
 			if strategy is PlaceableBlockStrategy:
-				var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
-				var player_aabb := AABB(player.global_position - Vector3(0.35, 0.05, 0.35), Vector3(0.70, 1.85, 0.70))
-				if player_aabb.intersects(block_aabb):
+				if VoxelInteractionSolver.does_block_collide_with_player(build_coord, player):
 					return
 					
 			strategy.use(player.domain_entity, inventory_comp, target_coord, hit_normal, world_ctrl.world_modifier)
