@@ -1,107 +1,63 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (Presentation & Physics / Hostiles)
-# Class: GargoyleEntity
+# Pathfile: res://src/Infrastructure/Life/GargoyleEntity.gd
 # Description: Physical character controller for the hostile nocturnal Gargoyle.
-#              Delegates all day/night stone transitions, flight sways, and 
-#              attack cooldowns to the decoupled GargoyleAIBehavior strategy, 
-#              focusing on physical translations and visual flight animations.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates physical movement, 
-#   gravity damping during active flight, and visual billboarding.
-# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
-#   declared in `PassiveEntity` by providing its unique nameplate key and red color.
+#              Delegates model and material sanitization to GLBModelSanitizer (DRY).
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GargoyleEntity
 extends PassiveEntity
 
-# Sibling node references
 var player: CharacterBody3D
 
-# Visual animation and model references
 var _animation_time: float = 0.0
 var _model_node: Node3D
 var _anim_player: AnimationPlayer
 
-# Physical flight configurations (decoupled from decisions)
 const SPEED: float = 3.0
-
-# Visual model baseline Y-coordinate (Y-axis origin when stone statue)
 const MODEL_BASE_Y: float = 0.8982
 
-# Visual model baseline rotation vector configured in the editor (.tscn)
 var _model_base_rot: Vector3 = Vector3.ZERO
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Gargoyles spawn with 6 Hearts of health (high stone defense: 12 HP)
 	super(spawn_pos, 12)
-	entity_habitat = 0 # Terrestrial
+	entity_habitat = 0 
 	name = "Entity_GARGOYLE"
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
 	if is_in_group("passives"):
-		remove_from_group("passives") # Unregister from peaceful list (OCP/LSP)
+		remove_from_group("passives") 
 	
-	# Cache component references pre-configured in the scene
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/gargoyle") as Node3D
 	
-	# Extract the embedded GLB AnimationPlayer and apply the material shield
 	if is_instance_valid(_model_node):
 		_anim_player = _model_node.find_child("AnimationPlayer", true, false) as AnimationPlayer
-		_register_glb_materials(_model_node)
 		_model_base_rot = _model_node.rotation
+		
+		# Centralized OCP/DRY Cleanup
+		GLBModelSanitizer.sanitize_model(_model_node)
 	
 	_locate_player()
-	
-	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GargoyleAIBehavior.new()
 
 
-## Recursively duplicates and sanitizes materials across ALL mesh surfaces (Tangent Shield)
-func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D and node.mesh != null:
-		# Multi-Surface Sweep: Sanitize every material index on the mesh
-		for i: int in range(node.mesh.get_surface_count()):
-			var mat: Material = node.get_active_material(i)
-			if mat == null:
-				mat = node.mesh.surface_get_material(i)
-				
-			if mat is BaseMaterial3D:
-				var new_mat := mat.duplicate() as BaseMaterial3D
-				# TANGENT WARNING SHIELD
-				new_mat.normal_enabled = false
-				new_mat.anisotropy_enabled = false
-				new_mat.clearcoat_enabled = false
-				new_mat.heightmap_enabled = false
-				node.set_surface_override_material(i, new_mat)
-			
-	for child: Node in node.get_children():
-		_register_glb_materials(child)
-
-
-## Bypasses old procedural representation compiling
 func _build_visual_representation() -> void:
-	pass # Visual model is instanced directly in the .tscn scene file
+	pass 
 
-
-# ==============================================================================
-# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
-# ==============================================================================
 
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_GARGOYLE"
 
 
 func _get_nameplate_color() -> Color:
-	return Color(0.95, 0.15, 0.15) # Hostile Red (LSP Compliant)
+	return Color(0.95, 0.15, 0.15) 
 
 
 func _has_ui_decorations() -> bool:
@@ -114,17 +70,14 @@ func _locate_player() -> void:
 		player = world_node.get("player") as CharacterBody3D
 
 
-## Hostiles do not panic when hit
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	pass 
 
 
-## Drops 1x Stone Block on death
 func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(1, 1)
 
 
-## Symmetrical transition updating stone shaders/emission visual overlays
 func _set_gargoyle_stone_appearance(is_stone: bool) -> void:
 	if is_instance_valid(_model_node):
 		_traverse_and_apply_stone_appearance(_model_node, is_stone)
@@ -135,17 +88,16 @@ func _traverse_and_apply_stone_appearance(node: Node, is_stone: bool) -> void:
 		var mat: BaseMaterial3D = node.material_override as BaseMaterial3D
 		if is_instance_valid(mat):
 			if is_stone:
-				mat.albedo_color = Color(0.48, 0.48, 0.50) # Solid grey statue
+				mat.albedo_color = Color(0.48, 0.48, 0.50) 
 				mat.roughness = 1.0
 			else:
-				mat.albedo_color = Color(1.0, 1.0, 1.0) # Restored textures
+				mat.albedo_color = Color(1.0, 1.0, 1.0) 
 				mat.roughness = 0.5
 				
 	for child in node.get_children():
 		_traverse_and_apply_stone_appearance(child, is_stone)
 
 
-## Tactical Action bite: Inflicts damage and applies diagonal knockback
 func _bite_player() -> void:
 	if is_instance_valid(player):
 		var dir := (player.global_position - global_position).normalized()
@@ -154,80 +106,63 @@ func _bite_player() -> void:
 			player.call("take_damage", 1, knockback)
 
 
-# ==============================================================================
-# MAIN GEOMETRIC PRESENTATION & FLIGHT BOBBING OSCILLATION
-# ==============================================================================
-
 func _process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 		
 	if is_instance_valid(_model_node):
 		_animation_time += delta
-		
-		# Read nocturnal state from metadata safely (DIP)
 		var state: int = 0
 		if has_meta(GargoyleAIBehavior.META_STATE):
 			state = get_meta(GargoyleAIBehavior.META_STATE) as int
 		
-		if state == 1: # AWAKE / FLYING
+		if state == 1: 
 			if is_instance_valid(_anim_player):
 				var anims := _anim_player.get_animation_list()
 				if anims.size() > 0:
-					var target_anim := anims[0] # Grab default GLB animation
+					var target_anim := anims[0] 
 					if _anim_player.current_animation != target_anim or not _anim_player.is_playing():
 						_anim_player.play(target_anim)
 						
 			var flat_velocity := Vector2(velocity.x, velocity.z)
 			var is_moving := flat_velocity.length_squared() > 0.1
-			
-			# Smooth hover bobbing oscillation
 			var hover_bob := sin(_animation_time * 5.0) * 0.25
 			_model_node.position.y = 2.5 + hover_bob
 			
 			if is_moving:
 				_model_node.rotation.z = sin(_animation_time * 14.0) * 0.18
-				_model_node.rotation.x = deg_to_rad(12.0) # Pitch forward
+				_model_node.rotation.x = deg_to_rad(12.0) 
 			else:
 				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
 				_model_node.rotation.x = 0.0
-		else: # STONE STATUE (Sits flat on floor)
+		else: 
 			if is_instance_valid(_anim_player):
 				_anim_player.stop() 
 				
 			_model_node.position.y = lerp(_model_node.position.y, MODEL_BASE_Y, delta * 5.0)
 			_model_node.rotation = _model_node.rotation.lerp(_model_base_rot, delta * 5.0)
 			
-		# ======================================================================
-		# UNIVERSAL DYNAMIC NAMEPLATE POSITIONER (OCP / SOLID COMPLIANT)
-		# ======================================================================
 		if is_instance_valid(_nameplate):
 			var relative_offset := _model_node.position.y - MODEL_BASE_Y
 			_nameplate.position.y = _collision_height + 0.35 + relative_offset
 
 
-# ==============================================================================
-# UN-THROTTLED PHYSICS ENGINE (GRAVITY AND STEP- avoidance)
-# ==============================================================================
-
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 
-	# Read state from metadata to calculate physical gravity vectors safely
 	var state: int = 0
 	if has_meta(GargoyleAIBehavior.META_STATE):
 		state = get_meta(GargoyleAIBehavior.META_STATE) as int
 
-	if state == 0: # STONE (Acts as a heavy brick, falls to ground)
+	if state == 0: 
 		if not is_on_floor():
 			velocity.y -= gravity * delta
 		else:
 			velocity.y = -0.1
-	else: # AWAKE (Active flight neutral Y damping)
+	else: 
 		velocity.y = move_toward(velocity.y, 0.0, SPEED * delta)
 
-	# Execute un-throttled physics translation and step-up checks
 	if is_instance_valid(ai_component):
 		ai_component.process_ai(delta)
 

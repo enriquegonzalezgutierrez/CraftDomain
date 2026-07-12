@@ -1,66 +1,44 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (Presentation & Physics / Defenders)
-# Class: GuardEntity
+# Pathfile: res://src/Infrastructure/Life/GuardEntity.gd
 # Description: Physical character controller representing a village defender Guard.
-#              Schedules modular skeletal animation rigging and dynamically registers 
-#              its specialized GuardAIBehavior strategy.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates physical body 
-#   movement structures, sheathed weapon positions, and conversational interactions.
-# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
-#   declared in `PassiveEntity` by providing its unique nameplate key and green color.
+#              Delegates model and material sanitization to GLBModelSanitizer (DRY).
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GuardEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/guard/guard_base.fbx"
-
-# ==============================================================================
-# MIXAMO ORIENTATION COMPENSATOR (OCP SHIELD)
-# Compensates for this specific FBX skeleton export direction by adding 180 degrees
-# of offset, aligning his face directly with his walking velocity.
-# ==============================================================================
 var gaze_rotation_offset: float = PI
-
-# Sibling node references
 var player: CharacterBody3D
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Initialize with 5 Hearts of health for elite durability (10 HP) and terrestrial boundaries
 	super(spawn_pos, 10)
-	entity_habitat = 0 # Terrestrial
-	humanoid_role = 2 # Guard role
+	entity_habitat = 0 
+	humanoid_role = 2 
 	is_conversational_npc = true
 	name = "Entity_GUARD"
 
 
 func _ready() -> void:
-	# HIGH PERFORMANCE: Register in the passive group for target lookups
 	add_to_group("passives")
 	
-	# Register in the shared alert network
 	var alert_net := AlertNetworkService.instance
 	if is_instance_valid(alert_net):
 		alert_net.register_defender(self)
 	
-	# Cache components pre-configured in the scene
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
 	_setup_graphics_representation()
 	_locate_player()
-	
-	# Compute and register dynamic heights using inherited base class (LSP compliant)
 	_setup_nameplate_height()
 	
-	# Inject the specialized guard overwatch strategy dynamically on ready
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GuardAIBehavior.new()
 
 
-## Binds the Skeletal strategy dynamically and registers FBX animation tracks
 func _setup_graphics_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -69,32 +47,25 @@ func _setup_graphics_representation() -> void:
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
 	
-	# Obsolete Transform-Overrides removed! We strictly trust the .tscn editor values now.
 	strategy.set("anim_idle_path", ANIM_DIR + "guard/guard_idle.fbx")
 	strategy.set("anim_walk_path", ANIM_DIR + "guard/guard_walk.fbx")
 	strategy.set("anim_attack_path", ANIM_DIR + "guard/guard_attack.fbx")
 	strategy.set("anim_jump_path", ANIM_DIR + "guard/guard_jump.fbx")
 	
-	# Bind as standard visual representation
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
-
-# ==============================================================================
-# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
-# ==============================================================================
 
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_GUARD"
 
 
 func _get_nameplate_color() -> Color:
-	return Color(0.2, 0.85, 0.2) # Symmetrical Protector Green (Friendly)
+	return Color(0.2, 0.85, 0.2)
 
 
-## Symmetrical Quest Eligibility check
 func _is_eligible_for_quest(_quest_id: String) -> bool:
-	return false # Guards are not targeted by campaign milestones currently
+	return false 
 
 
 func _has_ui_decorations() -> bool:
@@ -122,10 +93,6 @@ func _locate_player() -> void:
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
 
-
-# ==============================================================================
-# PHYSICAL LIFE-CYCLE & GAZE INTERACTIONS
-# ==============================================================================
 
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead:
@@ -174,7 +141,7 @@ func _detect_current_biome() -> int:
 		if generator_node != null:
 			var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
 			if terrain_noise != null:
-				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(global_position.x)), int(round(global_position.z)), terrain_noise) as BiomeService.BiomeProfile
+				var profile: BiomeService.BiomeProfile = world_controller_ref.call("evaluate_coordinate", int(round(global_position.x)), int(round(global_position.z)))
 				return profile.biome_id
 				
 	return default_biome_id
