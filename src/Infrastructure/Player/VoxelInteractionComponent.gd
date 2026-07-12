@@ -252,17 +252,16 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	particles.explosiveness = 0.95
 	particles.lifetime = 0.45
 	
-	var pm := ParticleProcessMaterial.new()
-	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	pm.emission_box_extents = Vector3(0.35, 0.35, 0.35)
-	pm.direction = Vector3(0.0, 1.0, 0.0) 
-	pm.spread = 50.0
-	pm.initial_velocity_min = 2.5
-	pm.initial_velocity_max = 4.5
-	pm.gravity = Vector3(0.0, -9.8, 0.0) 
-	pm.scale_min = 0.6
-	pm.scale_max = 1.3
-	particles.process_material = pm
+	# Symmetrical CPUParticles3D direct variable configuration (DIP/SRP)
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	particles.emission_box_extents = Vector3(0.35, 0.35, 0.35)
+	particles.direction = Vector3(0.0, 1.0, 0.0) 
+	particles.spread = 50.0
+	particles.initial_velocity_min = 2.5
+	particles.initial_velocity_max = 4.5
+	particles.gravity = Vector3(0.0, -9.8, 0.0) 
+	particles.scale_amount_min = 0.6
+	particles.scale_amount_max = 1.3
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.12, 0.12, 0.12)
