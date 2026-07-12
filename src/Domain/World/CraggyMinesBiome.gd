@@ -1,20 +1,10 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Biomes)
+# Pathfile: res://src/Domain/World/CraggyMinesBiome.gd
 # Description: Concrete Biome Strategy implementing the geographic and visual 
 #              rules for the high stone mountains and subterranean cave structures
 #              (Craggy Peaks & Caves).
-#              SOLID COMPLIANCE: 
-#              - Liskov Substitution Principle (LSP): Fully implements IBiome.
-#              - Open-Closed Principle (OCP): Overrides wilderness wildlife to 
-#                spawn livestock, deep coal veins, nocturnal Gargoyles (12), 
-#                and sneaky, rapid-trotting Goblins (13), and scatters active
-#                geothermal magma vents across mountain summits.
-# GEOGRAPHICAL SENSING (Phase 4):
-#              - Implements `is_coordinate_inside()` to encapsulate its own 
-#                spawning boundaries (polar angle slice between -2.748 and -1.963 rad).
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/CraggyMinesBiome.gd
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name CraggyMinesBiome
 extends IBiome
@@ -44,10 +34,9 @@ func get_block_for_depth(_y: int, _base_height: int) -> BlockType.Type:
 	return BlockType.Type.STONE
 
 
-## Concrete Implementation: Evaluates peaks for mine support pillars structures
-func get_landmark_type(spawn_hash: int, _base_height: int) -> int:
-	if spawn_hash % 160 == 7:
-		return 4 # Mine support pillar (ID 4)
+## Concrete Implementation: All roadside/village lighting is now delegated to 
+## the superior dual-lantern StreetlightEntity, making block pillars obsolete.
+func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 	return 0
 
 

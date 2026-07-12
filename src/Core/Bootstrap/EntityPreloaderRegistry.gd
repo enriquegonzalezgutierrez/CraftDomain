@@ -65,7 +65,10 @@ static func _preload_mobs() -> void:
 
 static func _preload_props() -> void:
 	_props_scenes[200] = preload("res://src/Infrastructure/World/ChestEntity.gd") 
-	_props_scenes[202] = preload("res://src/Infrastructure/World/StreetlightEntity.gd")
+	
+	# PRELOAD SCENE HOOK: Associates the 3D Streetlight to its compiled visual .tscn instead of raw code
+	_props_scenes[202] = preload("res://src/Infrastructure/World/streetlight_entity.tscn")
+	
 	_props_scenes[203] = preload("res://src/Infrastructure/World/CampfireEntity.gd")
 	_props_scenes[213] = preload("res://src/Infrastructure/World/WishingWellEntity.gd")
 	_props_scenes[215] = preload("res://src/Infrastructure/World/BarrelEntity.gd")

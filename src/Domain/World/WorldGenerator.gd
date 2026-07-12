@@ -15,8 +15,9 @@ var _detail_noise: FastNoiseLite
 var _cave_noise: FastNoiseLite
 var _ore_veins: Array[IOreVeinBlueprint] = []
 
+# Mapped Landmarks: Landmark 1 (Obsolete Harbor Pier) has been completely removed.
 const LANDMARK_TO_BLUEPRINT: Dictionary = {
-	1: 9, 2: 4, 3: 8, 4: 5, 5: 6, 6: 7 
+	2: 4, 3: 8, 5: 6, 6: 7 
 }
 
 class ChunkProfileCache:

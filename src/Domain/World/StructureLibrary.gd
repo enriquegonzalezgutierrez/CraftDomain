@@ -1,18 +1,10 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic)
-# Class: StructureLibrary
+# Pathfile: res://src/Domain/World/StructureLibrary.gd
 # Description: Domain Service acting as a Registry and Router for voxel structure
 #              blueprints. Provides dynamic registration (OCP compliant) and
 #              delegates construction algorithms to concrete strategy classes.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Isolates structure routing 
-#   and local blueprint instantiation.
-# - Open-Closed Principle (OCP): Integrates a 100% procedural compiled engine.
-#   All static template references and file parsers are completely removed,
-#   reducing startup times to zero.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/StructureLibrary.gd
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name StructureLibrary
 extends RefCounted
@@ -45,11 +37,9 @@ static func initialize_structures() -> void:
 	# All historical, technological, and agricultural landmarks are compiled in RAM.
 	# ==========================================================================
 	register_blueprint(WarpPipeBlueprint.new())           # ID 4: OCP Adaptive Warp Pipes
-	register_blueprint(AdaptiveMinePillarBlueprint.new())  # ID 5: OCP Adaptive Support Pillars
 	register_blueprint(IceTempleBlueprint.new())          # ID 6: OCP Dynamic Ice Temples
 	register_blueprint(NeonPyramidBlueprint.new())        # ID 7: OCP Adaptive Neon Pyramids
 	register_blueprint(MarketCabinBlueprint.new())        # ID 8: OCP Dynamic Market Cabins
-	register_blueprint(DynamicHarborPierBlueprint.new())  # ID 9: OCP Dynamic Harbor Piers
 	register_blueprint(DecayedTempleBlueprint.new())      # ID 15: Adaptive Dungeon Ruins
 	register_blueprint(GeothermalVentBlueprint.new())     # ID 16: Volcanic Magma Vents
 	

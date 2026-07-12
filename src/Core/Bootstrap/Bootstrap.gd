@@ -144,14 +144,17 @@ func _setup_prop_registry() -> void:
 	_register_prop(215, BarrelEntity)
 
 
-## Binds an instantiation callback to a prop class.
+## Binds an instantiation callback to a prop class or static scene.
 func _register_prop(prop_id: int, prop_class: Variant) -> void:
 	PropRegistry.register_prop(prop_id, func(pos: Vector3) -> Node:
 		var script_res: Variant = EntityPreloaderRegistry.get_prop_scene(prop_id)
-		if script_res != null:
-			var inst_node := prop_class.new() as Node3D
-			inst_node.position = pos
-			return inst_node
+		
+		# POLIMORPHIC SCENE LOADER: Instantiates the actual .tscn file if preloaded
+		if script_res != null and script_res is PackedScene:
+			var inst_scene := script_res.instantiate() as Node3D
+			inst_scene.position = pos
+			return inst_scene
+			
 		var inst := prop_class.new() as Node3D
 		inst.position = pos
 		return inst
