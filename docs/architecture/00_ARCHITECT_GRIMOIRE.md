@@ -30,14 +30,14 @@ We segregate our codebase into three distinct layers with a strict one-way depen
    +-------------------------------------------------+
    |              BOOTSTRAP / CORE                   |
    +-------------------------------------------------+
-                            |
-                            v
+							|
+							v
    +-------------------------------------------------+
    |            INFRASTRUCTURE LAYER                 |
    |   (UI, Audio, Rendering, Physics, Persistence)  |
    +-------------------------------------------------+
-                            |
-                            v
+							|
+							v
    +-------------------------------------------------+
    |                DOMAIN LAYER                     |
    |   (Rules of Business, Value Objects, Entities)  |
@@ -178,9 +178,9 @@ Avoid placing heavy business rules or calculations inside Godot's virtual lifecy
 ```gdscript
 # Correct
 func _process(delta: float) -> void:
-    _animate_spinner(delta)
-    _animate_status_dots()
-    _check_dismiss_condition()
+	_animate_spinner(delta)
+	_animate_status_dots()
+	_check_dismiss_condition()
 ```
 
 ---

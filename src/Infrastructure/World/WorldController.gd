@@ -20,7 +20,7 @@ var player: CharacterBody3D
 var world_modifier: IWorldModifier
 
 # Decoupled Sub-Services (SRP Compliant)
-var chunk_manager: ChunkManagerService
+var chunk_lifecycle: ChunkLifecycleService
 var persistence_service: WorldPersistenceService
 var _mob_spawning_service: MobSpawningService
 var _prop_spawning_service: PropSpawningService
@@ -61,7 +61,7 @@ func _initialize_systems() -> void:
 	_fluid_service = FluidSimulationService.new(self, world_state)
 	
 	block_modified.connect(_fluid_service._on_block_modified)
-	chunk_manager = ChunkManagerService.new(self, world_state)
+	chunk_lifecycle = ChunkLifecycleService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
 	
 	CampaignRegistry.initialize_campaign()
@@ -115,13 +115,13 @@ func _process(delta: float) -> void:
 		_process_dynamic_world()
 		_process_day_night_lighting()
 		
-	if is_instance_valid(chunk_manager):
-		chunk_manager.process_frame_queues(delta)
+	if is_instance_valid(chunk_lifecycle):
+		chunk_lifecycle.process_frame_queues(delta)
 
 
 func _exit_tree() -> void:
-	if is_instance_valid(chunk_manager):
-		chunk_manager.shutdown()
+	if is_instance_valid(chunk_lifecycle):
+		chunk_lifecycle.shutdown()
 
 
 func _process_dynamic_world() -> void:
@@ -132,11 +132,11 @@ func _process_dynamic_world() -> void:
 			look_dir = -camera_node.global_transform.basis.z.normalized()
 			
 	var task := loader_service.check_viewer_position(player.global_position, look_dir, world_state)
-	if is_instance_valid(chunk_manager):
-		chunk_manager.queue_unloads(task.to_unload)
+	if is_instance_valid(chunk_lifecycle):
+		chunk_lifecycle.queue_unloads(task.to_unload)
 		if not task.to_load.is_empty():
-			chunk_manager.queue_loads(task.to_load)
-		chunk_manager.spawn_entities_by_proximity(player.global_position)
+			chunk_lifecycle.queue_loads(task.to_load)
+		chunk_lifecycle.spawn_entities_by_proximity(player.global_position)
 
 
 func _process_day_night_lighting() -> void:
@@ -146,7 +146,7 @@ func _process_day_night_lighting() -> void:
 
 
 func get_active_chunk_nodes() -> Dictionary:
-	return chunk_manager.get_active_nodes() if is_instance_valid(chunk_manager) else {}
+	return chunk_lifecycle.get_active_nodes() if is_instance_valid(chunk_lifecycle) else {}
 
 
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
@@ -154,8 +154,8 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 		world_state.set_block(global_pos, type)
 	
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
-	chunk_manager._chunk_versions[chunk_pos] = chunk_manager._chunk_versions.get(chunk_pos, 0) + 1
-	chunk_manager._rebuild_chunk_instantly(chunk_pos)
+	chunk_lifecycle._chunk_versions[chunk_pos] = chunk_lifecycle._chunk_versions.get(chunk_pos, 0) + 1
+	chunk_lifecycle._rebuild_chunk_instantly(chunk_pos)
 	
 	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos)
 	_apply_procedural_gravity_on_block_broken(global_pos, type)
@@ -164,7 +164,7 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 
 func _trigger_adjacent_boundary_redraws(global_pos: Vector3i, chunk_pos: Vector3i) -> void:
 	var local_pos := world_state.global_to_local_pos(global_pos)
-	var _cv: Dictionary = chunk_manager._chunk_versions
+	var _cv: Dictionary = chunk_lifecycle._chunk_versions
 	
 	if local_pos.x == 0:
 		var n_pos := chunk_pos + Vector3i(-1, 0, 0)
@@ -234,8 +234,8 @@ func _resolve_unsupported_prop(prop: StaticBody3D) -> void:
 
 
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
-	if is_instance_valid(chunk_manager):
-		chunk_manager._request_chunk_rebuild(chunk_pos)
+	if is_instance_valid(chunk_lifecycle):
+		chunk_lifecycle._request_chunk_rebuild(chunk_pos)
 
 
 func save_all() -> void:
@@ -254,13 +254,13 @@ func spawn_entities_for_chunk(chunk: Chunk) -> Array[Node]:
 
 func check_player_spawn_activation() -> void:
 	if is_instance_valid(player) and not player.get("is_active"):
-		if is_instance_valid(chunk_manager):
+		if is_instance_valid(chunk_lifecycle):
 			var _all_rendered := true
 			for x in range(-1, 2):
 				for z in range(-1, 2):
 					var pos_0 := Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z)
 					var pos_1 := Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z)
-					if not chunk_manager.is_chunk_rendered(pos_0) or not chunk_manager.is_chunk_rendered(pos_1):
+					if not chunk_lifecycle.is_chunk_rendered(pos_0) or not chunk_lifecycle.is_chunk_rendered(pos_1):
 						_all_rendered = false
 						break
 				if not _all_rendered: break
@@ -277,8 +277,8 @@ func _activate_player_spawn() -> void:
 	_restore_player_inventory()
 	player.set("is_active", true)
 	player.velocity = Vector3.ZERO
-	if is_instance_valid(chunk_manager):
-		chunk_manager.spawn_entities_by_proximity(player.global_position)
+	if is_instance_valid(chunk_lifecycle):
+		chunk_lifecycle.spawn_entities_by_proximity(player.global_position)
 		
 	if _is_startup_phase:
 		_is_startup_phase = false
@@ -297,13 +297,13 @@ func _restore_player_inventory() -> void:
 
 
 func _trigger_prioritized_spawn_loads() -> void:
-	if is_instance_valid(chunk_manager):
+	if is_instance_valid(chunk_lifecycle):
 		var target_spawn_chunks: Array[Vector3i] = []
 		for x in range(-1, 2):
 			for z in range(-1, 2):
 				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z))
 				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z))
-		chunk_manager.queue_prioritized_loads(target_spawn_chunks)
+		chunk_lifecycle.queue_prioritized_loads(target_spawn_chunks)
 
 
 # ==============================================================================

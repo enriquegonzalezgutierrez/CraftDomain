@@ -2,7 +2,6 @@
 # Pathfile: res://src/Infrastructure/UI/PlayerHUD.gd
 # Description: Central HUD Orchestrator and UI Coordinator. Handles modal toggles,
 #              LOD UI updates, and reactive Domain Event bindings.
-#              Layout and structural offsets are strictly defined in .tscn.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -32,8 +31,8 @@ var world_controller: Node3D
 var _ui_update_timer: float = 0.0
 const UI_UPDATE_INTERVAL: float = 0.05 
 
-# Dialogues & Popups Coordinator
-var dialogue_manager: DialogueManager
+# Dialogues & Popups Coordinator (DIP Aligned)
+var dialogue_coordinator: DialogueCoordinator
 var _crafting_overlay: CraftingOverlay
 var _inventory_overlay: InventoryOverlay
 var _world_map_overlay: MapOverlay
@@ -92,10 +91,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _setup_dialogue_system() -> void:
-	dialogue_manager = DialogueManager.new()
-	dialogue_manager.name = "DialogueManager"
-	dialogue_manager.player = player
-	add_child(dialogue_manager)
+	dialogue_coordinator = DialogueCoordinator.new()
+	dialogue_coordinator.name = "DialogueCoordinator"
+	dialogue_coordinator.player = player
+	add_child(dialogue_coordinator)
 
 
 ## Reactive Binding: Hooks visual updates to pure Domain Events (Observer Pattern)
@@ -136,8 +135,8 @@ func _on_inventory_changed() -> void:
 # ==============================================================================
 
 func open_dialogue(node: Resource, speaker_name: String, speaker_node: CharacterBody3D = null) -> void:
-	if is_instance_valid(dialogue_manager):
-		dialogue_manager.open_dialogue(node, speaker_name, speaker_node)
+	if is_instance_valid(dialogue_coordinator):
+		dialogue_coordinator.open_dialogue(node, speaker_name, speaker_node)
 
 
 func show_loading_screen() -> void:
@@ -253,7 +252,7 @@ func is_any_menu_open() -> bool:
 		is_instance_valid(_crafting_overlay) or
 		is_instance_valid(_inventory_overlay) or
 		is_instance_valid(_world_map_overlay) or 
-		(is_instance_valid(dialogue_manager) and is_instance_valid(dialogue_manager.active_dialogue))
+		(is_instance_valid(dialogue_coordinator) and is_instance_valid(dialogue_coordinator.active_dialogue))
 	)
 
 
