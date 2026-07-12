@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/BarrelEntity.gd
 # Description: Infrastructure Static Entity representing an interactive Breakable Barrel.
-#              Delegates model and material sanitization to GLBModelSanitizer (DRY).
+#              Manages collision setups, item looting, and destruction particles.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -10,40 +10,14 @@ extends StaticBody3D
 
 const MODEL_PATH: String = "res://assets/models/decorations/barrel.glb"
 
-var _model_node: Node3D
-
 
 func _ready() -> void:
 	name = "Prop_BARREL"
-	_setup_model()
-	_setup_collision()
-
-
-func _setup_model() -> void:
-	if ResourceLoader.exists(MODEL_PATH):
-		var model_scene := load(MODEL_PATH) as PackedScene
-		_model_node = model_scene.instantiate() as Node3D
-		add_child(_model_node)
-		
-		# Telemetry-based alignment
-		_model_node.scale = Vector3(1.0, 1.0, 1.0)
-		_model_node.position = Vector3(0.0, 0.0, 0.0)
-		_model_node.rotation_degrees = Vector3(0, 0, 0)
-		
-		# Centralized OCP/DRY Cleanup
-		GLBModelSanitizer.sanitize_model(_model_node)
-	else:
-		push_error("[BarrelEntity] GLB model not found at path: " + MODEL_PATH)
-
-
-func _setup_collision() -> void:
-	var col_shape := CollisionShape3D.new()
-	col_shape.name = "BarrelCollider"
-	var box_shape := BoxShape3D.new()
-	box_shape.size = Vector3(0.72, 0.90, 0.72)
-	col_shape.shape = box_shape
-	col_shape.position = Vector3(0.0, 0.45, 0.0) 
-	add_child(col_shape)
+	
+	# Locate and sanitize the static GLB model pre-instanced in the .tscn scene tree
+	var model_node := get_node_or_null("Visuals/BodyBobJoint/barrel") as Node3D
+	if is_instance_valid(model_node):
+		GLBModelSanitizer.sanitize_model(model_node)
 
 
 func interact(player_node: CharacterBody3D) -> void:

@@ -1,3 +1,10 @@
+# ==============================================================================
+# Pathfile: res://docs/architecture/00_ARCHITECT_GRIMOIRE.md
+# Description: Master Software Architecture, SOLID Guidelines and Clean Coding
+#              Standards for the "Dolores" project.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
+# ==============================================================================
 # Dolores - Master Software Architecture & Clean Coding Bible
 *Written by Enrique González Gutiérrez (enrique.gonzalez.gutierrez@gmail.com)*
 
@@ -160,7 +167,7 @@ All GDScripts must be compiled under strict static typing. Untyped declarations 
   var target_coord: Vector3i = Vector3i.ZERO
   
   func calculate_distance(target: Vector3) -> float:
-      return global_position.distance_to(target)
+	  return global_position.distance_to(target)
   ```
 - Disable untyped warnings inside `project.godot` to ensure compile-time verification:
   `gdscript/warnings/untyped_declaration=1`
@@ -170,7 +177,7 @@ When querying nodes or resources dynamically, always execute safe casting (`as`)
 ```gdscript
 var inventory := player.get("inventory") as InventoryComponent
 if is_instance_valid(inventory):
-    inventory.add_item(16, 1)
+	inventory.add_item(16, 1)
 ```
 
 ### 6.3 Godot Engine Methods Control
@@ -181,6 +188,17 @@ func _process(delta: float) -> void:
 	_animate_spinner(delta)
 	_animate_status_dots()
 	_check_dismiss_condition()
+```
+
+### 6.4 Standardized System Headers
+Every single GDScript file committed to this repository must begin with a standardized system header containing Pathfile, Description, Author, and Email for traceability:
+```gdscript
+# ==============================================================================
+# Pathfile: res://src/Domain/World/WorldGenerator.gd
+# Description: Domain Generator responsible for procedurally carving chunk block data.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
+# ==============================================================================
 ```
 
 ---
@@ -209,3 +227,17 @@ Voxel sandbox games are highly sensitive to CPU and GPU fillrate bottlenecks. Al
 ### 7.5 Memory-Safe Shutdowns
 - To prevent memory leaks (`Lambda capture was freed` errors) during world exits, always connect temporary particle timers directly to `particles.queue_free` instead of compiling dynamic lambda captures.
 - All background threads inside `ChunkManagerService.gd` must be joined and safely shut down before exiting the SceneTree.
+
+### 7.6 Declarative Scenery Props (.tscn Mandate)
+Constructing static scenery props or interactive decorations (like chests, barrels, campfires, and wishing wells) procedurally via script code is **strictly forbidden**. Every scenery prop must possess its own `.tscn` scene file. This unifies the spawning pipeline, simplifies the preloader registry, and empowers developers to visually scale, adjust collision shapes, configure particle systems, and align lighting source nodes directly within the Godot Editor.
+
+---
+
+## 🛠️ SECTION 8: PROCESS & DEVELOPMENT WORKFLOW
+
+### 8.1 Phased, Incremental Development & Step-by-Step Approval Protocol
+To ensure absolute compilation stability, prevent regressions, and enforce a flawless testability pipeline, all future updates, upgrades, refactoring phases, and feature implementations must adhere strictly to this phased approval process:
+1. **Divide Into Distinct testable Phases:** Any complex technical task or refactoring sweep must be mapped out into independent, logical, and sequentially testable phases.
+2. **One Complete and Documented File at a Time:** The developer must provide *only* the first complete, fully written, and cleanly typed file (standard headers attached) of the current phase.
+3. **Approval Hold (The OK Loop):** The developer must pause and wait for the user's explicit approval (**"OK"**) on the current file before providing the next file in the queue. 
+4. **Iterative Verification:** No massive code dumps are allowed. Testing of the game's compilation and visual performance must occur at the end of each completed phase.

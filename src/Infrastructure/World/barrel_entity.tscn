@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://dgh8qxx2q7rit"]
+
+[ext_resource type="Script" uid="uid://bqucrmul5mk8e" path="res://src/Infrastructure/World/BarrelEntity.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://sayaeri7s2yl" path="res://assets/models/decorations/barrel.glb" id="2_glb"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_col"]
+size = Vector3(0.72, 0.9, 0.72)
+
+[node name="BarrelEntity" type="StaticBody3D" unique_id=820667796]
+script = ExtResource("1_script")
+
+[node name="BarrelCollider" type="CollisionShape3D" parent="." unique_id=1000988096]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+shape = SubResource("BoxShape3D_col")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1746254381]
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1949176282]
+
+[node name="barrel" parent="Visuals/BodyBobJoint" unique_id=954200565 instance=ExtResource("2_glb")]

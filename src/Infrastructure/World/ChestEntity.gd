@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/ChestEntity.gd
 # Description: Infrastructure Static Entity representing an interactive 3D loot chest.
-#              Delegates model and material sanitization to GLBModelSanitizer (DRY).
+#              Manages collision setups, item looting, and custom popup animations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -9,53 +9,15 @@ class_name ChestEntity
 extends StaticBody3D
 
 const MODEL_PATH: String = "res://assets/models/decorations/chest.glb"
-const VERTICAL_OFFSET: float = 0.373  
-
-var _model_node: Node3D
 
 
 func _ready() -> void:
 	name = "Prop_CHEST"
-	_setup_model()
-	_setup_collision()
-
-
-func _setup_model() -> void:
-	var model_scene := load(MODEL_PATH) as PackedScene
-	if model_scene != null:
-		_model_node = model_scene.instantiate() as Node3D
-		add_child(_model_node)
-		
-		_model_node.position = Vector3(0.0, VERTICAL_OFFSET, 0.0)
-		_model_node.scale = Vector3(1.0, 1.0, 1.0)
-		
-		# Centralized OCP/DRY Cleanup
-		GLBModelSanitizer.sanitize_model(_model_node)
-	else:
-		push_error("[ChestEntity] Failed to load GLB model at path: " + MODEL_PATH)
-		_setup_fallback_mesh()
-
-
-func _setup_fallback_mesh() -> void:
-	var mesh_instance := MeshInstance3D.new()
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(0.8, 0.8, 0.8)
-	mesh_instance.mesh = box_mesh
-	mesh_instance.position = Vector3(0.0, 0.4, 0.0)
-	var mat := ORMMaterial3D.new()
-	mat.albedo_color = Color(0.45, 0.3, 0.15) 
-	mesh_instance.material_override = mat
-	add_child(mesh_instance)
-
-
-func _setup_collision() -> void:
-	var col_shape := CollisionShape3D.new()
-	col_shape.name = "ChestCollider"
-	var box_shape := BoxShape3D.new()
-	box_shape.size = Vector3(0.85, 0.85, 0.85)
-	col_shape.shape = box_shape
-	col_shape.position = Vector3(0.0, 0.425, 0.0) 
-	add_child(col_shape)
+	
+	# Locate and sanitize the static GLB model pre-instanced in the .tscn scene tree
+	var model_node := get_node_or_null("Visuals/BodyBobJoint/chest") as Node3D
+	if is_instance_valid(model_node):
+		GLBModelSanitizer.sanitize_model(model_node)
 
 
 func interact(player_node: CharacterBody3D) -> void:
@@ -71,7 +33,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		
 		inventory.add_item(reward_item_id, 1)
 		
-		var active_q := QuestService.get_active_quest()
+		var active_q := QuestService.get_active_quest() as Quest
 		if active_q != null and active_q.required_item_index == reward_item_id:
 			active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
 		
