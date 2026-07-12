@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/PlayerController.gd
 # Description: First-person player physics controller. Manages movement vectors,
-#              camera rotations, view bobs, and input actions.
-#              Refactored to instantiate PlayerHUD via its scene tree.
+#              camera rotations, and input actions.
+#              Delegates visual effects, audio, and inputs to sub-components (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -34,11 +34,10 @@ var active_slot_index: int = 0
 var active_build_type: BlockType.Type = BlockType.Type.STONE
 var is_item_selected: bool = true 
 
-var _bob_timer: float = 0.0
-var _target_camera_pos: Vector3 = Vector3(0.0, 1.6, 0.0)
-var _target_camera_tilt: float = 0.0
-var _shake_intensity: float = 0.0
-var _footstep_accumulator: float = 0.0
+# Decoupled Sub-Components (SRP Compliant)
+var _input_component: PlayerInputComponent
+var _camera_effects: CameraEffectsComponent
+var _footstep_player: FootstepAudioPlayer
 
 
 func _init() -> void:
@@ -56,7 +55,6 @@ func _ready() -> void:
 	wall_min_slide_angle = 0.0         
 	safe_margin = 0.015                
 	
-	_setup_inputs()
 	_setup_player_geometry()
 	_setup_sub_components()
 	
@@ -107,28 +105,26 @@ func _setup_sub_components() -> void:
 		interaction_component.set("world_controller", world_controller)
 		camera.add_child(interaction_component)
 	
-	# Scene-Based instantiation to build child nodes correctly
 	hud = PLAYER_HUD_SCENE.instantiate() as PlayerHUD
 	hud.player = self
 	hud.world_controller = world_controller
 	add_child(hud)
+	
+	_setup_decoupled_components()
 
 
-func _setup_inputs() -> void:
-	var primary_inputs := {
-		"move_forward": KEY_W, "move_backward": KEY_S, "move_left": KEY_A, "move_right": KEY_D,
-		"jump": KEY_SPACE, "ui_cancel": KEY_ESCAPE, "select_stone": KEY_1, "select_dirt": KEY_2,
-		"select_grass": KEY_3, "select_wood": KEY_4, "select_leaves": KEY_5, "select_lava": KEY_6,
-		"select_chicken": KEY_7, "select_sword": KEY_8, "craft_item": KEY_C, "toggle_backpack": KEY_I,
-		"free_cursor": KEY_ALT, "toggle_world_map": KEY_M 
-	}
-	for action_name: String in primary_inputs.keys():
-		if not InputMap.has_action(action_name):
-			InputMap.add_action(action_name)
-		InputMap.action_erase_events(action_name)
-		var event := InputEventKey.new()
-		event.keycode = primary_inputs[action_name] as Key
-		InputMap.action_add_event(action_name, event)
+func _setup_decoupled_components() -> void:
+	_input_component = PlayerInputComponent.new()
+	add_child(_input_component)
+	_input_component.initialize(self)
+	
+	_camera_effects = CameraEffectsComponent.new()
+	add_child(_camera_effects)
+	_camera_effects.initialize(self, camera)
+	
+	_footstep_player = FootstepAudioPlayer.new()
+	add_child(_footstep_player)
+	_footstep_player.initialize(self, world_controller)
 
 
 func _input(event: InputEvent) -> void:
@@ -168,16 +164,6 @@ func _physics_process(delta: float) -> void:
 	if not is_active:
 		return
 
-	if is_instance_valid(world_controller):
-		var chunk_manager_ref: Object = world_controller.get("chunk_manager")
-		if is_instance_valid(chunk_manager_ref) and "world_state" in world_controller:
-			var ws: WorldState = world_controller.world_state
-			if is_instance_valid(ws):
-				var p_chunk_pos := ws.global_to_chunk_pos(Vector3i(floori(position.x), 0, floori(position.z)))
-				if not chunk_manager_ref.call("is_chunk_rendered", p_chunk_pos):
-					velocity = Vector3.ZERO
-					return
-
 	_process_hotbar_keys()
 	if is_instance_valid(interaction_component) and interaction_component.has_method("process_interaction"):
 		interaction_component.call("process_interaction")
@@ -187,10 +173,10 @@ func _physics_process(delta: float) -> void:
 		if velocity.y < TERMINAL_VELOCITY:
 			velocity.y = TERMINAL_VELOCITY
 			
-	if Input.is_action_just_pressed("jump") and is_on_floor():
+	if is_instance_valid(_input_component) and _input_component.is_jump_just_pressed() and is_on_floor():
 		velocity.y = JUMP_VELOCITY
 
-	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+	var input_dir := _input_component.get_movement_vector() if is_instance_valid(_input_component) else Vector2.ZERO
 	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 	
 	var current_flat_velocity := Vector2(velocity.x, velocity.z)
@@ -202,76 +188,13 @@ func _physics_process(delta: float) -> void:
 	velocity.z = current_flat_velocity.y
 
 	move_and_slide()
-	_process_camera_effects(delta)
 	
-	if is_on_floor() and current_flat_velocity.length_squared() > 0.25:
-		_footstep_accumulator += delta * current_flat_velocity.length()
-		if _footstep_accumulator >= 2.2: 
-			_footstep_accumulator = 0.0
-			_trigger_footstep_sfx(current_flat_velocity)
-	else:
-		_footstep_accumulator = lerp(_footstep_accumulator, 0.0, delta * 3.0)
-
+	if is_instance_valid(_camera_effects):
+		_camera_effects.process_camera_effects(delta)
+	if is_instance_valid(_footstep_player):
+		_footstep_player.process_footsteps(delta, current_flat_velocity)
 	if is_instance_valid(visual_component):
 		visual_component.animate_movement(current_flat_velocity, is_on_floor(), delta)
-
-
-func _trigger_footstep_sfx(_velocity_flat: Vector2) -> void:
-	var p_block := Vector3i(floori(global_position.x), floori(global_position.y - 0.1), floori(global_position.z))
-	var block_below := BlockType.Type.AIR
-	if is_instance_valid(world_controller) and "world_state" in world_controller:
-		var ws: WorldState = world_controller.world_state
-		if is_instance_valid(ws):
-			block_below = ws.get_block(p_block)
-		
-	var sfx_name := "footstep_stone" 
-	match block_below:
-		BlockType.Type.GRASS, BlockType.Type.DIRT:
-			sfx_name = "footstep_grass"
-		BlockType.Type.WOOD, BlockType.Type.LEAVES, BlockType.Type.BIRCH_LOG, BlockType.Type.OAK_PLANKS:
-			sfx_name = "footstep_wood"
-		BlockType.Type.SNOW, BlockType.Type.ICE:
-			sfx_name = "footstep_snow"
-		BlockType.Type.AIR, BlockType.Type.WATER:
-			return 
-			
-	AudioService.play_sfx_static(sfx_name, global_position)
-
-
-func _process_camera_effects(delta: float) -> void:
-	if not is_instance_valid(camera):
-		return
-	var flat_vel := Vector2(velocity.x, velocity.z)
-	var horizontal_speed := flat_vel.length()
-	
-	if is_on_floor() and horizontal_speed > 0.1:
-		_bob_timer += delta * horizontal_speed * 2.2
-		var bob_y := sin(_bob_timer) * 0.035
-		var bob_x := cos(_bob_timer * 0.5) * 0.018
-		_target_camera_pos = Vector3(bob_x, 1.6 + bob_y, 0.0)
-		var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
-		_target_camera_tilt = -input_dir.x * 0.02
-	else:
-		_bob_timer += delta * 1.5
-		var breath_y := sin(_bob_timer) * 0.006
-		_target_camera_pos = Vector3(0.0, 1.6 + breath_y, 0.0)
-		_target_camera_tilt = 0.0
-		
-	var current_pos: Vector3 = camera.position.lerp(_target_camera_pos, delta * 10.0)
-	var current_tilt: float = lerp(camera.rotation.z, _target_camera_tilt, delta * 8.0)
-	
-	if _shake_intensity > 0.005:
-		var shake_x := randf_range(-_shake_intensity, _shake_intensity) * 0.4
-		var shake_y := randf_range(-_shake_intensity, _shake_intensity) * 0.4
-		var shake_z := randf_range(-_shake_intensity, _shake_intensity) * 0.4
-		current_pos += Vector3(shake_x, shake_y, shake_z)
-		current_tilt += randf_range(-_shake_intensity, _shake_intensity) * 0.08
-		_shake_intensity = lerp(_shake_intensity, 0.0, delta * 9.0)
-	else:
-		_shake_intensity = 0.0
-		
-	camera.position = current_pos
-	camera.rotation.z = current_tilt
 
 
 func _scroll_hotbar(direction: int) -> void:
@@ -282,14 +205,11 @@ func _scroll_hotbar(direction: int) -> void:
 
 
 func _process_hotbar_keys() -> void:
-	if Input.is_action_just_pressed("select_stone"): _apply_hotbar_selection(0)
-	elif Input.is_action_just_pressed("select_dirt"): _apply_hotbar_selection(1)
-	elif Input.is_action_just_pressed("select_grass"): _apply_hotbar_selection(2)
-	elif Input.is_action_just_pressed("select_wood"): _apply_hotbar_selection(3)
-	elif Input.is_action_just_pressed("select_leaves"): _apply_hotbar_selection(4)
-	elif Input.is_action_just_pressed("select_lava"): _apply_hotbar_selection(5)
-	elif Input.is_action_just_pressed("select_chicken"): _apply_hotbar_selection(6)
-	elif Input.is_action_just_pressed("select_sword"): _apply_hotbar_selection(7)
+	if not is_instance_valid(_input_component):
+		return
+	var selection := _input_component.get_active_hotkey_selection()
+	if selection != -1:
+		_apply_hotbar_selection(selection)
 
 
 func _apply_hotbar_selection(slot: int) -> void:
@@ -338,7 +258,8 @@ func take_damage(amount: int, knockback_force: Vector3) -> void:
 
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	_shake_intensity = 0.32
+	if is_instance_valid(_camera_effects):
+		_camera_effects.apply_trauma_shake(0.32)
 
 
 func _on_domain_entity_died() -> void:

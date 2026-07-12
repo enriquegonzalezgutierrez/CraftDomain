@@ -9,7 +9,7 @@
 class_name VoxelInteractionComponent
 extends Node3D
 
-var player: CharacterBody3D
+var player: PlayerController
 var world_controller: Node3D
 var raycast: RayCast3D
 
@@ -104,44 +104,60 @@ func _process_placement_preview(target_coord: Vector3i, hit_normal: Vector3) -> 
 	if not is_instance_valid(placement_highlight_mesh) or not is_instance_valid(player):
 		return
 		
-	var is_buildable := false
-	var active_slot: int = player.get("active_slot_index") as int
-	var inventory_comp: InventoryComponent = player.get("inventory") as InventoryComponent
+	var active_slot := player.active_slot_index
+	var inventory_comp := player.inventory as InventoryComponent
+	var is_buildable := _is_active_tool_placeable(inventory_comp, active_slot) if is_instance_valid(inventory_comp) else false
 	
-	if is_instance_valid(inventory_comp):
-		var slot_data := inventory_comp.get_slot_data(active_slot)
-		if slot_data != null and slot_data.item_id != -1:
-			var strategy := ItemStrategyRegistry.get_strategy(slot_data.item_id)
-			is_buildable = (strategy != null and not (strategy is ConsumableItemStrategy))
-			
 	if is_buildable:
-		var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
-		var world_ctrl := world_controller as WorldController
-		
-		if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
-			var ws := world_ctrl.world_state
-			var target_block := ws.get_block(build_coord)
-			var is_spot_free := target_block == BlockType.Type.AIR or target_block == BlockType.Type.WATER
-			
-			var aimed_block := ws.get_block(target_coord)
-			var is_mergeable_bottom: bool = aimed_block == BlockType.Type.STONE_SLAB_BOTTOM and int(round(hit_normal.y)) == 1
-			var is_mergeable_top: bool = aimed_block == BlockType.Type.STONE_SLAB_TOP and int(round(hit_normal.y)) == -1
-			
-			var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
-			var player_aabb := AABB(player.global_position - Vector3(0.35, 0.05, 0.35), Vector3(0.70, 1.85, 0.70))
-			var player_collides := player_aabb.intersects(block_aabb)
-			
-			placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
-			placement_highlight_mesh.visible = true
-			
-			if (is_spot_free and not player_collides) or is_mergeable_bottom or is_mergeable_top:
-				placement_material.albedo_color = Color(0.2, 0.95, 0.35, 0.18)
-				placement_material.emission = Color(0.2, 0.95, 0.35)
-			else:
-				placement_material.albedo_color = Color(0.95, 0.2, 0.2, 0.18)
-				placement_material.emission = Color(0.95, 0.2, 0.2)
+		_update_placement_preview_geometry(target_coord, hit_normal, inventory_comp)
 	else:
 		placement_highlight_mesh.visible = false
+
+
+func _is_active_tool_placeable(inventory_comp: InventoryComponent, active_slot: int) -> bool:
+	var slot_data := inventory_comp.get_slot_data(active_slot)
+	if slot_data != null and slot_data.item_id != -1:
+		var strategy := ItemStrategyRegistry.get_strategy(slot_data.item_id)
+		return strategy != null and not (strategy is ConsumableItemStrategy)
+	return false
+
+
+func _does_block_collide_with_player(build_coord: Vector3i) -> bool:
+	var block_aabb := AABB(Vector3(build_coord), Vector3(1.0, 1.0, 1.0))
+	var player_aabb := AABB(player.global_position - Vector3(0.35, 0.05, 0.35), Vector3(0.70, 1.85, 0.70))
+	return player_aabb.intersects(block_aabb)
+
+
+func _is_slab_mergeable(ws: WorldState, target_coord: Vector3i, hit_normal: Vector3) -> bool:
+	var aimed_block := ws.get_block(target_coord)
+	var is_mergeable_bottom: bool = aimed_block == BlockType.Type.STONE_SLAB_BOTTOM and int(round(hit_normal.y)) == 1
+	var is_mergeable_top: bool = aimed_block == BlockType.Type.STONE_SLAB_TOP and int(round(hit_normal.y)) == -1
+	return is_mergeable_bottom or is_mergeable_top
+
+
+func _set_preview_color(albedo: Color, emission: Color) -> void:
+	if is_instance_valid(placement_material):
+		placement_material.albedo_color = albedo
+		placement_material.emission = emission
+
+
+func _update_placement_preview_geometry(target_coord: Vector3i, hit_normal: Vector3, _inventory_comp: InventoryComponent) -> void:
+	var build_coord := target_coord + Vector3i(round(hit_normal.x), round(hit_normal.y), round(hit_normal.z))
+	var world_ctrl := world_controller as WorldController
+	
+	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
+		var ws := world_ctrl.world_state
+		var is_spot_free := ws.get_block(build_coord) == BlockType.Type.AIR or ws.get_block(build_coord) == BlockType.Type.WATER
+		var is_mergeable := _is_slab_mergeable(ws, target_coord, hit_normal)
+		var player_collides := _does_block_collide_with_player(build_coord)
+		
+		placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
+		placement_highlight_mesh.visible = true
+		
+		if (is_spot_free and not player_collides) or is_mergeable:
+			_set_preview_color(Color(0.2, 0.95, 0.35, 0.18), Color(0.2, 0.95, 0.35))
+		else:
+			_set_preview_color(Color(0.95, 0.2, 0.2, 0.18), Color(0.95, 0.2, 0.2))
 
 
 func _mine_or_attack() -> void:
@@ -154,8 +170,8 @@ func _mine_or_attack() -> void:
 		return
 		
 	var collider: Node = raycast.get_collider() as Node
-	var active_slot: int = player.get("active_slot_index") as int
-	var inventory_comp: InventoryComponent = player.get("inventory") as InventoryComponent
+	var active_slot := player.active_slot_index
+	var inventory_comp := player.inventory as InventoryComponent
 	var slot_data := inventory_comp.get_slot_data(active_slot) if is_instance_valid(inventory_comp) else null
 	var item_id := slot_data.item_id if slot_data != null else -1
 	
@@ -252,7 +268,6 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	particles.explosiveness = 0.95
 	particles.lifetime = 0.45
 	
-	# Symmetrical CPUParticles3D direct variable configuration (DIP/SRP)
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	particles.emission_box_extents = Vector3(0.35, 0.35, 0.35)
 	particles.direction = Vector3(0.0, 1.0, 0.0) 
@@ -291,8 +306,8 @@ func _build_or_interact() -> void:
 		collider.call("interact", player)
 		return
 		
-	var active_slot: int = player.get("active_slot_index") as int
-	var inventory_comp: InventoryComponent = player.get("inventory") as InventoryComponent
+	var active_slot := player.active_slot_index
+	var inventory_comp := player.inventory as InventoryComponent
 	var world_ctrl: WorldController = world_controller as WorldController
 	
 	if not is_instance_valid(inventory_comp) or not is_instance_valid(world_ctrl):
