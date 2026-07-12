@@ -1,17 +1,10 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (UI Presentation / Developer Diagnostics)
-# Class: AIShowcaseRoom
+# Pathfile: res://src/Infrastructure/UI/AIShowcaseRoom.gd
 # Description: Self-contained AI and Entity Sandbox Laboratory. Generates mock 
 #              surroundings, A* navigation nodes, and a diagnostic panel to 
 #              test dynamic NPC behaviors in real-time.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively the diagnostic 
-#   laboratory environment, spawning decks, and telemetry panel refreshes.
-# - Open-Closed Principle (OCP): Dynamically populates spawning buttons by scanning 
-#   the global MobRegistry, closing this class to future mob-type additions.
-# - Liskov Substitution Principle (LSP): Fully compatible with standard 
-#   Node3D scene structures.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name AIShowcaseRoom
 extends Node3D
@@ -61,22 +54,15 @@ func _setup_mock_world_state() -> void:
 	navigation_service = VoxelNavigationService.new()
 	generator = WorldGenerator.new(42) 
 	
-	# ==========================================================================
-	# PATHFINDING STABILIZATION RESOLUTION (OCP/SRP Fix)
-	# Build a solid 4-block deep stone foundation (Y=8 to Y=11) so that the 
-	# A* pathfinding and boundary checks detect a safe terrestrial floor.
-	# ==========================================================================
 	for x: int in range(PLATFORM_SIZE):
 		for z: int in range(PLATFORM_SIZE):
 			for y: int in range(8, PLATFORM_Y + 1):
 				var global_pos := Vector3i(x - 8, y, z - 8)
 				world_state.set_block(global_pos, BlockType.Type.STONE)
 				
-			# Add navigation node to graph only on the topmost surface
 			var top_pos := Vector3i(x - 8, PLATFORM_Y, z - 8)
 			navigation_service.add_navigation_node(top_pos, false)
 			
-	# Connect adjacent A* nodes horizontally (4-directional)
 	for x: int in range(-8, 8):
 		for z: int in range(-8, 8):
 			var node_pos := Vector3i(x, PLATFORM_Y, z)
@@ -175,7 +161,6 @@ func _build_3d_testing_pad() -> void:
 	floor_body.add_child(floor_col) 
 	checker_root.add_child(floor_body)
 	
-	# Wall barriers around the 16x16 deck to prevent entities from slipping off
 	var walls_config: Array[Array] = [
 		[Vector3(0, PLATFORM_Y + 5.0, -9.0), Vector3(18, 10, 2)], 
 		[Vector3(0, PLATFORM_Y + 5.0, 9.0), Vector3(18, 10, 2)],  
@@ -346,8 +331,8 @@ func _populate_developer_mobs_deck() -> void:
 	keys.sort()
 	for spawn_id: int in keys:
 		var btn := Button.new()
-		var raw_name := _get_mock_mob_name(spawn_id)
-		btn.text = " " + tr("SHOWCASE_SPAWN_PREFIX") + " " + raw_name.to_upper()
+		var translation_key := _get_mock_mob_translation_key(spawn_id)
+		btn.text = " " + tr("SHOWCASE_SPAWN_PREFIX") + " " + tr(translation_key).to_upper()
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.custom_minimum_size = Vector2(0, 36)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -451,9 +436,10 @@ func _update_diagnostic_telemetry(_delta: float) -> void:
 		current_hp = domain_entity.get("health") as int
 		
 	var host_pos: Vector3 = _active_test_subject.global_position
-		
+	var subject_key := _get_mock_mob_translation_key(_active_test_subject.get("spawn_id") if "spawn_id" in _active_test_subject else -1)
+	
 	_telemetry_label.text = (
-		tr("SHOWCASE_TEL_NAME") + ": %s\n" % _active_test_subject.name +
+		tr("SHOWCASE_TEL_NAME") + ": %s\n" % tr(subject_key) +
 		tr("SHOWCASE_TEL_HEALTH") + ": %d Hearts (%d HP)\n" % [floori(float(current_hp) / 2.0) if current_hp > 0 else 0, current_hp] +
 		tr("SHOWCASE_TEL_COORDS") + ": [ X: %d, Y: %d, Z: %d ]\n" % [int(round(host_pos.x)), int(round(host_pos.y)), int(round(host_pos.z))] +
 		tr("SHOWCASE_TEL_TASK") + ": %s\n\n" % tr(task_str) +
@@ -462,36 +448,36 @@ func _update_diagnostic_telemetry(_delta: float) -> void:
 	)
 
 
-func _get_mock_mob_name(spawn_id: int) -> String:
+func _get_mock_mob_translation_key(spawn_id: int) -> String:
 	match spawn_id:
-		0: return "Wild Pig"
-		1: return "Chicken"
-		2: return "Sheep"
-		3: return "Clay Cow"
-		10: return "Cave Zombie"
-		11: return "White Shark"
-		12: return "Gothic Gargoyle"
-		13: return "Sneaky Goblin"
-		100: return "Gossip Villager"
-		101: return "Merchant"
-		102: return "Guard Knight"
-		103: return "Farmer"
-		104: return "Forest Druid"
-		105: return "Cave Miner"
-		106: return "Android"
-		107: return "Iron Golem"
-		201: return "Sea Turtle"
-		204: return "Red Fox"
-		205: return "Yellow Bird"
-		206: return "Domestic Cat"
-		207: return "Parrot"
-		208: return "Beach Crab"
-		209: return "Elephant"
-		210: return "Octopus"
-		211: return "Raccoon"
-		212: return "Growlithe"
-		213: return "Monkey"
-		_: return "Unknown"
+		0: return "NPC_NAME_PIG"
+		1: return "NPC_NAME_CHICKEN"
+		2: return "NPC_NAME_SHEEP"
+		3: return "NPC_NAME_COW"
+		10: return "NPC_NAME_ZOMBIE"
+		11: return "NPC_NAME_SHARK"
+		12: return "NPC_NAME_GARGOYLE"
+		13: return "NPC_NAME_GOBLIN"
+		100: return "NPC_NAME_VILLAGER"
+		101: return "NPC_NAME_MERCHANT"
+		102: return "NPC_NAME_GUARD"
+		103: return "NPC_NAME_FARMER"
+		104: return "NPC_NAME_DRUID"
+		105: return "NPC_NAME_MINER"
+		106: return "NPC_NAME_ANDROID"
+		107: return "NPC_NAME_GOLEM"
+		201: return "NPC_NAME_TURTLE"
+		204: return "NPC_NAME_FOX"
+		205: return "NPC_NAME_BIRD"
+		206: return "NPC_NAME_CAT"
+		207: return "NPC_NAME_PARROT"
+		208: return "NPC_NAME_CRAB"
+		209: return "NPC_NAME_ELEPHANT"
+		210: return "NPC_NAME_OCTOPUS"
+		211: return "NPC_NAME_RACCOON"
+		212: return "NPC_NAME_GROWLITHE"
+		213: return "NPC_NAME_MONKEY"
+		_: return "INVENTORY_UNKNOWN"
 
 
 func _get_task_state_name(task_val: int) -> String:
@@ -528,9 +514,3 @@ func _setup_button_style(btn: Button, base_color: Color) -> void:
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	btn.add_theme_font_size_override("font_size", 13)
 	btn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.95))
-
-
-func _create_spacer(height: int) -> Control:
-	var s := Control.new()
-	s.custom_minimum_size = Vector2(0, height)
-	return s
