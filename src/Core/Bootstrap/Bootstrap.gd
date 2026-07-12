@@ -3,6 +3,7 @@
 # Description: Central composition root of the application. Orchestrates the 
 #              initialization of global systems, applies user configuration settings,
 #              injects decoupled dependencies, and manages main menu transitions.
+#              Delegates preloads paths to EntityPreloaderRegistry (SRP / OCP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -75,70 +76,61 @@ func _register_biomes() -> void:
 
 ## Dispatches mob registration categories.
 func _setup_mob_registry() -> void:
-	print("[Bootstrap] Injecting concrete entity scenes and behaviors into MobRegistry...")
-	_register_fauna()
-	_register_civilians_and_guards()
+	print("[Bootstrap] Injecting preloaded entity scenes into MobRegistry...")
+	_register_preloaded_mobs()
 
 
-## Registers passive wildlife and pet entities.
-func _register_fauna() -> void:
-	var ai_fauna := FaunaAIBehavior.new()
+func _register_preloaded_mobs() -> void:
 	var h_land := MobRegistry.Habitat.TERRESTRIAL
 	var h_both := MobRegistry.Habitat.AMPHIBIOUS
 	var h_water := MobRegistry.Habitat.AQUATIC
-	_register_scene_mob(0, "pig_entity.tscn", PigEntity, h_land, ai_fauna)
-	_register_scene_mob(1, "chicken_entity.tscn", ChickenEntity, h_land, ai_fauna)
-	_register_scene_mob(2, "sheep_entity.tscn", SheepEntity, h_land, ai_fauna)
-	_register_scene_mob(3, "cow_entity.tscn", CowEntity, h_land, ai_fauna)
-	_register_scene_mob(201, "turtle_entity.tscn", TurtleEntity, h_both, ai_fauna)
-	_register_scene_mob(209, "elephant_entity.tscn", ElephantEntity, h_land, ai_fauna)
-	_register_scene_mob(204, "fox_entity.tscn", FoxEntity, h_land, ai_fauna)
-	_register_scene_mob(206, "cat_entity.tscn", CatEntity, h_land, ai_fauna)
-	_register_scene_mob(211, "raccoon_entity.tscn", RaccoonEntity, h_land, ai_fauna)
-	_register_scene_mob(212, "growlithe_entity.tscn", GrowlitheEntity, h_land, ai_fauna)
-	_register_scene_mob(213, "monkey_entity.tscn", MonkeyEntity, h_land, ai_fauna)
-	_register_scene_mob(205, "bird_entity.tscn", BirdEntity, h_land, ai_fauna)
-	_register_scene_mob(207, "parrot_entity.tscn", ParrotEntity, h_land, ai_fauna)
-	_register_scene_mob(208, "crab_entity.tscn", CrabEntity, h_both, ai_fauna)
-	_register_scene_mob(210, "octopus_entity.tscn", OctopusEntity, h_water, ai_fauna)
-
-
-## Registers humanoid civilians, protectors, and hostile monsters.
-func _register_civilians_and_guards() -> void:
+	var ai_fauna := FaunaAIBehavior.new()
 	var ai_zombie := ZombieAIBehavior.new()
 	var ai_guard := GuardAIBehavior.new()
 	var ai_farmer := FarmerAIBehavior.new()
-	var h_land := MobRegistry.Habitat.TERRESTRIAL
-	var h_water := MobRegistry.Habitat.AQUATIC
-	_register_scene_mob(11, "shark_entity.tscn", SharkEntity, h_water, ai_zombie)
-	_register_scene_mob(12, "gargoyle_entity.tscn", GargoyleEntity, h_land, ai_zombie)
-	_register_scene_mob(13, "goblin_entity.tscn", GoblinEntity, h_land, ai_zombie)
-	_register_scene_mob(10, "zombie_entity.tscn", HostileEntity, h_land, ai_zombie)
-	_register_scene_mob(107, "golem_entity.tscn", GolemEntity, h_land, ai_guard)
-	_register_scene_mob(100, "villager_entity.tscn", VillagerEntity, h_land)
-	_register_scene_mob(102, "guard_entity.tscn", GuardEntity, h_land, ai_guard)
-	_register_scene_mob(103, "farmer_entity.tscn", FarmerEntity, h_land, ai_farmer)
-	_register_scene_mob(104, "druid_entity.tscn", DruidEntity, h_land)
-	_register_scene_mob(101, "merchant_entity.tscn", MerchantEntity, h_land)
-	_register_scene_mob(105, "miner_entity.tscn", MinerEntity, h_land)
-	_register_scene_mob(106, "cyber_citizen_entity.tscn", CyberCitizenEntity, h_land)
+	
+	# Register Wildlife Fauna polimorphically
+	_register_scene_mob(0, PigEntity, h_land, ai_fauna)
+	_register_scene_mob(1, ChickenEntity, h_land, ai_fauna)
+	_register_scene_mob(2, SheepEntity, h_land, ai_fauna)
+	_register_scene_mob(3, CowEntity, h_land, ai_fauna)
+	_register_scene_mob(201, TurtleEntity, h_both, ai_fauna)
+	_register_scene_mob(209, ElephantEntity, h_land, ai_fauna)
+	_register_scene_mob(204, FoxEntity, h_land, ai_fauna)
+	_register_scene_mob(206, CatEntity, h_land, ai_fauna)
+	_register_scene_mob(211, RaccoonEntity, h_land, ai_fauna)
+	_register_scene_mob(212, GrowlitheEntity, h_land, ai_fauna)
+	_register_scene_mob(213, MonkeyEntity, h_land, ai_fauna)
+	_register_scene_mob(205, BirdEntity, h_land, ai_fauna)
+	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna)
+	_register_scene_mob(208, CrabEntity, h_both, ai_fauna)
+	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna)
+	
+	# Register Humanoids / Guardians
+	_register_scene_mob(11, SharkEntity, h_water, ai_zombie)
+	_register_scene_mob(12, GargoyleEntity, h_land, ai_zombie)
+	_register_scene_mob(13, GoblinEntity, h_land, ai_zombie)
+	_register_scene_mob(10, HostileEntity, h_land, ai_zombie)
+	_register_scene_mob(107, GolemEntity, h_land, ai_guard)
+	_register_scene_mob(100, VillagerEntity, h_land)
+	_register_scene_mob(102, GuardEntity, h_land, ai_guard)
+	_register_scene_mob(103, FarmerEntity, h_land, ai_farmer)
+	_register_scene_mob(104, DruidEntity, h_land)
+	_register_scene_mob(101, MerchantEntity, h_land)
+	_register_scene_mob(105, MinerEntity, h_land)
+	_register_scene_mob(106, CyberCitizenEntity, h_land)
 
 
-## Instantiates scene templates dynamically or builds fallback entities.
-func _register_scene_mob(spawn_id: int, file_name: String, fallback_class: Variant, habitat: int, default_behavior: IAIBehavior = null) -> void:
+func _register_scene_mob(spawn_id: int, fallback_class: Variant, habitat: int, default_behavior: IAIBehavior = null) -> void:
 	var factory := func(pos: Vector3) -> Node:
-		var scene_path := "res://src/Infrastructure/Life/" + file_name
-		if ResourceLoader.exists(scene_path):
-			var scene := load(scene_path) as PackedScene
-			if scene != null:
-				var inst := scene.instantiate() as CharacterBody3D
-				inst.position = pos
-				inst.name = file_name.get_basename().to_camel_case().capitalize().replace(" ", "")
-				return inst
+		var scene := EntityPreloaderRegistry.get_mob_scene(spawn_id)
+		if scene != null:
+			var inst := scene.instantiate() as CharacterBody3D
+			inst.position = pos
+			return inst
 		var fallback_inst := fallback_class.new(pos) as Node
-		if is_instance_valid(fallback_inst):
-			fallback_inst.name = fallback_class.resource_path.get_file().get_basename() if fallback_class.resource_path != "" else "PassiveEntity"
 		return fallback_inst
+		
 	MobRegistry.register_mob(spawn_id, factory, habitat, default_behavior)
 
 
@@ -155,6 +147,11 @@ func _setup_prop_registry() -> void:
 ## Binds an instantiation callback to a prop class.
 func _register_prop(prop_id: int, prop_class: Variant) -> void:
 	PropRegistry.register_prop(prop_id, func(pos: Vector3) -> Node:
+		var script_res: Variant = EntityPreloaderRegistry.get_prop_scene(prop_id)
+		if script_res != null:
+			var inst_node := prop_class.new() as Node3D
+			inst_node.position = pos
+			return inst_node
 		var inst := prop_class.new() as Node3D
 		inst.position = pos
 		return inst
@@ -239,7 +236,7 @@ func _setup_audio() -> void:
 	audio_service.play_menu_music()
 
 
-## Loads the main menu scene (Scene-Based UI instancer)
+## Loads the main menu.
 func _load_main_menu() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	main_menu = MAIN_MENU_SCENE.instantiate() as MainMenu
