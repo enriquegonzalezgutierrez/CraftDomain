@@ -2,7 +2,7 @@
 
 ![MainMenu Background](src/Infrastructure/UI/Assets/menu_background.png)
 
-A high-performance, commercial-grade infinite procedural voxel sandbox game engine built in **Godot 4.6.3** adhering to strict **Domain-Driven Design (DDD)** principles, conventional Conventional Commits tracking, and rigorous **SOLID** software engineering compliance. Architected to demonstrate a highly decoupled, modular, and extensible system capable of maintaining a locked, rock-solid **120 FPS** with smooth frame pacing in massive, thread-populated 3D environments.
+A high-performance, commercial-grade infinite procedural voxel sandbox game engine built in **Godot 4.6.3** adhering to strict **Domain-Driven Design (DDD)** principles, Conventional Commits tracking, and rigorous **SOLID** software engineering compliance. Architected to demonstrate a highly decoupled, modular, and extensible system capable of maintaining a locked, rock-solid **120 FPS** with smooth frame pacing in massive, thread-populated 3D environments.
 
 ---
 
@@ -10,83 +10,147 @@ A high-performance, commercial-grade infinite procedural voxel sandbox game engi
 
 CraftDomain is architected using **Domain-Driven Design (DDD)** patterns. By segregating the codebase into distinct layers, we isolate pure business rules (the "Domain") from framework-specific engine details (the "Infrastructure"), such as Vulkan rendering, physics bodies collisions, disk JSON I/O, and audio buses.
 
-### Layer Segmentation & Dependency Flow
+### 1. Architectural Layers & Dependency Flow
+To enforce a strict one-way dependency flow where dependencies point exclusively inwards toward the Domain, the system's boundary limits are segmented as follows:
 
 ```mermaid
 graph TD
-	subgraph Core_Bootstrap [Core / Bootstrap Layer]
-		Bootstrap[Bootstrap.gd - Composition Root]
-		Preloader[EntityPreloaderRegistry.gd - Static Preloader]
+	subgraph Core_Layer [Core / Composition Root]
+		Bootstrap[Bootstrap.gd]
+		Preloader[EntityPreloaderRegistry.gd]
 	end
 
-	subgraph Infrastructure_Layer [Infrastructure Layer]
-		WorldController[WorldController.gd - Coordinator]
-		ChunkManager[ChunkManagerService.gd - Object Pooling]
-		ChunkNode[ChunkNode.gd - MultiMesh]
-		ChunkMesher[ChunkMesher.gd - Custom Mesh Baker]
-		PlayerController[PlayerController.gd - Physics Presenter]
-		VoxelInteraction[VoxelInteractionComponent.gd - Raycaster]
-		BlockCracking[BlockCrackingVisuals.gd - Crack Renderer]
-		NPCAI[NPCAIComponent.gd - Sensory Brain]
-		NPCObstacle[NPCObstacleSteering.gd - 3D Steerer]
-		EntityUI[EntityUIComponent.gd - Floating UI Presenter]
-		DiskWorldRepo[DiskWorldRepository.gd - JSON I/O]
-		SavePath[SavePathConfiguration.gd - Path Value Object]
-		Sanitizer[GLBModelSanitizer.gd - Model Pruner]
-		DialogueManager[DialogueManager.gd - Input Blocker]
-		AudioService[AudioService.gd - Crossfading Soundscape]
-		CelestialService[CelestialService.gd - Astronomical Orbits]
+	subgraph Infra_Layer [Infrastructure Layer]
+		Controller[WorldController.gd]
+		Player[PlayerController.gd]
+		Persistence[DiskWorldRepository.gd]
+		Audio[AudioService.gd]
 	end
 
 	subgraph Domain_Layer [Domain Layer]
-		WorldState[WorldState.gd - Aggregate Root]
-		Chunk[Chunk.gd - Voxel Grid]
-		VoxelEntity[VoxelEntity.gd - Health & Combat]
-		IBiome[IBiome.gd - Strategy Interface]
-		IInventory[IInventory.gd - Interface Segregation]
-		QuestService[QuestService.gd - Domain Quest State]
-		DialogueService[DialogueService.gd - Dialogue Router]
-		CraftingService[CraftingService.gd - Transaction Logic]
-		IWorldModifier[IWorldModifier.gd - Adapter]
-		VoxelNavigationService[VoxelNavigationService.gd - 3D AStar Graph]
-		AlertNetworkService[AlertNetworkService.gd - Proximity Alarms]
-		VillageReputationService[VillageReputationService.gd - Karma Engine]
-		IAIBehavior[IAIBehavior.gd - AI Strategy Interface]
-		IStructureBlueprint[IStructureBlueprint.gd - Map Strategy Interface]
+		State[WorldState.gd]
+		Chunk[Chunk.gd]
+		Entity[VoxelEntity.gd]
+		Interfaces[Interfaces / Strategies]
 	end
 
-	Bootstrap -->|Injects Repositories & Controllers| WorldController
-	Bootstrap -->|Queries preloaded assets| Preloader
-	WorldController -->|Queries & Updates| WorldState
-	WorldState -->|Contains| Chunk
-	ChunkNode -->|Renders| Chunk
-	ChunkNode -->|Calls| ChunkMesher
-	PlayerController -->|Manipulates| IInventory
-	PlayerController -->|Instantiates declarative| PlayerHUD
-	VoxelInteraction -->|Delegates progress cracks to| BlockCracking
-	NPCAI -->|Delegates un-throttled movement to| NPCObstacle
-	NPCAI -->|Delegates tasks decisions to| IAIBehavior
-	PassiveEntity -->|Delegates floating billboarding to| EntityUI
-	DiskWorldRepo -->|Implements| WorldRepository
-	DiskWorldRepo -->|Queries save paths from| SavePath
-	SkeletalVisual -->|Sanitizes FBX structures via| Sanitizer
+	Bootstrap -->|Injects| Controller
+	Bootstrap -->|Queries| Preloader
+	Controller -->|Mutates| State
+	State -->|Aggregates| Chunk
+	Player -->|Queries| Interfaces
+	Persistence -->|Implements| Interfaces
+	Audio -->|Observes| State
 ```
 
-1. **The Domain Layer (`src/Domain/`):** Contains the core business rules of Dolores. It has zero dependencies on Godot's SceneTree, viewport layouts, or Vulkan rendering servers.
-   * **Aggregates & Entities:** `WorldState.gd` (Aggregate Root managing chunk modifications), `Chunk.gd` (Voxel Grid), `VoxelEntity.gd` (Logical health rules), and `Quest.gd` (Logical quest representation).
-   * **Value Objects:** `BlockDefinition.gd` (Immutable block traits and procedural fallback colors) and `Recipe.gd` (Encapsulates required inputs and output attributes for crafting).
-   * **Domain Services:** `TradingService.gd` (Decoupled inventory transaction rules), `BiomeService.gd` (Dynamic biome routing), `StructureLibrary.gd` (Blueprint routing), `QuestService.gd` (Decoupled quest state coordinator), `VoxelNavigationService.gd` (3D A* graph network coordinator), `VillageReputationService.gd` (Player karma tracker), and `CraftingService.gd`.
-   * **Interfaces & Strategies:** `IInventory.gd` (Segregated inventory contract supporting item-ID stacking queries), `IWorldModifier.gd` (World interaction bridge), `IAIBehavior.gd` (Polymorphic AI contract), and `IStructureBlueprint.gd` (Polymorphic landscaping contract).
+---
 
-2. **The Infrastructure Layer (`src/Infrastructure/`):** Concrete implementations of hardware-bound or framework-bound systems.
-   * **Rendering & Materials (`src/Infrastructure/Rendering/`):** `ChunkNode.gd` segments rendering transforms into individual, block-type MultiMesh nodes, applying PBR materials and custom GPU shaders. `ChunkMesher.gd` manages the geometric extraction of liquid and non-cubic custom meshes. `ChunkManagerService.gd` controls multithreading and Node Object Pools. `GLBModelSanitizer.gd` recursively prunes Blender camera/light nodes and overrides PBR material parameters to prevent C++ engine warnings.
-   * **Physics & Interactions (`src/Infrastructure/Player/`):** `PlayerController.gd` (First-person motion physics presenter), `VoxelInteractionComponent.gd` (Raycast solver and block placer), and `BlockCrackingVisuals.gd` (Manages unshaded cracking mesh overlays and progressive damage textures).
-   * **Life & AI (`src/Infrastructure/Life/`):** `NPCAIComponent.gd` (Sensory AI brain managing task timers), `NPCObstacleSteering.gd` (Coordinates 3D whisker raycasting and step-climbing jumps), and `EntityUIComponent.gd` (Manages floating Label3D nameplates and dialogue bubbles).
-   * **Persistence (`src/Infrastructure/Persistence/`):** `DiskWorldRepository.gd` implements JSON delta serialization, querying file paths from the static Value Object `SavePathConfiguration.gd` and formatting layout packing via `VoxelSaveSerializer.gd`.
-   * **Audio (`src/Infrastructure/Audio/`):** `AudioService.gd` manages soundtrack crossfading and observer-driven 3D positional OGG sound effects.
+### 2. Startup Initialization & Boot Sequence
+The **Composition Root** (`Bootstrap.gd`) orchestrates the initial boot sequence in RAM, preloading assets and injecting decoupled dependencies during the viewport transition:
 
-3. **The Core/Bootstrap Layer (`src/Core/Bootstrap`):**
-   * Acts as the **Composition Root**. It instantiates the required database repositories, configures environment nodes, registers biomes/structures, and injects loose dependencies during scene transitions. `EntityPreloaderRegistry.gd` preloads all 3D assets in RAM at boot to prevent in-game disk I/O lag spikes.
+```mermaid
+sequenceDiagram
+	autonumber
+	participant Engine as Godot Engine
+	participant Boot as Bootstrap (Composition Root)
+	participant Cache as EntityPreloaderRegistry
+	participant Ctrl as WorldController
+	participant Player as PlayerController
+
+	Engine->>Boot: _ready()
+	activate Boot
+	Boot->>Cache: _static_init() (Preload scenes in RAM)
+	Boot->>Boot: _init_registries() (Biomes, blue-prints, recipes)
+	Boot->>Ctrl: Instantiate & Inject WorldRepository
+	Boot->>Player: Instantiate & Inject Inventory
+	Boot->>Engine: Transition viewport to active world
+	deactivate Boot
+```
+
+---
+
+### 3. Voxel Rendering & Chunk Meshing Pipeline
+Voxel geometry calculations, face culling, and transparent normal-baking are compiled in parallel threads, allowing zero-latency mesh updates during real-time world edits:
+
+```mermaid
+graph LR
+	subgraph CPU_Generation [Thread-Pool Compile Loop]
+		Builder[ChunkVisualBuilder.gd]
+		Mesher[ChunkMesher.gd]
+		NormalBaker[CPU Normal Baker]
+	end
+
+	subgraph GPU_Render [Vulkan Server]
+		Node[ChunkNode.gd]
+		Shader[Triplanar Shader]
+		Material[VoxelMaterialFactory.gd]
+	end
+
+	WorldState[WorldState.gd] -->|Read Chunk Grid| Builder
+	Builder -->|Occlusion Face Culling| Mesher
+	Mesher -->|Bake Slabs & Fluid Normals| NormalBaker
+	NormalBaker -->|Commit Mesh Buffers| Node
+	Node -->|Apply Cached Materials| Material
+	Material -->|Bake Parameters| Shader
+```
+
+---
+
+### 4. Decoupled AI Brain & Steering Strategy
+Humanoids and wildlife delegates sensory scans and pathing decisions to pure Domain strategies. Walk cycle interpolations and obstacle-jumping are offloaded to lightweight components:
+
+```mermaid
+graph TD
+	subgraph Sensory_Brain [NPCAIComponent.gd]
+		Timer[LOD Tick Timer - 4Hz]
+		Schedule[Day/Night Schedules]
+	end
+
+	subgraph Steering_Network [NPCObstacleSteering.gd]
+		Whiskers[3D Raycast Whiskers]
+		StepClimb[1-Block Step Climber]
+	end
+
+	subgraph Decision_Strategy [IAIBehavior.gd]
+		Gossip[Villager Social Gossip]
+		Harvest[Farmer Crop Harvester]
+		Flee[Fauna Panic Escape]
+	end
+
+	Host[CharacterBody3D] -->|Sensor Tick| Timer
+	Timer -->|Evaluate Schedules| Schedule
+	Schedule -->|Delegate Decisions| Decision_Strategy
+	Host -->|Physics Step| Whiskers
+	Whiskers -->|Resolve Obstacles| StepClimb
+	StepClimb -->|Adjust Velocity| Host
+```
+
+---
+
+### 5. Persistence, Serialization & I/O Boundaries
+World persistence implements a background **Delta-Saving** pipeline, preserving modified chunk coordinates on disk while keeping main thread execution uninterrupted:
+
+```mermaid
+sequenceDiagram
+	autonumber
+	participant Ctrl as WorldController
+	participant State as WorldState (Aggregate Root)
+	participant Service as WorldPersistenceService
+	participant Serializer as VoxelSaveSerializer
+	participant Repo as DiskWorldRepository
+
+	Ctrl->>Ctrl: Trigger Auto-Save (Pause Menu)
+	Ctrl->>Service: save_game(player, world_state)
+	activate Service
+	Service->>State: Read local chunk modifications
+	Service->>Serializer: serialize_chunk_deltas(modifications)
+	Serializer-->>Service: String-keyed JSON Dictionary
+	Service->>Repo: save_chunk_modifications(pos, data)
+	activate Repo
+	Repo-->>Repo: Write to user://world_save/chunks/
+	deactivate Repo
+	deactivate Service
+```
 
 ---
 
@@ -100,7 +164,7 @@ Every class has a single, strictly defined responsibility, and therefore only on
 * **`PlayerController.gd`:** Responsible *only* for movement physics, camera input handling, and velocity calculations. It delegates all raycasting, block mining, building, eating, and combat actions to `VoxelInteractionComponent.gd`.
 * **`PassiveEntity.gd`:** Purified to handle strictly physical translations, gravity, and lifecycles. It delegates all floating UI billboards, Nameplates, and SpeechBubbles to `EntityUIComponent.gd`.
 * **`VoxelInteractionComponent.gd`:** Focuses exclusively on Raycast solving and item placements, delegating 3D cracking mesh overlays to `BlockCrackingVisuals.gd`.
-* **`NPCAIComponent.gd`:** Acts as the AI sensory brain, managing task timers, scheduling, and active behaviors, delegating 3D whisker steering and step-climbing to `NPCObstacleSteering.gd`.
+* **`NPCAIComponent.gd`:** Acts as the AI sensory brain, managing task timers, scheduling, and active behaviors, delegating 3D wrapper steering and step-climbing to `NPCObstacleSteering.gd`.
 
 ### 2. Open-Closed Principle (OCP)
 *Classes are open for extension, but closed for modification.*
@@ -139,7 +203,7 @@ To prevent Main Thread stutters and lag when placing or breaking blocks, CraftDo
 
 ### 2. Time-Sliced Physics Budgeting & Object Pooling
 * **Dynamic Throttling:** Background threads are capped strictly to 2 during teleports or startup, leaving CPU cores free for Vulkan shader compiles.
-* **Physics Budgeting:** `ChunkManagerService` compiles a maximum of 1-2 heavy concave collision bodies per frame, spreading physics registration overhead evenly and guaranteeing zero frame drops.
+* **Physics Budgeting:** `ChunkLifecycleService` compiles a maximum of 1-2 heavy concave collision bodies per frame, spreading physics registration overhead evenly and guaranteeing zero frame drops.
 * **Object Pooling:** Inactive chunks are stored in `_chunk_node_pool` and recycled dynamically instead of triggering expensive Garbage Collection `queue_free()` sweeps.
 
 ### 3. Decoupled AI Strategy Pattern & Throttling
