@@ -2,6 +2,7 @@
 # Pathfile: res://src/Infrastructure/World/ChunkTaskScheduler.gd
 # Description: Infrastructure scheduler managing background thread worker pools,
 #              active task queues, and asynchronous chunk compiling (SRP).
+#              Integrated: Decimated LOD compilation for distant mobile chunks (OCP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -92,7 +93,8 @@ func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	var is_distant := lifecycle._calculate_is_chunk_distant(chunk_pos)
 	var build_physics := not is_distant
 	
-	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, lifecycle.world_state, build_physics) as Dictionary
+	# OCP INTEGRATION: Solve multi-mesh compile pathways based on distance & platform
+	var visual_data: Dictionary = _compile_visual_data_with_lod(chunk, chunk_pos, is_distant, build_physics)
 	var custom_meshes: Dictionary = ChunkMesher.generate_special_meshes(chunk, lifecycle.world_state)
 	
 	var task_result := GeneratedChunkTask.new()
@@ -138,7 +140,8 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	
 	MegaStructureService.apply_mega_structures(chunk)
 	
-	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, lifecycle.world_state, build_physics) as Dictionary
+	# OCP INTEGRATION: Solve multi-mesh compile pathways based on distance & platform
+	var visual_data: Dictionary = _compile_visual_data_with_lod(chunk, chunk_pos, is_distant, build_physics)
 	var custom_meshes: Dictionary = ChunkMesher.generate_special_meshes(chunk, lifecycle.world_state)
 			
 	var task_result := GeneratedChunkTask.new()
@@ -162,6 +165,16 @@ func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
 	_queue_mutex.lock()
 	lifecycle._completed_tasks_queue.append(task_result)
 	_queue_mutex.unlock()
+
+
+## Helper: Selects whether to compile the normal detailed chunk or decimated mobile LOD.
+func _compile_visual_data_with_lod(chunk: Chunk, chunk_pos: Vector3i, is_distant: bool, build_physics: bool) -> Dictionary:
+	if is_distant and OS.has_feature("mobile"):
+		return {
+			"multimesh": LODMesher.generate_decimated_mesh_data(chunk, lifecycle.world_state),
+			"collision_vertices": PackedVector3Array()
+		}
+	return ChunkVisualBuilder.extract_render_data(chunk, lifecycle.world_state, build_physics) as Dictionary
 
 
 func is_queued(pos: Vector3i) -> bool:
