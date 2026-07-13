@@ -55,10 +55,6 @@ func _get_nameplate_color() -> Color:
 	return Color(0.95, 0.15, 0.15) 
 
 
-func _has_ui_decorations() -> bool:
-	return true
-
-
 ## Polymorphic Override (OCP/LSP Compliant): Restricts the shark strictly to Water blocks
 func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
 	return block_type == BlockType.Type.WATER

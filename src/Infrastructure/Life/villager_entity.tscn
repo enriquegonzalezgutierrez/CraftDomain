@@ -6,8 +6,8 @@
 [ext_resource type="PackedScene" uid="uid://b6ph7o17seehi" path="res://assets/models/mobs/villager/villager_base.fbx" id="4_fbx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_villager"]
-height = 2.5357423
 radius = 0.4897461
+height = 2.5357423
 
 [node name="VillagerEntity" type="CharacterBody3D" unique_id=1452590235]
 script = ExtResource("1_villager")

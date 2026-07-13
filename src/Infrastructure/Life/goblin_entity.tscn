@@ -6,8 +6,8 @@
 [ext_resource type="PackedScene" uid="uid://j4r5rpcad8cc" path="res://assets/models/mobs/goblin.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_goblin"]
+radius = 0.31933594
 height = 1.4831543
-radius = 0.5205078
 
 [node name="GoblinEntity" type="CharacterBody3D" unique_id=410366998]
 script = ExtResource("1_goblin")

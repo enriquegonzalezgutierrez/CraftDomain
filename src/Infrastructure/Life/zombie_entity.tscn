@@ -6,8 +6,8 @@
 [ext_resource type="PackedScene" uid="uid://3wkbpeeebjaq" path="res://assets/models/mobs/zombie/zombie_base.fbx" id="4_fbx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_zombie"]
-height = 4.21416
 radius = 0.77441406
+height = 4.21416
 
 [node name="HostileEntity" type="CharacterBody3D" unique_id=1711330125]
 script = ExtResource("1_zombie")

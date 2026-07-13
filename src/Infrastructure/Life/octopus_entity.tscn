@@ -6,14 +6,14 @@
 [ext_resource type="PackedScene" uid="uid://cpvwsg7k1b51a" path="res://assets/models/mobs/octopus.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_octopus"]
-height = 0.83099365
-radius = 0.59375
+radius = 0.34375
+height = 0.814209
 
 [node name="OctopusEntity" type="CharacterBody3D" unique_id=1089576940]
 script = ExtResource("1_octopus")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=827724159]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.41409302, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4232483, 0)
 shape = SubResource("CapsuleShape3D_octopus")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1698191959]

@@ -60,10 +60,6 @@ func _get_nameplate_color() -> Color:
 	return Color(0.95, 0.15, 0.15) 
 
 
-func _has_ui_decorations() -> bool:
-	return true
-
-
 func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
@@ -111,6 +107,7 @@ func _process(delta: float) -> void:
 		return
 		
 	if is_instance_valid(_model_node):
+		var _anim_time := delta # Keep compiler happy
 		_animation_time += delta
 		var state: int = 0
 		if has_meta(GargoyleAIBehavior.META_STATE):

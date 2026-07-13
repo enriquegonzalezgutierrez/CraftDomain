@@ -1,17 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (World Generation Services)
-# Class: MobSpawningService
+# Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service responsible for calculating and spawning
 #              NPC, Fauna, and hostile dynamic classes inside loaded chunks.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively the physical 
-#   spawning coordinates scans, leaving model building and AI strategies to registries.
-# - Open-Closed Principle (OCP): Completely closed to modifications. Monolithic 
-#   biome-ID match tables are removed. Outpost populations and wilderness spawn 
-#   probabilities are queried polimorphically from the active Biome strategies.
-# - Liskov Substitution Principle (LSP): Functions uniformly across all biomes 
-#   implementing the IBiome interface.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MobSpawningService
 extends RefCounted
@@ -19,7 +11,7 @@ extends RefCounted
 
 ## Spawns procedural wildlife and themed outpost entities inside a newly loaded chunk.
 func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
-	var entities_list: Array[Node] = []
+	var spawned_nodes: Array[Node] = []
 	var chunk_pos: Vector3i = chunk.position
 	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	
@@ -44,12 +36,10 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 	# --------------------------------------------------------------------------
 	if is_real_village:
 		# Villager (100) and Merchant (101) spawn in all outposts by default
-		_spawn_and_register_entity(100, chunk_offset, 7.5, 5.5, world_state, world_node, entities_list)
-		_spawn_and_register_entity(101, chunk_offset, 5.5, 7.5, world_state, world_node, entities_list)
+		_spawn_and_register_entity(100, chunk_offset, 7.5, 5.5, world_state, world_node, spawned_nodes)
+		_spawn_and_register_entity(101, chunk_offset, 5.5, 7.5, world_state, world_node, spawned_nodes)
 		
 		# OCP RESOLUTION: Query specialized residents from the active Biome strategy.
-		# Automatically maps custom populations (like Druids, Miners, or Androids) 
-		# without hardcoding IDs or matching biomes in this generator loop.
 		if is_instance_valid(biome):
 			var population: Array[int] = biome.get_outpost_population_ids()
 			var spawn_positions: Array[Vector2] = [Vector2(6.5, 6.5), Vector2(4.5, 4.5)]
@@ -57,10 +47,10 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			for i: int in range(min(population.size(), spawn_positions.size())):
 				var mob_id := population[i]
 				var offset_pos: Vector2 = spawn_positions[i]
-				_spawn_and_register_entity(mob_id, chunk_offset, offset_pos.x, offset_pos.y, world_state, world_node, entities_list)
+				_spawn_and_register_entity(mob_id, chunk_offset, offset_pos.x, offset_pos.y, world_state, world_node, spawned_nodes)
 		
 		# Golem Protector (107) spawns in the village plaza
-		_spawn_and_register_entity(107, chunk_offset, 8.5, 5.5, world_state, world_node, entities_list)
+		_spawn_and_register_entity(107, chunk_offset, 8.5, 5.5, world_state, world_node, spawned_nodes)
 	else:
 		# --------------------------------------------------------------------------
 		# 2. WILDERNESS ORGANIC SPAWNING
@@ -68,7 +58,6 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 		var roll := randf()
 		
 		# OCP RESOLUTION: Query the biome strategy for its custom spawn chance.
-		# Replaces hardcoded water/swamp biome checks with a clean virtual property.
 		var spawn_chance := 0.12 # Default baseline
 		if is_instance_valid(biome) and biome.has_method("get_spawn_chance"):
 			spawn_chance = biome.call("get_spawn_chance") as float
@@ -80,7 +69,7 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 					# Select an active animal ID registered for this specific biome
 					var rand_idx := randi() % wildlife_ids.size()
 					var target_animal_id := int(wildlife_ids[rand_idx])
-					_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, entities_list)
+					_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, spawned_nodes)
 
 	# --------------------------------------------------------------------------
 	# 3. GLOBAL MEGA-STRUCTURE GUARD SPALOCATIONS
@@ -104,9 +93,9 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 				var spawn_node := MobRegistry.create_mob(mob_id, spawn_pos)
 				if spawn_node != null:
 					world_node.add_child(spawn_node)
-					entities_list.append(spawn_node)
+					spawned_nodes.append(spawn_node)
 
-	return entities_list
+	return spawned_nodes
 
 
 ## Instantiates, places, and anchors a registered dynamic entity based on its Domain Habitat rules.
@@ -147,10 +136,6 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 ## Helper: Scans vertical columns downward from absolute sky limit (Y=31) 
 ## to find the absolute topmost solid ground block.
 func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
-	# 1. LIQUID SURFACE DETECTOR:
-	# First, verify what is the absolute topmost non-air block on this column.
-	# If it is Water or Lava, we strictly FORBID spawning land animals here,
-	# preventing pigs and cows from appearing underwater on the ocean seabed.
 	var top_block_type := BlockType.Type.AIR
 	var top_y := -1
 	
@@ -183,9 +168,6 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		
 	var surface_block := world_state.get_block(Vector3i(global_x, hit_y, global_z))
 	
-	# 3. SOLID TERRAIN VERIFIER (OCP COMPLIANT):
-	# Mobs can only spawn on blocks that explicitly declare is_spawnable_soil = true.
-	# This prevents spawning on Bricks, Planks, or Glass, blocking roof/castle traps!
 	var def := BlockLibrary.get_definition(surface_block) as BlockDefinition
 	if def == null or not def.is_spawnable_soil:
 		return -1.0
@@ -221,7 +203,9 @@ func _get_water_surface_y(world_state: WorldState, global_x: int, global_z: int)
 		# Ensure the creature isn't spawning encased under a solid ceiling
 		var space_above_1 := world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
 		if not BlockType.is_solid(space_above_1):
-			return float(hit_y) # Submerged exactly at water level (no +1.0 offset!)
+			# AQUATIC SUBMERGE CORRECTION: Submerge spawn position by 1.2 meters
+			# to keep the shark/octopus completely inside the water volume.
+			return float(hit_y) - 1.2
 			
 	return -1.0
 

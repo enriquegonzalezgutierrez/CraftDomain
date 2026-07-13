@@ -6,8 +6,8 @@
 [ext_resource type="PackedScene" uid="uid://lhvivyop82ip" path="res://assets/models/mobs/yellow_bird.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_bird"]
-height = 3.1634278
 radius = 0.95947266
+height = 3.1634278
 
 [node name="BirdEntity" type="CharacterBody3D" unique_id=1045926448]
 script = ExtResource("1_bird")

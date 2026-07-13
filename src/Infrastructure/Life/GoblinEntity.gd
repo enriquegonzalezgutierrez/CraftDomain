@@ -1,15 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (Presentation & Physics / Hostiles)
-# Class: GoblinEntity
+# Pathfile: res://src/Infrastructure/Life/GoblinEntity.gd
 # Description: Physical character controller for the hostile skirmisher Goblin.
-#              Delegates all rapid chasing vectors, skirmishing retreats, 
-#              and combat cooldowns to the decoupled GoblinAIBehavior strategy.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, collision shapes, and entity nameplate styling.
-# - Liskov Substitution Principle (LSP): Fully satisfies the base contracts 
-#   declared in `PassiveEntity` by providing its unique nameplate key and red color.
+#              Sustains strict combat parameters polimorphically (OCP/LSP).
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GoblinEntity
 extends PassiveEntity
@@ -19,7 +13,6 @@ var player: CharacterBody3D
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
-	# Goblins spawn with 2 Hearts of health (4 HP, fragile skirmisher)
 	super(spawn_pos, 4)
 	entity_habitat = 0 # Terrestrial
 	name = "Entity_GOBLIN"
@@ -87,10 +80,6 @@ func _get_entity_name_key() -> String:
 
 func _get_nameplate_color() -> Color:
 	return Color(0.95, 0.15, 0.15) # Hostile Red (LSP Compliant)
-
-
-func _has_ui_decorations() -> bool:
-	return true
 
 
 func _can_socialize() -> bool:

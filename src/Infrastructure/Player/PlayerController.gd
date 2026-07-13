@@ -1,8 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/PlayerController.gd
 # Description: First-person player physics controller. Manages movement vectors,
-#              camera rotations, and input actions.
-#              Delegates visual effects, audio, and inputs to sub-components (SRP).
+#              camera rotations, input actions, and glider flight aerodynamics.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -13,11 +12,14 @@ signal sword_swung
 
 const PLAYER_HUD_SCENE := preload("res://src/Infrastructure/UI/player_hud.tscn")
 
+# Physical Movement Constants
 const SPEED: float = 6.0
 const JUMP_VELOCITY: float = 6.5
 const MOUSE_SENSITIVITY: float = 0.003
 const TERMINAL_VELOCITY: float = -20.0
+const GLIDER_ITEM_ID: int = 210
 
+# Injected Systems & Nodes
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var is_active: bool = false
 var domain_entity: VoxelEntity
@@ -34,6 +36,10 @@ var active_slot_index: int = 0
 var active_build_type: BlockType.Type = BlockType.Type.STONE
 var is_item_selected: bool = true 
 
+# Glider State & Domain Physics Strategy
+var is_glider_deployed: bool = false
+var _glider_physics: GliderPhysicsStrategy
+
 # Decoupled Sub-Components (SRP Compliant)
 var _input_component: PlayerInputComponent
 var _camera_effects: CameraEffectsComponent
@@ -45,6 +51,7 @@ func _init() -> void:
 	domain_entity = VoxelEntity.new(3)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
+	_glider_physics = GliderPhysicsStrategy.new()
 
 
 func _ready() -> void:
@@ -168,6 +175,68 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(interaction_component) and interaction_component.has_method("process_interaction"):
 		interaction_component.call("process_interaction")
 
+	_evaluate_glider_deployment()
+
+	if is_glider_deployed:
+		_process_glider_physics(delta)
+	else:
+		_process_standard_movement(delta)
+
+	move_and_slide()
+	
+	var current_flat_velocity := Vector2(velocity.x, velocity.z)
+	if is_instance_valid(_camera_effects):
+		_camera_effects.process_camera_effects(delta)
+	if is_instance_valid(_footstep_player):
+		_footstep_player.process_footsteps(delta, current_flat_velocity)
+	if is_instance_valid(visual_component):
+		visual_component.animate_movement(current_flat_velocity, is_on_floor(), delta)
+
+
+func _evaluate_glider_deployment() -> void:
+	# Ground or wall impact triggers auto-retraction for flight safety
+	if is_glider_deployed and GliderItemStrategy.evaluate_auto_retraction(is_on_floor(), is_on_wall()):
+		is_glider_deployed = false
+		_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
+		return
+
+	# In-air double jump deployment verification
+	if not is_on_floor() and _input_component.is_jump_just_pressed():
+		if inventory.get_item_total_quantity(GLIDER_ITEM_ID) > 0:
+			is_glider_deployed = not is_glider_deployed
+			if is_glider_deployed:
+				_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
+				AudioService.play_sfx_static("loot_pickup", global_position)
+			else:
+				_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
+
+
+func _process_glider_physics(delta: float) -> void:
+	# 1. Fetch wind vectors from WeatherService safely via global parameters
+	var wind_vector := Vector2.ZERO
+	var wind_strength := 0.0
+	var weather_node := get_parent().get_node_or_null("WeatherService")
+	if is_instance_valid(weather_node):
+		wind_vector = RenderingServer.global_shader_parameter_get("wind_vector") as Vector2
+		wind_strength = RenderingServer.global_shader_parameter_get("wind_strength") as float
+
+	# 2. Delegate calculations to our pure domain aerodynamics strategy
+	var look_direction := -camera.global_transform.basis.z.normalized()
+	velocity = _glider_physics.calculate_glide_velocity(
+		velocity,
+		look_direction,
+		wind_vector,
+		wind_strength,
+		delta
+	)
+
+	# 3. Add lateral keyboard steering (yaw) while gliding
+	var input_dir := _input_component.get_movement_vector()
+	if input_dir.x != 0.0:
+		rotate_y(-input_dir.x * 2.0 * delta)
+
+
+func _process_standard_movement(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 		if velocity.y < TERMINAL_VELOCITY:
@@ -186,15 +255,6 @@ func _physics_process(delta: float) -> void:
 	
 	velocity.x = current_flat_velocity.x
 	velocity.z = current_flat_velocity.y
-
-	move_and_slide()
-	
-	if is_instance_valid(_camera_effects):
-		_camera_effects.process_camera_effects(delta)
-	if is_instance_valid(_footstep_player):
-		_footstep_player.process_footsteps(delta, current_flat_velocity)
-	if is_instance_valid(visual_component):
-		visual_component.animate_movement(current_flat_velocity, is_on_floor(), delta)
 
 
 func _scroll_hotbar(direction: int) -> void:
@@ -266,6 +326,7 @@ func _on_domain_entity_died() -> void:
 	domain_entity.health = 3
 	domain_entity.is_dead = false
 	is_active = false
+	is_glider_deployed = false
 	if is_instance_valid(hud):
 		hud.show_loading_screen()
 	position = Vector3(8.5, 14.0, 8.5)

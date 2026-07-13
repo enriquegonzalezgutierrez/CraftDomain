@@ -6,14 +6,14 @@
 [ext_resource type="PackedScene" uid="uid://dx2ayiec4ehf6" path="res://assets/models/mobs/crab.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_crab"]
-height = 0.58935547
-radius = 0.5029297
+radius = 0.28686523
+height = 0.57373047
 
 [node name="CrabEntity" type="CharacterBody3D" unique_id=1264974600]
 script = ExtResource("1_crab")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=709227876]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.31420898, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.32861328, 0)
 shape = SubResource("CapsuleShape3D_crab")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=216752869]

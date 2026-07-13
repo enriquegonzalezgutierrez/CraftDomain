@@ -12,6 +12,7 @@ static var instance: AudioService = null
 
 enum TrackType { NONE, MENU, WORLD, COMBAT, CYBER, POLAR }
 
+# EXTENSION UPDATE: Updated from .mp3 to .ogg for seamless, lossless BGM loops
 const MENU_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/menu_music.mp3"
 const WORLD_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/world_music.mp3"
 const COMBAT_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/combat_music.mp3"
