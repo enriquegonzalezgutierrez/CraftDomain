@@ -1,0 +1,141 @@
+[gd_scene load_steps=18 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/World/CampfireEntity.gd" id="1_script"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_col"]
+size = Vector3(0.8, 1.8, 0.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ash"]
+size = Vector3(0.68, 0.04, 0.68)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ash"]
+albedo_color = Color(0.55, 0.55, 0.58, 1)
+roughness = 0.95
+
+[sub_resource type="BoxMesh" id="BoxMesh_log_ns"]
+size = Vector3(0.14, 0.14, 0.72)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wood"]
+albedo_color = Color(0.45, 0.3, 0.15, 1)
+roughness = 0.95
+
+[sub_resource type="BoxMesh" id="BoxMesh_log_ew"]
+size = Vector3(0.72, 0.14, 0.14)
+
+[sub_resource type="BoxMesh" id="BoxMesh_coal"]
+size = Vector3(0.24, 0.12, 0.24)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_coal"]
+albedo_color = Color(0.12, 0.12, 0.14, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_hot_blade"]
+size = Vector3(0.06, 0.35, 0.14)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hot_blade"]
+albedo_color = Color(1, 0.35, 0.05, 1)
+emission_enabled = true
+emission = Color(1, 0.35, 0.05, 1)
+emission_energy_multiplier = 2.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_blade"]
+size = Vector3(0.04, 0.9, 0.1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_steel"]
+albedo_color = Color(0.25, 0.22, 0.22, 1)
+roughness = 0.8
+
+[sub_resource type="BoxMesh" id="BoxMesh_guard"]
+size = Vector3(0.35, 0.08, 0.12)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_brass"]
+albedo_color = Color(0.65, 0.45, 0.15, 1)
+roughness = 0.6
+metallic = 0.1
+
+[sub_resource type="BoxMesh" id="BoxMesh_grip"]
+size = Vector3(0.05, 0.28, 0.05)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_leather"]
+albedo_color = Color(0.18, 0.12, 0.08, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="BoxMesh_pommel"]
+size = Vector3(0.1, 0.08, 0.1)
+
+[node name="CampfireEntity" type="StaticBody3D"]
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("1_script")
+
+[node name="CampfireCollider" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("BoxShape3D_col")
+
+[node name="Visuals" type="Node3D" parent="."]
+
+[node name="AshFloor" type="MeshInstance3D" parent="Visuals"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+mesh = SubResource("BoxMesh_ash")
+surface_material_override/0 = SubResource("StandardMaterial3D_ash")
+
+[node name="LogNS1" type="MeshInstance3D" parent="Visuals"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.22, 0.09, 0)
+mesh = SubResource("BoxMesh_log_ns")
+surface_material_override/0 = SubResource("StandardMaterial3D_wood")
+
+[node name="LogNS2" type="MeshInstance3D" parent="Visuals"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.22, 0.09, 0)
+mesh = SubResource("BoxMesh_log_ns")
+surface_material_override/0 = SubResource("StandardMaterial3D_wood")
+
+[node name="LogEW1" type="MeshInstance3D" parent="Visuals"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.21, -0.22)
+mesh = SubResource("BoxMesh_log_ew")
+surface_material_override/0 = SubResource("StandardMaterial3D_wood")
+
+[node name="LogEW2" type="MeshInstance3D" parent="Visuals"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.21, 0.22)
+mesh = SubResource("BoxMesh_log_ew")
+surface_material_override/0 = SubResource("StandardMaterial3D_wood")
+
+[node name="Coals" type="MeshInstance3D" parent="Visuals"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+mesh = SubResource("BoxMesh_coal")
+surface_material_override/0 = SubResource("StandardMaterial3D_coal")
+
+[node name="SwordPivot" type="Node3D" parent="Visuals"]
+transform = Transform3D(0.811, -0.114, 0.575, 0.08, 0.988, 0.08, -0.58, -0.016, 0.814, 0, 0.15, 0)
+
+[node name="HotBlade" type="MeshInstance3D" parent="Visuals/SwordPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.175, 0)
+mesh = SubResource("BoxMesh_hot_blade")
+material_override = SubResource("StandardMaterial3D_hot_blade")
+
+[node name="RustedBlade" type="MeshInstance3D" parent="Visuals/SwordPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+mesh = SubResource("BoxMesh_blade")
+surface_material_override/0 = SubResource("StandardMaterial3D_steel")
+
+[node name="Crossguard" type="MeshInstance3D" parent="Visuals/SwordPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.29, 0)
+mesh = SubResource("BoxMesh_guard")
+surface_material_override/0 = SubResource("StandardMaterial3D_brass")
+
+[node name="Grip" type="MeshInstance3D" parent="Visuals/SwordPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.47, 0)
+mesh = SubResource("BoxMesh_grip")
+surface_material_override/0 = SubResource("StandardMaterial3D_leather")
+
+[node name="Pommel" type="MeshInstance3D" parent="Visuals/SwordPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.65, 0)
+mesh = SubResource("BoxMesh_pommel")
+surface_material_override/0 = SubResource("StandardMaterial3D_brass")
+
+[node name="CampfireLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+light_color = Color(1, 0.65, 0.25, 1)
+light_energy = 2.8
+shadow_enabled = true
+shadow_bias = 0.06
+omni_range = 18.0
