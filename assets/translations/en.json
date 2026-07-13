@@ -35,6 +35,10 @@
   "HUD_PAUSE_SETTINGS": "Settings",
   "HUD_PAUSE_QUIT": "Save & Exit",
   "HUD_FPS": "FPS",
+  "FLIGHT_AIRSPEED": "AIRSPEED: %.1f m/s",
+  "FLIGHT_ALTITUDE": "ALTITUDE: %d m",
+  "FLIGHT_GLIDE_RATIO": "GLIDE RATIO: %.1f:1",
+  "FLIGHT_RATIO_STABLE": "GLIDE RATIO: STABLE",
 
   "GPS_CLOSEST_POI_HEADER": "Closest Landmark",
   "DIR_N": "North",

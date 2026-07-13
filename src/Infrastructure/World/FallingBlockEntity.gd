@@ -2,11 +2,21 @@
 # Pathfile: res://src/Infrastructure/World/FallingBlockEntity.gd
 # Description: Lightweight presentation entity representing a collapsing block
 #              sliding down smoothly via Tweens to its new landing support.
+#              Corrected: Extracted all magic numbers to constants (Section 5.3).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name FallingBlockEntity
 extends Node3D
+
+# Visual and physical scale constants (Section 5.3)
+const HALF_BLOCK_OFFSET := Vector3(0.5, 0.5, 0.5)
+const FALL_DURATION_MULTIPLIER: float = 0.08
+const MIN_FALL_DURATION_SEC: float = 0.15
+const MAX_FALL_DURATION_SEC: float = 1.2
+
+const PARTICLES_EMISSION_AMOUNT: int = 6
+const PARTICLES_LIFETIME_SEC: float = 0.4
 
 var block_type: BlockType.Type
 var world_controller: Node3D
@@ -21,7 +31,11 @@ func start_fall(p_world_controller: Node3D, p_type: BlockType.Type, target_y: fl
 	
 	# Compute falling duration proportionally based on vertical distance
 	var fall_tween := create_tween()
-	var duration := clampf((global_position.y - target_y) * 0.08, 0.15, 1.2)
+	var duration := clampf(
+		(global_position.y - target_y) * FALL_DURATION_MULTIPLIER, 
+		MIN_FALL_DURATION_SEC, 
+		MAX_FALL_DURATION_SEC
+	)
 	
 	fall_tween.tween_property(self, "global_position:y", target_y, duration)\
 		.set_trans(Tween.TRANS_QUAD)\
@@ -38,11 +52,11 @@ func _build_mesh_representation() -> void:
 		
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(1.0, 1.0, 1.0)
+	box_mesh.size = Vector3.ONE
 	mesh_instance.mesh = box_mesh
 	
 	# Pull offset to match the center pivot of the 1x1x1 grid cell
-	mesh_instance.position = Vector3(0.5, 0.5, 0.5)
+	mesh_instance.position = HALF_BLOCK_OFFSET
 	
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = def.color_top
@@ -78,10 +92,10 @@ func _on_landed() -> void:
 ## Spawns compile-free unshaded dust clouds around the landing base (Section 7.4).
 func _spawn_impact_dust_particles() -> void:
 	var particles := CPUParticles3D.new()
-	particles.amount = 6
+	particles.amount = PARTICLES_EMISSION_AMOUNT
 	particles.one_shot = true
 	particles.explosiveness = 0.9
-	particles.lifetime = 0.4
+	particles.lifetime = PARTICLES_LIFETIME_SEC
 	
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	particles.emission_box_extents = Vector3(0.4, 0.05, 0.4)
@@ -101,5 +115,5 @@ func _spawn_impact_dust_particles() -> void:
 	
 	particles.finished.connect(particles.queue_free)
 	world_controller.add_child(particles)
-	particles.global_position = global_position + Vector3(0.5, 0.05, 0.5)
+	particles.global_position = global_position + Vector3(HALF_BLOCK_OFFSET.x, 0.05, HALF_BLOCK_OFFSET.z)
 	particles.emitting = true
