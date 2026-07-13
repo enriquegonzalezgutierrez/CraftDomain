@@ -64,11 +64,9 @@ static func _preload_mobs() -> void:
 
 
 static func _preload_props() -> void:
-	_props_scenes[200] = preload("res://src/Infrastructure/World/ChestEntity.gd") 
-	
-	# PRELOAD SCENE HOOK: Associates the 3D Streetlight to its compiled visual .tscn instead of raw code
+	# BIND SCENE HOOKS: All interactive scenery props are preloaded statically as .tscn files
+	_props_scenes[200] = preload("res://src/Infrastructure/World/chest_entity.tscn") 
 	_props_scenes[202] = preload("res://src/Infrastructure/World/streetlight_entity.tscn")
-	
-	_props_scenes[203] = preload("res://src/Infrastructure/World/CampfireEntity.gd")
-	_props_scenes[213] = preload("res://src/Infrastructure/World/WishingWellEntity.gd")
-	_props_scenes[215] = preload("res://src/Infrastructure/World/BarrelEntity.gd")
+	_props_scenes[203] = preload("res://src/Infrastructure/World/campfire_entity.tscn")
+	_props_scenes[213] = preload("res://src/Infrastructure/World/wishing_well_entity.tscn")
+	_props_scenes[215] = preload("res://src/Infrastructure/World/barrel_entity.tscn")

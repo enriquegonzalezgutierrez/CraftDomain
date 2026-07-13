@@ -13,11 +13,6 @@ const MODEL_PATH: String = "res://assets/models/decorations/wishing_well_odyssey
 
 func _ready() -> void:
 	name = "Prop_WISHING_WELL"
-	
-	# Locate and sanitize the static GLB model pre-instanced in the .tscn scene tree
-	var model_node := get_node_or_null("Visuals/BodyBobJoint/wishing_well") as Node3D
-	if is_instance_valid(model_node):
-		GLBModelSanitizer.sanitize_model(model_node)
 
 
 func interact(player_node: CharacterBody3D) -> void:
