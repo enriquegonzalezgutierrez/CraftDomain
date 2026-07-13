@@ -1,7 +1,9 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/Widgets/MinimapWidget.gd
-# Description: SRP-compliant UI Widget responsible ONLY for the procedural 2D 
-#              drawings and entities tracking on the circular radar. Layout is defined in .tscn.
+# Description: HUD Minimap Widget responsible for calculating and drawing 
+#              procedural 2D biome backgrounds and real-time tactical entity 
+#              gliphs on the chronological circular radar (SRP).
+#              Corrected: Solved Vector2/Vector3 typemismatch on line 234.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -18,6 +20,17 @@ enum PinType {
 	CHEST = 4,
 	CAMPFIRE = 5,
 	LIGHT = 6
+}
+
+# OCP Mapping of entity names to their clean single-char radar symbols (Section 5.3)
+const SYMBOL_CHAR_MAPPING: Dictionary = {
+	"ZOMBIE": "Z", "SHARK": "S", "GARGOYLE": "G", "GOBLIN": "K",
+	"GOLEM": "I", "GUARD": "K", "MERCHANT": "$", "FARMER": "F",
+	"MINER": "M", "DRUID": "D", "CYBER": "A", "PIG": "p",
+	"CHICKEN": "c", "SHEEP": "s", "COW": "w", "FOX": "f",
+	"CAT": "m", "GROWLITHE": "d", "MONKEY": "k", "OCTOPUS": "o",
+	"TURTLE": "t", "RACCOON": "r", "BIRD": "b", "PARROT": "y",
+	"CRAB": "a"
 }
 
 var player: CharacterBody3D
@@ -44,7 +57,7 @@ const RADAR_BIOME_COLORS: Dictionary = {
 	0: Color(0.08, 0.45, 0.72), 1: Color(0.28, 0.75, 0.18), 
 	2: Color(0.92, 0.85, 0.35), 3: Color(0.48, 0.48, 0.48), 
 	4: Color(0.98, 0.98, 0.98), 5: Color(0.18, 0.45, 0.15), 
-	6: Color(0.85, 0.38, 0.22), 7: Color(0.0, 0.85, 0.85),  
+	6: Color(0.85, 0.38, 0.22), 7: Color(0.0, 0.65, 0.65),  
 	8: Color(0.28, 0.22, 0.15), 9: Color(1.0, 1.0, 1.0)     
 }
 
@@ -146,10 +159,10 @@ func _on_radar_draw() -> void:
 		if is_valid_entity and pin_type != PinType.NONE:
 			var diff := Vector2(child_pos.x - player_pos.x, child_pos.z - player_pos.z)
 			if diff.length_squared() < MAX_RADIUS_SQ:
-				_draw_tactical_symbol(CENTER + diff, pin_type, child_pos.y - player_pos.y)
+				_draw_tactical_symbol(CENTER + diff, pin_type, child_pos.y - player_pos.y, child.name)
 
 
-func _draw_tactical_symbol(draw_pos: Vector2, type: PinType, delta_y: float) -> void:
+func _draw_tactical_symbol(draw_pos: Vector2, type: PinType, delta_y: float, node_name: String) -> void:
 	var is_different_level := absf(delta_y) > 6.0
 	var alpha := 0.45 if is_different_level else 1.0
 	var base_color := Color.WHITE
@@ -190,6 +203,9 @@ func _draw_tactical_symbol(draw_pos: Vector2, type: PinType, delta_y: float) -> 
 			_radar_canvas.draw_rect(rect, base_color, true)
 			_radar_canvas.draw_rect(rect, Color(0,0,0, alpha), false, 1.0)
 			
+	# PROJECT HOLOGRAPHIC CHARACTER OVER DETECTOR (OCP / Section 3.2)
+	_draw_holographic_glyph_on_pin(draw_pos, node_name, alpha)
+			
 	if is_different_level:
 		var arrow_color := Color(base_color.r, base_color.g, base_color.b, 0.72)
 		if delta_y < -6.0:
@@ -198,6 +214,38 @@ func _draw_tactical_symbol(draw_pos: Vector2, type: PinType, delta_y: float) -> 
 		elif delta_y > 6.0:
 			_radar_canvas.draw_line(draw_pos + Vector2(-3, -6), draw_pos + Vector2(0, -9), arrow_color, 1.5)
 			_radar_canvas.draw_line(draw_pos + Vector2(3, -6), draw_pos + Vector2(0, -9), arrow_color, 1.5)
+
+
+## Helper: Projects high-contrast centered abbreviations on pins to ensure absolute legibility
+func _draw_holographic_glyph_on_pin(draw_pos: Vector2, node_name: String, alpha: float) -> void:
+	var glyph := _get_glyph_for_entity(node_name)
+	if glyph == "":
+		return
+		
+	var default_font: Font = get_theme_font("font")
+	# Calibrated font size 8 for perfect visual scaling inside radar pins
+	var font_size := 8
+	var text_color := Color(1.0, 1.0, 1.0, alpha)
+	var shadow_color := Color(0.0, 0.0, 0.0, alpha * 0.75)
+	
+	var half_width := default_font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x / 2.0
+	var offset_y := 3.0 # Centering Y baseline
+	
+	# COORDINATE FIXED: Symmetrical 2D Vector addition
+	var final_draw_pos := draw_pos + Vector2(-half_width, offset_y)
+	
+	# Draw drop shadow for extreme readibility over map terrain (Section 1.2)
+	_radar_canvas.draw_string(default_font, final_draw_pos + Vector2(1, 1), glyph, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, shadow_color)
+	_radar_canvas.draw_string(default_font, final_draw_pos, glyph, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, text_color)
+
+
+## Pure helper resolving abbreviations deterministically from static mappings
+func _get_glyph_for_entity(node_name: String) -> String:
+	var upper_name := node_name.to_upper()
+	for key: String in SYMBOL_CHAR_MAPPING.keys():
+		if upper_name.contains(key):
+			return SYMBOL_CHAR_MAPPING[key] as String
+	return ""
 
 
 func _on_border_draw() -> void:

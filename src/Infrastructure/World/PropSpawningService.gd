@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/World/PropSpawningService.gd
 # Description: Infrastructure Service responsible for calculating and spawning
 #              inert scenery props and interactive decorations inside loaded chunks.
-#              Corrected: Fixed 3D vertical offset double-addition bug (Y-axis).
+#              Corrected: Implemented Vertical Column Completeness Shield (Section 1.2).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -14,12 +14,23 @@ extends RefCounted
 func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
 	var entities_list: Array[Node] = []
 	var chunk_pos := chunk.position
-	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	
+	# ==========================================================================
+	# ESCUDO DE COLUMNA COMPLETA (Sincronización Asíncrona - Sección 1.2)
+	# Si la capa superior (Y=1) aún no se ha cargado, aplazamos el spawn en Y=0
+	# para evitar que los cofres y barriles queden enterrados bajo el césped.
+	# ==========================================================================
+	if chunk_pos.y == 0:
+		var upper_chunk := world_state.get_chunk(Vector3i(chunk_pos.x, 1, chunk_pos.z))
+		if upper_chunk == null:
+			return [] # Aplazar hasta que la columna vertical esté completa
+	# ==========================================================================
+	
+	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	var is_real_village := false
 	var active_biome_id := 2 # Default Golden Bazaar plains
 	
-	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator
+	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator if is_instance_valid(world_node) else null
 	if is_instance_valid(generator):
 		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if terrain_noise != null:
@@ -70,7 +81,6 @@ func _spawn_and_register_prop(prop_id: int, offset: Vector3, lx: float, lz: floa
 	if gy < 0.0:
 		return 
 		
-	# COORDINATE FIXED: Using independent world axes to prevent double offset.y addition
 	var pos := Vector3(offset.x + lx, gy, offset.z + lz)
 	
 	var prop := PropRegistry.create_prop(prop_id, pos)

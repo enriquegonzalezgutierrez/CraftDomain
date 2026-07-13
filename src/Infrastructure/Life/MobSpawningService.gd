@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service responsible for calculating and spawning
 #              NPC, Fauna, and hostile dynamic classes inside loaded chunks.
-#              Corrected: Fixed 3D vertical offset double-addition bug (Y-axis).
+#              Corrected: Implemented Vertical Column Completeness Shield (Section 1.2).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -14,12 +14,26 @@ extends RefCounted
 func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
 	var spawned_nodes: Array[Node] = []
 	var chunk_pos: Vector3i = chunk.position
-	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	
+	# ==========================================================================
+	# ESCUDO DE COLUMNA COMPLETA (Sincronización Asíncrona - Sección 1.2)
+	# Si la capa superior (Y=1) aún no se ha cargado, aplazamos el spawn en Y=0
+	# para evitar que las criaturas queden enterradas bajo tierra al cargar el mapa.
+	# ==========================================================================
+	if chunk_pos.y == 0:
+		var upper_chunk := world_state.get_chunk(Vector3i(chunk_pos.x, 1, chunk_pos.z))
+		if upper_chunk == null:
+			return [] # Aplazar hasta que la columna vertical esté completa
+	# ==========================================================================
+	
+	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	var is_real_village := false
 	var active_biome_id := 2 # Default Golden Bazaar plains
 	
-	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator
+	var generator: WorldGenerator = null
+	if is_instance_valid(world_node):
+		generator = world_node.get("generator") as WorldGenerator
+		
 	if is_instance_valid(generator):
 		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if terrain_noise != null:
@@ -108,8 +122,12 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	if gy < 0.0:
 		return 
 		
-	# COORDINATE FIXED: Using independent world axes to prevent double offset.y addition
 	var pos := Vector3(offset.x + lx, gy, offset.z + lz)
+	
+	# Symmetrical verbose telemetry logging (Section 1.2 / Core Metrics)
+	print("[MobSpawning Diagnostics] Entity ID: %d | Base Offset: %s | Local lx/lz: (%.2f, %.2f) | Scanned Height Y: %.2f | Final Vector3: %s" % [
+		spawn_id, offset, lx, lz, gy, pos
+	])
 	
 	if _is_physics_spawn_space_free(world_node, pos):
 		var mob := MobRegistry.create_mob(spawn_id, pos)
@@ -152,7 +170,12 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		
 	var surface_block := world_state.get_block(Vector3i(global_x, hit_y, global_z))
 	var def := BlockLibrary.get_definition(surface_block) as BlockDefinition
+	
 	if def == null or not def.is_spawnable_soil:
+		# Print warning to console if the terrain scanner rejects the spawn block (OCP)
+		print("[MobSpawning Warning] Aborted land spawn at (X: %d, Z: %d). Soil block '%s' (ID %d) is non-spawnable." % [
+			global_x, global_z, "Unknown" if def == null else def.translation_key, surface_block
+		])
 		return -1.0
 		
 	var space_above_1 := world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
