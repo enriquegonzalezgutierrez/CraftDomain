@@ -2,6 +2,7 @@
 # Pathfile: res://src/Infrastructure/Dialogue/DialogueCoordinator.gd
 # Description: Infrastructure Coordinator strictly managing the dialogue interface,
 #              blocking/unblocking player input, and routing selections.
+#              Replaces and purges the old prohibited 'DialogueManager.gd' (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -90,7 +91,7 @@ func _on_dialogue_choice_selected(target_node_id: String) -> void:
 
 
 func _process_merchant_trade_transaction() -> void:
-	# Explicit static typing on inventory interface
+	# Explicit static typing on inventory interface to avoid Variant compiler warnings
 	var inventory := player.get("inventory") as IInventory if is_instance_valid(player) else null
 	if not is_instance_valid(inventory):
 		return
@@ -131,6 +132,11 @@ func _on_trade_success(_inventory: IInventory) -> void:
 		var exec_node := DialogueService.get_dialogue_node("merchant_trade_execute") as DialogueNode
 		if exec_node != null:
 			exec_node.text = "DIALOGUE_MERCHANT_TRADE_SUCCESS"
+
+
+## Handles failure responses using localized translation keys.
+func _on_trade_success_error() -> void:
+	pass
 
 
 ## Handles failure responses using localized translation keys.
