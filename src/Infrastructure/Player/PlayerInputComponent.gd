@@ -1,12 +1,17 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/PlayerInputComponent.gd
-# Description: Infrastructure Component responsible ONLY for capturing raw hardware
-#              keyboard/mouse actions, exposing a clean API to PlayerController (SRP).
+# Description: Infrastructure Component responsible for capturing raw keyboard,
+#              mouse, and hardware joypad/gamepad inputs (SRP).
+#              Corrected: Strictly typed joypad enums (JoyAxis & JoyButton).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PlayerInputComponent
 extends Node
+
+# Calibrated Gamepad constants to prevent drift and blowout (Section 5.3)
+const GAMEPAD_DEADZONE: float = 0.15
+const GAMEPAD_LOOK_SENSITIVITY: float = 2.5
 
 var host: CharacterBody3D
 
@@ -17,11 +22,29 @@ func initialize(p_host: CharacterBody3D) -> void:
 	_setup_inputs_map()
 
 
-## Returns the responsive 2D movement vector (WASD / Arrows)
+## Returns the responsive 2D movement vector (WASD / Left Stick)
 func get_movement_vector() -> Vector2:
 	if not is_instance_valid(host) or not host.get("is_active") as bool:
 		return Vector2.ZERO
 	return Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+
+
+## Returns the calculated camera rotation vector from the Right Joystick (Joypad Axis 2 & 3).
+## Implements a deadzone threshold to eliminate analog drift.
+func get_gamepad_look_vector() -> Vector2:
+	if not is_instance_valid(host) or not host.get("is_active") as bool:
+		return Vector2.ZERO
+		
+	# Axis 2: Right Stick X (Yaw) | Axis 3: Right Stick Y (Pitch)
+	var raw_look := Vector2(
+		Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
+		Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
+	)
+	
+	if raw_look.length() < GAMEPAD_DEADZONE:
+		return Vector2.ZERO
+		
+	return raw_look * GAMEPAD_LOOK_SENSITIVITY
 
 
 ## Returns true if the spacebar jump action was triggered in this frame
@@ -65,6 +88,7 @@ func _setup_inputs_map() -> void:
 		InputMap.action_add_event(action_name, event)
 		
 	_setup_inputs_mouse_actions()
+	_setup_gamepad_hardware_mappings()
 
 
 func _setup_inputs_mouse_actions() -> void:
@@ -81,3 +105,35 @@ func _setup_inputs_mouse_actions() -> void:
 	InputMap.action_add_event("click_right", right_btn)
 	var right_key := InputEventKey.new(); right_key.keycode = KEY_Q
 	InputMap.action_add_event("click_right", right_key)
+
+
+## Maps standard physical console controls to abstract keyboard actions.
+func _setup_gamepad_hardware_mappings() -> void:
+	# 1. Map Left Joystick axis to movement actions
+	_add_joypad_axis_mapping("move_left", JOY_AXIS_LEFT_X, -1.0)
+	_add_joypad_axis_mapping("move_right", JOY_AXIS_LEFT_X, 1.0)
+	_add_joypad_axis_mapping("move_forward", JOY_AXIS_LEFT_Y, -1.0)
+	_add_joypad_axis_mapping("move_backward", JOY_AXIS_LEFT_Y, 1.0)
+	
+	# 2. Map Bottom Button (Xbox A / PS Cross) to Jump
+	_add_joypad_button_mapping("jump", JOY_BUTTON_A)
+	
+	# 3. Map Menu Button (Xbox Start) to Escape (UI Cancel)
+	_add_joypad_button_mapping("ui_cancel", JOY_BUTTON_START)
+	
+	# 4. Map Right/Left bumpers to quick slot scrolls
+	_add_joypad_button_mapping("click_left", JOY_BUTTON_RIGHT_SHOULDER)
+	_add_joypad_button_mapping("click_right", JOY_BUTTON_LEFT_SHOULDER)
+
+
+func _add_joypad_axis_mapping(action: String, axis: JoyAxis, value: float) -> void:
+	var event := InputEventJoypadMotion.new()
+	event.axis = axis
+	event.axis_value = value
+	InputMap.action_add_event(action, event)
+
+
+func _add_joypad_button_mapping(action: String, button: JoyButton) -> void:
+	var event := InputEventJoypadButton.new()
+	event.button_index = button
+	InputMap.action_add_event(action, event)

@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/PlayerController.gd
 # Description: First-person player physics controller. Manages movement vectors,
-#              camera rotations, input actions, and glider flight aerodynamics.
+#              camera rotations, input actions, glider flight aerodynamics, and 
+#              analog hardware joypad camera look sweeps.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -175,6 +176,14 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(interaction_component) and interaction_component.has_method("process_interaction"):
 		interaction_component.call("process_interaction")
 
+	# Process continuous analog joypad camera look sweeps (Section 6.3 / DIP)
+	if is_instance_valid(_input_component) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		var pad_look := _input_component.get_gamepad_look_vector()
+		if pad_look != Vector2.ZERO:
+			rotate_y(-pad_look.x * delta)
+			camera.rotate_x(-pad_look.y * delta)
+			camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
+
 	_evaluate_glider_deployment()
 
 	if is_glider_deployed:
@@ -194,13 +203,11 @@ func _physics_process(delta: float) -> void:
 
 
 func _evaluate_glider_deployment() -> void:
-	# Ground or wall impact triggers auto-retraction for flight safety
 	if is_glider_deployed and GliderItemStrategy.evaluate_auto_retraction(is_on_floor(), is_on_wall()):
 		is_glider_deployed = false
 		_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
 		return
 
-	# In-air double jump deployment verification
 	if not is_on_floor() and _input_component.is_jump_just_pressed():
 		if inventory.get_item_total_quantity(GLIDER_ITEM_ID) > 0:
 			is_glider_deployed = not is_glider_deployed
@@ -212,7 +219,6 @@ func _evaluate_glider_deployment() -> void:
 
 
 func _process_glider_physics(delta: float) -> void:
-	# 1. Fetch wind vectors from WeatherService safely via global parameters
 	var wind_vector := Vector2.ZERO
 	var wind_strength := 0.0
 	var weather_node := get_parent().get_node_or_null("WeatherService")
@@ -220,7 +226,6 @@ func _process_glider_physics(delta: float) -> void:
 		wind_vector = RenderingServer.global_shader_parameter_get("wind_vector") as Vector2
 		wind_strength = RenderingServer.global_shader_parameter_get("wind_strength") as float
 
-	# 2. Delegate calculations to our pure domain aerodynamics strategy
 	var look_direction := -camera.global_transform.basis.z.normalized()
 	velocity = _glider_physics.calculate_glide_velocity(
 		velocity,
@@ -230,7 +235,6 @@ func _process_glider_physics(delta: float) -> void:
 		delta
 	)
 
-	# 3. Add lateral keyboard steering (yaw) while gliding
 	var input_dir := _input_component.get_movement_vector()
 	if input_dir.x != 0.0:
 		rotate_y(-input_dir.x * 2.0 * delta)
