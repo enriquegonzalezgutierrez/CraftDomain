@@ -2,6 +2,7 @@
   "MENU_GAME_TITLE": "CraftDomain",
   "MENU_PLAY_WORLD": "Play World",
   "MENU_CONTINUE": "Continue Journey",
+  "MENU_MULTIPLAYER": "Multiplayer Lobby",
   "MENU_NEW_GAME": "New Game",
   "MENU_ASSET_SHOWCASE": "Asset Showcase",
   "MENU_SETTINGS": "Settings",
@@ -39,6 +40,10 @@
   "FLIGHT_ALTITUDE": "ALTITUDE: %d m",
   "FLIGHT_GLIDE_RATIO": "GLIDE RATIO: %.1f:1",
   "FLIGHT_RATIO_STABLE": "GLIDE RATIO: STABLE",
+
+  "LOBBY_HOST_GAME": "Host Game (Port 25565)",
+  "LOBBY_JOIN_GAME": "Join Lobby",
+  "LOBBY_ENTER_CODE": "Enter Invitation Code",
 
   "GPS_CLOSEST_POI_HEADER": "Closest Landmark",
   "DIR_N": "North",
@@ -162,7 +167,7 @@
   "ITEM_3_USE": "Equip to Hand. Aim at a solid block and Right-Click (or Q) to place it.",
   "ITEM_4_DESC": "Solid oak wood logs chopped from tall forest canopies. A highly versatile structural material and the backbone of most recipe blueprints.",
   "ITEM_4_USE": "Equip to Hand. Aim at a solid block and Right-Click (or Q) to place it.",
-  "ITEM_5_DESC": "Soft, packed leafy foliage. Ideal for building lightweight, organic structures like thatched roofs, rustic hedges, or compost piles.",
+  "ITEM_5_DESC": "Soft, packed leafy footage. Ideal for building lightweight, organic structures like thatched roofs, rustic hedges, or compost piles.",
   "ITEM_5_USE": "Equip to Hand. Aim at a solid block and Right-Click (or Q) to place it.",
   "ITEM_15_DESC": "A bucket of highly volatile, glowing geothermal magma. Extremely dangerous if touched. Used primarily as reactor fuel for high-tier crafts.",
   "ITEM_15_USE": "Equip to Hand. Right-Click to pour flowing lava, or Right-Click on the Village Merchant to trade for food rations.",
