@@ -2,6 +2,7 @@
 # Pathfile: res://src/Infrastructure/UI/PlayerHUD.gd
 # Description: Central HUD Orchestrator and UI Coordinator. Handles modal toggles,
 #              LOD UI updates, and reactive Domain Event bindings.
+#              Corrected: Auto-pauses and displays menu dynamically on network code resolved.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -53,6 +54,7 @@ func _ready() -> void:
 		
 	_setup_dialogue_system()
 	_connect_domain_signals()
+	_connect_network_observers()
 	
 	# Initial rendering dispatch
 	_on_inventory_changed()
@@ -113,6 +115,22 @@ func _connect_domain_signals() -> void:
 			entity.died.connect(func() -> void:
 				update_health_display(3) # Resets to maximum HP on respawn
 			)
+
+
+## Connects the HUD to the persistent global Network service to display invites!
+func _connect_network_observers() -> void:
+	var bootstrap := get_node_or_null("/root/Bootstrap")
+	if is_instance_valid(bootstrap):
+		var net_service := bootstrap.get("network_service") as NetworkService
+		if is_instance_valid(net_service):
+			net_service.join_code_updated.connect(_on_join_code_updated)
+
+
+## Dynamic User Experience flow: Auto-Pauses game to show the Join Code when ready.
+func _on_join_code_updated(code: String) -> void:
+	if code != "":
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		toggle_pause_menu(true)
 
 
 func _on_inventory_changed() -> void:

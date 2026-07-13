@@ -2,6 +2,7 @@
 # Pathfile: res://src/Infrastructure/Network/NetworkService.gd
 # Description: Infrastructure Service responsible for managing ENet socket 
 #              connections, hosting games, and joining peers (DIP).
+#              Corrected: Added join_code_updated signal for reactive HUD popups.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,9 +17,15 @@ signal peer_connected(peer_id: int)
 signal peer_disconnected(peer_id: int)
 signal connection_closed
 
+# UX Reactive Signal
+signal join_code_updated(code: String)
+
 # Network constants to avoid magic numbers (Section 5.3)
 const DEFAULT_PORT: int = 25565 # Standard voxel sandbox port
 const MAX_PEERS_LIMIT: int = 8  # Moderate limit for Listen-Server setups
+
+# Cache in RAM of the active invitation code to display inside the pause menu (UX)
+var active_join_code: String = ""
 
 # Active multiplayer peer socket
 var _peer: ENetMultiplayerPeer = null
@@ -29,10 +36,17 @@ func _ready() -> void:
 	_connect_multiplayer_signals()
 
 
+## Safely updates the active cache and broadcasts the event to UI layers
+func update_active_join_code(code: String) -> void:
+	active_join_code = code
+	join_code_updated.emit(code)
+
+
 ## Starts a Host/Listen-Server on the designated port.
 ## Returns OK if successful, or the corresponding Godot Error code.
 func host_game(port: int = DEFAULT_PORT) -> Error:
 	_peer = ENetMultiplayerPeer.new()
+	active_join_code = "" # Reset previous session cache
 	
 	var err := _peer.create_server(port, MAX_PEERS_LIMIT)
 	if err != OK:
@@ -50,6 +64,7 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 ## Returns OK if successful, or the corresponding Godot Error code.
 func join_game(ip: String, port: int = DEFAULT_PORT) -> Error:
 	_peer = ENetMultiplayerPeer.new()
+	active_join_code = ""
 	
 	var err := _peer.create_client(ip, port)
 	if err != OK:
@@ -70,6 +85,7 @@ func close_connection() -> void:
 		_peer = null
 		
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	active_join_code = ""
 	connection_closed.emit()
 	print("[NetworkService] Connection closed. Multiplayer offline.")
 

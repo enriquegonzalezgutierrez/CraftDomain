@@ -44,6 +44,8 @@
   "LOBBY_HOST_GAME": "Hostear Partida (Puerto 25565)",
   "LOBBY_JOIN_GAME": "Unirse al Lobby",
   "LOBBY_ENTER_CODE": "Escribe Código de Invitación",
+  "LOBBY_COPY_CODE": "Código de Invitación: %s",
+  "LOBBY_CODE_COPIED": "✓ COPIADO AL PORTAPAPELES",
 
   "GPS_CLOSEST_POI_HEADER": "Punto de Interés más Cercano",
   "DIR_N": "Norte",
@@ -156,7 +158,7 @@
   "CRAFTING_REQUIRED_MATERIALS": "Materiales Requeridos:",
   "CRAFTING_FABRICATE": "Fabricar Objeto",
 
-  "INVENTORY_COMPACTED_HEADER": "Inventory Organized",
+  "INVENTORY_COMPACTED_HEADER": "Inventario Organizado",
   "INVENTORY_COMPACTED_DESC": "¡Todos los montones de materiales duplicados se han fusionado y ordenado correctamente!",
 
   "ITEM_1_DESC": "Un bloque de construcción pesado y sólido extraído de cortezas profundas. Excelente para construir refugios duraderos, torres y fortalezas estructurales.",
@@ -225,7 +227,7 @@
 
   "DIALOGUE_FARMER_NIGHT": "Nuestros campos están demasiado oscuros para trabajar de forma segura por la noche. Hora de descansar.",
   "DIALOGUE_FARMER_GLACIERS": "Cultivar en estantes de hielo congelado es un trabajo duro, ¡pero lo logramos!",
-  "DIALOGUE_FARMER_NEON": "¡Estos caminos cian brillantes parecen acceder la fotosíntesis de los cultivos!",
+  "DIALOGUE_FARMER_NEON": "¡Estos caminos cian brillantes parecen acelerar la fotosíntesis de los cultivos!",
   "DIALOGUE_FARMER_PLAINS_A": "Cuando el trigo se vuelve dorado, está listo. ¡Coséchalo para obtener granos de trigo y semillas!",
   "DIALOGUE_FARMER_PLAINS_B": "Siembra semillas en césped fértil o tierra. ¡Manténlas siempre hidratadas cerca de los canales de agua!",
 
@@ -371,7 +373,7 @@
   "SHOWCASE_TEL_STANDARD": "•  Ejecutando bucles de patrulla y pastoreo estándar.",
   "SHOWCASE_TASK_IDLE": "REPOSO / INACTIVO",
   "SHOWCASE_TASK_WANDER": "PATRULLA / MERODEANDO",
-  "SHOWCASE_TASK_EXAMINE": "EXAMINING ENTORNO",
+  "SHOWCASE_TASK_EXAMINE": "EXAMINANDO ENTORNO",
   "SHOWCASE_TASK_GREET": "SALUDANDO AL JUGADOR",
   "SHOWCASE_TASK_CHAT": "CHARLANDO EN CORRILLO",
   "SHOWCASE_TASK_PANIC": "☠️ PÁNICO / ESCAPE",

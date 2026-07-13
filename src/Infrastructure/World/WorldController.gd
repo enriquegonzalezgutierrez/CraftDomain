@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/WorldController.gd
 # Description: Central World Controller and Redraw Orchestrator. Coordinates
-#              LOD updates, player spawn drop, and sub-service ticks.
-#              Delegates saving orchestration to WorldPersistenceService (SRP).
+#              LOD updates, player spawn drop, sub-service ticks, and network 
+#              replication backbones (DIP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -27,6 +27,10 @@ var _prop_spawning_service: PropSpawningService
 var _streetlight_service: StreetlightService
 var _agriculture_service: AgricultureService
 var _fluid_service: FluidSimulationService
+
+# Multiplayer Replicators & Spawners (Section 10.1)
+var network_spawner: NetworkSpawnerService
+var voxel_replicator: VoxelReplicator
 
 var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.2
@@ -63,6 +67,17 @@ func _initialize_systems() -> void:
 	block_modified.connect(_fluid_service._on_block_modified)
 	chunk_lifecycle = ChunkLifecycleService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
+	
+	# Instantiate and register the Spawner and Replicator nodes (Section 10.1)
+	network_spawner = NetworkSpawnerService.new()
+	network_spawner.name = "NetworkSpawnerService"
+	add_child(network_spawner)
+	network_spawner.initialize(self, world_state)
+	
+	voxel_replicator = VoxelReplicator.new()
+	voxel_replicator.name = "VoxelReplicator"
+	add_child(voxel_replicator)
+	voxel_replicator.initialize(self, world_state)
 	
 	CampaignRegistry.initialize_campaign()
 	_load_and_restore_global_save()

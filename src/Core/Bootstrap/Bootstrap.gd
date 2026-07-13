@@ -2,8 +2,8 @@
 # Pathfile: res://src/Core/Bootstrap/Bootstrap.gd
 # Description: Central composition root of the application. Orchestrates the 
 #              initialization of global systems, applies user configuration settings,
-#              injects decoupled dependencies, and manages main menu transitions.
-#              Delegates preloads paths to EntityPreloaderRegistry (SRP / OCP).
+#              injects decoupled dependencies, and manages network services and transitions.
+#              Corrected: Solved double root path compilation error on line 13.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -19,6 +19,7 @@ var player_controller: PlayerController
 var audio_service: AudioService
 var celestial_service: CelestialService
 var weather_service: WeatherService
+var network_service: NetworkService
 
 # Instantiated RefCounted Services (SRP compliant)
 var ai_telemetry_service: AITelemetryService
@@ -145,7 +146,6 @@ func _setup_prop_registry() -> void:
 
 
 ## Binds an instantiation callback to a prop scene resource.
-## PURIFIED PIPELINE: Strictly instantiates PackedScene resources (Section 7.6).
 func _register_prop(prop_id: int, _prop_class: Variant) -> void:
 	PropRegistry.register_prop(prop_id, func(pos: Vector3) -> Node:
 		var scene: PackedScene = EntityPreloaderRegistry.get_prop_scene(prop_id) as PackedScene
@@ -249,6 +249,12 @@ func _load_main_menu() -> void:
 func _init_audio_and_menu() -> void:
 	_setup_celestial()
 	_setup_audio()
+	
+	# Instantiate and register the ENet NetworkService globally on ready (DIP)
+	network_service = NetworkService.new()
+	network_service.name = "NetworkService"
+	add_child(network_service)
+	
 	_load_main_menu()
 
 
@@ -305,7 +311,7 @@ func _cleanup_and_load_menu(unload_screen: Panel) -> void:
 	_load_main_menu()
 	var fade_tween := create_tween()
 	fade_tween.tween_property(unload_screen, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
-	fade_tween.tween_callback(unload_screen.queue_free)
+	fade_tween.chain().tween_callback(unload_screen.queue_free)
 
 
 ## Creates the unloading screen transition.

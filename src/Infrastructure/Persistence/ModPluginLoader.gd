@@ -2,6 +2,7 @@
 # Pathfile: res://src/Infrastructure/Persistence/ModPluginLoader.gd
 # Description: Infrastructure service responsible for compiling and loading 
 #              external GDScript block strategies and AI behaviors on boot (OCP).
+#              Updated: Integrated ModSandboxChecker to block malicious code.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -41,7 +42,11 @@ static func load_block_plugins(mod_dir_path: String) -> void:
 
 
 static func _compile_and_register_block_plugin(file_path: String) -> bool:
-	# 1. Load the script resource dynamically into memory
+	# 1. SECURITY SHIELD: Scan plain text for malicious OS APIs before RAM compilation!
+	if not ModSandboxChecker.is_script_safe_for_compilation(file_path):
+		return false
+		
+	# 2. Load the script resource dynamically into memory
 	if not ResourceLoader.exists(file_path):
 		return false
 		
@@ -50,13 +55,13 @@ static func _compile_and_register_block_plugin(file_path: String) -> bool:
 		push_error("[ModPluginLoader ERROR] Failed to load GDScript file: " + file_path)
 		return false
 		
-	# 2. Safely instantiate the script object verifying its inheritance (DIP)
+	# 3. Safely instantiate the script object verifying its inheritance (DIP)
 	var block_instance := script_resource.new() as BlockDefinition
 	if block_instance == null:
 		push_error("[ModPluginLoader ERROR] Compiled script does not inherit from BlockDefinition: " + file_path)
 		return false
 		
-	# 3. Register the definition dynamically into BlockLibrary
+	# 4. Register the definition dynamically into BlockLibrary
 	BlockLibrary.register_definition(block_instance)
 	
 	# If the custom block declares a valid texture file name, cache it immediately in TextureRegistry

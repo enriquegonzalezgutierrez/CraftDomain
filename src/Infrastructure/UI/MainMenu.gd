@@ -1,19 +1,22 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/MainMenu.gd
 # Description: Tactile Glassmorphic Main Menu controller. Handles game boots,
-#              settings modal instantiations, and sandbox transitions.
-#              Layout and structural offsets are strictly defined in .tscn.
+#              settings modal instantiations, and multiplayer network lobbies.
+#              Corrected: Restored missing "play_pressed" class signal.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MainMenu
 extends Control
 
+## Signal emitted when the play world or new game sequence is requested (DIP).
 signal play_pressed
 
 const SETTINGS_MENU_SCENE := preload("res://src/Infrastructure/UI/settings_menu.tscn")
+const LOBBY_MENU_SCENE := preload("res://src/Infrastructure/UI/Widgets/multiplayer_lobby_widget.tscn")
 
 var _settings_overlay: SettingsMenu
+var _lobby_overlay: MultiplayerLobbyWidget
 var _has_save_game: bool = false
 
 # Visual Nodes (Bound from .tscn)
@@ -21,6 +24,7 @@ var _has_save_game: bool = false
 @onready var _menu_card: PanelContainer = $CenterContainer/MasterVBox/MenuCard
 
 @onready var _play_continue_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/PlayButton
+@onready var _multiplayer_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/MultiplayerButton
 @onready var _reset_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/NewGameButton
 @onready var _showcase_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/ShowcaseButton
 @onready var _settings_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/SettingsButton
@@ -40,6 +44,8 @@ func _ready() -> void:
 	_has_save_game = FileAccess.file_exists("user://world_save/global_save.json")
 	
 	_play_continue_btn.pressed.connect(_on_play_pressed)
+	_multiplayer_btn.pressed.connect(_on_multiplayer_pressed)
+	
 	if _has_save_game:
 		_reset_btn.visible = true
 		_reset_btn.pressed.connect(_on_new_game_clicked_with_save)
@@ -64,12 +70,15 @@ func _notification(what: int) -> void:
 
 func _process(delta: float) -> void:
 	if is_instance_valid(_title_label):
-		_title_label.position.y = lerp(_title_label.position.y, _title_label.position.y + sin(float(Time.get_ticks_msec()) / 1000.0 * 1.5) * 0.4, delta * 5.0)
+		var anim_y := _title_label.position.y + sin(float(Time.get_ticks_msec()) / 1000.0 * 1.5) * 0.4
+		_title_label.position.y = lerp(_title_label.position.y, anim_y, delta * 5.0)
 
 
 func _refresh_localized_text() -> void:
 	if is_instance_valid(_play_continue_btn):
 		_play_continue_btn.text = tr("MENU_CONTINUE") if _has_save_game else tr("MENU_PLAY_WORLD")
+	if is_instance_valid(_multiplayer_btn):
+		_multiplayer_btn.text = tr("MENU_MULTIPLAYER").to_upper()
 	if is_instance_valid(_reset_btn):
 		_reset_btn.text = tr("MENU_NEW_GAME")
 	if is_instance_valid(_showcase_btn):
@@ -101,6 +110,18 @@ func _play_entry_animation() -> void:
 
 func _on_play_pressed() -> void:
 	play_pressed.emit()
+
+
+func _on_multiplayer_pressed() -> void:
+	_lobby_overlay = LOBBY_MENU_SCENE.instantiate() as MultiplayerLobbyWidget
+	_lobby_overlay.closed.connect(_on_lobby_closed)
+	add_child(_lobby_overlay)
+
+
+func _on_lobby_closed() -> void:
+	if is_instance_valid(_lobby_overlay):
+		_lobby_overlay.queue_free()
+		_lobby_overlay = null
 
 
 func _on_new_game_clicked_with_save() -> void:

@@ -3,6 +3,8 @@
 # Description: First-person player physics controller. Manages movement vectors,
 #              camera rotations, input actions, glider flight aerodynamics, and 
 #              analog hardware joypad camera look sweeps.
+#              Corrected: Suppressed HUD and Camera initialization for remote 
+#                         network clones to prevent local input hijacking (DIP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -48,7 +50,6 @@ var _footstep_player: FootstepAudioPlayer
 
 
 func _init() -> void:
-	_setup_inputs_mouse_actions()
 	domain_entity = VoxelEntity.new(3)
 	domain_entity.took_damage.connect(_on_domain_entity_took_damage)
 	domain_entity.died.connect(_on_domain_entity_died)
@@ -64,13 +65,15 @@ func _ready() -> void:
 	safe_margin = 0.015                
 	
 	_setup_player_geometry()
-	_setup_sub_components()
 	
-	var inv_comp := inventory as InventoryComponent
-	if is_instance_valid(inv_comp):
-		inv_comp.inventory_changed.connect(_on_inventory_changed)
-		
-	_apply_hotbar_selection(0)
+	# MULTIPLAYER SHIELD: Do not instantiate HUDs, Inputs, or Raycasts on remote clones!
+	if is_multiplayer_authority():
+		_setup_inputs_mouse_actions()
+		_setup_sub_components()
+		var inv_comp := inventory as InventoryComponent
+		if is_instance_valid(inv_comp):
+			inv_comp.inventory_changed.connect(_on_inventory_changed)
+		_apply_hotbar_selection(0)
 
 
 func swing_sword() -> void:
@@ -86,17 +89,19 @@ func _setup_player_geometry() -> void:
 	col.shape = capsule
 	col.position = Vector3(0, 0.9, 0)
 	add_child(col)
-
-	camera = Camera3D.new()
-	camera.name = "PlayerCamera"
-	camera.position = Vector3(0, 1.6, 0) 
-	camera.current = true
-	add_child(camera)
 	
 	visual_component = PlayerVisualComponent.new()
 	visual_component.name = "PlayerVisualComponent"
-	visual_component.is_local_player = true 
+	# Determine if we are the local authority before applying culling rules
+	visual_component.is_local_player = is_multiplayer_authority() 
 	add_child(visual_component)
+	
+	if is_multiplayer_authority():
+		camera = Camera3D.new()
+		camera.name = "PlayerCamera"
+		camera.position = Vector3(0, 1.6, 0) 
+		camera.current = true
+		add_child(camera)
 
 
 func _setup_sub_components() -> void:
@@ -136,6 +141,8 @@ func _setup_decoupled_components() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if not is_multiplayer_authority(): return
+		
 	if event.is_action_pressed("ui_cancel"):
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -152,9 +159,10 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not is_active or Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
+	if not is_multiplayer_authority() or not is_active or Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		return
-	if event is InputEventMouseMotion:
+		
+	if event is InputEventMouseMotion and is_instance_valid(camera):
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
 		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
@@ -166,6 +174,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if not is_multiplayer_authority():
+		# Remote clones only process footstep audio and visual component animation
+		var remote_flat_velocity := Vector2(velocity.x, velocity.z)
+		if is_instance_valid(visual_component):
+			visual_component.animate_movement(remote_flat_velocity, is_on_floor(), delta)
+		return
+		
 	_process_cursor_grab_state()
 	if global_position.y < 2.0:
 		_rescue_player_from_void()
@@ -176,10 +191,9 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(interaction_component) and interaction_component.has_method("process_interaction"):
 		interaction_component.call("process_interaction")
 
-	# Process continuous analog joypad camera look sweeps (Section 6.3 / DIP)
 	if is_instance_valid(_input_component) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var pad_look := _input_component.get_gamepad_look_vector()
-		if pad_look != Vector2.ZERO:
+		if pad_look != Vector2.ZERO and is_instance_valid(camera):
 			rotate_y(-pad_look.x * delta)
 			camera.rotate_x(-pad_look.y * delta)
 			camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
@@ -208,8 +222,8 @@ func _evaluate_glider_deployment() -> void:
 		_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
 		return
 
-	if not is_on_floor() and _input_component.is_jump_just_pressed():
-		if inventory.get_item_total_quantity(GLIDER_ITEM_ID) > 0:
+	if not is_on_floor() and is_instance_valid(_input_component) and _input_component.is_jump_just_pressed():
+		if is_instance_valid(inventory) and inventory.get_item_total_quantity(GLIDER_ITEM_ID) > 0:
 			is_glider_deployed = not is_glider_deployed
 			if is_glider_deployed:
 				_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL)
@@ -226,16 +240,10 @@ func _process_glider_physics(delta: float) -> void:
 		wind_vector = RenderingServer.global_shader_parameter_get("wind_vector") as Vector2
 		wind_strength = RenderingServer.global_shader_parameter_get("wind_strength") as float
 
-	var look_direction := -camera.global_transform.basis.z.normalized()
-	velocity = _glider_physics.calculate_glide_velocity(
-		velocity,
-		look_direction,
-		wind_vector,
-		wind_strength,
-		delta
-	)
+	var look_direction := -camera.global_transform.basis.z.normalized() if is_instance_valid(camera) else Vector3.FORWARD
+	velocity = _glider_physics.calculate_glide_velocity(velocity, look_direction, wind_vector, wind_strength, delta)
 
-	var input_dir := _input_component.get_movement_vector()
+	var input_dir := _input_component.get_movement_vector() if is_instance_valid(_input_component) else Vector2.ZERO
 	if input_dir.x != 0.0:
 		rotate_y(-input_dir.x * 2.0 * delta)
 
@@ -269,8 +277,7 @@ func _scroll_hotbar(direction: int) -> void:
 
 
 func _process_hotbar_keys() -> void:
-	if not is_instance_valid(_input_component):
-		return
+	if not is_instance_valid(_input_component): return
 	var selection := _input_component.get_active_hotkey_selection()
 	if selection != -1:
 		_apply_hotbar_selection(selection)
@@ -278,14 +285,13 @@ func _process_hotbar_keys() -> void:
 
 func _apply_hotbar_selection(slot: int) -> void:
 	active_slot_index = slot
-	if is_instance_valid(hud):
-		hud.update_active_slot(slot)
-	if inventory == null:
-		return
+	if is_instance_valid(hud): hud.update_active_slot(slot)
+	if inventory == null: return
 		
 	var inv_comp := inventory as InventoryComponent
-	var slot_data := inv_comp.get_slot_data(slot)
+	if not is_instance_valid(inv_comp): return
 	
+	var slot_data := inv_comp.get_slot_data(slot)
 	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:
 		is_item_selected = false
 		active_build_type = BlockType.Type.AIR

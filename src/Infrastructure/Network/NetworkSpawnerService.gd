@@ -2,6 +2,8 @@
 # Pathfile: res://src/Infrastructure/Network/NetworkSpawnerService.gd
 # Description: Infrastructure Service responsible for managing peer-spawn 
 #              authorities and replicating remote player controllers (OCP).
+#              Corrected: Disabled local culling on remote player instances to 
+#                         make them visible to other network peers.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -66,7 +68,21 @@ func _spawn_player_instance(peer_id: int) -> void:
 	# 2. De-activate inputs and physics for remote clients
 	player_instance.set("is_active", false)
 	
-	# 3. Attach to WorldController root scene tree
+	# ==========================================================================
+	# 3. VISIBILITY CULLING FIX (Make remote clones visible)
+	# Safely extract the visual component and disable the first-person cull shield
+	# ==========================================================================
+	var visual_comp := player_instance.get_node_or_null("PlayerVisualComponent") as PlayerVisualComponent
+	if is_instance_valid(visual_comp):
+		visual_comp.is_local_player = false
+		if visual_comp.has_method("_update_cull_modes"):
+			visual_comp.call_deferred("_update_cull_modes")
+			
+	# Force attach the replica interpolator to handle network sync for this clone
+	var replica := NetworkPlayerReplica.new()
+	player_instance.add_child(replica)
+
+	# 4. Attach to WorldController root scene tree
 	world_controller.add_child(player_instance)
 	_spawned_players[peer_id] = player_instance
 	

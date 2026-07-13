@@ -2,6 +2,7 @@
 # Pathfile: res://src/Infrastructure/Network/NetworkUPnPService.gd
 # Description: Infrastructure Service responsible for asynchronous UPnP port 
 #              mapping over LAN and silent public IP HTTP auto-detection (DIP).
+#              Corrected: Uses reactive setter to notify UI layers of code generation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -58,6 +59,12 @@ func _on_ip_lookup_completed(result: int, response_code: int, _headers: PackedSt
 		
 	# Call our pure domain solver mathematics to encode the absolute public IP
 	var join_code := NetworkJoinCodeSolver.encode_ip_and_port(public_ip, DEFAULT_PORT)
+	
+	# Trigger the reactive observer chain on the parent persistent service!
+	var parent_service := get_parent() as NetworkService
+	if is_instance_valid(parent_service):
+		parent_service.update_active_join_code(join_code)
+		
 	print("[NetworkUPnP] Public IP detected: ", public_ip, " | Dynamic Join Code generated: ", join_code)
 	join_code_generated.emit(join_code)
 
@@ -80,7 +87,7 @@ func _async_upnp_port_mapping(port: int) -> void:
 	
 	var success := (map_result_udp == UPNP.UPNP_RESULT_SUCCESS)
 	if success:
-		_on_upnp_mapping_finished(true, "[NetworkUPnP] Dynamic Port Mapping completed successfully! UDP " + str(port) + " is open.")
+		_on_upnp_mapping_finished(true, "[NetworkUPnP] Port Mapping completed successfully! UDP " + str(port) + " is open.")
 	else:
 		_on_upnp_mapping_finished(false, "[NetworkUPnP Warning] Port mapping failed. Result code: " + str(map_result_udp))
 

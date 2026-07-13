@@ -2,6 +2,7 @@
 # Pathfile: res://src/Domain/Player/NetworkJoinCodeSolver.gd
 # Description: Pure Domain solver calculating and translating absolute network
 #              coordinates (IP/Port) into obfuscated alphanumeric Join Codes (DIP).
+#              Corrected: Replaced to_int() with hex_to_int() for hex decoding.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -54,9 +55,9 @@ static func decode_to_ip_and_port(join_code: String) -> Dictionary:
 	if hex_ip.length() != 8 or hex_port.length() != 4:
 		return {}
 		
-	# 1. Reverse XOR obfuscation and unpack 32-bit integer
-	var ip_unpacked := (hex_ip.to_int() ^ OBFUSCATION_SALT)
-	var port_unpacked := (hex_port.to_int() ^ (OBFUSCATION_SALT & 0xFFFF))
+	# 1. Reverse XOR obfuscation and unpack 32-bit integer (Corrected to hex_to_int)
+	var ip_unpacked := (hex_ip.hex_to_int() ^ OBFUSCATION_SALT)
+	var port_unpacked := (hex_port.hex_to_int() ^ (OBFUSCATION_SALT & 0xFFFF))
 	
 	# 2. Re-assemble IPv4 string segments
 	var ip_parts: Array[String] = []
