@@ -132,8 +132,8 @@ func _check_environmental_schedules() -> bool:
 	if is_instance_valid(world_node):
 		var weather_node := world_node.get_node_or_null("WeatherService")
 		if is_instance_valid(weather_node) and weather_node.get("current_weather") != null:
-			var w_val := int(weather_node.get("current_weather"))
-			is_storming = (w_val == 1 or w_val == 2)
+			var w_type := int(weather_node.get("current_weather"))
+			is_storming = (w_type == 1 or w_type == 2)
 			
 	var can_take_shelter: bool = _host.call("can_take_shelter") as bool if _host.has_method("can_take_shelter") else false
 	if (is_night or is_storming) and can_take_shelter:
@@ -265,8 +265,8 @@ func _seek_shelter_routine() -> void:
 	if not _active_path.is_empty() and current_task == TaskState.WANDERING:
 		return 
 		
-	if is_instance_valid(_nav_service) and _nav_service.has_method("find_closest_shelter_node"):
-		var shelter_pos: Vector3 = _nav_service.call("find_closest_shelter_node", _host.global_position)
+	if is_instance_valid(_nav_service) and _nav_service.has_method("find_closest_shadow_shelter"):
+		var shelter_pos: Vector3 = _nav_service.call("find_closest_shadow_shelter", _host.global_position)
 		if shelter_pos != Vector3.ZERO:
 			var path: Array = _nav_service.call("find_path", _host.global_position, shelter_pos)
 			if path.size() > 1:
@@ -281,33 +281,44 @@ func _seek_shelter_routine() -> void:
 	task_timer = randf_range(1.5, 3.0)
 
 
+## Proactivity Sensor: Evaluates block safety polimorphically through the host (OCP/LSP)
 func _is_direction_safe(dir: Vector3) -> bool:
-	if not is_instance_valid(_host): return false
+	if not is_instance_valid(_host): 
+		return false
 	var world_node := _host.get_parent()
-	if not is_instance_valid(world_node) or not "world_state" in world_node: return true
+	if not is_instance_valid(world_node) or not "world_state" in world_node: 
+		return true
 	var ws: WorldState = world_node.world_state
-	if ws == null: return true
-	
+	if ws == null: 
+		return true
+		
 	var check_pos := _host.global_position + dir * 1.5
 	var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
 	var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
 	var block_below := ws.get_block(block_below_coord)
 	var block_at := ws.get_block(block_at_coord)
 	
-	if BlockType.is_solid(block_at): return false
-	
-	var habitat: int = _host.call("_get_habitat") if _host.has_method("_get_habitat") else 0
-	if habitat == 2: # AQUATIC
-		return block_below == 6 or block_at == 6
-	elif habitat == 1: # AMPHIBIOUS
-		return block_below == 6 or block_at == 6 or block_below == 7 or block_below == 11
-	else: # TERRESTRIAL
-		var is_liquid := block_below == 6 or block_below == 15 or block_at == 6
-		var is_void := block_below == 0
-		if is_void:
-			var block_2_below := ws.get_block(block_below_coord + Vector3i(0, -1, 0))
-			if block_2_below != 0 and block_2_below != 6 and block_2_below != 15: is_void = false
-		return not is_liquid and not is_void
+	# 1. Collision Check (Head/chest space must be non-solid)
+	if BlockType.is_solid(block_at): 
+		return false
+		
+	# 2. Habitability Check: Query the host polimorphically (OCP/LSP)
+	if _host.has_method("_is_block_type_habitable"):
+		var is_feet_safe: bool = _host.call("_is_block_type_habitable", block_at) as bool
+		var is_below_safe: bool = _host.call("_is_block_type_habitable", block_below) as bool
+		
+		# Check for standard voids if terrestrial (habitat == 0)
+		var habitat: int = _host.get("entity_habitat") if "entity_habitat" in _host else 0
+		if habitat == 0:
+			if block_below == BlockType.Type.AIR:
+				var block_2_below := ws.get_block(block_below_coord + Vector3i(0, -1, 0))
+				if BlockType.is_solid(block_2_below):
+					return true
+				return false
+				
+		return is_feet_safe or is_below_safe
+		
+	return true
 
 
 func _detect_closest_zombie_threat() -> Node3D:

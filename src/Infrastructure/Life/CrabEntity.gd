@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/CrabEntity.gd
 # Description: Physical character controller for the Amphibious Beach Crab.
-#              Sanitization is delegated strictly to GLBModelSanitizer (DRY).
+#              Sustains strict shore and water limits polimorphically (OCP/LSP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -34,6 +34,15 @@ func _get_entity_name_key() -> String:
 
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2)
+
+
+## Polymorphic Override (OCP/LSP Compliant): Restricts the crab to shore and ocean blocks
+func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
+	return (
+		block_type == BlockType.Type.WATER or 
+		block_type == BlockType.Type.SAND or 
+		block_type == BlockType.Type.MUD
+	)
 
 
 func _drop_loot(inv: IInventory) -> void:

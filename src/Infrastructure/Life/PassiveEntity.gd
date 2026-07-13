@@ -184,6 +184,12 @@ func _can_jump_to(target_coord: Vector3i) -> bool:
 	return true 
 
 
+## Virtual Contract (OCP/LSP Compliant): Returns true if the block type is physically habitable
+func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
+	# Default Terrestrial rule: Can stand on any solid non-liquid block
+	return block_type != BlockType.Type.WATER and block_type != BlockType.Type.LAVA
+
+
 func interact(_player_node: CharacterBody3D) -> void:
 	pass
 
@@ -363,50 +369,15 @@ func _apply_absolute_boundary_forcefield(delta: float) -> void:
 	var block_at_feet := ws.get_block(feet_coord)
 	var block_below_feet := ws.get_block(feet_coord + Vector3i(0, -1, 0))
 	
-	var habitat := _get_habitat()
-	var is_crossing := false
+	# Check habitability polymorphically (OCP / LSP Compliant)
+	var is_feet_safe := _is_block_type_habitable(block_at_feet)
+	var is_below_safe := _is_block_type_habitable(block_below_feet)
 	
-	if habitat == 2: # AQUATIC
-		is_crossing = (block_at_feet != BlockType.Type.WATER and block_below_feet != BlockType.Type.WATER)
-	elif habitat == 1: # AMPHIBIOUS
-		var is_water_or_shore_at_feet := (
-			block_at_feet == BlockType.Type.WATER or 
-			block_at_feet == BlockType.Type.SAND or 
-			block_at_feet == BlockType.Type.MUD
-		)
-		var is_water_or_shore_below := (
-			block_below_feet == BlockType.Type.WATER or 
-			block_below_feet == BlockType.Type.SAND or 
-			block_below_feet == BlockType.Type.MUD
-		)
-		if not (is_water_or_shore_at_feet or is_water_or_shore_below):
-			is_crossing = true
-		elif block_at_feet == BlockType.Type.LAVA or block_below_feet == BlockType.Type.LAVA:
-			is_crossing = true
-	else: # TERRESTRIAL
-		var is_liquid := (
-			block_at_feet == BlockType.Type.WATER or 
-			block_at_feet == BlockType.Type.LAVA or 
-			block_below_feet == BlockType.Type.WATER or 
-			block_below_feet == BlockType.Type.LAVA
-		)
-		
-		if is_liquid:
-			is_crossing = true
-		elif block_below_feet == BlockType.Type.AIR and not _can_fly():
-			var max_fall_scan := 3
-			var solid_found := false
-			for offset_y in range(2, max_fall_scan + 2):
-				var check_y := feet_coord.y - offset_y
-				if check_y < 0:
-					break
-				var block_type := ws.get_block(Vector3i(feet_coord.x, check_y, feet_coord.z))
-				if block_type != BlockType.Type.AIR:
-					solid_found = true
-					break
-			
-			if not solid_found:
-				is_crossing = true
+	var is_crossing := not is_feet_safe and not is_below_safe
+	
+	# OUT-OF-WATER SAFETY SHIELD: Force submerged state if aquatic species swim up into AIR
+	if _get_habitat() == 2 and block_at_feet == BlockType.Type.AIR:
+		velocity.y = -2.5 # Push down to resubmerge
 		
 	if is_crossing:
 		velocity.x = 0.0
@@ -448,7 +419,11 @@ func _physics_process(delta: float) -> void:
 	elif is_in_liquid:
 		velocity.y = move_toward(velocity.y, 0.0, gravity * 0.5 * delta)
 	else:
-		velocity.y = -0.1
+		# GRAVITY COMPENSATOR: Apply normal gravity to aquatic species in the air
+		if _get_habitat() == 2 and not is_in_liquid:
+			velocity.y -= gravity * delta
+		else:
+			velocity.y = -0.1
 
 	if is_instance_valid(ai_component):
 		ai_component.process_ai(delta)
@@ -470,7 +445,7 @@ func _physics_process(delta: float) -> void:
 
 func _update_quest_bubble_state() -> void:
 	if is_instance_valid(_ui_component):
-		var active_q := QuestService.get_active_quest()
-		if active_q != null and quest_target_id == active_q.quest_id:
-			active_q.target_position = global_position
-		_ui_component.update_ui_state(active_q, quest_target_id)
+		var active_quest := QuestService.get_active_quest()
+		if active_quest != null and quest_target_id == active_quest.quest_id:
+			active_quest.target_position = global_position
+		_ui_component.update_ui_state(active_quest, quest_target_id)

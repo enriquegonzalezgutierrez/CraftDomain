@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/SharkEntity.gd
 # Description: Physical character controller for the hostile Great White Shark.
-#              Sanitization is delegated strictly to GLBModelSanitizer (DRY).
+#              Sustains strict aquatic habitat limits polimorphically (OCP/LSP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -20,7 +20,7 @@ var _attack_sound_timer: float = randf_range(5.0, 15.0)
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 8)
-	entity_habitat = 2 
+	entity_habitat = 2 # Aquatic (Water only)
 	name = "Entity_SHARK"
 
 
@@ -57,6 +57,11 @@ func _get_nameplate_color() -> Color:
 
 func _has_ui_decorations() -> bool:
 	return true
+
+
+## Polymorphic Override (OCP/LSP Compliant): Restricts the shark strictly to Water blocks
+func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
+	return block_type == BlockType.Type.WATER
 
 
 func _locate_player() -> void:
