@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MinerEntity.gd
 # Description: Physical character controller for the cave Miner NPC.
-#              DRY biome detection is delegated strictly to BiomeService (DRY).
+#              Corrected: Implemented missing _get_entity_name_key virtual contract.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -15,6 +15,7 @@ var player: CharacterBody3D
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 8)
+	entity_habitat = 0 # Terrestrial
 	name = "Entity_MINER"
 
 
@@ -27,6 +28,9 @@ func _ready() -> void:
 	_setup_graphics_representation()
 	_locate_player()
 	_setup_nameplate_height()
+	
+	# Symmetrical lifecycle initialization call (Resolves missing nameplate)
+	_execute_lifecycle_initialization()
 	
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = MinerAIBehavior.new()
@@ -46,6 +50,18 @@ func _setup_graphics_representation() -> void:
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
+
+
+# ==============================================================================
+# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
+# ==============================================================================
+
+func _get_entity_name_key() -> String:
+	return "NPC_NAME_MINER"
+
+
+func _get_nameplate_color() -> Color:
+	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green (LSP Compliant)
 
 
 func _get_humanoid_role() -> int:
