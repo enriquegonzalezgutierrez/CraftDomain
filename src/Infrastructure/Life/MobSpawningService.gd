@@ -2,6 +2,7 @@
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service responsible for calculating and spawning
 #              NPC, Fauna, and hostile dynamic classes inside loaded chunks.
+#              Corrected: Fixed 3D vertical offset double-addition bug (Y-axis).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -31,15 +32,11 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 
 	var biome: IBiome = BiomeService.get_biome(active_biome_id)
 
-	# --------------------------------------------------------------------------
-	# 1. BIOME-THEMED VILLAGE OUTPOST SPAWNING (OCP / LSP Compliant)
-	# --------------------------------------------------------------------------
+	# 1. BIOME-THEMED VILLAGE OUTPOST SPAWNING
 	if is_real_village:
-		# Villager (100) and Merchant (101) spawn in all outposts by default
 		_spawn_and_register_entity(100, chunk_offset, 7.5, 5.5, world_state, world_node, spawned_nodes)
 		_spawn_and_register_entity(101, chunk_offset, 5.5, 7.5, world_state, world_node, spawned_nodes)
 		
-		# OCP RESOLUTION: Query specialized residents from the active Biome strategy.
 		if is_instance_valid(biome):
 			var population: Array[int] = biome.get_outpost_population_ids()
 			var spawn_positions: Array[Vector2] = [Vector2(6.5, 6.5), Vector2(4.5, 4.5)]
@@ -49,16 +46,11 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 				var offset_pos: Vector2 = spawn_positions[i]
 				_spawn_and_register_entity(mob_id, chunk_offset, offset_pos.x, offset_pos.y, world_state, world_node, spawned_nodes)
 		
-		# Golem Protector (107) spawns in the village plaza
 		_spawn_and_register_entity(107, chunk_offset, 8.5, 5.5, world_state, world_node, spawned_nodes)
 	else:
-		# --------------------------------------------------------------------------
 		# 2. WILDERNESS ORGANIC SPAWNING
-		# --------------------------------------------------------------------------
 		var roll := randf()
-		
-		# OCP RESOLUTION: Query the biome strategy for its custom spawn chance.
-		var spawn_chance := 0.12 # Default baseline
+		var spawn_chance := 0.12
 		if is_instance_valid(biome) and biome.has_method("get_spawn_chance"):
 			spawn_chance = biome.call("get_spawn_chance") as float
 			
@@ -66,14 +58,11 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 			if is_instance_valid(biome):
 				var wildlife_ids := biome.get_wilderness_wildlife_ids()
 				if wildlife_ids.size() > 0:
-					# Select an active animal ID registered for this specific biome
 					var rand_idx := randi() % wildlife_ids.size()
 					var target_animal_id := int(wildlife_ids[rand_idx])
 					_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, spawned_nodes)
 
-	# --------------------------------------------------------------------------
 	# 3. GLOBAL MEGA-STRUCTURE GUARD SPALOCATIONS
-	# --------------------------------------------------------------------------
 	var mega_entities := MegaStructureService.get_entities_for_chunk(chunk_pos)
 	for edata: Dictionary in mega_entities:
 		var mob_id := edata["mob_id"] as int
@@ -81,8 +70,6 @@ func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldStat
 		
 		if MobRegistry.has_mob(mob_id):
 			var spawn_pos := exact_pos
-			
-			# Verify if space is free of solid blocks and dynamic props before spawning
 			var is_space_free := _is_physics_spawn_space_free(world_node, spawn_pos)
 			
 			if is_space_free:
@@ -106,7 +93,6 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	var global_x := int(offset.x + lx)
 	var global_z := int(offset.z + lz)
 	
-	# Determine logical habitat dynamically from the Domain Registry
 	var habitat := MobRegistry.get_mob_habitat(spawn_id)
 	var gy := -1.0
 	
@@ -115,17 +101,16 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	elif habitat == MobRegistry.Habitat.AQUATIC:
 		gy = _get_water_surface_y(world_state, global_x, global_z)
 	else:
-		# AMPHIBIOUS: Attempt to spawn directly in water; fallback to dry sand/mud shores if unavailable
 		gy = _get_water_surface_y(world_state, global_x, global_z)
 		if gy < 0.0:
 			gy = _get_ground_surface_y(world_state, global_x, global_z)
 		
 	if gy < 0.0:
-		return # Cancel spawn if no valid habitat block was found in this chunk column
+		return 
 		
-	var pos := offset + Vector3(lx, gy, lz)
+	# COORDINATE FIXED: Using independent world axes to prevent double offset.y addition
+	var pos := Vector3(offset.x + lx, gy, offset.z + lz)
 	
-	# Verify if space is free of physical dynamic props or static walls (DIP query)
 	if _is_physics_spawn_space_free(world_node, pos):
 		var mob := MobRegistry.create_mob(spawn_id, pos)
 		if mob != null:
@@ -151,9 +136,8 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		return -1.0
 		
 	if top_block_type == BlockType.Type.WATER or top_block_type == BlockType.Type.LAVA:
-		return -1.0 # Cancel land spawning immediately in liquid bays
+		return -1.0 
 	
-	# 2. SKY LINE-OF-SIGHT SCAN: Scan downward to find the absolute highest solid voxel
 	var hit_y := -1
 	for y: int in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
@@ -167,13 +151,10 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		return -1.0
 		
 	var surface_block := world_state.get_block(Vector3i(global_x, hit_y, global_z))
-	
 	var def := BlockLibrary.get_definition(surface_block) as BlockDefinition
 	if def == null or not def.is_spawnable_soil:
 		return -1.0
 		
-	# 4. STANDING CLEARANCE VERIFIER:
-	# Ensure the two blocks directly above the ground surface are completely empty AIR.
 	var space_above_1 := world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
 	var space_above_2 := world_state.get_block(Vector3i(global_x, hit_y + 2, global_z))
 	if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
@@ -186,7 +167,6 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 func _get_water_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
 	var hit_y := -1
 	
-	# 1. SKY LINE-OF-SIGHT SCAN: Find the absolute highest solid voxel
 	for y: int in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
 		var block_type := world_state.get_block(check_pos)
@@ -200,11 +180,8 @@ func _get_water_surface_y(world_state: WorldState, global_x: int, global_z: int)
 		
 	var surface_block := world_state.get_block(Vector3i(global_x, hit_y, global_z))
 	if surface_block == BlockType.Type.WATER:
-		# Ensure the creature isn't spawning encased under a solid ceiling
 		var space_above_1 := world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
 		if not BlockType.is_solid(space_above_1):
-			# AQUATIC SUBMERGE CORRECTION: Submerge spawn position by 1.2 meters
-			# to keep the shark/octopus completely inside the water volume.
 			return float(hit_y) - 1.2
 			
 	return -1.0
@@ -222,11 +199,10 @@ func _is_physics_spawn_space_free(world_node: Node, spawn_pos: Vector3) -> bool:
 		
 	var query := PhysicsShapeQueryParameters3D.new()
 	var sphere := SphereShape3D.new()
-	sphere.radius = 0.35 # Match basic humanoid thickness
+	sphere.radius = 0.35 
 	query.shape = sphere
-	# Offset the sphere slightly upward to check around the torso/body level (0.4m offset)
 	query.transform = Transform3D(Basis(), spawn_pos + Vector3(0.0, 0.4, 0.0))
-	query.collision_mask = 1 # Collides with static terrain (Layer 1) and active props
+	query.collision_mask = 1 
 	
 	var results := space_state.intersect_shape(query, 1)
 	return results.is_empty()
