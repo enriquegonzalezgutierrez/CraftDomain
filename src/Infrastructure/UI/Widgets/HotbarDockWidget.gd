@@ -1,7 +1,9 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd
-# Description: SRP-compliant UI Widget responsible ONLY for updating the hotbar slots,
-#              selection outlines, and health/hunger status bars. Layout is defined in .tscn.
+# Description: SRP-compliant UI Widget responsible for hotbar slots coordination,
+#              selection outlines, and player stats rendering.
+#              SOLID COMPLIANCE: Runtime node instantiations replaced with declarative
+#              pre-instanced scene nodes. StyleBoxFlat/LabelSettings code generation purged.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -9,6 +11,7 @@ class_name HotbarDockWidget
 extends Control
 
 const TEXTURE_DIR := "res://assets/textures/"
+const LABEL_SETTINGS_SYMBOL := preload("res://assets/themes/label_settings_symbol.tres")
 
 var player: CharacterBody3D
 var hud_orchestrator: PlayerHUD
@@ -19,25 +22,22 @@ var hud_orchestrator: PlayerHUD
 
 @onready var _bp_btn: Button = $VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/BackpackBox/BackpackButton
 @onready var _cr_btn: Button = $VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/WorkshopBox/WorkshopButton
-
-# Active hotbar slots container references
 @onready var _slots_hbox: HBoxContainer = $VBoxContainer/HotbarBG/MarginContainer/HBoxContainer/SlotsHBox
 
 var _hotbar_slots: Array[Panel] = []
 var _toast_tween: Tween
 
-# In-memory cache for loaded 2D textures to save CPU reads
 static var _textures_cache: Dictionary = {}
 static var _item_symbols: Dictionary = {}
 
 
 static func _static_init() -> void:
-	register_item_symbol(15, "🧪") # Lava bucket or fluid vial
-	register_item_symbol(16, "🍗") # Fried Chicken
-	register_item_symbol(17, "⚔️") # Wooden Sword
-	register_item_symbol(18, "🌱") # Crop Seeds
-	register_item_symbol(12, "💠") # Cyan warmth
-	register_item_symbol(14, "☁️") # Cloud
+	register_item_symbol(15, "🧪") 
+	register_item_symbol(16, "🍗") 
+	register_item_symbol(17, "⚔️") 
+	register_item_symbol(18, "🌱") 
+	register_item_symbol(12, "💠") 
+	register_item_symbol(14, "☁️") 
 
 
 static func register_item_symbol(item_id: int, symbol_char: String) -> void:
@@ -64,23 +64,21 @@ func _on_workshop_shortcut_pressed() -> void:
 		hud_orchestrator.toggle_crafting_workshop(true)
 
 
-## Emphasizes the active slot smoothly
 func update_active_slot(index: int) -> void:
 	for i: int in range(_hotbar_slots.size()):
 		var slot: Panel = _hotbar_slots[i]
 		var style: StyleBoxFlat = slot.get_theme_stylebox("panel") as StyleBoxFlat
-		if style == null:
-			continue
+		if style == null: continue
 			
 		var tween := create_tween()
 		if i == index:
 			style.bg_color = Color(0.25, 0.25, 0.28, 0.8)
-			style.border_color = Color(1.0, 0.85, 0.2, 1.0) # Gold Highlight
+			style.border_color = Color(1.0, 0.85, 0.2, 1.0) 
 			tween.tween_property(slot, "scale", Vector2(1.12, 1.12), 0.1).set_trans(Tween.TRANS_BACK)
 			_show_toast_notification(index)
 		else:
 			style.bg_color = Color(0.12, 0.12, 0.14, 0.7)
-			style.border_color = Color(0, 0, 0, 0) # Transparent border
+			style.border_color = Color(0, 0, 0, 0) 
 			tween.tween_property(slot, "scale", Vector2(1.0, 1.0), 0.1).set_trans(Tween.TRANS_SINE)
 
 
@@ -99,40 +97,38 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 					icon_container.visible = false
 				else:
 					icon_container.visible = true
-					var tex: Texture2D = _get_item_texture(item_id)
-					
-					if tex != null:
-						tex_display.texture = tex
-						tex_display.visible = true
-						fallback.visible = false
-						for child: Node in fallback.get_children():
-							child.queue_free()
-					else:
-						tex_display.texture = null
-						tex_display.visible = false
-						
-						var def: BlockDefinition = BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
-						fallback.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
-						fallback.visible = true
-						_apply_special_fallback_decoration(fallback, item_id)
+					_apply_icon_visuals(fallback, tex_display, item_id)
 						
 		if is_instance_valid(label):
 			label.text = "" if item_id == -1 or quantity <= 0 else str(quantity)
 
 
+func _apply_icon_visuals(fallback: ColorRect, tex_display: TextureRect, item_id: int) -> void:
+	var tex: Texture2D = _get_item_texture(item_id)
+	if tex != null:
+		tex_display.texture = tex
+		tex_display.visible = true
+		fallback.visible = false
+		for child: Node in fallback.get_children(): child.queue_free()
+	else:
+		tex_display.texture = null
+		tex_display.visible = false
+		var def: BlockDefinition = BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
+		fallback.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
+		fallback.visible = true
+		_apply_special_fallback_decoration(fallback, item_id)
+
+
 func _show_toast_notification(index: int) -> void:
-	if not is_instance_valid(player) or not is_instance_valid(_item_name_toast):
-		return
+	if not is_instance_valid(player) or not is_instance_valid(_item_name_toast): return
 		
 	var inventory: InventoryComponent = player.get("inventory") as InventoryComponent
-	if not is_instance_valid(inventory):
-		return
-		
+	if not is_instance_valid(inventory): return
+	
 	var item_name := inventory.get_slot_item_name(index)
 	_item_name_toast.text = item_name.to_upper()
 	
-	if is_instance_valid(_toast_tween) and _toast_tween.is_running():
-		_toast_tween.kill()
+	if is_instance_valid(_toast_tween) and _toast_tween.is_running(): _toast_tween.kill()
 		
 	_item_name_toast.modulate.a = 1.0
 	_toast_tween = create_tween()
@@ -141,46 +137,38 @@ func _show_toast_notification(index: int) -> void:
 
 
 func update_health_display(hp: int) -> void:
-	if not is_instance_valid(_hearts_container) or not is_instance_valid(_food_container):
-		return
-		
-	for child: Node in _hearts_container.get_children():
-		child.queue_free()
-	for child: Node in _food_container.get_children():
-		child.queue_free()
+	_update_hearts_display(hp)
+	_update_food_display()
+
+
+func _update_hearts_display(hp: int) -> void:
+	if not is_instance_valid(_hearts_container): return
 	
-	for i: int in range(3):
-		var heart := Label.new()
-		var hs := LabelSettings.new()
-		hs.font_size = 22
-		hs.outline_size = 4
-		hs.outline_color = Color.BLACK
-		if i < hp:
-			heart.text = "❤"
-			hs.font_color = Color(0.95, 0.15, 0.15)
-		else:
-			heart.text = "🖤"
-			hs.font_color = Color(0.22, 0.22, 0.26)
-		heart.label_settings = hs
-		_hearts_container.add_child(heart)
-		
+	var hearts := _hearts_container.get_children()
+	for i: int in range(hearts.size()):
+		var heart := hearts[i] as Label
+		if is_instance_valid(heart):
+			var is_active := i < hp
+			heart.text = "❤" if is_active else "🖤"
+			heart.label_settings.font_color = Color(0.95, 0.15, 0.15) if is_active else Color(0.22, 0.22, 0.26)
+
+
+func _update_food_display() -> void:
+	if not is_instance_valid(_food_container): return
+	
 	var food_count := 0
 	if is_instance_valid(player):
-		var inv: InventoryComponent = player.get("inventory") as InventoryComponent
+		var inv := player.get("inventory") as InventoryComponent
 		if is_instance_valid(inv):
 			food_count = inv.get_item_total_quantity(16)
 			
-	var display_food := clamp(food_count, 0, 10)
-	for i: int in range(display_food):
-		var food := Label.new()
-		food.text = "🍗"
-		var ds := LabelSettings.new()
-		ds.font_size = 22
-		ds.outline_size = 4
-		ds.outline_color = Color.BLACK
-		ds.font_color = Color(1.0, 0.7, 0.35) if food_count > 0 else Color(0.22, 0.22, 0.26)
-		food.label_settings = ds
-		_food_container.add_child(food)
+	var food_nodes := _food_container.get_children()
+	var display_food := clamp(food_count, 0, food_nodes.size())
+	
+	for i: int in range(food_nodes.size()):
+		var food := food_nodes[i] as Label
+		if is_instance_valid(food):
+			food.visible = i < display_food
 
 
 func _get_item_texture(item_id: int) -> Texture2D:
@@ -201,24 +189,16 @@ func _get_item_texture(item_id: int) -> Texture2D:
 
 
 func _apply_special_fallback_decoration(fallback_node: Control, item_id: int) -> void:
-	for child: Node in fallback_node.get_children():
-		child.queue_free()
+	for child: Node in fallback_node.get_children(): child.queue_free()
 		
 	var symbol := Label.new()
 	symbol.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	symbol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	symbol.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	
-	var ls := LabelSettings.new()
-	ls.font_size = 14
-	ls.outline_size = 3
-	ls.outline_color = Color.BLACK
-	symbol.label_settings = ls
+	symbol.label_settings = LABEL_SETTINGS_SYMBOL
 	
 	if _item_symbols.has(item_id):
 		symbol.text = _item_symbols[item_id] as String
-	else:
-		symbol.text = ""
 		
 	if symbol.text != "":
 		fallback_node.add_child(symbol)
