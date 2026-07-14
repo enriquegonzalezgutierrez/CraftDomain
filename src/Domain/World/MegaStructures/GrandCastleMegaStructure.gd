@@ -1,7 +1,9 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/MegaStructures/GrandCastleMegaStructure.gd
 # Description: Handcrafted two-story colossal fortress.
-#              Provides structured multi-chunk medieval citadel parameters (SRP / OCP).
+#              SOLID COMPLIANCE: Monolithic 'build_chunk' loop decomposed into 
+#              isolated, SRP-compliant sculpt methods (< 20 lines each).
+#              Corrected: Explicit static typing to resolve compiler inference errors.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -9,27 +11,24 @@ class_name GrandCastleMegaStructure
 extends IMegaStructure
 
 # --- PERIMETER & BASELINE GEOMETRY CONSTANTS ---
-const BASE_ALTITUDE_Y: int = 12           # Flat mountain baseline floor
-const CASTLE_WALL_RADIUS: int = 24        # Expanded 48x48 outer wall footprint
-const KEEP_WIDTH_HALF: int = 12           # Keep width limit (X: 188 to 212)
-const KEEP_LENGTH_HALF: int = 12          # Keep length limit (Z: 182 to 206)
-const CORNER_TOWER_RADIUS: int = 4        # 8x8 Cylindrical towers
+const BASE_ALTITUDE_Y: int = 12           
+const CASTLE_WALL_RADIUS: int = 24        
+const KEEP_WIDTH_HALF: int = 12           
+const KEEP_LENGTH_HALF: int = 12          
+const CORNER_TOWER_RADIUS: int = 4        
 
-# --- OUTER RAMPARTS & VERTICAL LEVELS (RELATIVE TO BASELINE Y) ---
-const RAMPART_MAX_LEVEL: int = 7          # Outer defense walls height limit (Y=19)
-const RAMPART_WALKWAY_LEVEL: int = 6      # Outer defense walkway floor (Y=18)
-const TOWER_MAX_LEVEL: int = 14           # High-precision tower battlements (Y=26)
-const TOWER_FLOOR_A: int = 6              # Intermediate tower floor 1 (Y=18)
-const TOWER_FLOOR_B: int = 11             # Intermediate tower floor 2 (Y=23)
+# --- OUTER RAMPARTS & VERTICAL LEVELS ---
+const RAMPART_MAX_LEVEL: int = 7          
+const TOWER_MAX_LEVEL: int = 14           
+const TOWER_FLOOR_A: int = 6              
+const TOWER_FLOOR_B: int = 11             
 
-# --- INTERNAL KEEP ROOM CONSTANTS (RELATIVE TO BASELINE Y) ---
-const KEEP_MAX_LEVEL: int = 17            # Absolute keep roof-deck height (Y=29)
-const LEVEL_MEZZANINE_FLOOR: int = 6      # Mezzanine floor divider Y level (Y=18)
-const LEVEL_ROOFTOP_SLAB: int = 13        # Roof slab platform Y level (Y=25)
-
-# --- INNER DESIGN SEGREGATION CONSTANTS ---
-const THRONE_HALL_LIMIT_X: int = 6        # Double-height Throne chamber width (X: 194 to 206)
-const PARTITION_WALL_LIMIT_X: int = 7     # Symmetrical side rooms division wall
+# --- INTERNAL KEEP ROOM CONSTANTS ---
+const KEEP_MAX_LEVEL: int = 17            
+const LEVEL_MEZZANINE_FLOOR: int = 6      
+const LEVEL_ROOFTOP_SLAB: int = 13        
+const THRONE_HALL_LIMIT_X: int = 6        
+const PARTITION_WALL_LIMIT_X: int = 7     
 
 
 func _init() -> void:
@@ -37,321 +36,260 @@ func _init() -> void:
 	bounds_size = Vector2i(60, 60)
 
 
-## Concrete Contract: Returns the landmark's friendly name
 func get_name() -> String:
 	return "STRUCTURE_GRAND_CASTLE"
 
 
-## Concrete Contract: Sculpting pipeline executed by the chunk mesher threads
 func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
-	var center_x: int = global_center.x
-	var center_z: int = global_center.y
+	var b_min_x: int = global_center.x - floori(float(bounds_size.x) / 2.0)
+	var b_max_x: int = global_center.x + floori(float(bounds_size.x) / 2.0)
+	var b_min_z: int = global_center.y - floori(float(bounds_size.y) / 2.0)
+	var b_max_z: int = global_center.y + floori(float(bounds_size.y) / 2.0)
 	
-	var min_x: int = center_x - floori(float(bounds_size.x) / 2.0)
-	var max_x: int = center_x + floori(float(bounds_size.x) / 2.0)
-	var min_z: int = center_z - floori(float(bounds_size.y) / 2.0)
-	var max_z: int = center_z + floori(float(bounds_size.y) / 2.0)
+	for gx: int in range(b_min_x, b_max_x + 1):
+		for gz: int in range(b_min_z, b_max_z + 1):
+			_sculpt_vertical_column(chunk, offset, gx, gz)
+
+
+func _sculpt_vertical_column(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -> void:
+	var dist_x: int = abs(gx - global_center.x)
+	var dist_z: int = abs(gz - global_center.y)
 	
-	for gx: int in range(min_x, max_x + 1):
-		for gz: int in range(min_z, max_z + 1):
-			var dist_x: int = abs(gx - center_x)
-			var dist_z: int = abs(gz - center_z)
+	_sculpt_terrain_baseline(chunk, offset, gx, gz, dist_x, dist_z)
+	_sculpt_outer_walls(chunk, offset, gx, gz, dist_x, dist_z)
+	_sculpt_corner_towers(chunk, offset, gx, gz)
+	_sculpt_central_keep(chunk, offset, gx, gz)
+	_sculpt_rooftop_dome(chunk, offset, gx, gz)
+
+
+func _sculpt_terrain_baseline(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_x: int, dist_z: int) -> void:
+	if dist_x <= CASTLE_WALL_RADIUS and dist_z <= CASTLE_WALL_RADIUS:
+		for gy: int in range(BASE_ALTITUDE_Y + 1, 32):
+			_clear_air_block(chunk, offset, gx, gz, gy)
 			
-			var lx: int = gx - offset.x
-			var lz: int = gz - offset.z
+	for gy: int in range(0, BASE_ALTITUDE_Y + 1):
+		var ly: int = gy - offset.y
+		if not chunk.is_within_bounds(gx - offset.x, ly, gz - offset.z): continue
+		
+		if gy < BASE_ALTITUDE_Y:
+			chunk.set_block(gx - offset.x, ly, gz - offset.z, BlockType.Type.STONE)
+		elif gy == BASE_ALTITUDE_Y:
+			var is_stone: bool = (abs(gx - global_center.x) <= 2 and gz >= global_center.y + CASTLE_WALL_RADIUS) or (dist_x < KEEP_WIDTH_HALF and dist_z < KEEP_LENGTH_HALF)
+			chunk.set_block(gx - offset.x, ly, gz - offset.z, BlockType.Type.STONE if is_stone else BlockType.Type.GRASS)
+
+
+func _clear_air_block(chunk: Chunk, offset: Vector3i, gx: int, gz: int, gy: int) -> void:
+	var lx := gx - offset.x
+	var ly := gy - offset.y
+	var lz := gz - offset.z
+	if chunk.is_within_bounds(lx, ly, lz):
+		chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
+
+
+func _sculpt_outer_walls(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_x: int, dist_z: int) -> void:
+	var is_wall_border: bool = (dist_x == CASTLE_WALL_RADIUS and dist_z <= CASTLE_WALL_RADIUS) or (dist_z == CASTLE_WALL_RADIUS and dist_x <= CASTLE_WALL_RADIUS)
+	if not is_wall_border: return
+		
+	var is_gate: bool = (gz == global_center.y + CASTLE_WALL_RADIUS) and (dist_x <= 3)
+	for wy: int in range(1, RAMPART_MAX_LEVEL + 2):
+		if is_gate and wy <= 5: continue
 			
-			# ==================================================================
-			# PASS 1: FLATTEN MOUNTAIN BASELINE & FORCE FLAT FLOORS
-			# ==================================================================
-			if dist_x <= CASTLE_WALL_RADIUS and dist_z <= CASTLE_WALL_RADIUS:
-				for gy: int in range(BASE_ALTITUDE_Y + 1, 32):
-					var ly: int = gy - offset.y
-					if chunk.is_within_bounds(lx, ly, lz):
-						chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
-						
-			for gy: int in range(0, BASE_ALTITUDE_Y + 1):
-				var ly: int = gy - offset.y
-				if chunk.is_within_bounds(lx, ly, lz):
-					if gy < BASE_ALTITUDE_Y:
-						chunk.set_block(lx, ly, lz, BlockType.Type.STONE)
-					elif gy == BASE_ALTITUDE_Y:
-						if abs(gx - center_x) <= 2 and gz >= center_z + CASTLE_WALL_RADIUS:
-							chunk.set_block(lx, ly, lz, BlockType.Type.STONE)
-						elif dist_x < KEEP_WIDTH_HALF and dist_z < KEEP_LENGTH_HALF:
-							chunk.set_block(lx, ly, lz, BlockType.Type.STONE)
-						else:
-							chunk.set_block(lx, ly, lz, BlockType.Type.GRASS)
-
-			# ==================================================================
-			# PASS 2: SECURE OUTER DEFENSE WALLS
-			# ==================================================================
-			var is_wall_border: bool = (dist_x == CASTLE_WALL_RADIUS and dist_z <= CASTLE_WALL_RADIUS) or (dist_z == CASTLE_WALL_RADIUS and dist_x <= CASTLE_WALL_RADIUS)
-			if is_wall_border:
-				var is_gate: bool = (gz == center_z + CASTLE_WALL_RADIUS) and (dist_x <= 3)
-				for wy: int in range(1, RAMPART_MAX_LEVEL + 2):
-					if is_gate and wy <= 5: 
-						continue
-						
-					if wy == RAMPART_MAX_LEVEL + 1 and (gx + gz) % 2 == 0:
-						continue
-					set_global_block(chunk, offset, gx, BASE_ALTITUDE_Y + wy, gz, BlockType.Type.STONE)
-
-			# ==================================================================
-			# PASS 3: CYLINDRICAL CORNER DEFENSE TOWERS
-			# ==================================================================
-			var is_in_tower := false
-			var tx: int = 0
-			var tz: int = 0
-			
-			if abs(gx - (center_x - CASTLE_WALL_RADIUS)) <= CORNER_TOWER_RADIUS and abs(gz - (center_z - CASTLE_WALL_RADIUS)) <= CORNER_TOWER_RADIUS:
-				is_in_tower = true; tx = center_x - CASTLE_WALL_RADIUS; tz = center_z - CASTLE_WALL_RADIUS
-			elif abs(gx - (center_x + CASTLE_WALL_RADIUS)) <= CORNER_TOWER_RADIUS and abs(gz - (center_z - CASTLE_WALL_RADIUS)) <= CORNER_TOWER_RADIUS:
-				is_in_tower = true; tx = center_x + CASTLE_WALL_RADIUS; tz = center_z - CASTLE_WALL_RADIUS
-			elif abs(gx - (center_x - CASTLE_WALL_RADIUS)) <= CORNER_TOWER_RADIUS and abs(gz - (center_z + CASTLE_WALL_RADIUS)) <= CORNER_TOWER_RADIUS:
-				is_in_tower = true; tx = center_x - CASTLE_WALL_RADIUS; tz = center_z + CASTLE_WALL_RADIUS
-			elif abs(gx - (center_x + CASTLE_WALL_RADIUS)) <= CORNER_TOWER_RADIUS and abs(gz - (center_z + CASTLE_WALL_RADIUS)) <= CORNER_TOWER_RADIUS:
-				is_in_tower = true; tx = center_x + CASTLE_WALL_RADIUS; tz = center_z + CASTLE_WALL_RADIUS
-				
-			if is_in_tower:
-				var t_dist: float = sqrt(pow(gx - tx, 2) + pow(gz - tz, 2))
-				if t_dist <= float(CORNER_TOWER_RADIUS):
-					for wy: int in range(1, TOWER_MAX_LEVEL + 2):
-						var current_y: int = BASE_ALTITUDE_Y + wy
-						var is_tower_wall: bool = t_dist > float(CORNER_TOWER_RADIUS) - 1.5
-						if is_tower_wall:
-							if wy == TOWER_MAX_LEVEL + 1 and (gx + gz) % 2 == 0: 
-								continue
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-						else:
-							if wy == TOWER_FLOOR_A or wy == TOWER_FLOOR_B:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.OAK_PLANKS)
-							else:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-
-			# ==================================================================
-			# PASS 4: COLOSSAL TWO-STORY CENTRAL KEEP
-			# ==================================================================
-			var keep_center_z: int = center_z - 6 
-			var keep_dist_x: int = abs(gx - center_x)
-			var keep_dist_z: int = abs(gz - keep_center_z)
-			
-			if keep_dist_x <= KEEP_WIDTH_HALF and keep_dist_z <= KEEP_LENGTH_HALF:
-				var is_keep_wall: bool = (keep_dist_x == KEEP_WIDTH_HALF or keep_dist_z == KEEP_LENGTH_HALF)
-				var is_keep_gate: bool = (gz == keep_center_z + KEEP_LENGTH_HALF) and (keep_dist_x <= 3)
-				
-				for wy: int in range(1, KEEP_MAX_LEVEL + 1):
-					var current_y: int = BASE_ALTITUDE_Y + wy
-					
-					if is_keep_wall:
-						if is_keep_gate and wy <= 5:
-							continue 
-							
-						var is_window: bool = (wy == 3 or wy == 11) and ((keep_dist_x == KEEP_WIDTH_HALF and gz % 4 == 0) or (keep_dist_z == KEEP_LENGTH_HALF and gx % 4 == 0))
-						if is_window and not is_keep_gate:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.GLASS)
-						else:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-					else:
-						# ======================================================
-						# INTERNAL 3D ROOM DESIGN PIPELINE
-						# ======================================================
-						var is_throne_hall_core: bool = (keep_dist_x <= THRONE_HALL_LIMIT_X)
-						
-						if is_throne_hall_core:
-							if wy <= LEVEL_MEZZANINE_FLOOR - 1:
-								if keep_dist_x <= 1 and gz >= keep_center_z - KEEP_LENGTH_HALF + 3:
-									if wy == 1:
-										set_global_block(chunk, offset, gx, BASE_ALTITUDE_Y, gz, BlockType.Type.RED_SAND)
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-									else:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								
-								elif gx == center_x and gz == keep_center_z - KEEP_LENGTH_HALF + 2:
-									if wy == 1: set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-									elif wy == 2: set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.OAK_PLANKS)
-									elif wy == 3: set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.NEON_MAGENTA)
-									elif wy == 4: set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.GLOWSTONE)
-									else: set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								
-								elif gz >= 185 and gz <= 196:
-									if gx >= 189 and gx <= 191:
-										var step_req: int = floori(float(196 - gz) / 2.0) + 1
-										if wy <= step_req:
-											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-										else:
-											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-									elif gx >= 209 and gx <= 211:
-										var step_req: int = floori(float(196 - gz) / 2.0) + 1
-										if wy <= step_req:
-											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-										else:
-											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-									else:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								
-								elif keep_dist_x == 5 and (gz == keep_center_z or gz == keep_center_z + 4):
-									if wy == 1 or wy == 5:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-									else:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.NEON_CYAN)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-							
-							elif wy == LEVEL_MEZZANINE_FLOOR:
-								var is_stair_landing: bool = (gx >= 189 and gx <= 191 and gz >= 185 and gz <= 187) or (gx >= 209 and gx <= 211 and gz >= 185 and gz <= 187)
-								var is_open_balcony: bool = (gx >= 192 and gx <= 208) and (gz >= 188)
-								
-								if is_stair_landing or is_open_balcony:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.OAK_PLANKS)
-									
-							elif wy <= LEVEL_ROOFTOP_SLAB - 1:
-								var is_railing: bool = (wy == 7) and (keep_dist_x == 8 and gz >= 188)
-								var is_roof_stair: bool = (gz == keep_center_z - KEEP_LENGTH_HALF + 3) and (gx >= 189 and gx <= 194)
-								
-								if is_railing:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.WOOD)
-								elif is_roof_stair:
-									var step_req: int = 195 - gx
-									if (wy - 6) <= step_req:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-									else:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-									
-							elif wy == LEVEL_ROOFTOP_SLAB:
-								var is_roof_hatch: bool = (gx >= 189 and gx <= 190) and (gz == keep_center_z - KEEP_LENGTH_HALF + 3)
-								if is_roof_hatch:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-								
-							else:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								
-						else:
-							var is_partition_wall: bool = (keep_dist_x == PARTITION_WALL_LIMIT_X)
-							if is_partition_wall:
-								var is_door_opening: bool = (gz == keep_center_z) and ((wy >= 1 and wy <= 3) or (wy >= 7 and wy <= 9))
-								if is_door_opening:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-							else:
-								if wy <= LEVEL_MEZZANINE_FLOOR - 1: 
-									var is_wing_divider: bool = (gz == 194)
-									if is_wing_divider:
-										if keep_dist_x == 9 and wy <= 3:
-											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-										else:
-											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-									else:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-										
-								elif wy == LEVEL_MEZZANINE_FLOOR:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.OAK_PLANKS)
-								elif wy <= LEVEL_ROOFTOP_SLAB - 1:
-									var is_upper_divider: bool = (gz == 194)
-									
-									if is_upper_divider:
-										var is_room_door: bool = (gx == 190 or gx == 210) and wy <= 9
-										if is_room_door:
-											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-										else:
-											set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-									else:
-										if gx < center_x and gz < 194:
-											var is_bed_frame: bool = (gx >= 189 and gx <= 190) and (gz >= 185 and gz <= 187) and wy == 7
-											var is_bed_pillow: bool = (gx >= 189 and gx <= 190) and (gz == 185) and wy == 8
-											
-											if is_bed_frame:
-												set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.WOOD)
-											elif is_bed_pillow:
-												set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.CLOUD)
-											else:
-												set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-												
-										elif gx > center_x and gz < 194:
-											var is_pedestal: bool = (gx == 210 and gz == 185) and wy == 7
-											if is_pedestal:
-												set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.BRICKS)
-											else:
-												set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-												
-										else:
-											var is_council_table: bool = (gx >= 208 and gx <= 210) and (gz >= 198 and gz <= 201) and wy == 7
-											if is_council_table:
-												set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.WOOD)
-											else:
-												set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-										
-								elif wy == LEVEL_ROOFTOP_SLAB:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-
-			# ==================================================================
-			# PASS 5: CONSTRUCT TRANSIENT ROOFTOP DECK & SKY WATCH-DOME
-			# ==================================================================
-			if keep_dist_x <= KEEP_WIDTH_HALF and keep_dist_z <= KEEP_LENGTH_HALF:
-				var is_roof_edge: bool = (keep_dist_x == KEEP_WIDTH_HALF or keep_dist_z == KEEP_LENGTH_HALF)
-				if is_roof_edge:
-					for wy: int in range(14, 18):
-						var current_y: int = BASE_ALTITUDE_Y + wy
-						if wy == 14 and (gx + gz) % 2 == 0:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-						else:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-				else:
-					for wy: int in range(14, 18):
-						var current_y: int = BASE_ALTITUDE_Y + wy
-						var is_canopy_vbox: bool = (keep_dist_x == 3 and keep_dist_z == 3)
-						if is_canopy_vbox and wy <= 16:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-						elif keep_dist_x <= 3 and keep_dist_z <= 3 and wy == 17:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.BRICKS)
-						elif not is_canopy_vbox:
-							if wy >= 14:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
+		if wy == RAMPART_MAX_LEVEL + 1 and (gx + gz) % 2 == 0: continue
+		set_global_block(chunk, offset, gx, BASE_ALTITUDE_Y + wy, gz, BlockType.Type.STONE)
 
 
-## Concrete Contract: Dispatches inhabitants and interactive props strictly inside their chunk grids
+func _sculpt_corner_towers(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -> void:
+	var tx: int = 0
+	var tz: int = 0
+	var is_in_tower := false
+	var c_rad := CASTLE_WALL_RADIUS
+	
+	if abs(gx - (global_center.x - c_rad)) <= CORNER_TOWER_RADIUS and abs(gz - (global_center.y - c_rad)) <= CORNER_TOWER_RADIUS:
+		is_in_tower = true; tx = global_center.x - c_rad; tz = global_center.y - c_rad
+	elif abs(gx - (global_center.x + c_rad)) <= CORNER_TOWER_RADIUS and abs(gz - (global_center.y - c_rad)) <= CORNER_TOWER_RADIUS:
+		is_in_tower = true; tx = global_center.x + c_rad; tz = global_center.y - c_rad
+	elif abs(gx - (global_center.x - c_rad)) <= CORNER_TOWER_RADIUS and abs(gz - (global_center.y + c_rad)) <= CORNER_TOWER_RADIUS:
+		is_in_tower = true; tx = global_center.x - c_rad; tz = global_center.y + c_rad
+	elif abs(gx - (global_center.x + c_rad)) <= CORNER_TOWER_RADIUS and abs(gz - (global_center.y + c_rad)) <= CORNER_TOWER_RADIUS:
+		is_in_tower = true; tx = global_center.x + c_rad; tz = global_center.y + c_rad
+		
+	if is_in_tower:
+		_build_tower_cylinder(chunk, offset, gx, gz, tx, tz)
+
+
+func _build_tower_cylinder(chunk: Chunk, offset: Vector3i, gx: int, gz: int, tx: int, tz: int) -> void:
+	var t_dist: float = sqrt(pow(gx - tx, 2) + pow(gz - tz, 2))
+	if t_dist > float(CORNER_TOWER_RADIUS): return
+		
+	for wy: int in range(1, TOWER_MAX_LEVEL + 2):
+		var cy: int = BASE_ALTITUDE_Y + wy
+		var is_wall: bool = t_dist > float(CORNER_TOWER_RADIUS) - 1.5
+		if is_wall:
+			if wy == TOWER_MAX_LEVEL + 1 and (gx + gz) % 2 == 0: continue
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE)
+		else:
+			var b_type := BlockType.Type.OAK_PLANKS if (wy == TOWER_FLOOR_A or wy == TOWER_FLOOR_B) else BlockType.Type.AIR
+			set_global_block(chunk, offset, gx, cy, gz, b_type)
+
+
+func _sculpt_central_keep(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -> void:
+	var keep_center_z: int = global_center.y - 6 
+	var k_dx: int = abs(gx - global_center.x)
+	var k_dz: int = abs(gz - keep_center_z)
+	
+	if k_dx > KEEP_WIDTH_HALF or k_dz > KEEP_LENGTH_HALF: return
+		
+	var is_wall: bool = (k_dx == KEEP_WIDTH_HALF or k_dz == KEEP_LENGTH_HALF)
+	var is_gate: bool = (gz == keep_center_z + KEEP_LENGTH_HALF) and (k_dx <= 3)
+	
+	for wy: int in range(1, KEEP_MAX_LEVEL + 1):
+		var cy: int = BASE_ALTITUDE_Y + wy
+		if is_wall:
+			_build_keep_exterior_wall(chunk, offset, gx, gz, cy, wy, k_dx, k_dz, is_gate)
+		else:
+			_build_keep_interior(chunk, offset, gx, gz, cy, wy, k_dx, keep_center_z)
+
+
+func _build_keep_exterior_wall(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, k_dx: int, k_dz: int, is_gate: bool) -> void:
+	if is_gate and wy <= 5: return
+	var is_win: bool = (wy == 3 or wy == 11) and ((k_dx == KEEP_WIDTH_HALF and gz % 4 == 0) or (k_dz == KEEP_LENGTH_HALF and gx % 4 == 0))
+	var b_type := BlockType.Type.GLASS if (is_win and not is_gate) else BlockType.Type.STONE
+	set_global_block(chunk, offset, gx, cy, gz, b_type)
+
+
+func _build_keep_interior(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, k_dx: int, k_cz: int) -> void:
+	if k_dx <= THRONE_HALL_LIMIT_X:
+		_build_throne_hall(chunk, offset, gx, gz, cy, wy, k_dx, k_cz)
+	else:
+		_build_side_wings(chunk, offset, gx, gz, cy, wy, k_dx, k_cz)
+
+
+func _build_throne_hall(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, k_dx: int, k_cz: int) -> void:
+	if wy <= LEVEL_MEZZANINE_FLOOR - 1:
+		_build_throne_ground_floor(chunk, offset, gx, gz, cy, wy, k_dx, k_cz)
+	elif wy == LEVEL_MEZZANINE_FLOOR:
+		var is_open: bool = (gx >= 189 and gx <= 191 and gz >= 185 and gz <= 187) or (gx >= 209 and gx <= 211 and gz >= 185 and gz <= 187) or (gx >= 192 and gx <= 208 and gz >= 188)
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR if is_open else BlockType.Type.OAK_PLANKS)
+	elif wy <= LEVEL_ROOFTOP_SLAB - 1:
+		_build_throne_upper_floor(chunk, offset, gx, gz, cy, wy, k_dx, k_cz)
+	elif wy == LEVEL_ROOFTOP_SLAB:
+		var is_hatch: bool = (gx >= 189 and gx <= 190) and (gz == k_cz - KEEP_LENGTH_HALF + 3)
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR if is_hatch else BlockType.Type.STONE)
+	else:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+
+
+func _build_throne_ground_floor(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, k_dx: int, k_cz: int) -> void:
+	if k_dx <= 1 and gz >= k_cz - KEEP_LENGTH_HALF + 3:
+		if wy == 1: set_global_block(chunk, offset, gx, BASE_ALTITUDE_Y, gz, BlockType.Type.RED_SAND)
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+	elif gx == global_center.x and gz == k_cz - KEEP_LENGTH_HALF + 2:
+		var blocks: Array[BlockType.Type] = [BlockType.Type.AIR, BlockType.Type.STONE, BlockType.Type.OAK_PLANKS, BlockType.Type.NEON_MAGENTA, BlockType.Type.GLOWSTONE]
+		var type: BlockType.Type = blocks[wy] if wy <= 4 else BlockType.Type.AIR
+		set_global_block(chunk, offset, gx, cy, gz, type)
+	elif gz >= 185 and gz <= 196 and (gx >= 189 and gx <= 191 or gx >= 209 and gx <= 211):
+		var step_req: int = floori(float(196 - gz) / 2.0) + 1
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE if wy <= step_req else BlockType.Type.AIR)
+	elif k_dx == 5 and (gz == k_cz or gz == k_cz + 4):
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE if (wy == 1 or wy == 5) else BlockType.Type.NEON_CYAN)
+	else:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+
+
+func _build_throne_upper_floor(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, k_dx: int, k_cz: int) -> void:
+	var is_rail: bool = (wy == 7) and (k_dx == 8 and gz >= 188)
+	var is_stair: bool = (gz == k_cz - KEEP_LENGTH_HALF + 3) and (gx >= 189 and gx <= 194)
+	if is_rail:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.WOOD)
+	elif is_stair:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE if (wy - 6) <= (195 - gx) else BlockType.Type.AIR)
+	else:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+
+
+func _build_side_wings(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, k_dx: int, k_cz: int) -> void:
+	if k_dx == PARTITION_WALL_LIMIT_X:
+		var is_door: bool = (gz == k_cz) and ((wy >= 1 and wy <= 3) or (wy >= 7 and wy <= 9))
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR if is_door else BlockType.Type.STONE)
+	else:
+		_build_wing_rooms(chunk, offset, gx, gz, cy, wy, k_dx)
+
+
+func _build_wing_rooms(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, k_dx: int) -> void:
+	if wy <= LEVEL_MEZZANINE_FLOOR - 1:
+		if gz == 194:
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR if (k_dx == 9 and wy <= 3) else BlockType.Type.STONE)
+		else:
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+	elif wy == LEVEL_MEZZANINE_FLOOR:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.OAK_PLANKS)
+	elif wy <= LEVEL_ROOFTOP_SLAB - 1:
+		_build_wing_upper_rooms(chunk, offset, gx, gz, cy, wy)
+	elif wy == LEVEL_ROOFTOP_SLAB:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE)
+	else:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+
+
+func _build_wing_upper_rooms(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int) -> void:
+	if gz == 194:
+		var is_door: bool = (gx == 190 or gx == 210) and wy <= 9
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR if is_door else BlockType.Type.STONE)
+	else:
+		if gx < global_center.x and gz < 194:
+			var is_bed: bool = (gx >= 189 and gx <= 190) and (gz >= 185 and gz <= 187) and wy == 7
+			var is_pil: bool = (gx >= 189 and gx <= 190) and (gz == 185) and wy == 8
+			if is_bed: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.WOOD)
+			elif is_pil: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.CLOUD)
+			else: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+		elif gx > global_center.x and gz < 194:
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.BRICKS if (gx == 210 and gz == 185 and wy == 7) else BlockType.Type.AIR)
+		else:
+			var is_tbl: bool = (gx >= 208 and gx <= 210) and (gz >= 198 and gz <= 201) and wy == 7
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.WOOD if is_tbl else BlockType.Type.AIR)
+
+
+func _sculpt_rooftop_dome(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -> void:
+	var k_cz: int = global_center.y - 6 
+	var k_dx: int = abs(gx - global_center.x)
+	var k_dz: int = abs(gz - k_cz)
+	
+	if k_dx > KEEP_WIDTH_HALF or k_dz > KEEP_LENGTH_HALF: return
+		
+	var is_edge: bool = (k_dx == KEEP_WIDTH_HALF or k_dz == KEEP_LENGTH_HALF)
+	for wy: int in range(14, 18):
+		var cy: int = BASE_ALTITUDE_Y + wy
+		if is_edge:
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE if (wy == 14 and (gx + gz) % 2 == 0) else BlockType.Type.AIR)
+		else:
+			var is_dome: bool = (k_dx == 3 and k_dz == 3)
+			if is_dome and wy <= 16:
+				set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE)
+			elif k_dx <= 3 and k_dz <= 3 and wy == 17:
+				set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.BRICKS)
+			else:
+				if wy >= 14: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+
+
 func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 	var entities: Array[Dictionary] = []
-	var ground_y := float(BASE_ALTITUDE_Y + 1) # Y=13.0
+	var ground_y := float(BASE_ALTITUDE_Y + 1)
 	
 	if chunk_pos.x == 12 and chunk_pos.z == 12:
-		# Symmetrical gate guard coordinates computed dynamically from active center
 		entities.append({"mob_id": 102, "pos": Vector3(float(global_center.x - 3) + 0.5, ground_y, float(global_center.y + CASTLE_WALL_RADIUS) + 0.5)})
 		entities.append({"mob_id": 102, "pos": Vector3(float(global_center.x + 2) + 0.5, ground_y, float(global_center.y + CASTLE_WALL_RADIUS) + 0.5)})
-		
-		# Symmetrical courtyard streetlights
 		entities.append({"mob_id": 202, "pos": Vector3(float(global_center.x - 4) + 0.5, ground_y, float(global_center.y + 18) + 0.5)})
 		entities.append({"mob_id": 202, "pos": Vector3(float(global_center.x + 3) + 0.5, ground_y, float(global_center.y + 18) + 0.5)})
-		
-		# Courtyard campfire
 		entities.append({"mob_id": 203, "pos": Vector3(float(global_center.x - 6) + 0.5, ground_y, float(global_center.y + 12) + 0.5)})
-		
 	elif chunk_pos.x == 12 and chunk_pos.z == 11:
-		# Imperial throne guards (Ground Floor, Y=13.0)
 		entities.append({"mob_id": 102, "pos": Vector3(float(global_center.x - 3) + 0.5, ground_y, float(global_center.y - 15) + 0.5)})
 		entities.append({"mob_id": 102, "pos": Vector3(float(global_center.x + 2) + 0.5, ground_y, float(global_center.y - 15) + 0.5)})
-		
-		# The Ancestral Mayor sitting in front of his throne
 		entities.append({"mob_id": 100, "pos": Vector3(float(global_center.x) + 0.5, ground_y + 1.0, float(global_center.y - 14) + 0.5)})
-
 	elif chunk_pos.x == 13 and chunk_pos.z == 11:
-		# Elevated Royal Treasury (Floor 2, Y = 19.0)
-		var treasury_y := float(BASE_ALTITUDE_Y + 7.5) # Y=19.5
+		var treasury_y := float(BASE_ALTITUDE_Y + 7.5) 
 		entities.append({"mob_id": 102, "pos": Vector3(208.5, treasury_y, 188.5)})
-		
-		# Royal Loot Chest (Y=20.0, resting on the brick pedestal)
 		entities.append({"mob_id": 200, "pos": Vector3(210.5, treasury_y + 0.5, 185.5)})
-		
 	elif chunk_pos.x == 11 and chunk_pos.z == 11:
-		# Sleeping guard in barracks
 		entities.append({"mob_id": 102, "pos": Vector3(191.5, ground_y, 189.5)})
 		
 	return entities

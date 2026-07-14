@@ -1,25 +1,16 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain / Infrastructure Bridge (MegaStructures)
-# Class: NetherPortalMegaStructure
+# Pathfile: res://src/Domain/World/MegaStructures/NetherPortalMegaStructure.gd
 # Description: HANDCRAFTED TWO-STORY DEMONIC CITADEL & LAVA FORTRESS.
-#              Rebuilds the Nether Outpost at global [-300, -300] into a fully playable 
-#              multi-floor medieval fortress. Features concentric flowing lava moats, 
-#              solid stone bridges, corner defense towers rising to Y=23, a double-height 
-#              gothic Portal Sanctuary Cathedral, and an elevated tattered treasury room 
-#              storing the high-value Nether Loot Chest.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Only coordinates the multi-chunk 
-#   architectural block blueprint and entity allocations.
-# - Liskov Substitution Principle (LSP): Fully implements IMegaStructure.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/MegaStructures/NetherPortalMegaStructure.gd
+#              SOLID COMPLIANCE: Monolithic 'build_chunk' loop decomposed into 
+#              isolated, SRP-compliant sculpt methods (< 20 lines each).
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NetherPortalMegaStructure
 extends IMegaStructure
 
-const OUTPOST_RADIUS: int = 18     # 36x36 total wall boundaries footprint
-const SANCTUARY_HALF_SIZE: int = 8 # 16x16 central portal cathedral hall
+const OUTPOST_RADIUS: int = 18     
+const SANCTUARY_HALF_SIZE: int = 8 
 
 
 func _init() -> void:
@@ -27,236 +18,175 @@ func _init() -> void:
 	bounds_size = Vector2i(50, 50)
 
 
-## Concrete Contract: Returns the landmark's translation key
 func get_name() -> String:
 	return "BIOME_NETHER_OUTPOST"
 
 
-## Concrete Contract: Sculpting pipeline executed by the chunk mesher threads
 func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 	var base_y: int = 8
-	var center_x: int = global_center.x
-	var center_z: int = global_center.y
+	var b_min_x: int = global_center.x - floori(float(bounds_size.x) / 2.0)
+	var b_max_x: int = global_center.x + floori(float(bounds_size.x) / 2.0)
+	var b_min_z: int = global_center.y - floori(float(bounds_size.y) / 2.0)
+	var b_max_z: int = global_center.y + floori(float(bounds_size.y) / 2.0)
 	
-	var min_x: int = center_x - floori(float(bounds_size.x) / 2.0)
-	var max_x: int = center_x + floori(float(bounds_size.x) / 2.0)
-	var min_z: int = center_z - floori(float(bounds_size.y) / 2.0)
-	var max_z: int = center_z + floori(float(bounds_size.y) / 2.0)
+	for gx: int in range(b_min_x, b_max_x + 1):
+		for gz: int in range(b_min_z, b_max_z + 1):
+			_sculpt_vertical_column(chunk, offset, gx, gz, base_y)
+
+
+func _sculpt_vertical_column(chunk: Chunk, offset: Vector3i, gx: int, gz: int, base_y: int) -> void:
+	var dist_x: int = abs(gx - global_center.x)
+	var dist_z: int = abs(gz - global_center.y)
 	
-	for gx: int in range(min_x, max_x + 1):
-		for gz: int in range(min_z, max_z + 1):
-			var dist_x: int = abs(gx - center_x)
-			var dist_z: int = abs(gz - center_z)
+	_sculpt_volcanic_moats(chunk, offset, gx, gz, dist_x, dist_z, base_y)
+	_sculpt_outer_ramparts(chunk, offset, gx, gz, dist_x, dist_z, base_y)
+	_sculpt_obsidian_towers(chunk, offset, gx, gz, base_y)
+	_sculpt_sanctuary(chunk, offset, gx, gz, dist_x, dist_z, base_y)
+
+
+func _sculpt_volcanic_moats(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_x: int, dist_z: int, base_y: int) -> void:
+	for gy: int in range(0, 32):
+		var ly: int = gy - offset.y
+		if not chunk.is_within_bounds(gx - offset.x, ly, gz - offset.z): continue
+		
+		if gy < base_y - 2:
+			chunk.set_block(gx - offset.x, ly, gz - offset.z, BlockType.Type.STONE)
+		elif gy < base_y:
+			chunk.set_block(gx - offset.x, ly, gz - offset.z, BlockType.Type.RED_SAND)
+		elif gy == base_y:
+			var is_lava: bool = (dist_x == 15 or dist_x == 16 or dist_z == 15 or dist_z == 16) and (dist_x <= 16 and dist_z <= 16)
+			var is_bridge: bool = (abs(gx - global_center.x) <= 2) and (dist_z >= 14 and dist_z <= 17)
+			var b_type := BlockType.Type.LAVA if (is_lava and not is_bridge) else BlockType.Type.RED_SAND
+			chunk.set_block(gx - offset.x, ly, gz - offset.z, b_type)
+		else:
+			chunk.set_block(gx - offset.x, ly, gz - offset.z, BlockType.Type.AIR)
+
+
+func _sculpt_outer_ramparts(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_x: int, dist_z: int, base_y: int) -> void:
+	var is_wall: bool = (dist_x == OUTPOST_RADIUS and dist_z <= OUTPOST_RADIUS) or (dist_z == OUTPOST_RADIUS and dist_x <= OUTPOST_RADIUS)
+	if not is_wall: return
+		
+	var is_gate: bool = (gz == global_center.y + OUTPOST_RADIUS) and (dist_x <= 2)
+	for wy: int in range(1, 8):
+		var cy: int = base_y + wy
+		if is_gate and wy <= 4: continue
 			
-			var lx: int = gx - offset.x
-			var lz: int = gz - offset.z
-			
-			# ==================================================================
-			# PASS 1: SCULPT BURNT GROUND & VOLATILE CONCENTRIC LAVA MOATS
-			# ==================================================================
-			for gy: int in range(0, 32):
-				var ly: int = gy - offset.y
-				if chunk.is_within_bounds(lx, ly, lz):
-					if gy < base_y - 2:
-						chunk.set_block(lx, ly, lz, BlockType.Type.STONE)
-					elif gy < base_y:
-						chunk.set_block(lx, ly, lz, BlockType.Type.RED_SAND) # Netherrack ground
-					elif gy == base_y:
-						# Concentric Moat: Lava rings at distance 15 & 16 surrounding the castle
-						var is_lava_moat: bool = (dist_x == 15 or dist_x == 16 or dist_z == 15 or dist_z == 16) and (dist_x <= 16 and dist_z <= 16)
-						# Keep bridges at X = 0 (North/South entrance bridge)
-						var is_bridge: bool = (abs(gx - center_x) <= 2) and (dist_z >= 14 and dist_z <= 17)
-						
-						if is_lava_moat and not is_bridge:
-							chunk.set_block(lx, ly, lz, BlockType.Type.LAVA)
-						else:
-							chunk.set_block(lx, ly, lz, BlockType.Type.RED_SAND)
-					else:
-						chunk.set_block(lx, ly, lz, BlockType.Type.AIR)
-
-			# ==================================================================
-			# PASS 2: SECURE OUTER DEFENSE RAMPARTS (With crenellated adarves)
-			# ==================================================================
-			var is_wall_border: bool = (dist_x == OUTPOST_RADIUS and dist_z <= OUTPOST_RADIUS) or (dist_z == OUTPOST_RADIUS and dist_x <= OUTPOST_RADIUS)
-			if is_wall_border:
-				# South bridge gate opening at Z = center_z + OUTPOST_RADIUS
-				var is_gate: bool = (gz == center_z + OUTPOST_RADIUS) and (dist_x <= 2)
-				
-				for wy: int in range(1, 8): # 7 blocks tall rampart walls
-					var current_y: int = base_y + wy
-					if is_gate and wy <= 4:
-						continue # gate opening
-						
-					# Wall walkway on Y = 14 (wy = 6) is flat Stone for patrol
-					if wy == 6:
-						set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-					elif wy == 7:
-						# Crenellated battlements along the rampart walkways
-						if (gx + gz) % 2 == 0:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-						else:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-					else:
-						set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-
-			# ==================================================================
-			# PASS 3: CYLINDRICAL CORNER OBSIDIAN TOWERS (Rising to Y = 23)
-			# ==================================================================
-			var tower_radius: int = 4
-			var is_in_tower := false
-			var tx: int = 0
-			var tz: int = 0
-			
-			if abs(gx - (center_x - OUTPOST_RADIUS)) <= tower_radius and abs(gz - (center_z - OUTPOST_RADIUS)) <= tower_radius:
-				is_in_tower = true; tx = center_x - OUTPOST_RADIUS; tz = center_z - OUTPOST_RADIUS
-			elif abs(gx - (center_x + OUTPOST_RADIUS)) <= tower_radius and abs(gz - (center_z - OUTPOST_RADIUS)) <= tower_radius:
-				is_in_tower = true; tx = center_x + OUTPOST_RADIUS; tz = center_z - OUTPOST_RADIUS
-			elif abs(gx - (center_x - OUTPOST_RADIUS)) <= tower_radius and abs(gz - (center_z + OUTPOST_RADIUS)) <= tower_radius:
-				is_in_tower = true; tx = center_x - OUTPOST_RADIUS; tz = center_z + OUTPOST_RADIUS
-			elif abs(gx - (center_x + OUTPOST_RADIUS)) <= tower_radius and abs(gz - (center_z + OUTPOST_RADIUS)) <= tower_radius:
-				is_in_tower = true; tx = center_x + OUTPOST_RADIUS; tz = center_z + OUTPOST_RADIUS
-				
-			if is_in_tower:
-				var t_dist: float = sqrt(pow(gx - tx, 2) + pow(gz - tz, 2))
-				if t_dist <= float(tower_radius):
-					for wy: int in range(1, 16):
-						var current_y: int = base_y + wy
-						var is_tower_wall: bool = t_dist > float(tower_radius) - 1.5
-						if is_tower_wall:
-							if wy == 15 and (gx + gz) % 2 == 0: 
-								continue # Tower battlements
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE) # Obsidian casing
-						else:
-							# Intermediate interior levels climbing
-							if wy == 6 or wy == 11:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.OAK_PLANKS)
-							else:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-
-			# ==================================================================
-			# PASS 4: CENTRAL SANCTUARY CATHEDRAL (Obsidian Spire: Z/X: -308 to -292)
-			# ==================================================================
-			var is_sanctuary: bool = (dist_x <= SANCTUARY_HALF_SIZE and dist_z <= SANCTUARY_HALF_SIZE)
-			if is_sanctuary:
-				var is_sanc_wall: bool = (dist_x == SANCTUARY_HALF_SIZE or dist_z == SANCTUARY_HALF_SIZE)
-				var is_sanc_gate: bool = (gz == center_z + SANCTUARY_HALF_SIZE) and (dist_x <= 3) # Wide 6-block South gate
-				
-				for wy: int in range(1, 16): # 15-Block tall gothic cathedral
-					var current_y: int = base_y + wy
-					
-					if is_sanc_wall:
-						if is_sanc_gate and wy <= 5: # High entry archway
-							continue
-							
-						# Gothic slit glass windows
-						var is_window: bool = (wy == 3 or wy == 10) and ((dist_x == SANCTUARY_HALF_SIZE and gz % 4 == 0) or (dist_z == SANCTUARY_HALF_SIZE and gx % 4 == 0))
-						if is_window and not is_sanc_gate:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.GLASS)
-						else:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-					else:
-						# ======================================================
-						# SANCTUARY INTERIOR 3D SCHEMES
-						# ======================================================
-						var is_portal_core: bool = (dist_x <= 4 and dist_z <= 2)
-						
-						if is_portal_core:
-							# A. Ancient Nether Portal Frame (Height 9, Width 9 - centered at Z = -300)
-							if gz == center_z and abs(gx - center_x) <= 4:
-								var py: int = wy
-								if py <= 8:
-									var is_outer_frame: bool = (abs(gx - center_x) == 4) or (py == 1) or (py == 8)
-									if is_outer_frame:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE) # Obsidian Frame
-									else:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.NEON_MAGENTA) # Portal curtain
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-							else:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								
-						# B. Symmetrical Wide Stone Stairs (climbing along the back West & East walls)
-						elif gz == center_z - 6:
-							# West staircase ascending South
-							if gx >= center_x - 7 and gx <= center_x - 5:
-								var step_req: int = gx - (center_x - 7) + 1
-								if wy <= step_req:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-							# East staircase ascending South
-							elif gx >= center_x + 5 and gx <= center_x + 7:
-								var step_req: int = (center_x + 7) - gx + 1
-								if wy <= step_req:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-							else:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								
-						# C. Ceiling Floor Division (Y = 14 / wy = 6)
-						elif wy == 6:
-							# Open landings at the back corners (Z = -306)
-							var is_stair_landing: bool = (gz == center_z - 6) and (abs(gx - center_x) >= 5 and abs(gx - center_x) <= 7)
-							var is_portal_open_view: bool = (gz >= center_z - 3) # Central open ceiling to admire portal
-							
-							if is_stair_landing or is_portal_open_view:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-							else:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.OAK_PLANKS)
-								
-						# D. Upper Level suites (Y: 15 to 19 / wy: 7 to 11)
-						elif wy <= 11:
-							# Enclosed treasury room wall at Z = -303 (wy = 7 to 11)
-							var is_treasury_wall: bool = (gz == center_z - 3)
-							if is_treasury_wall:
-								# Arch door opening at center
-								if abs(gx - center_x) <= 1 and wy <= 9:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-							else:
-								# NW Suite: High-security Treasury (Left hollow for entities spawning)
-								if gx < center_x and gz < center_z - 3:
-									# Support pedestal for Loot Chest
-									var is_pedestal: bool = (gx == center_x - 6 and gz == center_z - 6) and (wy == 7)
-									if is_pedestal:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.BRICKS)
-									else:
-										set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-									
-						# E. Solid Roof Platform (wy = 12 / Y = 20)
-						elif wy == 12:
-							set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-							
-						# F. Rooftop battlements crenellations (wy >= 13)
-						else:
-							var is_sanc_roof_edge: bool = (dist_x == SANCTUARY_HALF_SIZE - 1 or dist_z == SANCTUARY_HALF_SIZE - 1)
-							if is_sanc_roof_edge:
-								if wy == 13 and (gx + gz) % 2 == 0:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.STONE)
-								else:
-									set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
-							else:
-								set_global_block(chunk, offset, gx, current_y, gz, BlockType.Type.AIR)
+		if wy == 6:
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE)
+		elif wy == 7:
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE if (gx + gz) % 2 == 0 else BlockType.Type.AIR)
+		else:
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE)
 
 
-## Concrete Contract: Dispatches inhabitants and interactive props strictly inside their chunk grids
+func _sculpt_obsidian_towers(chunk: Chunk, offset: Vector3i, gx: int, gz: int, base_y: int) -> void:
+	var tower_rad: int = 4
+	var is_tower := false
+	var tx: int = 0
+	var tz: int = 0
+	
+	if abs(gx - (global_center.x - OUTPOST_RADIUS)) <= tower_rad and abs(gz - (global_center.y - OUTPOST_RADIUS)) <= tower_rad:
+		is_tower = true; tx = global_center.x - OUTPOST_RADIUS; tz = global_center.y - OUTPOST_RADIUS
+	elif abs(gx - (global_center.x + OUTPOST_RADIUS)) <= tower_rad and abs(gz - (global_center.y - OUTPOST_RADIUS)) <= tower_rad:
+		is_tower = true; tx = global_center.x + OUTPOST_RADIUS; tz = global_center.y - OUTPOST_RADIUS
+	elif abs(gx - (global_center.x - OUTPOST_RADIUS)) <= tower_rad and abs(gz - (global_center.y + OUTPOST_RADIUS)) <= tower_rad:
+		is_tower = true; tx = global_center.x - OUTPOST_RADIUS; tz = global_center.y + OUTPOST_RADIUS
+	elif abs(gx - (global_center.x + OUTPOST_RADIUS)) <= tower_rad and abs(gz - (global_center.y + OUTPOST_RADIUS)) <= tower_rad:
+		is_tower = true; tx = global_center.x + OUTPOST_RADIUS; tz = global_center.y + OUTPOST_RADIUS
+		
+	if is_tower:
+		_build_obsidian_cylinder(chunk, offset, gx, gz, tx, tz, base_y, tower_rad)
+
+
+func _build_obsidian_cylinder(chunk: Chunk, offset: Vector3i, gx: int, gz: int, tx: int, tz: int, base_y: int, tower_rad: int) -> void:
+	var t_dist: float = sqrt(pow(gx - tx, 2) + pow(gz - tz, 2))
+	if t_dist > float(tower_rad): return
+		
+	for wy: int in range(1, 16):
+		var cy: int = base_y + wy
+		var is_wall: bool = t_dist > float(tower_rad) - 1.5
+		if is_wall:
+			if wy == 15 and (gx + gz) % 2 == 0: continue
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE)
+		else:
+			var b_type := BlockType.Type.OAK_PLANKS if (wy == 6 or wy == 11) else BlockType.Type.AIR
+			set_global_block(chunk, offset, gx, cy, gz, b_type)
+
+
+func _sculpt_sanctuary(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_x: int, dist_z: int, base_y: int) -> void:
+	if dist_x > SANCTUARY_HALF_SIZE or dist_z > SANCTUARY_HALF_SIZE: return
+		
+	var is_wall: bool = (dist_x == SANCTUARY_HALF_SIZE or dist_z == SANCTUARY_HALF_SIZE)
+	var is_gate: bool = (gz == global_center.y + SANCTUARY_HALF_SIZE) and (dist_x <= 3)
+	
+	for wy: int in range(1, 16):
+		var cy: int = base_y + wy
+		if is_wall:
+			_build_sanctuary_wall(chunk, offset, gx, gz, cy, wy, dist_x, dist_z, is_gate)
+		else:
+			_build_sanctuary_interior(chunk, offset, gx, gz, cy, wy, dist_x, dist_z)
+
+
+func _build_sanctuary_wall(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, dx: int, dz: int, is_gate: bool) -> void:
+	if is_gate and wy <= 5: return
+	var is_win: bool = (wy == 3 or wy == 10) and ((dx == SANCTUARY_HALF_SIZE and gz % 4 == 0) or (dz == SANCTUARY_HALF_SIZE and gx % 4 == 0))
+	var b_type := BlockType.Type.GLASS if (is_win and not is_gate) else BlockType.Type.STONE
+	set_global_block(chunk, offset, gx, cy, gz, b_type)
+
+
+func _build_sanctuary_interior(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, dist_x: int, dist_z: int) -> void:
+	if dist_x <= 4 and dist_z <= 2:
+		_build_portal_frame(chunk, offset, gx, gz, cy, wy)
+	elif gz == global_center.y - 6:
+		_build_sanctuary_stairs(chunk, offset, gx, gz, cy, wy)
+	elif wy == 6:
+		var is_landing: bool = (gz == global_center.y - 6) and (abs(gx - global_center.x) >= 5 and abs(gx - global_center.x) <= 7)
+		var is_open: bool = (gz >= global_center.y - 3)
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR if (is_landing or is_open) else BlockType.Type.OAK_PLANKS)
+	elif wy <= 11:
+		_build_sanctuary_upper_suites(chunk, offset, gx, gz, cy, wy)
+	elif wy == 12:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE)
+	else:
+		var is_edge: bool = (dist_x == SANCTUARY_HALF_SIZE - 1 or dist_z == SANCTUARY_HALF_SIZE - 1)
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE if (is_edge and wy == 13 and (gx + gz) % 2 == 0) else BlockType.Type.AIR)
+
+
+func _build_portal_frame(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int) -> void:
+	if gz == global_center.y and abs(gx - global_center.x) <= 4 and wy <= 8:
+		var is_frame: bool = (abs(gx - global_center.x) == 4) or (wy == 1) or (wy == 8)
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE if is_frame else BlockType.Type.NEON_MAGENTA)
+	else:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+
+
+func _build_sanctuary_stairs(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int) -> void:
+	if gx >= global_center.x - 7 and gx <= global_center.x - 5:
+		var s_req: int = gx - (global_center.x - 7) + 1
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE if wy <= s_req else BlockType.Type.AIR)
+	elif gx >= global_center.x + 5 and gx <= global_center.x + 7:
+		var s_req: int = (global_center.x + 7) - gx + 1
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.STONE if wy <= s_req else BlockType.Type.AIR)
+	else:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+
+
+func _build_sanctuary_upper_suites(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int) -> void:
+	if gz == global_center.y - 3:
+		var is_arch: bool = abs(gx - global_center.x) <= 1 and wy <= 9
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR if is_arch else BlockType.Type.STONE)
+	else:
+		if gx < global_center.x and gz < global_center.y - 3:
+			var is_pedestal: bool = (gx == global_center.x - 6 and gz == global_center.y - 6) and (wy == 7)
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.BRICKS if is_pedestal else BlockType.Type.AIR)
+		else:
+			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+
+
 func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 	var entities: Array[Dictionary] = []
-	
-	# Central coordinates of Nether Portal: [-300, -300].
-	# Fits precisely inside Chunk (-19, 0, -19) for X [-304..-289] and Z [-304..-289]
 	if chunk_pos.x == -19 and chunk_pos.z == -19:
-		# 1. NETHER VAULT CHEST (Sitting elegantly on Floor 2 brick pedestal)
-		# Pedestal is at X = -306 (center_x - 6), Z = -306, Y = base_y + 7 = 15.
-		# We spawn the chest at Y = 16.0 to rest perfectly on the bricks!
 		entities.append({"mob_id": 200, "pos": Vector3(-306.5, 16.0, -306.5)})
-		
-		# 2. NETHER GUARDIAN KNIGHTS (Zombies patrolling bridge entrances and main hall)
-		entities.append({"mob_id": 10, "pos": Vector3(-295.5, 9.5, -298.5)}) # Portal right flank
-		entities.append({"mob_id": 10, "pos": Vector3(-304.5, 9.5, -298.5)}) # Portal left flank
-		
+		entities.append({"mob_id": 10, "pos": Vector3(-295.5, 9.5, -298.5)}) 
+		entities.append({"mob_id": 10, "pos": Vector3(-304.5, 9.5, -298.5)}) 
 	return entities
