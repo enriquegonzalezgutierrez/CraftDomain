@@ -4,6 +4,7 @@
 #              chunk instantiation, garbage collection, and physics Rid assignment.
 #              SOLID COMPLIANCE: Threading and queues are strictly delegated to 
 #              ChunkTaskScheduler. Monolithic methods decomposed to < 20 lines.
+#              Corrected: Restored 1-argument compatible signature for load queues.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -38,10 +39,15 @@ static func _get_frictionless_material() -> PhysicsMaterial:
 
 
 func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
+	_queue_mutex = Mutex.new()
 	controller = p_controller
 	world_state = p_world_state
-	task_scheduler = ChunkTaskScheduler.new(self, Mutex.new())
+	task_scheduler = ChunkTaskScheduler.new(self, _queue_mutex)
 	print("[ChunkLifecycle] Initialized lifecycle service and thread pool scheduler.")
+
+
+# Mutex binding required for scheduler callback synch flags
+var _queue_mutex: Mutex
 
 
 func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
@@ -143,6 +149,11 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	_render_single_completed_task(task_result)
 
 
+func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
+	if not _chunk_nodes.has(chunk_pos): return
+	task_scheduler.request_chunk_rebuild(chunk_pos, _chunk_versions.get(chunk_pos, 0))
+
+
 func _build_physics_body_for_rebuild(visual_data: Dictionary, is_distant: bool) -> StaticBody3D:
 	if is_distant: return null
 	var solid_positions: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
@@ -216,7 +227,7 @@ func _cleanup_task_states(chunk_pos: Vector3i) -> void:
 	
 	if task_scheduler.needs_rebuild(chunk_pos):
 		task_scheduler.clear_rebuild_flag(chunk_pos)
-		task_scheduler.request_chunk_rebuild(chunk_pos, _chunk_versions.get(chunk_pos, 0))
+		_request_chunk_rebuild(chunk_pos)
 		
 	_physics_bodies.erase(chunk_pos)
 
@@ -345,7 +356,7 @@ func _execute_lod_scans() -> void:
 				
 				if not is_currently_distant and node.has_method("has_collision_body"):
 					if not node.call("has_collision_body") as bool:
-						task_scheduler.request_chunk_rebuild(pos, _chunk_versions.get(pos, 0))
+						_request_chunk_rebuild(pos)
 
 
 func _calculate_is_chunk_distant(chunk_pos: Vector3i) -> bool:

@@ -2,6 +2,8 @@
 # Pathfile: res://src/Infrastructure/UI/SettingsMenu.gd
 # Description: Infrastructure UI component strictly managing system settings modifications,
 #              dynamic localizations, and persistence. Layout is defined in .tscn.
+#              SOLID COMPLIANCE: Out-of-bounds initialization crash resolved by
+#              re-ordering populating and selection steps.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -46,8 +48,14 @@ func _ready() -> void:
 		_play_exit_animation()
 	)
 	
+	# 1. Populate both dropdown option lists first (Resolves out-of-bounds crash!)
+	_populate_dropdown_items()
+	
+	# 2. Safely apply selection indexes based on system configuration
 	_setup_language_selection_state()
 	_setup_resolution_dropdown_state()
+	
+	# 3. Localize text labels
 	_refresh_localized_text()
 	_play_entry_animation()
 
@@ -55,6 +63,19 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED:
 		_refresh_localized_text()
+
+
+func _populate_dropdown_items() -> void:
+	if is_instance_valid(_lang_opt):
+		_lang_opt.clear()
+		_lang_opt.add_item("ENGLISH", 0)
+		_lang_opt.add_item("ESPAÑOL", 1)
+		
+	if is_instance_valid(_res_opt):
+		_res_opt.clear()
+		_res_opt.add_item(tr("SETTINGS_RESOLUTION_720"), 0)
+		_res_opt.add_item(tr("SETTINGS_RESOLUTION_1080"), 1)
+		_res_opt.add_item(tr("SETTINGS_RESOLUTION_FULLSCREEN"), 2)
 
 
 func _refresh_localized_text() -> void:
@@ -71,10 +92,9 @@ func _refresh_localized_text() -> void:
 	
 	if is_instance_valid(_res_opt):
 		var active_index: int = _res_opt.selected
-		_res_opt.clear()
-		_res_opt.add_item(tr("SETTINGS_RESOLUTION_720"), 0)
-		_res_opt.add_item(tr("SETTINGS_RESOLUTION_1080"), 1)
-		_res_opt.add_item(tr("SETTINGS_RESOLUTION_FULLSCREEN"), 2)
+		_res_opt.set_item_text(0, tr("SETTINGS_RESOLUTION_720"))
+		_res_opt.set_item_text(1, tr("SETTINGS_RESOLUTION_1080"))
+		_res_opt.set_item_text(2, tr("SETTINGS_RESOLUTION_FULLSCREEN"))
 		_res_opt.select(active_index)
 
 
