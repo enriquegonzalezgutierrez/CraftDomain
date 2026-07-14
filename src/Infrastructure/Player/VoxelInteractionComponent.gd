@@ -2,7 +2,8 @@
 # Pathfile: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # Description: Component managing first-person raycasting, target highlights,
 #              mining ticks, placing blocks, eating, and planting.
-#              Delegates geometric math coordinates checks to VoxelInteractionSolver (SRP).
+#              SOLID COMPLIANCE: Monolithic interaction loops decomposed to 
+#              isolated, SRP-compliant helpers (< 15 lines each).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -13,10 +14,8 @@ var player: PlayerController
 var world_controller: Node3D
 var raycast: RayCast3D
 
-# Decoupled Sub-Components (SRP Compliant)
 var _damage_service: BlockDamageService
 var _cracking_visuals: BlockCrackingVisuals
-
 var _last_targeted_coord := Vector3i(0, -999, 0)
 
 
@@ -31,7 +30,7 @@ func _ready() -> void:
 func _setup_raycast() -> void:
 	raycast = RayCast3D.new()
 	raycast.name = "InteractionRayCast"
-	raycast.target_position = Vector3(0, 0, -5.0) # 5-meter reach distance
+	raycast.target_position = Vector3(0, 0, -5.0) 
 	raycast.enabled = true
 	raycast.collision_mask = 1 
 	raycast.collide_with_areas = false
@@ -75,9 +74,7 @@ func _update_target_highlight() -> void:
 	
 	if target_coord != _last_targeted_coord:
 		_last_targeted_coord = target_coord
-		if is_instance_valid(_cracking_visuals):
-			var ratio := _damage_service.get_damage_ratio(target_coord)
-			_cracking_visuals.update_cracking_overlay(target_coord, ratio)
+		_update_cracking_ratio(target_coord)
 	
 	if is_instance_valid(highlight_mesh):
 		highlight_mesh.global_position = Vector3(target_coord) + Vector3(0.5, 0.5, 0.5)
@@ -122,18 +119,21 @@ func _update_placement_preview_geometry(resolved: Dictionary) -> void:
 	var world_ctrl := world_controller as WorldController
 	
 	if is_instance_valid(world_ctrl) and is_instance_valid(world_ctrl.world_state):
-		var ws := world_ctrl.world_state
-		var is_spot_free := ws.get_block(build_coord) == BlockType.Type.AIR or ws.get_block(build_coord) == BlockType.Type.WATER
-		var is_mergeable := VoxelInteractionSolver.is_slab_mergeable(ws, target_coord, hit_normal)
-		var player_collides := VoxelInteractionSolver.does_block_collide_with_player(build_coord, player)
-		
-		placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
-		placement_highlight_mesh.visible = true
-		
-		if (is_spot_free and not player_collides) or is_mergeable:
-			_set_preview_color(Color(0.2, 0.95, 0.35, 0.18), Color(0.2, 0.95, 0.35))
-		else:
-			_set_preview_color(Color(0.95, 0.2, 0.2, 0.18), Color(0.95, 0.2, 0.2))
+		_evaluate_preview_placement(world_ctrl.world_state, target_coord, hit_normal, build_coord)
+
+
+func _evaluate_preview_placement(ws: WorldState, target_coord: Vector3i, hit_normal: Vector3, build_coord: Vector3i) -> void:
+	var is_spot_free := ws.get_block(build_coord) == BlockType.Type.AIR or ws.get_block(build_coord) == BlockType.Type.WATER
+	var is_mergeable := VoxelInteractionSolver.is_slab_mergeable(ws, target_coord, hit_normal)
+	var player_collides := VoxelInteractionSolver.does_block_collide_with_player(build_coord, player)
+	
+	placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
+	placement_highlight_mesh.visible = true
+	
+	if (is_spot_free and not player_collides) or is_mergeable:
+		_set_preview_color(Color(0.2, 0.95, 0.35, 0.18), Color(0.2, 0.95, 0.35))
+	else:
+		_set_preview_color(Color(0.95, 0.2, 0.2, 0.18), Color(0.95, 0.2, 0.2))
 
 
 func _mine_or_attack() -> void:
@@ -142,8 +142,7 @@ func _mine_or_attack() -> void:
 		viewmodel_node.play_swing_animation()
 	if is_instance_valid(player) and player.has_method("swing_sword"):
 		player.swing_sword()
-	if not raycast.is_colliding() or not is_instance_valid(camera): 
-		return
+	if not raycast.is_colliding() or not is_instance_valid(camera): return
 		
 	var collider: Node = raycast.get_collider() as Node
 	var active_slot := player.active_slot_index
@@ -153,15 +152,14 @@ func _mine_or_attack() -> void:
 	
 	if is_instance_valid(collider) and (collider is CharacterBody3D):
 		_process_combat_strike(collider, item_id)
-		return
-		
-	var active_tool_type: PlayerViewModel.ToolType = PlayerViewModel.get_tool_type_for_item(item_id)
-	if active_tool_type != PlayerViewModel.ToolType.NONE and active_tool_type != PlayerViewModel.ToolType.SWORD:
-		_process_mining_strike(inventory_comp)
+	else:
+		var active_tool_type: PlayerViewModel.ToolType = PlayerViewModel.get_tool_type_for_item(item_id)
+		if active_tool_type != PlayerViewModel.ToolType.NONE and active_tool_type != PlayerViewModel.ToolType.SWORD:
+			_process_mining_strike(inventory_comp)
 
 
 func _process_combat_strike(collider: Node, item_id: int) -> void:
-	if item_id == 17: # Sword
+	if item_id == 17: 
 		var entity_domain: VoxelEntity = collider.get("domain_entity") as VoxelEntity
 		if is_instance_valid(entity_domain):
 			var knockback_dir: Vector3 = -camera.global_transform.basis.z.normalized() * 5.5
@@ -172,67 +170,73 @@ func _process_combat_strike(collider: Node, item_id: int) -> void:
 
 func _process_mining_strike(inventory_comp: InventoryComponent) -> void:
 	var world_ctrl := world_controller as WorldController
-	if is_instance_valid(world_ctrl):
-		var resolved := VoxelInteractionSolver.resolve_targeted_coords(raycast, camera)
-		if resolved.is_empty():
-			return
-			
-		var block_coord: Vector3i = resolved["target_coord"]
-		var ws := world_ctrl.world_state
-		var mined_type := ws.get_block(block_coord) if is_instance_valid(ws) else BlockType.Type.AIR
+	if not is_instance_valid(world_ctrl): return
 		
-		if mined_type == BlockType.Type.AIR:
-			return
-			
-		var remaining_hits := _damage_service.register_hit(block_coord, mined_type)
-		if remaining_hits > 0:
-			_spawn_mining_particles(Vector3(block_coord), mined_type)
-			AudioService.play_sfx_static("block_place", Vector3(block_coord)) 
-			if is_instance_valid(_cracking_visuals):
-				var ratio := _damage_service.get_damage_ratio(block_coord)
-				_cracking_visuals.update_cracking_overlay(block_coord, ratio)
-			return 
-			
+	var resolved := VoxelInteractionSolver.resolve_targeted_coords(raycast, camera)
+	if resolved.is_empty(): return
+		
+	var block_coord: Vector3i = resolved["target_coord"]
+	var mined_type := world_ctrl.world_state.get_block(block_coord) if is_instance_valid(world_ctrl.world_state) else BlockType.Type.AIR
+	
+	if mined_type != BlockType.Type.AIR:
+		_execute_block_damage_and_drops(block_coord, mined_type, inventory_comp, world_ctrl)
+
+
+func _execute_block_damage_and_drops(block_coord: Vector3i, mined_type: BlockType.Type, inventory_comp: InventoryComponent, world_ctrl: WorldController) -> void:
+	var remaining_hits := _damage_service.register_hit(block_coord, mined_type)
+	if remaining_hits > 0:
+		_spawn_mining_particles(Vector3(block_coord), mined_type)
+		AudioService.play_sfx_static("block_place", Vector3(block_coord)) 
+		_update_cracking_ratio(block_coord)
+	else:
 		if is_instance_valid(_cracking_visuals):
 			_cracking_visuals.hide_cracking_overlay()
-			
 		_spawn_mining_particles(Vector3(block_coord), mined_type)
 		_process_block_drops(mined_type, block_coord, inventory_comp)
 		world_ctrl.set_block_globally(block_coord, BlockType.Type.AIR)
 
 
-func _process_block_drops(mined_type: BlockType.Type, _block_coord: Vector3i, inventory_comp: InventoryComponent) -> void:
+func _update_cracking_ratio(block_coord: Vector3i) -> void:
+	if is_instance_valid(_cracking_visuals):
+		var ratio := _damage_service.get_damage_ratio(block_coord)
+		_cracking_visuals.update_cracking_overlay(block_coord, ratio)
+
+
+func _process_block_drops(mined_type: BlockType.Type, block_coord: Vector3i, inventory_comp: InventoryComponent) -> void:
 	var def := block_library_provider.get_definition(mined_type) as BlockDefinition
-	if def != null:
-		var drop_id := def.get_drop_item_id()
-		var qty := def.get_drop_quantity()
+	if def == null: return
 		
-		if mined_type == BlockType.Type.CROP_RIPE:
-			inventory_comp.add_item(20, 1) 
-			inventory_comp.add_item(18, randi_range(1, 2)) 
-			if is_instance_valid(hud):
-				hud.show_quest_notification("NOTIFICATION_HARVEST_SUCCESS_HEADER", "NOTIFICATION_HARVEST_SUCCESS_DESC")
-		elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
-			inventory_comp.add_item(18, 1) 
-			if is_instance_valid(hud):
-				hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
-		else:
-			inventory_comp.add_item(drop_id, qty)
-			
-		if mined_type == BlockType.Type.LEAVES and randf() < 0.25:
-			inventory_comp.add_item(18, 1) 
-		
-		var active_q: Quest = quest_service_provider.get_active_quest() as Quest
-		if active_q != null and active_q.required_item_index == drop_id:
-			active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + qty)
+	var drop_id := def.get_drop_item_id()
+	var qty := def.get_drop_quantity()
+	
+	_add_harvest_drops(mined_type, drop_id, qty, inventory_comp)
+	
+	if mined_type == BlockType.Type.LEAVES and randf() < 0.25:
+		inventory_comp.add_item(18, 1) 
+	
+	var active_q: Quest = quest_service_provider.get_active_quest() as Quest
+	if active_q != null and active_q.required_item_index == drop_id:
+		active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + qty)
+
+
+func _add_harvest_drops(mined_type: BlockType.Type, drop_id: int, qty: int, inventory_comp: InventoryComponent) -> void:
+	if mined_type == BlockType.Type.CROP_RIPE:
+		inventory_comp.add_item(20, 1) 
+		inventory_comp.add_item(18, randi_range(1, 2)) 
+		if is_instance_valid(hud):
+			hud.show_quest_notification("NOTIFICATION_HARVEST_SUCCESS_HEADER", "NOTIFICATION_HARVEST_SUCCESS_DESC")
+	elif mined_type == BlockType.Type.CROP_SEED or mined_type == BlockType.Type.CROP_GROWING:
+		inventory_comp.add_item(18, 1) 
+		if is_instance_valid(hud):
+			hud.show_quest_notification("NOTIFICATION_CROP_UPROOTED_HEADER", "NOTIFICATION_CROP_UPROOTED_DESC")
+	else:
+		inventory_comp.add_item(drop_id, qty)
 
 
 func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) -> void:
-	if block_type == BlockType.Type.AIR:
-		return
+	if block_type == BlockType.Type.AIR: return
 	var def: BlockDefinition = block_library_provider.get_definition(block_type) as BlockDefinition
-	if def == null:
-		return
+	if def == null: return
 		
 	var particles := CPUParticles3D.new()
 	particles.name = "MinedDebrisParticles"
@@ -272,59 +276,65 @@ func _build_or_interact() -> void:
 	var viewmodel_node: PlayerViewModel = player.get("viewmodel") as PlayerViewModel
 	if is_instance_valid(viewmodel_node):
 		viewmodel_node.play_swing_animation()
-	if not raycast.is_colliding() or not is_instance_valid(camera): 
-		return
+	if not raycast.is_colliding() or not is_instance_valid(camera): return
 		
 	var collider := raycast.get_collider()
 	if is_instance_valid(collider) and (collider is CharacterBody3D) and collider.has_method("interact"):
 		collider.call("interact", player)
 		return
 		
+	_process_building_and_usage()
+
+
+func _process_building_and_usage() -> void:
 	var active_slot := player.active_slot_index
 	var inventory_comp := player.inventory as InventoryComponent
-	var world_ctrl: WorldController = world_controller as WorldController
+	var world_ctrl := world_controller as WorldController
 	
-	if not is_instance_valid(inventory_comp) or not is_instance_valid(world_ctrl):
-		return
+	if not is_instance_valid(inventory_comp) or not is_instance_valid(world_ctrl): return
 		
 	var slot_data := inventory_comp.get_slot_data(active_slot)
-	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:
-		return
+	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0: return
 		
-	var item_id := slot_data.item_id
 	var world_state := world_ctrl.world_state
-	if not is_instance_valid(world_state):
-		return
+	if not is_instance_valid(world_state): return
 		
-	var strategy: ItemUsageStrategy = ItemStrategyRegistry.get_strategy(item_id) as ItemUsageStrategy
+	var strategy := ItemStrategyRegistry.get_strategy(slot_data.item_id) as ItemUsageStrategy
 	if strategy != null:
-		var resolved := VoxelInteractionSolver.resolve_targeted_coords(raycast, camera)
-		if resolved.is_empty():
+		_execute_item_usage_strategy(strategy, slot_data.item_id, inventory_comp, world_ctrl)
+
+
+func _execute_item_usage_strategy(strategy: ItemUsageStrategy, item_id: int, inventory_comp: InventoryComponent, world_ctrl: WorldController) -> void:
+	var resolved := VoxelInteractionSolver.resolve_targeted_coords(raycast, camera)
+	if resolved.is_empty(): return
+		
+	var target_coord: Vector3i = resolved["target_coord"]
+	var hit_normal: Vector3 = resolved["hit_normal"]
+	var build_coord: Vector3i = resolved["build_coord"]
+	
+	_inject_last_hit_fraction(resolved["hit_pos_y"], world_ctrl)
+	
+	if strategy.can_use(player.domain_entity, inventory_comp, target_coord, hit_normal, world_ctrl.world_state):
+		if strategy is PlaceableBlockStrategy and VoxelInteractionSolver.does_block_collide_with_player(build_coord, player):
 			return
-			
-		var target_coord: Vector3i = resolved["target_coord"]
-		var hit_normal: Vector3 = resolved["hit_normal"]
-		var build_coord: Vector3i = resolved["build_coord"]
-		var hit_pos_y: float = resolved["hit_pos_y"]
-		
-		var fractional_y := hit_pos_y - floori(hit_pos_y)
-		var modifier := world_ctrl.world_modifier
-		if modifier != null:
-			modifier.set("last_hit_fractional_y", fractional_y)
-		
-		if strategy.can_use(player.domain_entity, inventory_comp, target_coord, hit_normal, world_state):
-			if strategy is PlaceableBlockStrategy:
-				if VoxelInteractionSolver.does_block_collide_with_player(build_coord, player):
-					return
-					
-			strategy.use(player.domain_entity, inventory_comp, target_coord, hit_normal, world_ctrl.world_modifier)
-			
-			if is_instance_valid(hud):
-				if strategy is ConsumableItemStrategy:
-					hud.update_health_display(player.domain_entity.health)
-					hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "NOTIFICATION_CONSUME_FOOD_DESC")
-				elif strategy is PlantableItemStrategy:
-					hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")
+		strategy.use(player.domain_entity, inventory_comp, target_coord, hit_normal, world_ctrl.world_modifier)
+		_display_usage_toasts(strategy)
+
+
+func _inject_last_hit_fraction(hit_pos_y: float, world_ctrl: WorldController) -> void:
+	var fractional_y := hit_pos_y - floori(hit_pos_y)
+	var modifier := world_ctrl.world_modifier
+	if modifier != null:
+		modifier.set("last_hit_fractional_y", fractional_y)
+
+
+func _display_usage_toasts(strategy: ItemUsageStrategy) -> void:
+	if is_instance_valid(hud):
+		if strategy is ConsumableItemStrategy:
+			hud.update_health_display(player.domain_entity.health)
+			hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "NOTIFICATION_CONSUME_FOOD_DESC")
+		elif strategy is PlantableItemStrategy:
+			hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")
 
 
 # ==============================================================================
