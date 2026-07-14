@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/World/WorldController.gd
 # Description: Central World Controller and Redraw Orchestrator. Coordinates
 #              LOD updates, player spawn drop, sub-service ticks, network 
-#              replication, and chronological timeline warp swaps.
+#              replication, chronological timeline warp swaps, and UI triggers.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -182,7 +182,6 @@ func swap_world_timeline(timeline_val: int) -> void:
 	if is_instance_valid(world_state):
 		world_state.swap_timeline(target)
 		
-		# Set spawn flag to force recalculation of terrain height on completion
 		is_teleport_spawn = true
 		if is_instance_valid(player):
 			player.set("is_active", false)
@@ -195,8 +194,15 @@ func swap_world_timeline(timeline_val: int) -> void:
 			if is_instance_valid(hud_node):
 				hud_node.show_loading_screen()
 			
-			# Play chronological warp thud sound
 			AudioService.play_sfx_static("chest_open", p_pos)
+
+
+## Intermediary Router: Dispatches the open UI request to the player HUD
+func open_hacking_terminal() -> void:
+	if is_instance_valid(player):
+		var hud_node: PlayerHUD = player.get("hud") as PlayerHUD
+		if is_instance_valid(hud_node):
+			hud_node.toggle_hacking_terminal(true)
 
 
 func _trigger_adjacent_boundary_redraws(global_pos: Vector3i, chunk_pos: Vector3i) -> void:
@@ -378,3 +384,7 @@ class WorldModifierAdapter extends IWorldModifier:
 	func swap_world_timeline(timeline: int) -> void:
 		if is_instance_valid(_controller) and _controller.has_method("swap_world_timeline"):
 			_controller.call("swap_world_timeline", timeline)
+
+	func open_hacking_terminal() -> void:
+		if is_instance_valid(_controller) and _controller.has_method("open_hacking_terminal"):
+			_controller.call("open_hacking_terminal")

@@ -2,8 +2,8 @@
 # Pathfile: res://src/Infrastructure/UI/Widgets/HotbarDockWidget.gd
 # Description: SRP-compliant UI Widget responsible for hotbar slots coordination,
 #              selection outlines, and player stats rendering.
-#              SOLID COMPLIANCE: Runtime node instantiations replaced with declarative
-#              pre-instanced scene nodes. StyleBoxFlat/LabelSettings code generation purged.
+#              Corrected: Replaced unstable dynamic anchor solvers with 
+#              deterministic manual margin offsets to guarantee centered icons.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -89,6 +89,12 @@ func update_slot_quantity(slot_index: int, item_id: int, quantity: int) -> void:
 		var label := slot.get_node_or_null("MarginContainer/QtyLabel") as Label
 		
 		if is_instance_valid(icon_container):
+			# ALIGNMENT FIXED: Use TOP_LEFT anchor and enforce precise manual margins 
+			# to bypass any SceneTree timing or .tscn layout-solver scaling bugs.
+			icon_container.anchors_preset = Control.PRESET_TOP_LEFT
+			icon_container.position = Vector2(6, 6)
+			icon_container.size = Vector2(36, 36)
+			
 			var fallback := icon_container.get_node_or_null("FallbackColor") as ColorRect
 			var tex_display := icon_container.get_node_or_null("TextureDisplay") as TextureRect
 			

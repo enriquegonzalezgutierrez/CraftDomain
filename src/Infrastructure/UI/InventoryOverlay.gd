@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/InventoryOverlay.gd
 # Description: Glassmorphic 24-slot inventory and backpack inspector.
-#              SOLID COMPLIANCE: Class limits set < 300 lines (SRP). All monolithic
-#              loops decomposed. Procedural StyleBoxFlat instantiation purged.
+#              Corrected: Replaced unstable dynamic anchor solvers with 
+#              deterministic manual margin offsets to guarantee centered icons.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -38,6 +38,9 @@ func _ready() -> void:
 	_sort_btn.pressed.connect(_on_sort_pressed)
 	_action_button.pressed.connect(_on_equip_pressed)
 	_use_button.pressed.connect(_on_use_pressed)
+	
+	# Localize Sort button dynamically to guarantee language Pack compatibility
+	_sort_btn.text = " ⚡ " + tr("INVENTORY_SORT").to_upper()
 	
 	_refresh_backpack_grids()
 	_show_empty_details()
@@ -96,8 +99,15 @@ func _build_slot_contents(btn: Button, slot: InventoryComponent.SlotData, size_p
 func _create_icon_container(size_pixels: int) -> Control:
 	var container := Control.new()
 	container.name = "ItemIconContainer"
-	container.custom_minimum_size = Vector2(size_pixels - 12, size_pixels - 12)
-	container.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	
+	# ALIGNMENT FIXED: Use TOP_LEFT anchor and enforce precise manual margins 
+	# to bypass any SceneTree timing or layout-solver scaling bugs.
+	container.anchors_preset = Control.PRESET_TOP_LEFT
+	
+	var margin := 6 if size_pixels > 45 else 4
+	container.position = Vector2(margin, margin)
+	container.size = Vector2(size_pixels - margin * 2, size_pixels - margin * 2)
+	
 	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return container
 

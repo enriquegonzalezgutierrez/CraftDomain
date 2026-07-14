@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/IWorldModifier.gd
 # Description: Domain interface defining the contract for modifying and reading 
-#              voxel blocks and chronological timelines globally. 
+#              voxel blocks, chronological timelines, and UI triggers globally. 
 #              Resolves Layer Leakage and Dependency Inversion (DIP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -37,3 +37,8 @@ func get_active_timeline() -> int:
 ## Abstract Contract: Swaps the active chronological timeline globally.
 func swap_world_timeline(_timeline: int) -> void:
 	assert(false, "[IWorldModifier] swap_world_timeline() must be implemented.")
+
+
+## Abstract Contract: Dispatches a request to the presentation layer to open the Hacking UI.
+func open_hacking_terminal() -> void:
+	assert(false, "[IWorldModifier] open_hacking_terminal() must be implemented.")

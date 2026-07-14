@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/UI/PlayerHUD.gd
 # Description: Central HUD Orchestrator and UI Coordinator. Handles modal toggles,
 #              LOD UI updates, and reactive Domain Event bindings.
-#              Corrected: Auto-pauses and displays menu dynamically on network code resolved.
+#              Integrates the Silicon Hacking Terminal Overlay.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -14,6 +14,7 @@ const CRAFTING_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/CraftingOve
 const INVENTORY_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/InventoryOverlay.tscn")
 const WORLD_MAP_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/map_overlay.tscn")
 const LOADING_SCREEN_SCENE := preload("res://src/Infrastructure/UI/loading_screen.tscn")
+const HACKING_TERMINAL_SCENE := preload("res://src/Infrastructure/UI/hacking_terminal_overlay.tscn")
 
 # Dependencies injected by the world bootstrap
 var player: CharacterBody3D
@@ -37,6 +38,7 @@ var dialogue_coordinator: DialogueCoordinator
 var _crafting_overlay: CraftingOverlay
 var _inventory_overlay: InventoryOverlay
 var _world_map_overlay: MapOverlay
+var _hacking_overlay: HackingTerminalOverlay
 
 
 func _ready() -> void:
@@ -166,11 +168,10 @@ func show_loading_screen() -> void:
 
 
 func toggle_world_map(p_visible: bool) -> void:
-	if (_pause_widget and _pause_widget.visible) or is_instance_valid(_crafting_overlay) or is_instance_valid(_inventory_overlay):
+	if _is_modal_active() and p_visible:
 		return 
 		
 	if p_visible:
-		if is_instance_valid(_world_map_overlay): return
 		_world_map_overlay = WORLD_MAP_OVERLAY_SCENE.instantiate() as MapOverlay
 		_world_map_overlay.player = player
 		_world_map_overlay.closed.connect(func() -> void: toggle_world_map(false))
@@ -183,22 +184,14 @@ func toggle_world_map(p_visible: bool) -> void:
 			_world_map_overlay.queue_free()
 			_world_map_overlay = null
 			
-		var is_teleporting := false
-		var world_ctrl := world_controller as WorldController
-		if is_instance_valid(world_ctrl):
-			is_teleporting = world_ctrl.is_teleport_spawn
-			
-		if not is_teleporting:
-			player.is_active = true
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_restore_player_control()
 
 
 func toggle_crafting_workshop(p_visible: bool) -> void:
-	if (_pause_widget and _pause_widget.visible) or is_instance_valid(_inventory_overlay) or is_instance_valid(_world_map_overlay):
+	if _is_modal_active() and p_visible:
 		return 
 		
 	if p_visible:
-		if is_instance_valid(_crafting_overlay): return
 		_crafting_overlay = CRAFTING_OVERLAY_SCENE.instantiate() as CraftingOverlay
 		_crafting_overlay.player = player
 		_crafting_overlay.closed.connect(func() -> void: toggle_crafting_workshop(false))
@@ -210,16 +203,14 @@ func toggle_crafting_workshop(p_visible: bool) -> void:
 		if is_instance_valid(_crafting_overlay):
 			_crafting_overlay.queue_free()
 			_crafting_overlay = null
-		player.set("is_active", true)
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_restore_player_control()
 
 
 func toggle_inventory_backpack(p_visible: bool) -> void:
-	if (_pause_widget and _pause_widget.visible) or is_instance_valid(_crafting_overlay) or is_instance_valid(_world_map_overlay):
+	if _is_modal_active() and p_visible:
 		return 
 		
 	if p_visible:
-		if is_instance_valid(_inventory_overlay): return
 		_inventory_overlay = INVENTORY_OVERLAY_SCENE.instantiate() as InventoryOverlay
 		_inventory_overlay.player = player
 		_inventory_overlay.closed.connect(func() -> void: toggle_inventory_backpack(false))
@@ -231,8 +222,54 @@ func toggle_inventory_backpack(p_visible: bool) -> void:
 		if is_instance_valid(_inventory_overlay):
 			_inventory_overlay.queue_free()
 			_inventory_overlay = null
-		player.set("is_active", true)
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_restore_player_control()
+
+
+func toggle_hacking_terminal(p_visible: bool) -> void:
+	if _is_modal_active() and p_visible:
+		return
+		
+	if p_visible:
+		_hacking_overlay = HACKING_TERMINAL_SCENE.instantiate() as HackingTerminalOverlay
+		_hacking_overlay.closed.connect(func() -> void: toggle_hacking_terminal(false))
+		
+		# Observer Binding: Completing the hack completes the active campaign quest automatically!
+		_hacking_overlay.hacked_successfully.connect(func() -> void:
+			var active_q := QuestService.get_active_quest()
+			if active_q != null and active_q.quest_id == "cyber_hacker":
+				QuestService.complete_active_quest(player)
+		)
+		
+		add_child(_hacking_overlay)
+		player.set("is_active", false)
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		if is_instance_valid(_hacking_overlay):
+			_hacking_overlay.queue_free()
+			_hacking_overlay = null
+		_restore_player_control()
+
+
+func _is_modal_active() -> bool:
+	return (
+		(_pause_widget and _pause_widget.visible) or
+		is_instance_valid(_crafting_overlay) or
+		is_instance_valid(_inventory_overlay) or
+		is_instance_valid(_world_map_overlay) or
+		is_instance_valid(_hacking_overlay)
+	)
+
+
+func _restore_player_control() -> void:
+	if not _is_modal_active():
+		var is_teleporting := false
+		var world_ctrl := world_controller as WorldController
+		if is_instance_valid(world_ctrl):
+			is_teleporting = world_ctrl.is_teleport_spawn
+			
+		if not is_teleporting:
+			player.is_active = true
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func toggle_pause_menu(p_visible: bool) -> void:
@@ -241,6 +278,7 @@ func toggle_pause_menu(p_visible: bool) -> void:
 			if is_instance_valid(_crafting_overlay): toggle_crafting_workshop(false)
 			if is_instance_valid(_inventory_overlay): toggle_inventory_backpack(false)
 			if is_instance_valid(_world_map_overlay): toggle_world_map(false)
+			if is_instance_valid(_hacking_overlay): toggle_hacking_terminal(false)
 		_pause_widget.call("toggle_menu", p_visible)
 
 
@@ -266,16 +304,11 @@ func flash_damage_screen() -> void:
 
 func is_any_menu_open() -> bool:
 	return (
-		(_pause_widget and _pause_widget.visible) or
-		is_instance_valid(_crafting_overlay) or
-		is_instance_valid(_inventory_overlay) or
-		is_instance_valid(_world_map_overlay) or 
+		_is_modal_active() or 
 		(is_instance_valid(dialogue_coordinator) and is_instance_valid(dialogue_coordinator.active_dialogue))
 	)
 
 
 ## Toast notification API stub (Delegates execution to sub-widgets dynamically)
 func show_quest_notification(_header: String, _quest_title: String) -> void:
-	# Toast logic moved to a beautiful custom notification alert in the future,
-	# currently handled via standalone toast nodes instantiated on this Canvas.
 	pass
