@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Player/ItemStrategyRegistry.gd
 # Description: Domain Registry mapping item IDs to their respective usage strategies.
-#              Integrates the Chrono-Scythe strategy for environmental restoration.
+#              Integrates the Chrono-Scythe and Chrono-Shift strategies.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -42,6 +42,11 @@ static func _static_init() -> void:
 	# PHASE 14: CHRONO-SCYTHE INTEGRATION
 	# ==========================================================================
 	register_strategy(85, ChronoScytheStrategy.new())
+	
+	# ==========================================================================
+	# PHASE 14, PART 2: TIME-SHIFT RELIC INTEGRATION
+	# ==========================================================================
+	register_strategy(86, ChronoShiftStrategy.new())
 
 
 ## Public Registry API: Binds a custom strategy to an item ID.

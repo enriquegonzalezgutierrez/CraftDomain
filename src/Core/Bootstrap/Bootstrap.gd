@@ -2,8 +2,7 @@
 # Pathfile: res://src/Core/Bootstrap/Bootstrap.gd
 # Description: Central composition root of the application. Orchestrates the 
 #              initialization of global systems, applies user configuration settings,
-#              injects decoupled dependencies, and manages network services,
-#              transitions, and initial Glitch Rift anomalies.
+#              injects decoupled dependencies, and manages network services.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -45,20 +44,6 @@ func _init_telemetry_and_settings() -> void:
 	_load_and_apply_user_settings()
 	TranslationRegistry.initialize_translations()
 	TextureRegistry.initialize_textures()
-	_setup_initial_glitch_rifts()
-
-
-func _setup_initial_glitch_rifts() -> void:
-	# Spawns a diagnostic anomaly near the starting spawn point [8.5, 14.0, 8.5]
-	var start_pos := Vector3(2.0, 6.0, 2.0)
-	var size_span := Vector3(16.0, 16.0, 16.0)
-	var diagnostic_rift := GlitchRiftVolume.new(
-		"diagnostic_anomaly_0",
-		start_pos,
-		size_span,
-		0.3 # 70% low-gravity scaling
-	)
-	glitch_rift_service.register_rift(diagnostic_rift)
 
 
 func _init_registries() -> void:

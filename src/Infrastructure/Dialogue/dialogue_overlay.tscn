@@ -1,6 +1,6 @@
 [gd_scene load_steps=11 format=3]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Dialogue/DialogueOverlay.gd" id="1_script"]
+[ext_resource type="Script" path="res://src/Infrastructure/UI/DialogueOverlay.gd" id="1_script"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_backdrop"]
 bg_color = Color(0, 0, 0, 0.35)

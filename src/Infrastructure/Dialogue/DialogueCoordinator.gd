@@ -4,6 +4,8 @@
 #              blocking/unblocking player input, and routing selections.
 # SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
 #              loops decomposed. Redundant YAGNI dead code purged.
+#              Corrected: Properly instantiates the packed scene (.tscn) instead
+#              of a raw script instance, restoring UI node tree validity.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -11,6 +13,8 @@ class_name DialogueCoordinator
 extends Node
 
 signal dialogue_closed
+
+const DIALOGUE_OVERLAY_SCENE := preload("res://src/Infrastructure/Dialogue/dialogue_overlay.tscn")
 
 var player: CharacterBody3D
 var active_dialogue: DialogueOverlay
@@ -33,7 +37,7 @@ func open_dialogue(node: Resource, speaker_name: String, speaker_node: Character
 		if _active_speaker_node.has_method("start_talking") and is_instance_valid(player):
 			_active_speaker_node.call("start_talking", player)
 	
-	active_dialogue = DialogueOverlay.new()
+	active_dialogue = DIALOGUE_OVERLAY_SCENE.instantiate() as DialogueOverlay
 	add_child(active_dialogue)
 	
 	active_dialogue.choice_selected.connect(_on_dialogue_choice_selected)

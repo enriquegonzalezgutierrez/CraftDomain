@@ -1,7 +1,7 @@
 # ==============================================================================
-# Pathfile: res://src/Infrastructure/Life/GuardEntity.gd
+# Pathfile: res://res://src/Infrastructure/Life/GuardEntity.gd
 # Description: Physical character controller representing a village defender Guard.
-#              Delegates model and material sanitization to GLBModelSanitizer (DRY).
+#              Provides dynamic greeting selection based on centralized biome queries.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -121,7 +121,8 @@ func _select_procedural_greeting_key() -> String:
 	if is_night:
 		return "DIALOGUE_GUARD_NIGHT"
 		
-	var biome_id := _detect_current_biome()
+	# Symmetrical Centralized Biome Query (Resolves the evaluate_coordinate crash)
+	var biome_id := BiomeService.get_biome_id_at_position(global_position, get_parent())
 	match biome_id:
 		4: return "DIALOGUE_GUARD_GLACIERS"   
 		7: return "DIALOGUE_GUARD_NEON"       
@@ -130,18 +131,3 @@ func _select_procedural_greeting_key() -> String:
 			if variety_index == 0:
 				return "DIALOGUE_GUARD_PLAINS_A"
 			return "DIALOGUE_GUARD_PLAINS_B"
-
-
-func _detect_current_biome() -> int:
-	var world_controller_ref: Node = get_parent() as Node
-	var default_biome_id: int = 2
-	
-	if is_instance_valid(world_controller_ref) and "generator" in world_controller_ref:
-		var generator_node: WorldGenerator = world_controller_ref.get("generator") as WorldGenerator
-		if generator_node != null:
-			var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
-			if terrain_noise != null:
-				var profile: BiomeService.BiomeProfile = world_controller_ref.call("evaluate_coordinate", int(round(global_position.x)), int(round(global_position.z)))
-				return profile.biome_id
-				
-	return default_biome_id

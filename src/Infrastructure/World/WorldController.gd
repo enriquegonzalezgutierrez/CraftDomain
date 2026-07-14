@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/WorldController.gd
 # Description: Central World Controller and Redraw Orchestrator. Coordinates
-#              LOD updates, player spawn drop, sub-service ticks, and network 
-#              replication backbones (DIP).
+#              LOD updates, player spawn drop, sub-service ticks, network 
+#              replication, and chronological timeline warp swaps.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -28,7 +28,7 @@ var _streetlight_service: StreetlightService
 var _agriculture_service: AgricultureService
 var _fluid_service: FluidSimulationService
 
-# Multiplayer Replicators & Spawners (Section 10.1)
+# Multiplayer Replicators & Spawners
 var network_spawner: NetworkSpawnerService
 var voxel_replicator: VoxelReplicator
 
@@ -68,7 +68,6 @@ func _initialize_systems() -> void:
 	chunk_lifecycle = ChunkLifecycleService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
 	
-	# Instantiate and register the Spawner and Replicator nodes (Section 10.1)
 	network_spawner = NetworkSpawnerService.new()
 	network_spawner.name = "NetworkSpawnerService"
 	add_child(network_spawner)
@@ -175,6 +174,29 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos)
 	_apply_procedural_gravity_on_block_broken(global_pos, type)
 	block_modified.emit(global_pos, type)
+
+
+## Concrete Implementation: Solves chronological timeline warp swap
+func swap_world_timeline(timeline_val: int) -> void:
+	var target := timeline_val as WorldState.Timeline
+	if is_instance_valid(world_state):
+		world_state.swap_timeline(target)
+		
+		# Set spawn flag to force recalculation of terrain height on completion
+		is_teleport_spawn = true
+		if is_instance_valid(player):
+			player.set("is_active", false)
+			player.position.y = world_state.get_highest_solid_y(floori(player.position.x), floori(player.position.z))
+			
+			var p_pos := player.global_position
+			_target_spawn_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z)))
+			
+			var hud_node: PlayerHUD = player.get("hud") as PlayerHUD
+			if is_instance_valid(hud_node):
+				hud_node.show_loading_screen()
+			
+			# Play chronological warp thud sound
+			AudioService.play_sfx_static("chest_open", p_pos)
 
 
 func _trigger_adjacent_boundary_redraws(global_pos: Vector3i, chunk_pos: Vector3i) -> void:
@@ -345,3 +367,14 @@ class WorldModifierAdapter extends IWorldModifier:
 
 	func get_last_hit_fractional_y() -> float:
 		return last_hit_fractional_y
+		
+	func get_active_timeline() -> int:
+		if is_instance_valid(_controller):
+			var ws := _controller.get("world_state") as WorldState
+			if is_instance_valid(ws):
+				return int(ws.active_timeline)
+		return 0
+
+	func swap_world_timeline(timeline: int) -> void:
+		if is_instance_valid(_controller) and _controller.has_method("swap_world_timeline"):
+			_controller.call("swap_world_timeline", timeline)
