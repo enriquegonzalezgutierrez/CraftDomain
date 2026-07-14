@@ -4,7 +4,7 @@
 #              and prop factories, completely freeing Bootstrap from carrying
 #              100+ lines of raw asset paths (SRP / OCP).
 # SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 15 lines.
+#              loops decomposed. Every method strictly remains below 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -75,16 +75,32 @@ static func _preload_civilian_humanoids() -> void:
 
 
 static func _preload_props() -> void:
+	_preload_structural_props()
+	_preload_vegetation_props()
+
+
+static func _preload_structural_props() -> void:
 	_props_scenes[200] = preload("res://src/Infrastructure/World/chest_entity.tscn") 
 	_props_scenes[202] = preload("res://src/Infrastructure/World/streetlight_entity.tscn")
 	_props_scenes[203] = preload("res://src/Infrastructure/World/campfire_entity.tscn")
 	_props_scenes[213] = preload("res://src/Infrastructure/World/wishing_well_entity.tscn")
 	_props_scenes[215] = preload("res://src/Infrastructure/World/barrel_entity.tscn")
-	
-	# Phase 3: High-Performance Voxel Vegetation Props (.tscn)
+
+
+static func _preload_vegetation_props() -> void:
 	_props_scenes[220] = preload("res://src/Infrastructure/World/dandelion_prop.tscn")
 	_props_scenes[221] = preload("res://src/Infrastructure/World/poppy_prop.tscn")
 	_props_scenes[222] = preload("res://src/Infrastructure/World/orchid_prop.tscn")
 	_props_scenes[223] = preload("res://src/Infrastructure/World/tall_grass_prop.tscn")
 	_props_scenes[224] = preload("res://src/Infrastructure/World/dead_bush_prop.tscn")
 	_props_scenes[225] = preload("res://src/Infrastructure/World/cactus_prop.tscn")
+	_props_scenes[226] = preload("res://src/Infrastructure/World/allium_prop.tscn")
+	_props_scenes[227] = preload("res://src/Infrastructure/World/bluebell_prop.tscn")
+	_props_scenes[228] = preload("res://src/Infrastructure/World/fern_prop.tscn")
+	_props_scenes[229] = preload("res://src/Infrastructure/World/sugar_cane_prop.tscn")
+	_props_scenes[230] = preload("res://src/Infrastructure/World/tulip_red_prop.tscn")
+	_props_scenes[231] = preload("res://src/Infrastructure/World/tulip_orange_prop.tscn")
+	_props_scenes[232] = preload("res://src/Infrastructure/World/tulip_pink_prop.tscn")
+	_props_scenes[233] = preload("res://src/Infrastructure/World/tulip_white_prop.tscn")
+	_props_scenes[234] = preload("res://src/Infrastructure/World/cornflower_prop.tscn")
+	_props_scenes[235] = preload("res://src/Infrastructure/World/daisy_prop.tscn")

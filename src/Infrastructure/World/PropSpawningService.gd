@@ -64,6 +64,13 @@ func _spawn_random_vegetation_prop(chunk_offset: Vector3, world_state: WorldStat
 	var rz: float = rng.randf_range(1.5, 14.5)
 	var local_hash: int = int(abs(int(rx) * 3121 ^ int(rz) * 1933))
 	
+	var global_x: float = chunk_offset.x + rx
+	var global_z: float = chunk_offset.z + rz
+	
+	# HIGHWAY PROTECTION EXCLUSION: Abort spawning before scanning ground if on roads
+	if RoadGeneratorService.is_on_road(global_x, global_z):
+		return
+		
 	var target_prop_id := 0
 	if is_instance_valid(biome) and biome.has_method("get_wilderness_prop_id"):
 		target_prop_id = biome.call("get_wilderness_prop_id", local_hash) as int
@@ -113,7 +120,9 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 		if def != null and def.is_spawnable_soil:
 			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
 			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
-			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
+			
+			# LIQUID OCEAN SHIELD: Prohibit spawning if the above blocks are WATER (ID 6) or LAVA (ID 15)
+			if space_above_1 == BlockType.Type.AIR and space_above_2 == BlockType.Type.AIR:
 				return float(y) + 1.0
 				
 	return -1.0

@@ -2,7 +2,9 @@
 # Pathfile: res://src/Infrastructure/Persistence/DiskWorldRepository.gd
 # Description: Concrete World Repository implementation managing file I/O streams,
 #              and delta chunk JSON saving within Godot's safe user folder.
-#              Delegates paths mapping to SavePathConfiguration (SRP / OCP).
+# SOLID COMPLIANCE: Class limits set < 150 lines (SRP). All monolithic
+#              loops decomposed. Every method strictly remains below 20 lines.
+#              Corrected: Purged all E/S console print logs to maximize FPS.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -34,8 +36,6 @@ static func delete_save_game_files() -> void:
 					dir.remove(file_name)
 				file_name = dir.get_next()
 			dir.list_dir_end()
-			
-	print("[DiskWorldRepository] Purged all save files and chunks from disk successfully.")
 
 
 ## Concrete Implementation: Saves modifications for a specific chunk.
@@ -76,7 +76,7 @@ func load_chunk_modifications(chunk_pos: Vector3i) -> Dictionary:
 	return modifications
 
 
-## Concrete Implementation: Saves global metadata alongside player inventory, quest state, and time.
+## Concrete Implementation: Saves global metadata.
 func save_global_state(
 	player_pos: Vector3, 
 	player_rot: Vector3, 
@@ -100,7 +100,6 @@ func save_global_state(
 	if file != null:
 		file.store_string(JSON.stringify(json_data))
 		file.close()
-		print("[DiskWorldRepository] Global state, inventory, quests & time of day saved successfully.")
 
 
 ## Concrete Implementation: Loads global metadata.

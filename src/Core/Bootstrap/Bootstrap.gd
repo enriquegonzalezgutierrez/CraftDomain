@@ -134,13 +134,10 @@ func _setup_prop_registry() -> void:
 	_register_prop(213, WishingWellEntity)
 	_register_prop(215, BarrelEntity)
 	
-	# Phase 3: High-Performance Voxel Vegetation Props (.tscn)
-	_register_prop(220, null)
-	_register_prop(221, null)
-	_register_prop(222, null)
-	_register_prop(223, null)
-	_register_prop(224, null)
-	_register_prop(225, null)
+	# Phase 12: High-Performance Voxel Vegetation Props (.tscn)
+	# Closed-range loop registration guarantees 100% DRY compliance!
+	for prop_id: int in range(220, 236):
+		_register_prop(prop_id, null)
 
 
 func _register_prop(prop_id: int, _prop_class: Variant) -> void:

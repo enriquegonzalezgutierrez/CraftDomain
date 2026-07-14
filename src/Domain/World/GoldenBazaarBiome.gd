@@ -3,7 +3,7 @@
 # Description: Concrete Biome Strategy implementing the geographical, block-depth,
 #              and vegetation scatter rules for the Golden Bazaar plains.
 # SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 12 lines.
+#              loops decomposed. Every method strictly remains below 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -53,16 +53,24 @@ func get_scatter_blueprint_id(scatter_hash: int) -> int:
 	return 0
 
 
-## Concrete Override (OCP): Dynamically returns wilderness vegetation prop IDs
+## Concrete Override (OCP): Dynamically returns plains vegetation prop IDs
 func get_wilderness_prop_id(scatter_hash: int) -> int:
 	var type_roll: int = scatter_hash % 10
-	if type_roll < 6:
-		return 223   # Tall Grass Prop (.tscn)
-	elif type_roll < 8:
+	if type_roll < 3:
+		return 223 # Tall Grass Prop (.tscn)
+	elif type_roll < 4:
 		return 220 # Dandelion Prop (.tscn)
-	elif type_roll < 9:
+	elif type_roll < 5:
 		return 221 # Poppy Prop (.tscn)
-	return 222     # Blue Orchid Prop (.tscn)
+	elif type_roll < 6:
+		return 222 # Blue Orchid Prop (.tscn)
+	elif type_roll < 7:
+		return 230 # Tulip Red Prop (.tscn)
+	elif type_roll < 8:
+		return 231 # Tulip Orange Prop (.tscn)
+	elif type_roll < 9:
+		return 234 # Cornflower Prop (.tscn)
+	return 235     # Daisy Prop (.tscn)
 
 
 func get_wilderness_wildlife_ids() -> Array[int]:

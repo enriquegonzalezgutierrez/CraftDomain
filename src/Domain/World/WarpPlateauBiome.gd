@@ -3,7 +3,7 @@
 # Description: Concrete Biome Strategy implementing the geographical, block-depth,
 #              and vegetation scatter rules for the Warp Plateau.
 # SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 12 lines.
+#              loops decomposed. Every method strictly remains below 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -51,11 +51,15 @@ func get_scatter_blueprint_id(scatter_hash: int) -> int:
 ## Concrete Override (OCP): Dynamically returns plateau vegetation prop IDs
 func get_wilderness_prop_id(scatter_hash: int) -> int:
 	var type_roll: int = scatter_hash % 10
-	if type_roll < 5:
+	if type_roll < 4:
 		return 223 # Tall Grass Prop (.tscn)
-	elif type_roll < 8:
+	elif type_roll < 6:
 		return 220 # Dandelion Prop (.tscn)
-	return 221     # Poppy Prop (.tscn)
+	elif type_roll < 8:
+		return 221 # Poppy Prop (.tscn)
+	elif type_roll < 9:
+		return 232 # Tulip Pink Prop (.tscn)
+	return 233     # Tulip White Prop (.tscn)
 
 
 func get_wilderness_wildlife_ids() -> Array[int]:

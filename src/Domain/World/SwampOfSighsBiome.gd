@@ -3,7 +3,7 @@
 # Description: Concrete Biome Strategy implementing the geographical, block-depth,
 #              and vegetation scatter rules for the murky swamp region (Swamp of Sighs).
 # SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 12 lines.
+#              loops decomposed. Every method strictly remains below 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -40,9 +40,11 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 ## Concrete Override (OCP): Dynamically returns swamp vegetation prop IDs
 func get_wilderness_prop_id(scatter_hash: int) -> int:
 	var type_roll: int = scatter_hash % 10
-	if type_roll < 6:
-		return 223 # Tall Grass Prop (.tscn)
-	elif type_roll < 8:
+	if type_roll < 4:
+		return 228 # Swamp Fern Prop (.tscn)
+	elif type_roll < 7:
+		return 229 # Sugar Cane Prop (.tscn)
+	elif type_roll < 9:
 		return 222 # Blue Orchid Prop (.tscn)
 	return 224     # Dead Bush Prop (.tscn)
 

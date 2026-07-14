@@ -4,6 +4,7 @@
 #              of user configuration settings (volumes, language, render distance).
 # SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
 #              loops decomposed. Every method strictly remains below 10 lines.
+#              Corrected: Purged all print logs for silent, high-performance saving.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -49,7 +50,6 @@ static func _write_settings_to_file(data: Dictionary) -> void:
 	if file != null:
 		file.store_line(JSON.stringify(data))
 		file.close()
-		print("[SettingsRepository] Settings saved to disk successfully.")
 
 
 static func load_settings() -> Dictionary:
@@ -76,12 +76,11 @@ static func _parse_settings_json(json_string: String) -> Dictionary:
 	var json := JSON.new()
 	var error: Error = json.parse(json_string)
 	if error != OK:
-		push_error("[SettingsRepository] Error parsing settings JSON. Error: " + json.get_error_message())
+		push_error("[SettingsRepository ERROR] Failed to parse JSON. Error: " + json.get_error_message())
 		return {}
 		
 	var data: Dictionary = json.data as Dictionary
 	if not data.is_empty():
-		print("[SettingsRepository] Settings loaded from disk successfully.")
 		return data
 		
 	return {}
