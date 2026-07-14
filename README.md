@@ -2,7 +2,7 @@
 
 ![MainMenu Background](src/Infrastructure/UI/Assets/menu_background.png)
 
-A high-performance, commercial-grade infinite procedural voxel sandbox game engine built in **Godot 4.6.3** adhering to strict **Domain-Driven Design (DDD)** principles, Conventional Commits tracking, and rigorous **SOLID** software engineering compliance. Architected to demonstrate a highly decoupled, modular, and extensible system capable of maintaining a locked, rock-solid **120 FPS** with smooth frame pacing in massive, thread-populated 3D environments.
+A high-performance infinite procedural voxel sandbox game engine built in **Godot 4.6.3** adhering to strict **Domain-Driven Design (DDD)** principles, Conventional Commits tracking, and rigorous **SOLID** software engineering compliance. Architected to demonstrate a highly decoupled, modular, and extensible system capable of maintaining a locked **120 FPS** with smooth frame pacing in massive, thread-populated 3D environments.
 
 ---
 
@@ -97,7 +97,7 @@ graph LR
 ---
 
 ### 4. Decoupled AI Brain & Steering Strategy
-Humanoids and wildlife delegates sensory scans and pathing decisions to pure Domain strategies. Walk cycle interpolations and obstacle-jumping are offloaded to lightweight components:
+Humanoids and wildlife delegate sensory scans and pathing decisions to pure Domain strategies. Walk cycle interpolations and obstacle-jumping are offloaded to lightweight components:
 
 ```mermaid
 graph TD
@@ -156,7 +156,7 @@ sequenceDiagram
 
 ## 🛡️ SOLID Software Engineering Compliance
 
-The architecture of CraftDomain is highly optimized to comply with the five SOLID software engineering design principles:
+The architecture of CraftDomain is optimized to comply with the five SOLID software engineering design principles:
 
 ### 1. Single Responsibility Principle (SRP)
 Every class has a single, strictly defined responsibility, and therefore only one reason to change.
@@ -207,7 +207,7 @@ To prevent Main Thread stutters and lag when placing or breaking blocks, CraftDo
 * **Object Pooling:** Inactive chunks are stored in `_chunk_node_pool` and recycled dynamically instead of triggering expensive Garbage Collection `queue_free()` sweeps.
 
 ### 3. Decoupled AI Strategy Pattern & Throttling
-* **Strategy Pattern AI (`IAIBehavior`):** Extracted specialized entity AI routines from physical scripts into distinct strategies (e.g. `GargoyleAIBehavior`, `GoblinAIBehavior`, `AmphibiousAIBehavior`, `MinerAIBehavior`, `CatAIBehavior`, `DruidAIBehavior`). Keeping physical entities strictly focused on translations while delegating logical decisions to the Domain.
+* **Strategy Pattern AI (`IAIBehavior`):** Extracted specialized entity AI routines from physical scripts into distinct strategies (e.g. `GargoyleAIBehavior`, `GoblinAIBehavior`, `AmphibiousAIBehavior`, `MinerAIBehavior`, `CatAIBehavior`, `DruidAIBehavior`, `LithicLurkerAIBehavior`). Keeping physical entities strictly focused on translations while delegating logical decisions to the Domain.
 * **LOD AI Tick Rate:** AI sensory sweeps, threat scans, and pathfinding calculations scale their update intervals dynamically based on distance to the player: Close Range (<15m) updates at 20Hz, Mid Range (15-35m) at 4Hz, and Far Range (>35m) at 0.5Hz, reducing village CPU overhead by over 95%.
 * **Smooth Vector Continuation:** Walk-cycle vector interpolations and local obstacle-jumping are processed every frame on the physics thread, ensuring entities continue to slide smoothly on screen even during throttled frames.
 * **$O(1)$ Targeting:** Active entities scan for targets by querying Godot's C++ native group registry (`"hostiles"` and `"passives"`), eliminating the performance spikes of old $O(N)$ child-scanning loops.
@@ -220,6 +220,17 @@ To prevent Main Thread stutters and lag when placing or breaking blocks, CraftDo
 * **Alpha-Blend Bypass:** Distant chunks automatically switch translucent materials (Water, Glass, Clouds, Ice) to `TRANSPARENCY_DISABLED`. This bypasses expensive depth-sorting and alpha-blending passes on the GPU horizon, saving massive pixel fillrate overhead.
 * **Sub-pixel Hermetic Sealing:** Transparent liquid and slab vertices are mathematically scaled outward from their center by a factor of `1.002` (2 millimeters). This tightly overlaps chunk borders, perfectly fixing all Z-fighting and Z-clipping leaks.
 * **Unified Mesh Baker (`ChunkMesher`):** Dispatches water, lava, and stone slab meshes inside a high-performance single-pass loop. Pre-bakes physical face normals (`generate_normals()`) on the CPU before committing buffers, securing proper PBR specularity and enabling precise vertex-wave displacement (`NORMAL.y > 0.5`) in GPU shaders.
+
+---
+
+## 🗺️ Handcrafted Global Mega-Structures
+The world features 6 handcrafted global landmarks, seamlessly integrated with sloped-terrain blending:
+*   **The Grand Castle `[200, 200]`:** A colossal two-story stone fortress featuring a majestic double-height Throne Hall, symmetrical rising double-wing staircases, private chambers (King's bedroom with cloud sheets, Queen's suite, and War Council), a high-security Royal Treasury, and crenellated rooftop battlements. Fast-travel drops are calibrated on the outer stone bridge.
+*   **The Seaport & Galleon `[-150, 0]`:** A coastal port featuring wood-planked boardwalks, stacked cargo, a cozy two-story harbor tavern ("The Salty Sailor Inn" with bar and rooms), and a moored three-deck Galleon Ship containing crew bunks, cargo hold, and a captain's cabin with glass popa windows.
+*   **The Nether Fortress `[-300, -300]`:** A tattered volcanic brick citadel flanked by hot concentric lava canals and stone bridges, guarding a colossal double-height central Portal Sanctuary and an elevated treasure pedestal.
+*   **Steve's Settlement `[300, -300]`:** A playable village spanned by a giant mossy parabolic stone archway, central water fountain, irrigated wheat fields, a two-story log lodge, and a medieval windmill with fully accessible interior floors.
+*   **Desert Oasis Pyramid `[-150, 250]`:** A stepped 10-tier sandstone pyramid built over water, housing a central pharaoh's sarcophagus altar, comfortable side stone stairs, and an enclosed Pharaoh's Vault containing the Loot Chest sitting on a brick pedestal.
+*   **The Lithic Lurker Lair `[-100, 100]`:** A deep volcanic basalt crater arena with bubbling geothermal lava pools, guarding the ancient Lava Heart and acting as the combat sanctuary for the Act I Boss.
 
 ---
 

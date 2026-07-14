@@ -153,12 +153,14 @@ Villages are actively protected by tactical defenders (Guards and Golems) which 
 *   **Iron Golems:** Colossal stone giants covered in ivy. If a zombie comes near, they execute a heavy double-arm launch attack, dealing massive damage and throwing the zombie **9.5 meters into the air**.
 *   **Guards:** Armored knights with a sheathed iron sword and wooden shield. They proactively draw their weapons, sprint towards hostiles, and execute coordinated striking overwatch cooldowns.
 
-### Player Combat, Karma & Polymorphic Loot
-1.  Press **Key 8** to hold your **Wooden Sword** (Slot 7).
-2.  Aim at a zombie and **Left-Click** to swing. The action plays a metallic `hit_sword` swish sound and a physical hand animation.
-3.  **Village Reputation (Karma Engine):** Hitting peaceful civilians deducts `-15 reputation points` from your karma, and killing them deducts an additional `-35 points` (total of `-50`). If your reputation falls to **Wanted Outlaw** status (reputation <= -50), all village guards and golems will become hostile and attack you on sight!
-4.  **Trade Price Adjustments:** Your karma modifies Merchant bartering prices dynamically: high reputation grants up to **30% discounts**, while poor reputation increases prices by up to 30%.
-5.  Zombies take 3 hits to defeat. Upon death, enemies and fauna shrink, emit a puff of grey GPU smoke, and polymorphically drop loot (Meat, Leaves, Sand, Lava) directly into your bag.
+### The Lithic Lurker (Act I Boss Battle)
+Located deep within the volcanic basalt crater of the Craggy Peaks (`[-100, 100]`), the **Lithic Lurker** is a massive, Null-corrupted rock elemental guarding the Lava Heart.
+*   **Combat States & Phases:**
+    1.  **Dormant Sleep:** Sits completely motionless in the center of the basalt arena. Approaching within 20 meters triggers an echoing, glitched awakening roar.
+    2.  **Heavy Pursuit:** Slowly marches toward the player. During this phase, its dense stone armor makes it completely immune to knockback forces and standard sword damage.
+    3.  **Earthquake Ground-Pound:** When close (<5m), it leaps high into the air and slams down on the basalt, creating a massive dust shockwave, dealing heavy AoE damage, and triggering a localized screen-shake camera trauma.
+	4.  **Vulnerable Stun (Exposed Core):** The ground-pound impact temporarily destabilizes the boss's joints, stunning it for 3.5 seconds. Its glowing cyan chest core becomes exposed. This brief window is your only opportunity to deal standard damage!
+*   **Defeating the Boss:** It takes 8 successful strikes on its exposed core to crack the basalt armor. Upon crumbling, it drops 1x **Lava Bucket** (representing the Lava Heart) and 5x **Diamonds** directly into your inventory. Take the Lava Heart back to Valerius the Merchant to obtain the Golem Activation Core!
 
 ---
 
@@ -198,13 +200,14 @@ Pressing **`C`** opens a dual-pane **Blueprint Taller & Crafting Workshop** over
 
 ---
 
-## 10. Handcrafted Global Mega-Structures (3D Overhaul)
-The world features 5 handcrafted global landmarks, seamlessly integrated with sloped-terrain blending:
+## 10. Handcrafted Global Mega-Structures
+The world features 6 handcrafted global landmarks, seamlessly integrated with sloped-terrain blending:
 *   **The Grand Castle `[200, 200]`:** A colossal two-story stone fortress featuring a majestic double-height Throne Hall, symmetrical rising double-wing staircases, private chambers (King's bedroom with cloud sheets, Queen's suite, and War Council), a high-security Royal Treasury, and crenellated rooftop battlements. Fast-travel drops are calibrated on the outer stone bridge.
 *   **The Seaport & Galleon `[-150, 0]`:** A coastal port featuring wood-planked boardwalks, stacked cargo, a cozy two-story harbor tavern ("The Salty Sailor Inn" with bar and rooms), and a moored three-deck Galleon Ship containing crew bunks, cargo hold, and a captain's cabin with glass popa windows.
 *   **The Nether Fortress `[-300, -300]`:** A tattered volcanic brick citadel flanked by hot concentric lava canals and stone bridges, guarding a colossal double-height central Portal Sanctuary and an elevated treasure pedestal.
 *   **Steve's Settlement `[300, -300]`:** A playable village spanned by a giant mossy parabolic stone archway, central water fountain, irrigated wheat fields, a two-story log lodge, and a medieval windmill with fully accessible interior floors.
 *   **Desert Oasis Pyramid `[-150, 250]`:** A stepped 10-tier sandstone pyramid built over water, housing a central pharaoh's sarcophagus altar, comfortable side stone stairs, and an enclosed Pharaoh's Vault containing the Loot Chest sitting on a brick pedestal.
+*   **The Lithic Lurker Lair `[-100, 100]`:** A deep basalt-crater arena with scattered volcanic lava pools and raised stone rims, guarding the ancient Lava Heart and serving as the enclosed tactical battleground for the Act I Boss.
 
 ---
 

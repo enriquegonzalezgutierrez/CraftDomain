@@ -41,7 +41,7 @@ This document details the completed development phases and outlines the future m
 *   **100% Compiled Structure Registry (OCP/YAGNI Overhaul):** Refactored all data-driven layout JSON templates (`mine_pillar`, `harbor_pier`, `market_cabin`, `ice_temple`, `neon_pyramid`, and `warp_pipe`) into dynamically adapting compiled GDScript blueprints (`IStructureBlueprint.gd`). Completely deleted `TemplateStructureBlueprint.gd` and raw structures assets to achieve pure, zero-I/O RAM-based generation.
 *   **Adaptive Placements:** Enhanced the structural blueprints with vertical column scanning to procedurally build solid foundations down to sloped terrain or seabed depths, preventing floating blocks on hillsides or sea cliffs.
 *   **Playable 3D Handcrafted Mega-Structures:** Completely remodeled fixed multi-chunk Points of Interest (POIs) with playable 3D interiors, multi-floor compartments, and wide, comfortable staircase climbs:
-	*   *The Grand Castle `[200, 200]`:* A colossal two-story fortress containing a cathedral-like double-height Throne Hall, majestic 3-block wide double-rising stairs, upper suites (King's room with cloud bed, Queen's, and War Council), a high-security Royal Treasury with pedestals, and active steps leading to crenellated rooftop battlements. Recalibrated fast travel to land safely on the entrance bridge.
+	*   *The Grand Castle `[200, 200]`:* A colossal two-story fortress containing a cathedral-like double-height Throne Hall, majestic 3-block wide double-rising stairs, upper suites (King's bedroom with cloud bed, Queen's, and War Council), a high-security Royal Treasury with pedestals, and active steps leading to crenellated rooftop battlements. Recalibrated fast travel to land safely on the entrance bridge.
 	*   *The Seaport & Galleon `[-150, 0]`:* Expanded docks with stacked cargo and a 2-story tavern ("The Salty Sailor Inn" with bar counters and stairs), and a moored three-deck Galleon Ship containing crew bunks, cargo hold, and quarterdeck Captain's Cabin with glass popa windows.
 	*   *The Nether Outpost `[-300, -300]`:* A tattered lava citadel flanked by concentric magma canals and bridges, housing a massive double-height Portal Sanctuary and an elevated treasury room.
 	*   *Steve's Cabin `[300, -300]`:* Redesigned into a detailed village spanned by a giant parabolic mossy stone archway, central plaza fountain, tilled wheat plots, a 2-story cozy log lodge, and a towering windmill with fully accessible interior floors.
@@ -81,7 +81,7 @@ This document details the completed development phases and outlines the future m
 *   **Fluid Cellular Automata:** Implemented high-performance, queue-based fluid dynamics in `FluidSimulationService.gd` to simulate water and lava gravity flows, lateral spreading, and realistic stone-freezing fusions when opposing fluid blocks intersect.
 *   **Unified CPU Normal Baking:** Restored `generate_normals()` inside `ChunkMesher.gd` before committing custom fluid meshes, correcting PBR speculation and enabling vertex-wave displacement (`NORMAL.y > 0.5`) inside the external water shader (`liquid_water.gdshader`).
 
-### 🌟 Milestone 15: Foundational Narrative Campaign & Lore Synchronization
+### Milestone 15: Foundational Narrative Campaign & Lore Synchronization
 *   **Lore Bible Compilation:** Established the complete cosmology, space-time mechanics, character profiles, and faction ideologies inside [docs/lore/00_MASTER_BIBLE.md](docs/lore/00_MASTER_BIBLE.md).
 *   **Act I Script Completed:** Designed Chapters I through IV inside [docs/lore/01_ACT_I_DAWN.md](docs/lore/01_ACT_I_DAWN.md), mapping the shipwreck, Maelor's dialogue, Valerius's alchemical chicken story, and Golem Aethelgard's activation.
 *   **Act II Script Completed:** Compiled the search for the relics inside [docs/lore/02_ACT_II_RELICS.md](docs/lore/02_ACT_II_RELICS.md), including canyon glider mechanics, redwood Sages, and Neon Ruins hacking consoles.
@@ -92,21 +92,13 @@ This document details the completed development phases and outlines the future m
 *   **Voxel Metaphysics and Crafting:** Documented the block composition states and alchemical transmutation recipes inside [docs/lore/07_ALCHEMY_CRAFTING.md](docs/lore/07_ALCHEMY_CRAFTING.md).
 *   **Branching Dialogues and Economy:** Mapped situational civilian greetings, guard warnings, and reputation merchant discounts inside [docs/lore/08_DIALOGUE_GRIMOIRE.md](docs/lore/08_DIALOGUE_GRIMOIRE.md).
 
-### 🌟 Milestone 17: 100% Decoupled AI Strategy Integration (Backlog Completed)
-*   **AI Strategy Overhaul:** Decoupled 100% of the remaining unique entity and creature behaviors from Infrastructure physical controllers into pure, testable Domain strategy classes (`src/Domain/Life/...`):
-	*   `AmphibiousAIBehavior.gd` (Sea Turtles & Beach Crabs): Coordinates real-time water blocks scanning, swim hover sways, and sand crawl speed penalties.
-	*   `GolemAIBehavior.gd`: Implements pro-active overwatch scanning (targeting zombies or outlaw players) and triggers heavy double-arm launch strikes.
-	*   `CyberCitizenAIBehavior.gd` (Androids): Coordinates paved road alignments and timed 90-degree robotic secure sweeps emitting unshaded cyan lasers.
-	*   `MerchantAIBehavior.gd`: Manages dynamic daily schedules (tending shopfront stalls by day and sitting inside tavern inn shelters to count gold coins by night).
-	*   `RaccoonAIBehavior.gd`: Drives nighttime scavenging, searching for active village Barrels/Chests, scratching them with dynamic wood-chip particles, and procedurally breaking them to steal loot.
-	*   `CanineAIBehavior.gd` (Growlithe): Coordinates volcanic heatseeking near Lava and active flame ember barks.
-	*   `MonkeyAIBehavior.gd`: Manages high-altitude leaves clambering and playful vertical twirl backflips.
-	*   `AvianAIBehavior.gd` (Yellow Birds & Parrots): Coded smooth 3D thermal gliding circle rings and gradual descent perching flatly on top of leaves.
-	*   `OctopusAIBehavior.gd`: Drives pulsing jet-propulsion contractions followed by drift gliding, and sprays a thick black ink cloud when damaged to flee.
-	*   `ElephantAIBehavior.gd`: Coded ponderous slow strides, knockback immunities, and local player camera shake.
-	*   `FoxAIBehavior.gd`: Implements sneaking crouching heights and high parabolic pounce leaps to hunt chickens.
-	*   `VillagerAIBehavior.gd`: Coordinates village social gossip loops (seeking peers to stood in circles emitting cyan dialogue balloons) and A* weather/night shelter retreats.
-*   **Physics Controllers Purification:** Refactored all entity physics scripts (`PassiveEntity.gd` and `NPCAIComponent.gd` to under 250-260 lines) to act as pure SRP visual and translation presenters, removing all direct, inline logical variables, and injecting decoupled sub-components (`EntityUIComponent.gd` and `NPCObstacleSteering.gd`).
+### Milestone 16: Act I Boss Integration (Completed)
+*   **The Lithic Lurker Boss Battle:** Successfully coded and integrated the first multi-phase boss encounter of the campaign. Implemented `LithicLurkerAIBehavior.gd` (4-phase state machine with core-exposed stunned window vulnerabilities), `LithicLurkerModelBuilder.gd` (procedural dark basalt sculptor with glowing emissive core details), and `LithicLurkerEntity.gd` (controlling physical combat, AoE ground-pound impacts, and volcanic drops).
+*   **Basalt Crater Arena:** Created `LithicLurkerLairMegaStructure.gd`, a handcrafted volcanic crater structure located at fixed coordinates `[-100, 100]` under the Craggy Peaks, complete with scattered lava pools, to spawn and anchor the boss in the world.
+
+### Milestone 17: 100% Decoupled AI Strategy Integration (Backlog Completed)
+*   **AI Strategy Overhaul:** Decoupled 100% of the remaining unique entity and wildlife behaviors from Infrastructure physical controllers into pure, testable Domain strategy classes (`src/Domain/Life/...`).
+*   **Physics Controllers Purification:** Refactored all entity physics scripts (`PassiveEntity.gd` and `NPCAIComponent.gd`) to act as pure visual and translation presenters, removing all direct, inline logical variables, and injecting decoupled sub-components (`EntityUIComponent.gd` and `NPCObstacleSteering.gd`).
 *   **Humanoid DRY Centralization:** Purged the duplicated 12-line coordinate-seeded `_detect_current_biome()` method from all 6 specialized humanoids, centralizing geography queries polimorphically inside `BiomeService.get_biome_id_at_position()`.
 
 ---
@@ -131,8 +123,8 @@ This document details the completed development phases and outlines the future m
 *   **External JSON Mod Loader:** Open up the `CampaignRegistry`, `RecipeRegistry`, and `BlockLibrary` to scan and merge external JSON files from an isolated `user://mods/` directory on startup.
 *   **Isolated Strategy Plugin Loader:** Architect a sandboxed script-loader utilizing Godot's built-in `Plugin` or isolated `GDScript` loaders to allow modders to register custom block strategies and biome routing entirely without modifying the engine's source code.
 
-### 🏹 Milestone 16: Campaign Integration & Advanced Narrative Mechanics
+### 🏹 Milestone 16: Campaign Integration & Advanced Narrative Mechanics (Remaining Backlog)
 *   **Voxel Glider Flight Controller:** Develop a high-altitude aerodynamic controller inside `PlayerController.gd` to translate vertical kinetic energy into smooth horizontal soaring.
 *   **Temporal Chrono-Shift Engine:** Implement a chunk-wide historical snapshot loader allowing the player to swap voxel terrains to past timelines during Act II puzzle resolutions.
 *   **Silicon Terminal Hacking Minigame:** Program a modular, graph-based overlapping node UI enabling cyber-hacking mechanics within the Neon Ruins.
-*   **Multi-Phase Boss Battles:** Design state machine AI patterns for the Lithic Lurker (Act I), the Obsidian Colossus (Act III), and the reality-mutating Weaver Malakor (Act IV).
+*   **Multi-Phase Boss Battles:** Design state machine AI patterns for the Obsidian Colossus (Act III), and the reality-mutating Weaver Malakor (Act IV).
