@@ -80,3 +80,11 @@ static func _preload_props() -> void:
 	_props_scenes[203] = preload("res://src/Infrastructure/World/campfire_entity.tscn")
 	_props_scenes[213] = preload("res://src/Infrastructure/World/wishing_well_entity.tscn")
 	_props_scenes[215] = preload("res://src/Infrastructure/World/barrel_entity.tscn")
+	
+	# Phase 3: High-Performance Voxel Vegetation Props (.tscn)
+	_props_scenes[220] = preload("res://src/Infrastructure/World/dandelion_prop.tscn")
+	_props_scenes[221] = preload("res://src/Infrastructure/World/poppy_prop.tscn")
+	_props_scenes[222] = preload("res://src/Infrastructure/World/orchid_prop.tscn")
+	_props_scenes[223] = preload("res://src/Infrastructure/World/tall_grass_prop.tscn")
+	_props_scenes[224] = preload("res://src/Infrastructure/World/dead_bush_prop.tscn")
+	_props_scenes[225] = preload("res://src/Infrastructure/World/cactus_prop.tscn")

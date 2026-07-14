@@ -3,6 +3,7 @@
 # Description: Domain Generator responsible for procedurally carving chunk block data.
 #              SOLID COMPLIANCE: Class limits set < 300 lines (SRP). All monolithic
 #              loops decomposed. Every method strictly remains below 15 lines.
+#              Corrected: Purged experimental block vegetation casts.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================

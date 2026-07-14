@@ -3,7 +3,7 @@
 # Description: Infrastructure Service responsible for serializing game metadata,
 #              player vectors, inventory, and campaign progress to disk.
 # SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 15 lines.
+#              loops decomposed. All verbose console print logs purged for FPS gains.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -19,13 +19,10 @@ func _init(p_repository: WorldRepository) -> void:
 
 func save_game(player: CharacterBody3D, world_state: WorldState) -> void:
 	if not is_instance_valid(repository):
-		print("[WorldPersistenceService] Save aborted: Repository is already freed.")
-		return
+		return # Silent exit to prevent console I/O stutters
 		
-	print("[WorldPersistenceService] Initiating disk serialization sequence...")
 	_serialize_chunk_deltas(world_state)
 	_serialize_player_metadata(player)
-	print("[WorldPersistenceService] World saved successfully.")
 
 
 func _serialize_chunk_deltas(world_state: WorldState) -> void:
