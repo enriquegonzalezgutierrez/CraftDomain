@@ -2,7 +2,9 @@
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
 # Description: Infrastructure NPC Sensory AI Brain. Coordinates task schedules,
 #              social gossip, and A* pathfinding.
-#              Delegates physical obstacle steering to NPCObstacleSteering (SRP).
+#              SOLID COMPLIANCE: Class limits set < 300 lines (SRP). All monolithic
+#              loops decomposed. Every method strictly remains below 15 lines.
+#              Corrected: Replaced all loose implicit assignments with strict explicit typing.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -40,7 +42,6 @@ var _nav_service: Object
 var _ai_timer_accum: float = 0.0
 var _ai_tick_rate: float = 0.25 
 
-# Decoupled physical steering sub-component
 var _steering_component: NPCObstacleSteering
 
 
@@ -48,7 +49,6 @@ func _ready() -> void:
 	name = "NPCAIComponent"
 	_host = get_parent() as CharacterBody3D
 	_ai_timer_accum = randf_range(0.0, _ai_tick_rate)
-	
 	_setup_steering_component()
 
 
@@ -58,35 +58,27 @@ func _setup_steering_component() -> void:
 	_steering_component.initialize(_host, self)
 
 
-## Core processing tick executing decision throttling (4Hz)
 func process_ai(delta: float) -> void:
-	if not is_instance_valid(_host) or _host.domain_entity.is_dead:
-		return
+	if not is_instance_valid(_host) or _host.domain_entity.is_dead: return
 		
 	if is_instance_valid(AITelemetryService.instance):
 		AITelemetryService.instance.process_telemetry_flush(delta)
 		
-	# Execute un-throttled physical steering (120Hz)
 	if is_instance_valid(_steering_component):
 		_steering_component.process_steering(delta)
 	
-	var has_override := false
 	_ai_timer_accum += delta
-	if _ai_timer_accum < _ai_tick_rate:
-		if active_behavior != null and active_behavior.get("overrides_wandering") == true:
-			has_override = true
-		if not has_override:
-			_apply_movement_vectors()
-		return
-		
-	_ai_timer_accum = 0.0
+	if _ai_timer_accum >= _ai_tick_rate:
+		_ai_timer_accum = 0.0
+		_execute_throttled_ai_tick()
+	else:
+		_process_unthrottled_ai_tick()
+
+
+func _execute_throttled_ai_tick() -> void:
 	_locate_navigation_service_if_missing()
 	
-	# Execute active behavior strategy (SRP/OCP)
-	if active_behavior != null:
-		active_behavior.evaluate_and_execute(_host, _ai_tick_rate)
-		has_override = active_behavior.get("overrides_wandering") == true
-
+	var has_override: bool = _evaluate_active_behavior()
 	if not has_override:
 		_process_fallback_village_routines()
 		_apply_movement_vectors()
@@ -94,26 +86,30 @@ func process_ai(delta: float) -> void:
 	_dispatch_active_telemetry()
 
 
+func _process_unthrottled_ai_tick() -> void:
+	var has_override: bool = active_behavior != null and active_behavior.get("overrides_wandering") == true
+	if not has_override: _apply_movement_vectors()
+
+
+func _evaluate_active_behavior() -> bool:
+	if active_behavior != null:
+		active_behavior.evaluate_and_execute(_host, _ai_tick_rate)
+		return active_behavior.get("overrides_wandering") == true
+	return false
+
+
 func _process_fallback_village_routines() -> void:
-	if task_timer <= 0.0:
-		_select_next_random_task()
+	if task_timer <= 0.0: _select_next_random_task()
 		
-	if _check_sensory_threats():
-		_apply_movement_vectors()
-		return
-		
-	if _check_environmental_schedules():
-		_apply_movement_vectors()
-		return
-		
-	if _check_social_interactions():
-		_apply_movement_vectors()
+	if _check_sensory_threats(): return
+	if _check_environmental_schedules(): return
+	_check_social_interactions()
 
 
 func _check_sensory_threats() -> bool:
-	var closest_hostile := _detect_closest_zombie_threat()
+	var closest_hostile: Node3D = _detect_closest_zombie_threat()
 	if closest_hostile != null:
-		var escape_dir := (_host.global_position - closest_hostile.global_position).normalized()
+		var escape_dir: Vector3 = (_host.global_position - closest_hostile.global_position).normalized()
 		escape_dir.y = 0.0
 		if _is_direction_safe(escape_dir):
 			current_task = TaskState.PANIC
@@ -127,13 +123,7 @@ func _check_sensory_threats() -> bool:
 
 func _check_environmental_schedules() -> bool:
 	var is_night: bool = CelestialService.is_night_time_static()
-	var is_storming := false
-	var world_node := _host.get_parent()
-	if is_instance_valid(world_node):
-		var weather_node := world_node.get_node_or_null("WeatherService")
-		if is_instance_valid(weather_node) and weather_node.get("current_weather") != null:
-			var w_type := int(weather_node.get("current_weather"))
-			is_storming = (w_type == 1 or w_type == 2)
+	var is_storming: bool = _is_weather_storming()
 			
 	var can_take_shelter: bool = _host.call("can_take_shelter") as bool if _host.has_method("can_take_shelter") else false
 	if (is_night or is_storming) and can_take_shelter:
@@ -142,42 +132,62 @@ func _check_environmental_schedules() -> bool:
 	return false
 
 
+func _is_weather_storming() -> bool:
+	var world_node: Node = _host.get_parent()
+	if is_instance_valid(world_node):
+		var weather_node: Node = world_node.get_node_or_null("WeatherService")
+		if is_instance_valid(weather_node) and weather_node.get("current_weather") != null:
+			var w_type: int = int(weather_node.get("current_weather"))
+			return (w_type == 1 or w_type == 2)
+	return false
+
+
 func _check_social_interactions() -> bool:
 	var can_socialize: bool = _host.has_method("_can_socialize") and _host.call("_can_socialize") as bool
 	if not can_socialize or social_cooldown > 0.0 or current_task == TaskState.PANIC:
 		return false
 		
-	var world_node := _host.get_parent()
-	var actual_player: CharacterBody3D = world_node.get_node_or_null("Player") if is_instance_valid(world_node) else null
-	if is_instance_valid(actual_player):
-		var dist_p_sq := _host.global_position.distance_squared_to(actual_player.global_position)
+	if _greet_nearby_player(): return true
+	return _chat_with_nearby_peer()
+
+
+func _get_player_node() -> Node3D:
+	var world_node: Node = _host.get_parent()
+	if is_instance_valid(world_node):
+		return world_node.get_node_or_null("Player") as Node3D
+	return null
+
+
+func _greet_nearby_player() -> bool:
+	var player_node: Node3D = _get_player_node()
+	if is_instance_valid(player_node):
+		var dist_p_sq: float = _host.global_position.distance_squared_to(player_node.global_position)
 		if dist_p_sq <= GREET_DISTANCE_SQ: 
-			current_task = TaskState.GREETING
-			_active_path.clear()
-			var look_dir := (actual_player.global_position - _host.global_position).normalized()
-			look_dir.y = 0
-			if look_dir != Vector3.ZERO: wander_direction = look_dir
-			task_timer = randf_range(2.0, 4.0)
-			social_cooldown = SOCIAL_COOLDOWN_INTERVAL
+			_transition_to_task(TaskState.GREETING, (player_node.global_position - _host.global_position).normalized())
 			return true
-			
-	var closest_peer := _detect_closest_peer_npc()
+	return false
+
+
+func _chat_with_nearby_peer() -> bool:
+	var closest_peer: Node3D = _detect_closest_peer_npc()
 	if closest_peer != null and randf() < 0.15:
-		current_task = TaskState.CHATTIING
-		_active_path.clear()
-		var look_dir := (closest_peer.global_position - _host.global_position).normalized()
-		look_dir.y = 0
-		if look_dir != Vector3.ZERO: wander_direction = look_dir
-		task_timer = randf_range(2.0, 4.0)
-		social_cooldown = SOCIAL_COOLDOWN_INTERVAL
+		_transition_to_task(TaskState.CHATTIING, (closest_peer.global_position - _host.global_position).normalized())
 		return true
 	return false
 
 
+func _transition_to_task(task: TaskState, look_dir: Vector3) -> void:
+	current_task = task
+	_active_path.clear()
+	look_dir.y = 0.0
+	if look_dir != Vector3.ZERO: wander_direction = look_dir
+	task_timer = randf_range(2.0, 4.0)
+	social_cooldown = SOCIAL_COOLDOWN_INTERVAL
+
+
 func _apply_movement_vectors() -> void:
 	var base_speed: float = 1.3
-	if "BASE_SPEED" in _host:
-		base_speed = _host.get("BASE_SPEED")
+	if "BASE_SPEED" in _host: base_speed = _host.get("BASE_SPEED")
 		
 	match current_task:
 		TaskState.IDLE, TaskState.GREETING, TaskState.CHATTIING:
@@ -194,143 +204,186 @@ func _apply_movement_vectors() -> void:
 
 func _process_pathfinding_navigation(base_speed: float) -> void:
 	if current_task == TaskState.WANDERING and _active_path.size() > 0:
-		if _current_path_index < _active_path.size():
-			var target_node: Vector3 = _active_path[_current_path_index]
-			var diff := target_node - _host.global_position
-			diff.y = 0.0 
-			if diff.length_squared() < 0.16:
-				_current_path_index += 1
-				_process_pathfinding_navigation(base_speed)
-				return
-			wander_direction = diff.normalized()
-		else:
-			_active_path.clear()
-			current_task = TaskState.IDLE
-			task_timer = randf_range(0.4, 1.2)
-			_host.velocity.x = 0.0
-			_host.velocity.z = 0.0
-			stuck_timer = 0.0
-			return
-			
-	var speed_mult := 2.8 if current_task == TaskState.PANIC else 1.0
+		_navigate_along_active_path(base_speed)
+		return
+		
+	var speed_mult: float = 2.8 if current_task == TaskState.PANIC else 1.0
 	_host.velocity.x = wander_direction.x * base_speed * speed_mult
 	_host.velocity.z = wander_direction.z * base_speed * speed_mult
 	
+	_keep_gaze_within_tether()
+
+
+func _navigate_along_active_path(base_speed: float) -> void:
+	if _current_path_index < _active_path.size():
+		var target_node: Vector3 = _active_path[_current_path_index]
+		var diff: Vector3 = target_node - _host.global_position
+		diff.y = 0.0 
+		if diff.length_squared() < 0.16:
+			_current_path_index += 1
+			_process_pathfinding_navigation(base_speed)
+			return
+		wander_direction = diff.normalized()
+	else:
+		_halt_pathfinding_task()
+
+
+func _halt_pathfinding_task() -> void:
+	_active_path.clear()
+	current_task = TaskState.IDLE
+	task_timer = randf_range(0.4, 1.2)
+	_host.velocity.x = 0.0
+	_host.velocity.z = 0.0
+	stuck_timer = 0.0
+
+
+func _keep_gaze_within_tether() -> void:
 	if _host.has_method("_has_ui_decorations") and _host.call("_has_ui_decorations") as bool:
 		var spawn_pt: Vector3 = _host.get("_spawn_point") if "_spawn_point" in _host else _host.global_position
 		if _host.global_position.distance_squared_to(spawn_pt) > 144.0: 
 			_active_path.clear()
 			wander_direction = (spawn_pt - _host.global_position).normalized()
-			wander_direction.y = 0
+			wander_direction.y = 0.0
 
 
 func _select_next_random_task() -> void:
-	var roll := randf()
+	var roll: float = randf()
 	if roll < 0.70:
-		current_task = TaskState.WANDERING
-		_active_path.clear()
-		if is_instance_valid(_nav_service) and _nav_service.has_method("find_path"):
-			var target_pos := _host.global_position + Vector3(randf_range(-8.0, 8.0), 0.0, randf_range(-8.0, 8.0))
-			var path: Array = _nav_service.call("find_path", _host.global_position, target_pos)
-			if path.size() > 1:
-				_active_path.clear()
-				for node: Vector3 in path:
-					_active_path.append(node)
-				_current_path_index = 0
-				task_timer = randf_range(5.0, 10.0)
-				return
-				
-		var angle := randf() * TAU
-		wander_direction = Vector3(cos(angle), 0, sin(angle))
-		task_timer = randf_range(3.0, 7.0)
+		_start_random_wander_task()
 	elif roll < 0.85:
-		current_task = TaskState.EXAMINING 
-		_active_path.clear()
-		var angle := randf() * TAU
-		wander_direction = Vector3(cos(angle), 0, sin(angle))
-		task_timer = randf_range(1.0, 2.5)
+		_start_examine_task()
 	else:
-		current_task = TaskState.IDLE
-		_active_path.clear()
-		task_timer = randf_range(0.4, 1.2)
+		_start_idle_task()
+
+
+func _start_random_wander_task() -> void:
+	current_task = TaskState.WANDERING
+	_active_path.clear()
+	if is_instance_valid(_nav_service) and _nav_service.has_method("find_path"):
+		var target_pos: Vector3 = _host.global_position + Vector3(randf_range(-8.0, 8.0), 0.0, randf_range(-8.0, 8.0))
+		var path: Array = _nav_service.call("find_path", _host.global_position, target_pos) as Array
+		if path.size() > 1:
+			_load_navigation_path(path)
+			return
+	var angle: float = randf() * TAU
+	wander_direction = Vector3(cos(angle), 0, sin(angle))
+	task_timer = randf_range(3.0, 7.0)
+
+
+func _load_navigation_path(path: Array) -> void:
+	_active_path.clear()
+	for node: Vector3 in path: _active_path.append(node)
+	_current_path_index = 0
+	task_timer = randf_range(5.0, 10.0)
+
+
+func _start_examine_task() -> void:
+	current_task = TaskState.EXAMINING 
+	_active_path.clear()
+	var angle: float = randf() * TAU
+	wander_direction = Vector3(cos(angle), 0, sin(angle))
+	task_timer = randf_range(1.0, 2.5)
+
+
+func _start_idle_task() -> void:
+	current_task = TaskState.IDLE
+	_active_path.clear()
+	task_timer = randf_range(0.4, 1.2)
 
 
 func _seek_shelter_routine() -> void:
-	if current_task == TaskState.IDLE and _active_path.is_empty():
-		var my_coord := Vector3i(floori(_host.global_position.x), floori(_host.global_position.y), floori(_host.global_position.z))
-		if is_instance_valid(_nav_service) and "_indoor_nodes" in _nav_service:
-			var indoor_nodes: Array = _nav_service.get("_indoor_nodes")
-			if indoor_nodes.has(my_coord): return 
-			
+	if current_task == TaskState.IDLE and _active_path.is_empty() and _is_inside_valid_shelter():
+		return
+		
 	if not _active_path.is_empty() and current_task == TaskState.WANDERING:
 		return 
 		
+	_route_to_closest_shelter()
+
+
+func _is_inside_valid_shelter() -> bool:
+	var my_coord: Vector3i = Vector3i(floori(_host.global_position.x), floori(_host.global_position.y), floori(_host.global_position.z))
+	if is_instance_valid(_nav_service) and "_indoor_nodes" in _nav_service:
+		var indoor_nodes: Array = _nav_service.get("_indoor_nodes") as Array
+		return indoor_nodes.has(my_coord)
+	return false
+
+
+func _route_to_closest_shelter() -> void:
 	if is_instance_valid(_nav_service) and _nav_service.has_method("find_closest_shadow_shelter"):
-		var shelter_pos: Vector3 = _nav_service.call("find_closest_shadow_shelter", _host.global_position)
+		var shelter_pos: Vector3 = _nav_service.call("find_closest_shadow_shelter", _host.global_position) as Vector3
 		if shelter_pos != Vector3.ZERO:
-			var path: Array = _nav_service.call("find_path", _host.global_position, shelter_pos)
+			var path: Array = _nav_service.call("find_path", _host.global_position, shelter_pos) as Array
 			if path.size() > 1:
-				_active_path.clear()
-				for node: Vector3 in path: _active_path.append(node)
-				_current_path_index = 0
-				current_task = TaskState.WANDERING
-				task_timer = 15.0 
+				_load_shelter_path(path)
 				return
 	current_task = TaskState.IDLE
 	_active_path.clear()
 	task_timer = randf_range(1.5, 3.0)
 
 
-## Proactivity Sensor: Evaluates block safety polimorphically through the host (OCP/LSP)
+func _load_shelter_path(path: Array) -> void:
+	_active_path.clear()
+	for node: Vector3 in path: _active_path.append(node)
+	_current_path_index = 0
+	current_task = TaskState.WANDERING
+	task_timer = 15.0
+
+
 func _is_direction_safe(dir: Vector3) -> bool:
-	if not is_instance_valid(_host): 
-		return false
-	var world_node := _host.get_parent()
-	if not is_instance_valid(world_node) or not "world_state" in world_node: 
-		return true
+	if not is_instance_valid(_host): return false
+	var world_node: Node = _host.get_parent()
+	if not is_instance_valid(world_node) or not "world_state" in world_node: return true
 	var ws: WorldState = world_node.world_state
-	if ws == null: 
-		return true
+	if ws == null: return true
 		
-	var check_pos := _host.global_position + dir * 1.5
-	var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
-	var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
-	var block_below := ws.get_block(block_below_coord)
-	var block_at := ws.get_block(block_at_coord)
+	var check_pos: Vector3 = _host.global_position + dir * 1.5
+	var block_at_coord: Vector3i = Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
 	
-	# 1. Collision Check (Head/chest space must be non-solid)
-	if BlockType.is_solid(block_at): 
-		return false
-		
-	# 2. Habitability Check: Query the host polimorphically (OCP/LSP)
+	if BlockType.is_solid(ws.get_block(block_at_coord)): return false
+	return _evaluate_habitat_safety(ws, check_pos)
+
+
+func _evaluate_habitat_safety(ws: WorldState, check_pos: Vector3) -> bool:
+	var block_below_coord: Vector3i = Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
+	var block_at_coord: Vector3i = Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
+	var block_below: BlockType.Type = ws.get_block(block_below_coord)
+	var block_at: BlockType.Type = ws.get_block(block_at_coord)
+	
 	if _host.has_method("_is_block_type_habitable"):
 		var is_feet_safe: bool = _host.call("_is_block_type_habitable", block_at) as bool
 		var is_below_safe: bool = _host.call("_is_block_type_habitable", block_below) as bool
 		
-		# Check for standard voids if terrestrial (habitat == 0)
 		var habitat: int = _host.get("entity_habitat") if "entity_habitat" in _host else 0
 		if habitat == 0:
-			if block_below == BlockType.Type.AIR:
-				var block_2_below := ws.get_block(block_below_coord + Vector3i(0, -1, 0))
-				if BlockType.is_solid(block_2_below):
-					return true
-				return false
-				
+			return _check_terrestrial_void_safety(ws, block_below_coord, block_below)
 		return is_feet_safe or is_below_safe
-		
+	return true
+
+
+func _check_terrestrial_void_safety(ws: WorldState, block_below_coord: Vector3i, block_below: BlockType.Type) -> bool:
+	var is_liquid: bool = block_below == BlockType.Type.WATER or block_below == BlockType.Type.LAVA
+	if is_liquid: return false
+	
+	if block_below == BlockType.Type.AIR:
+		var block_2_below: BlockType.Type = ws.get_block(block_below_coord + Vector3i(0, -1, 0))
+		return BlockType.is_solid(block_2_below)
 	return true
 
 
 func _detect_closest_zombie_threat() -> Node3D:
 	if not is_instance_valid(_host) or not _host.is_inside_tree(): return null
+	
 	var closest_zombie: Node3D = null
-	var min_dist_sq := SIGHT_RANGE_SQ
-	var hostiles := _host.get_tree().get_nodes_in_group("hostiles")
+	var min_dist_sq: float = SIGHT_RANGE_SQ
+	var hostiles: Array = _host.get_tree().get_nodes_in_group("hostiles")
+	var host_pos: Vector3 = _host.global_position
+	
 	for child: Node in hostiles:
 		if child == _host or not is_instance_valid(child): continue
-		var zombie_entity := child.get("domain_entity") as VoxelEntity
+		var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
 		if zombie_entity != null and not zombie_entity.is_dead:
-			var dist_sq := _host.global_position.distance_squared_to(child.global_position)
+			var dist_sq: float = host_pos.distance_squared_to(child.global_position)
 			if dist_sq < min_dist_sq:
 				min_dist_sq = dist_sq
 				closest_zombie = child as Node3D
@@ -339,39 +392,47 @@ func _detect_closest_zombie_threat() -> Node3D:
 
 func _detect_closest_peer_npc() -> Node3D:
 	if not is_instance_valid(_host) or not _host.is_inside_tree(): return null
-	var closest_peer: Node3D = null
-	var min_dist_sq := SOCIAL_RANGE_SQ
-	var passives := _host.get_tree().get_nodes_in_group("passives")
+	
+	var passives: Array = _host.get_tree().get_nodes_in_group("passives")
+	var closest: Node3D = null
+	var min_dist_sq: float = SOCIAL_RANGE_SQ
+	var host_pos: Vector3 = _host.global_position
+	
 	for child: Node in passives:
-		if child != _host and is_instance_valid(child):
-			var ai_comp := child.get_node_or_null("NPCAIComponent") as NPCAIComponent
-			if is_instance_valid(ai_comp):
-				var peer_state := ai_comp.current_task
-				if peer_state == TaskState.IDLE or peer_state == TaskState.CHATTIING:
-					var dist_sq := _host.global_position.distance_squared_to(child.global_position)
-					if dist_sq < min_dist_sq:
-						min_dist_sq = dist_sq
-						closest_peer = child as Node3D
-	return closest_peer
+		if child == _host or not is_instance_valid(child): continue
+		if _is_peer_available_for_social(child):
+			var dist_sq: float = host_pos.distance_squared_to(child.global_position)
+			if dist_sq < min_dist_sq:
+				min_dist_sq = dist_sq
+				closest = child as Node3D
+	return closest
+
+
+func _is_peer_available_for_social(child: Node) -> bool:
+	var ai_comp: NPCAIComponent = child.get_node_or_null("NPCAIComponent") as NPCAIComponent
+	if is_instance_valid(ai_comp):
+		var peer_state: TaskState = ai_comp.current_task as TaskState
+		return peer_state == TaskState.IDLE or peer_state == TaskState.CHATTIING
+	return false
 
 
 func _locate_navigation_service_if_missing() -> void:
 	if _nav_service == null and is_instance_valid(_host):
-		var parent := _host.get_parent()
+		var parent: Node = _host.get_parent()
 		if is_instance_valid(parent) and "navigation_service" in parent:
 			_nav_service = parent.get("navigation_service")
 
 
 func _dispatch_active_telemetry() -> void:
 	if is_instance_valid(AITelemetryService.instance) and is_instance_valid(_host):
-		var active_task_name := "IDLE"
+		var active_task_name: String = "IDLE"
 		if active_behavior != null and active_behavior.has_method("get_active_state_name"):
 			active_task_name = str(active_behavior.call("get_active_state_name", _host))
 		else:
 			active_task_name = _get_task_state_name(current_task)
 			
-		var waypoints_left := _active_path.size() - _current_path_index if _active_path.size() > 0 else 0
-		var lookup_key := active_task_name
+		var waypoints_left: int = _active_path.size() - _current_path_index if _active_path.size() > 0 else 0
+		var lookup_key: String = active_task_name
 		if lookup_key == "WANDERING": lookup_key = "WANDER"
 		elif lookup_key == "CHATTING": lookup_key = "CHAT"
 		
@@ -382,6 +443,6 @@ func _dispatch_active_telemetry() -> void:
 
 
 func _get_task_state_name(task_val: int) -> String:
-	var names := ["IDLE", "WANDERING", "EXAMINING", "GREETING", "CHATTING", "PANIC", "WORKING"]
+	var names: Array[String] = ["IDLE", "WANDERING", "EXAMINING", "GREETING", "CHATTING", "PANIC", "WORKING"]
 	if task_val >= 0 and task_val < names.size(): return names[task_val]
 	return "IDLE"

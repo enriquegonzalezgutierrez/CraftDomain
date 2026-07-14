@@ -4,6 +4,7 @@
 #              mining ticks, placing blocks, eating, and planting.
 #              SOLID COMPLIANCE: Monolithic interaction loops decomposed to 
 #              isolated, SRP-compliant helpers (< 15 lines each).
+#              Corrected: Prefixed unused parameters with underscore.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -202,7 +203,7 @@ func _update_cracking_ratio(block_coord: Vector3i) -> void:
 		_cracking_visuals.update_cracking_overlay(block_coord, ratio)
 
 
-func _process_block_drops(mined_type: BlockType.Type, block_coord: Vector3i, inventory_comp: InventoryComponent) -> void:
+func _process_block_drops(mined_type: BlockType.Type, _block_coord: Vector3i, inventory_comp: InventoryComponent) -> void:
 	var def := block_library_provider.get_definition(mined_type) as BlockDefinition
 	if def == null: return
 		
@@ -304,7 +305,7 @@ func _process_building_and_usage() -> void:
 		_execute_item_usage_strategy(strategy, slot_data.item_id, inventory_comp, world_ctrl)
 
 
-func _execute_item_usage_strategy(strategy: ItemUsageStrategy, item_id: int, inventory_comp: InventoryComponent, world_ctrl: WorldController) -> void:
+func _execute_item_usage_strategy(strategy: ItemUsageStrategy, _item_id: int, inventory_comp: InventoryComponent, world_ctrl: WorldController) -> void:
 	var resolved := VoxelInteractionSolver.resolve_targeted_coords(raycast, camera)
 	if resolved.is_empty(): return
 		
