@@ -1,5 +1,5 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/World/MegaStructureService.gd
 # Description: Domain Service managing registration, lookup, and physical block 
 #              generation routing of large fixed Mega-Structures (POIs).
 #              SOLID COMPLIANCE:
@@ -7,10 +7,10 @@
 #                landmarks and their chunk-offset calculations.
 #              - Open-Closed Principle (OCP): Registers default mega-structures 
 #                internally on startup, removing registration bloat from Bootstrap.
-# MILESTONE 8 UPGRADE:
-#              - Registered the newly designed DesertOasisMegaStructure (Desert step-pyramid).
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/MegaStructureService.gd
+# MILESTONE 16 UPGRADE:
+#              - Registered the newly designed LithicLurkerLairMegaStructure (Act I Boss).
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MegaStructureService
 extends RefCounted
@@ -29,7 +29,8 @@ static func initialize_megastructures() -> void:
 	register_structure(HarborCityMegaStructure.new())
 	register_structure(NetherPortalMegaStructure.new())
 	register_structure(StevesCabinMegaStructure.new())
-	register_structure(DesertOasisMegaStructure.new()) # <--- NEW DESERT PYRAMID REGISTERED!
+	register_structure(DesertOasisMegaStructure.new())
+	register_structure(LithicLurkerLairMegaStructure.new())
 	
 	print("[MegaStructureService] Initialization complete. Registered Mega-Structures count: ", _structures.size())
 
@@ -48,7 +49,7 @@ static func apply_mega_structures(chunk: Chunk) -> void:
 	var c_pos := chunk.position * Chunk.SIZE
 	var chunk_rect := Rect2i(c_pos.x, c_pos.z, Chunk.SIZE, Chunk.SIZE)
 	
-	for s in _structures:
+	for s: IMegaStructure in _structures:
 		var s_rect := Rect2i(
 			s.global_center.x - int(s.bounds_size.x / 2.0),
 			s.global_center.y - int(s.bounds_size.y / 2.0),
@@ -64,7 +65,7 @@ static func apply_mega_structures(chunk: Chunk) -> void:
 ## Consults structures if they have specific entities (Guards/NPCs/Props) for this chunk.
 static func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 	var entities: Array[Dictionary] = []
-	for s in _structures:
+	for s: IMegaStructure in _structures:
 		entities.append_array(s.get_entities_for_chunk(chunk_pos))
 	return entities
 

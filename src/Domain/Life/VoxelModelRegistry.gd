@@ -1,9 +1,5 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Life & Entities / Registries)
-# Class: VoxelModelRegistry
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+# Pathfile: res://src/Domain/Life/VoxelModelRegistry.gd
 # Description: Pure Domain Registry managing the binding and lookup of 
 #              IVoxelModelBuilder strategy classes.
 # SOLID COMPLIANCE:
@@ -13,6 +9,8 @@
 #   hardcoded constructors have been decoupled. Adding new voxel NPC roles 
 #   is done dynamically at runtime via `register_builder()`, without modifying 
 #   any other engine systems.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name VoxelModelRegistry
 extends RefCounted
@@ -47,7 +45,7 @@ static func initialize_registry() -> void:
 	print("[VoxelModelRegistry] Initializing and compiling baseline voxel models...")
 	_builders.clear()
 	
-	# We compile and bind the 7 default roles in RAM instantly
+	# We compile and bind the default roles in RAM instantly
 	register_builder(0, VillagerModelBuilder.new()) # ID 0: Common Villager
 	register_builder(1, MerchantModelBuilder.new()) # ID 1: Shopkeeper Merchant
 	register_builder(2, GuardModelBuilder.new())    # ID 2: Armored Guard Knight
@@ -55,5 +53,8 @@ static func initialize_registry() -> void:
 	register_builder(4, MinerModelBuilder.new())    # ID 4: Cavern Spotlight Miner
 	register_builder(5, DruidModelBuilder.new())    # ID 5: Nature Forest Druid
 	register_builder(6, GolemModelBuilder.new())    # ID 6: Colossus Iron Golem
+	
+	# Act I Boss Integration
+	register_builder(50, LithicLurkerModelBuilder.new()) # ID 50: Lithic Lurker
 	
 	print("[VoxelModelRegistry] Baseline initialization finished. Active builders: ", _builders.size())

@@ -3,6 +3,7 @@
 # Description: Central composition root of the application. Orchestrates the 
 #              initialization of global systems, applies user configuration settings,
 #              injects decoupled dependencies, and manages network services.
+#              MILESTONE 16: Registered Lithic Lurker Boss (ID 50) to MobRegistry.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -79,6 +80,7 @@ func _register_preloaded_mobs() -> void:
 	var h_land := MobRegistry.Habitat.TERRESTRIAL
 	var h_both := MobRegistry.Habitat.AMPHIBIOUS
 	var h_water := MobRegistry.Habitat.AQUATIC
+	
 	var ai_fauna := FaunaAIBehavior.new()
 	var ai_zombie := ZombieAIBehavior.new()
 	var ai_guard := GuardAIBehavior.new()
@@ -99,10 +101,12 @@ func _register_preloaded_mobs() -> void:
 	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna)
 	_register_scene_mob(208, CrabEntity, h_both, ai_fauna)
 	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna)
+	
 	_register_scene_mob(11, SharkEntity, h_water, ai_zombie)
 	_register_scene_mob(12, GargoyleEntity, h_land, ai_zombie)
 	_register_scene_mob(13, GoblinEntity, h_land, ai_zombie)
 	_register_scene_mob(10, HostileEntity, h_land, ai_zombie)
+	
 	_register_scene_mob(107, GolemEntity, h_land, ai_guard)
 	_register_scene_mob(100, VillagerEntity, h_land)
 	_register_scene_mob(102, GuardEntity, h_land, ai_guard)
@@ -111,6 +115,9 @@ func _register_preloaded_mobs() -> void:
 	_register_scene_mob(101, MerchantEntity, h_land)
 	_register_scene_mob(105, MinerEntity, h_land)
 	_register_scene_mob(106, CyberCitizenEntity, h_land)
+	
+	# Act I Boss: Lithic Lurker (ID 50)
+	_register_scene_mob(50, LithicLurkerEntity, h_land, LithicLurkerAIBehavior.new())
 
 
 func _register_scene_mob(spawn_id: int, fallback_class: Variant, habitat: int, default_behavior: IAIBehavior = null) -> void:
