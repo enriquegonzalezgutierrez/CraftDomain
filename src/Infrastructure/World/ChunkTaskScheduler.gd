@@ -2,21 +2,22 @@
 # Pathfile: res://src/Infrastructure/World/ChunkTaskScheduler.gd
 # Description: Infrastructure scheduler managing background thread worker pools,
 #              active task queues, and asynchronous chunk compiling (SRP).
-#              Integrated: Decimated LOD compilation for distant mobile chunks (OCP).
+#              SOLID COMPLIANCE: Decouples 100% of WorkerThreadPool interactions,
+#              Mutex locking, and queue prioritization from the Lifecycle service.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ChunkTaskScheduler
 extends RefCounted
 
-# Reference back to the parent lifecycle coordinator
 var lifecycle: ChunkLifecycleService
-
-# Thread-safe queue sharing parameters
 var _queue_mutex: Mutex
-var _load_requests_queue: Array = [] # Array[Dictionary] (Waiting buffer)
-var _in_flight_tasks: Dictionary = {} # Vector3i -> bool (Active in WorkerThreadPool)
+
+var _load_requests_queue: Array[Dictionary] = []
+var _in_flight_tasks: Dictionary = {}
 var _active_task_ids: Array[int] = []
+var _queued_rebuilds: Dictionary = {}
+var _completed_tasks_queue: Array[GeneratedChunkTask] = []
 
 var _active_background_tasks: int = 0
 var _max_concurrent_bg_tasks: int = 4
@@ -28,147 +29,176 @@ func _init(p_lifecycle: ChunkLifecycleService, p_mutex: Mutex) -> void:
 	_max_concurrent_bg_tasks = clampi(OS.get_processor_count() + 1, 4, 16)
 
 
-## Thread dispatcher: Assigns queued positions to background threads under CPU limits.
-func trigger_next_background_tasks() -> void:
+func queue_loads(chunk_positions: Array[Vector3i], versions: Dictionary) -> void:
 	_queue_mutex.lock()
+	var preserved_tasks := _extract_preserved_tasks()
+	_load_requests_queue.clear()
 	
-	# Evaluate if player is active (restoring full thread pool if active, throttling to 2 if loading/teleporting)
-	var is_loading_teleport := true
-	if is_instance_valid(lifecycle) and is_instance_valid(lifecycle.controller):
-		var raw_player_node: Variant = lifecycle.controller.get("player")
+	for pos: Vector3i in chunk_positions:
+		_enqueue_if_eligible(pos, false, preserved_tasks, versions)
 		
-		# THREAD SAFETY SHIELD: Validate physical memory instance before casting (DIP compliant)
-		if is_instance_valid(raw_player_node):
-			var player_node_3d := raw_player_node as Node3D
-			if player_node_3d != null:
-				is_loading_teleport = not (player_node_3d.get("is_active") as bool)
-			
-	var active_threads_limit := 2 if is_loading_teleport else _max_concurrent_bg_tasks
+	for i: int in range(preserved_tasks.size() - 1, -1, -1):
+		_load_requests_queue.push_front(preserved_tasks[i])
+		
+	_queue_mutex.unlock()
+	_trigger_next_background_tasks()
+
+
+func queue_prioritized_loads(chunk_positions: Array[Vector3i], versions: Dictionary) -> void:
+	_queue_mutex.lock()
+	for pos: Vector3i in chunk_positions:
+		_enqueue_if_eligible(pos, true, _load_requests_queue, versions)
+	_queue_mutex.unlock()
+	_trigger_next_background_tasks()
+
+
+func request_chunk_rebuild(pos: Vector3i, version: int) -> void:
+	if not lifecycle.is_chunk_rendered(pos): return
+		
+	_queue_mutex.lock()
+	if _in_flight_tasks.has(pos):
+		_queued_rebuilds[pos] = true
+	elif not _is_pos_in_queue(pos, _load_requests_queue):
+		_load_requests_queue.push_front({"pos": pos, "is_rebuild": true, "version": version, "high_priority": true})
+	_queue_mutex.unlock()
+	_trigger_next_background_tasks()
+
+
+func _extract_preserved_tasks() -> Array[Dictionary]:
+	var preserved: Array[Dictionary] = []
+	for req: Dictionary in _load_requests_queue:
+		if req.get("is_rebuild", false) == true or req.get("high_priority", false) == true:
+			preserved.append(req)
+	return preserved
+
+
+func _enqueue_if_eligible(pos: Vector3i, is_high_priority: bool, preserved: Array[Dictionary], versions: Dictionary) -> void:
+	if _in_flight_tasks.has(pos) or _is_pos_in_queue(pos, preserved):
+		return
+		
+	var version: int = versions.get(pos, 0) as int
+	var req: Dictionary = {"pos": pos, "is_rebuild": false, "version": version, "high_priority": is_high_priority}
+	
+	if is_high_priority:
+		_load_requests_queue.push_front(req)
+	else:
+		_load_requests_queue.append(req)
+
+
+func _is_pos_in_queue(pos: Vector3i, list: Array[Dictionary]) -> bool:
+	for req: Dictionary in list:
+		var q_pos: Vector3i = req["pos"] as Vector3i
+		if q_pos == pos:
+			return true
+	return false
+
+
+func _trigger_next_background_tasks() -> void:
+	_queue_mutex.lock()
+	var active_threads_limit := _get_dynamic_thread_limit()
 	
 	while _active_background_tasks < active_threads_limit and _load_requests_queue.size() > 0:
 		var request: Dictionary = _load_requests_queue.pop_front() as Dictionary
-		var pos: Vector3i = request["pos"] as Vector3i
-		var is_rebuild: bool = request["is_rebuild"] as bool
-		var target_version: int = request.get("version", 0) as int
+		_dispatch_task(request)
 		
-		_active_background_tasks += 1
-		_in_flight_tasks[pos] = true 
-		
-		var task_id: int
-		if is_rebuild:
-			task_id = WorkerThreadPool.add_task(_background_rebuild_chunk_task_wrapper.bind(pos, target_version))
-		else:
-			task_id = WorkerThreadPool.add_task(_background_generate_chunk_task_wrapper.bind(pos, target_version))
-		_active_task_ids.append(task_id)
 	_queue_mutex.unlock()
 
 
-func _background_generate_chunk_task_wrapper(chunk_pos: Vector3i, version: int) -> void:
-	_background_generate_chunk_task(chunk_pos, version)
-	_queue_mutex.lock()
-	_active_background_tasks -= 1
-	_queue_mutex.unlock()
-	trigger_next_background_tasks()
+func _get_dynamic_thread_limit() -> int:
+	var is_loading_teleport := true
+	if is_instance_valid(lifecycle) and is_instance_valid(lifecycle.controller):
+		var raw_player: Variant = lifecycle.controller.get("player")
+		if typeof(raw_player) == TYPE_OBJECT and is_instance_valid(raw_player as Node3D):
+			is_loading_teleport = not (raw_player.get("is_active") as bool)
+	return 2 if is_loading_teleport else _max_concurrent_bg_tasks
 
 
-func _background_generate_chunk_task(chunk_pos: Vector3i, version: int) -> void:
+func _dispatch_task(request: Dictionary) -> void:
+	var pos: Vector3i = request["pos"] as Vector3i
+	var is_rebuild: bool = request.get("is_rebuild", false) as bool
+	var target_version: int = request.get("version", 0) as int
+	
+	_active_background_tasks += 1
+	_in_flight_tasks[pos] = true 
+	
+	var task_id: int
+	if is_rebuild:
+		task_id = WorkerThreadPool.add_task(_background_rebuild_task.bind(pos, target_version))
+	else:
+		task_id = WorkerThreadPool.add_task(_background_generate_task.bind(pos, target_version))
+	_active_task_ids.append(task_id)
+
+
+func _background_generate_task(chunk_pos: Vector3i, version: int) -> void:
 	var chunk := Chunk.new(chunk_pos)
-	if not is_instance_valid(lifecycle) or not is_instance_valid(lifecycle.controller): 
-		return
-		
-	var gen: WorldGenerator = lifecycle.controller.get("generator") as WorldGenerator
-	if is_instance_valid(gen): 
-		gen.generate_chunk(chunk)
-	
-	if not is_instance_valid(lifecycle.controller) or not is_instance_valid(lifecycle.controller.repository): 
-		return
-		
-	var saved_edits: Dictionary = lifecycle.controller.repository.load_chunk_modifications(chunk_pos) as Dictionary
-	if saved_edits.size() > 0:
-		for local_pos: Vector3i in saved_edits.keys():
-			chunk.set_block(local_pos.x, local_pos.y, local_pos.z, saved_edits[local_pos] as BlockType.Type)
-			
+	_apply_generator(chunk)
+	_apply_saved_modifications(chunk)
 	MegaStructureService.apply_mega_structures(chunk)
-			
-	var is_distant := lifecycle._calculate_is_chunk_distant(chunk_pos)
-	var build_physics := not is_distant
 	
-	# OCP INTEGRATION: Solve multi-mesh compile pathways based on distance & platform
-	var visual_data: Dictionary = _compile_visual_data_with_lod(chunk, chunk_pos, is_distant, build_physics)
-	var custom_meshes: Dictionary = ChunkMesher.generate_special_meshes(chunk, lifecycle.world_state)
-	
-	var task_result := GeneratedChunkTask.new()
-	task_result.chunk = chunk
-	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.liquid_meshes = custom_meshes
-	task_result.set_meta("version", version) 
-	
-	if build_physics:
-		var collision_verts: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
-		if collision_verts.size() > 0:
-			var shape := ConcavePolygonShape3D.new()
-			shape.set_faces(collision_verts)
-			shape.backface_collision = true
-			task_result.collision_shape = shape
-			
-	var nav_nodes := ChunkNavigationBuilder.compile_walkable_nodes_asynchronous(chunk, lifecycle.world_state)
-	task_result.set_meta("nav_nodes", nav_nodes)
-	
-	_queue_mutex.lock()
-	lifecycle._completed_tasks_queue.append(task_result)
-	_queue_mutex.unlock()
+	_compile_and_submit_task(chunk, version, false)
+	_finish_task_execution()
 
 
-func _background_rebuild_chunk_task_wrapper(chunk_pos: Vector3i, version: int) -> void:
-	_background_rebuild_chunk_task(chunk_pos, version)
-	_queue_mutex.lock()
-	_active_background_tasks -= 1
-	_queue_mutex.unlock()
-	trigger_next_background_tasks()
-
-
-func _background_rebuild_chunk_task(chunk_pos: Vector3i, version: int) -> void:
+func _background_rebuild_task(chunk_pos: Vector3i, version: int) -> void:
 	if not is_instance_valid(lifecycle) or lifecycle.world_state == null:
+		_finish_task_execution()
 		return
 		
 	var chunk := lifecycle.world_state.get_chunk(chunk_pos)
-	if chunk == null: 
+	if chunk == null:
+		_finish_task_execution()
 		return
 		
-	var is_distant := lifecycle._calculate_is_chunk_distant(chunk_pos)
-	var build_physics := not is_distant
-	
 	MegaStructureService.apply_mega_structures(chunk)
+	_compile_and_submit_task(chunk, version, true)
+	_finish_task_execution()
+
+
+func _apply_generator(chunk: Chunk) -> void:
+	if not is_instance_valid(lifecycle) or not is_instance_valid(lifecycle.controller): 
+		return
+	var gen: WorldGenerator = lifecycle.controller.get("generator") as WorldGenerator
+	if is_instance_valid(gen): 
+		gen.generate_chunk(chunk)
+
+
+func _apply_saved_modifications(chunk: Chunk) -> void:
+	if not is_instance_valid(lifecycle) or not is_instance_valid(lifecycle.controller): return
+	var repo: WorldRepository = lifecycle.controller.get("repository") as WorldRepository
+	if not is_instance_valid(repo): return
 	
-	# OCP INTEGRATION: Solve multi-mesh compile pathways based on distance & platform
-	var visual_data: Dictionary = _compile_visual_data_with_lod(chunk, chunk_pos, is_distant, build_physics)
-	var custom_meshes: Dictionary = ChunkMesher.generate_special_meshes(chunk, lifecycle.world_state)
-			
+	var saved_edits: Dictionary = repo.load_chunk_modifications(chunk.position)
+	for local_pos: Vector3i in saved_edits.keys():
+		var type_id: int = saved_edits[local_pos] as int
+		chunk.set_block(local_pos.x, local_pos.y, local_pos.z, type_id as BlockType.Type)
+
+
+func _compile_and_submit_task(chunk: Chunk, version: int, is_rebuild: bool) -> void:
+	var is_distant := lifecycle.call("_calculate_is_chunk_distant", chunk.position) as bool
+	var build_physics := not is_distant
+	var ws := lifecycle.world_state
+	
+	var visual_data: Dictionary = _compile_visual_data(chunk, is_distant, build_physics)
+	var custom_meshes: Dictionary = ChunkMesher.generate_special_meshes(chunk, ws)
+	
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
-	task_result.is_rebuild = true
 	task_result.liquid_meshes = custom_meshes
+	task_result.is_rebuild = is_rebuild
 	task_result.set_meta("version", version) 
 	
 	if build_physics:
-		var collision_verts: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
-		if collision_verts.size() > 0:
-			var shape := ConcavePolygonShape3D.new()
-			shape.set_faces(collision_verts)
-			shape.backface_collision = true
-			task_result.collision_shape = shape
-			
-	var nav_nodes := ChunkNavigationBuilder.compile_walkable_nodes_asynchronous(chunk, lifecycle.world_state)
-	task_result.set_meta("nav_nodes", nav_nodes)
+		_compile_collision_shape(task_result, visual_data)
+		
+	task_result.set_meta("nav_nodes", ChunkNavigationBuilder.compile_walkable_nodes_asynchronous(chunk, ws))
 	
 	_queue_mutex.lock()
-	lifecycle._completed_tasks_queue.append(task_result)
+	_completed_tasks_queue.append(task_result)
 	_queue_mutex.unlock()
 
 
-## Helper: Selects whether to compile the normal detailed chunk or decimated mobile LOD.
-func _compile_visual_data_with_lod(chunk: Chunk, chunk_pos: Vector3i, is_distant: bool, build_physics: bool) -> Dictionary:
+func _compile_visual_data(chunk: Chunk, is_distant: bool, build_physics: bool) -> Dictionary:
 	if is_distant and OS.has_feature("mobile"):
 		return {
 			"multimesh": LODMesher.generate_decimated_mesh_data(chunk, lifecycle.world_state),
@@ -177,14 +207,71 @@ func _compile_visual_data_with_lod(chunk: Chunk, chunk_pos: Vector3i, is_distant
 	return ChunkVisualBuilder.extract_render_data(chunk, lifecycle.world_state, build_physics) as Dictionary
 
 
-func is_queued(pos: Vector3i) -> bool:
-	for req: Dictionary in _load_requests_queue:
-		if req["pos"] == pos:
-			return true
-	return false
+func _compile_collision_shape(task_result: GeneratedChunkTask, visual_data: Dictionary) -> void:
+	var collision_verts: PackedVector3Array = visual_data.get("collision_vertices", PackedVector3Array()) as PackedVector3Array
+	if collision_verts.size() > 0:
+		var shape := ConcavePolygonShape3D.new()
+		shape.set_faces(collision_verts)
+		shape.backface_collision = true
+		task_result.collision_shape = shape
 
 
-## Pauses execution and blocks the main thread on exit until background thread workers have finished safely
+func _finish_task_execution() -> void:
+	_queue_mutex.lock()
+	_active_background_tasks -= 1
+	_queue_mutex.unlock()
+	call_deferred("_trigger_next_background_tasks")
+
+
+# ==============================================================================
+# SYNCHRONIZATION GETTERS & CLEANUP
+# ==============================================================================
+
+func cleanup_completed_threads() -> void:
+	_queue_mutex.lock()
+	var active_temp: Array[int] = []
+	for id: int in _active_task_ids:
+		if not WorkerThreadPool.is_task_completed(id):
+			active_temp.append(id)
+	_active_task_ids = active_temp
+	_queue_mutex.unlock()
+
+
+func has_completed_tasks() -> bool:
+	_queue_mutex.lock()
+	var has_tasks := _completed_tasks_queue.size() > 0
+	_queue_mutex.unlock()
+	return has_tasks
+
+
+func pop_completed_task() -> GeneratedChunkTask:
+	_queue_mutex.lock()
+	var task: GeneratedChunkTask = null
+	if _completed_tasks_queue.size() > 0:
+		task = _completed_tasks_queue.pop_front() as GeneratedChunkTask
+	_queue_mutex.unlock()
+	return task
+
+
+func mark_task_completed(pos: Vector3i) -> void:
+	_queue_mutex.lock()
+	_in_flight_tasks.erase(pos)
+	_queue_mutex.unlock()
+
+
+func needs_rebuild(pos: Vector3i) -> bool:
+	_queue_mutex.lock()
+	var has_flag := _queued_rebuilds.has(pos)
+	_queue_mutex.unlock()
+	return has_flag
+
+
+func clear_rebuild_flag(pos: Vector3i) -> void:
+	_queue_mutex.lock()
+	_queued_rebuilds.erase(pos)
+	_queue_mutex.unlock()
+
+
 func shutdown() -> void:
 	_queue_mutex.lock()
 	_load_requests_queue.clear()
