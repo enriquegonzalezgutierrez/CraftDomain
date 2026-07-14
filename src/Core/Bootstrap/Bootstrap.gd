@@ -2,9 +2,8 @@
 # Pathfile: res://src/Core/Bootstrap/Bootstrap.gd
 # Description: Central composition root of the application. Orchestrates the 
 #              initialization of global systems, applies user configuration settings,
-#              injects decoupled dependencies, and manages network services and transitions.
-# SOLID COMPLIANCE: Class limits set < 300 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 20 lines.
+#              injects decoupled dependencies, and manages network services,
+#              transitions, and initial Glitch Rift anomalies.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -22,6 +21,7 @@ var weather_service: WeatherService
 var network_service: NetworkService
 
 var ai_telemetry_service: AITelemetryService
+var glitch_rift_service: GlitchRiftService
 var world_repository: WorldRepository
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
@@ -41,9 +41,24 @@ func _initialize_application() -> void:
 
 func _init_telemetry_and_settings() -> void:
 	ai_telemetry_service = AITelemetryService.new()
+	glitch_rift_service = GlitchRiftService.new()
 	_load_and_apply_user_settings()
 	TranslationRegistry.initialize_translations()
 	TextureRegistry.initialize_textures()
+	_setup_initial_glitch_rifts()
+
+
+func _setup_initial_glitch_rifts() -> void:
+	# Spawns a diagnostic anomaly near the starting spawn point [8.5, 14.0, 8.5]
+	var start_pos := Vector3(2.0, 6.0, 2.0)
+	var size_span := Vector3(16.0, 16.0, 16.0)
+	var diagnostic_rift := GlitchRiftVolume.new(
+		"diagnostic_anomaly_0",
+		start_pos,
+		size_span,
+		0.3 # 70% low-gravity scaling
+	)
+	glitch_rift_service.register_rift(diagnostic_rift)
 
 
 func _init_registries() -> void:
@@ -134,8 +149,6 @@ func _setup_prop_registry() -> void:
 	_register_prop(213, WishingWellEntity)
 	_register_prop(215, BarrelEntity)
 	
-	# Phase 12: High-Performance Voxel Vegetation Props (.tscn)
-	# Closed-range loop registration guarantees 100% DRY compliance!
 	for prop_id: int in range(220, 236):
 		_register_prop(prop_id, null)
 
@@ -170,10 +183,10 @@ func _apply_locale_and_buses(settings: Dictionary) -> void:
 		ChunkLoaderService.global_view_distance = int(settings["render_distance"])
 
 
-func _set_bus_volume(bus_name: String, vol: float) -> void:
+func _set_bus_volume(bus_name: String, val: float) -> void:
 	var idx := _get_or_create_bus(bus_name)
-	AudioServer.set_bus_volume_db(idx, vol)
-	AudioServer.set_bus_mute(idx, vol <= -39.0)
+	AudioServer.set_bus_volume_db(idx, val)
+	AudioServer.set_bus_mute(idx, val <= -39.0)
 
 
 func _apply_window_settings(settings: Dictionary) -> void:

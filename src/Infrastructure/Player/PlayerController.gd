@@ -2,8 +2,7 @@
 # Pathfile: res://src/Infrastructure/Player/PlayerController.gd
 # Description: First-person player physics controller managing local movements,
 #              aerodynamics, hotbar bindings, and network authority replication.
-#              SOLID COMPLIANCE: Class limits set < 300 lines (SRP). Physics loops
-#              decomposed to < 20 lines. Duplicated mapping inputs purged.
+#              Integrates low-gravity scaling when inside active Glitch Rifts.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -235,7 +234,7 @@ func _evaluate_glider_deployment() -> void:
 			is_glider_deployed = not is_glider_deployed
 			_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL if is_glider_deployed else PlayerViewModel.ToolType.NONE)
 			if is_glider_deployed:
-				AudioService.play_sfx_static("loot_pickup", global_position)
+				AudioService.play_sfx_static("loot_pickup")
 
 
 func _process_glider_physics(delta: float) -> void:
@@ -256,7 +255,15 @@ func _process_glider_physics(delta: float) -> void:
 
 func _process_standard_movement(delta: float) -> void:
 	if not is_on_floor():
-		velocity.y = max(velocity.y - gravity * delta, TERMINAL_VELOCITY)
+		var active_gravity := gravity
+		
+		# DYNAMIC GRAVITY SHIFT: Apply 70% low-gravity modifier inside Glitch Rifts
+		if is_instance_valid(GlitchRiftService.instance):
+			var rift := GlitchRiftService.instance.get_active_rift_at(global_position)
+			if rift != null:
+				active_gravity = rift.get_localized_gravity(gravity)
+				
+		velocity.y = max(velocity.y - active_gravity * delta, TERMINAL_VELOCITY)
 			
 	if is_instance_valid(_input_component) and _input_component.is_jump_just_pressed() and is_on_floor():
 		velocity.y = JUMP_VELOCITY

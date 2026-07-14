@@ -1,17 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/Player/ItemStrategyRegistry.gd
 # Description: Domain Registry mapping item IDs to their respective usage strategies.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Isolates item-to-behavior 
-#                mappings.
-#              - Open-Closed Principle (OCP): Dynamically extensible. New items 
-#                and specialized building behaviors can register their custom strategy 
-#                instances at runtime without modifying the interaction handlers.
-# MILESTONE 8 UPGRADE:
-#              - Registered place strategies for DIAMOND_ORE (28), OAK_PLANKS (29),
-#                and GLOWSTONE (30) to allow players to construct them.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Player/ItemStrategyRegistry.gd
+#              Integrates the Chrono-Scythe strategy for environmental restoration.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ItemStrategyRegistry
 extends RefCounted
@@ -41,12 +33,15 @@ static func _static_init() -> void:
 	# 5. Advanced Slab Placement and Fusion (Item ID 26: Stone Slab)
 	register_strategy(26, SlabPlacementStrategy.new(26))
 	
-	# ==========================================================================
-	# MILESTONE 8: CAVES & DESERT EXPANSION BLOCK STRATEGIES
-	# ==========================================================================
+	# 6. Caves & Desert Expansion Block Strategies
 	register_strategy(28, PlaceableBlockStrategy.new(28, BlockType.Type.DIAMOND_ORE))
 	register_strategy(29, PlaceableBlockStrategy.new(29, BlockType.Type.OAK_PLANKS))
 	register_strategy(30, PlaceableBlockStrategy.new(30, BlockType.Type.GLOWSTONE))
+	
+	# ==========================================================================
+	# PHASE 14: CHRONO-SCYTHE INTEGRATION
+	# ==========================================================================
+	register_strategy(85, ChronoScytheStrategy.new())
 
 
 ## Public Registry API: Binds a custom strategy to an item ID.
