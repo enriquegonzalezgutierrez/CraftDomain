@@ -1,19 +1,18 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Infrastructure/Persistence/SettingsRepository.gd
 # Description: Infrastructure Repository responsible for serialization and persistence
 #              of user configuration settings (volumes, language, render distance).
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively saving 
-#                and loading the settings configuration file.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Persistence/SettingsRepository.gd
+# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
+#              loops decomposed. Every method strictly remains below 10 lines.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SettingsRepository
 extends RefCounted
 
-const SETTINGS_PATH := "user://settings.json"
+const SETTINGS_PATH: String = "user://settings.json"
 
-## Saves global user preferences to disk.
+
 static func save_settings(
 	music_vol: float, 
 	sfx_vol: float, 
@@ -22,7 +21,19 @@ static func save_settings(
 	window_mode: int, 
 	window_size: Vector2i
 ) -> void:
-	var data := {
+	var data: Dictionary = _pack_settings_data(music_vol, sfx_vol, render_dist, locale, window_mode, window_size)
+	_write_settings_to_file(data)
+
+
+static func _pack_settings_data(
+	music_vol: float, 
+	sfx_vol: float, 
+	render_dist: int, 
+	locale: String, 
+	window_mode: int, 
+	window_size: Vector2i
+) -> Dictionary:
+	return {
 		"music_volume": music_vol,
 		"sfx_volume": sfx_vol,
 		"render_distance": render_dist,
@@ -31,35 +42,45 @@ static func save_settings(
 		"window_size_x": window_size.x,
 		"window_size_y": window_size.y
 	}
-	
+
+
+static func _write_settings_to_file(data: Dictionary) -> void:
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file != null:
-		var json_string := JSON.stringify(data)
-		file.store_line(json_string)
+		file.store_line(JSON.stringify(data))
 		file.close()
 		print("[SettingsRepository] Settings saved to disk successfully.")
 
 
-## Loads user preferences from disk. Returns a dictionary of loaded settings or empty if none.
 static func load_settings() -> Dictionary:
 	if not FileAccess.file_exists(SETTINGS_PATH):
 		return {}
 		
+	var json_string: String = _read_settings_file()
+	if json_string.is_empty():
+		return {}
+		
+	return _parse_settings_json(json_string)
+
+
+static func _read_settings_file() -> String:
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
 	if file == null:
-		return {}
-		
-	var json_string := file.get_as_text()
+		return ""
+	var content: String = file.get_as_text()
 	file.close()
-	
+	return content
+
+
+static func _parse_settings_json(json_string: String) -> Dictionary:
 	var json := JSON.new()
-	var error := json.parse(json_string)
+	var error: Error = json.parse(json_string)
 	if error != OK:
-		push_error("[SettingsRepository] Error parsing settings JSON. Line: " + str(json.get_error_line()) + " | Error: " + json.get_error_message())
+		push_error("[SettingsRepository] Error parsing settings JSON. Error: " + json.get_error_message())
 		return {}
 		
-	var data := json.data as Dictionary
-	if data != null:
+	var data: Dictionary = json.data as Dictionary
+	if not data.is_empty():
 		print("[SettingsRepository] Settings loaded from disk successfully.")
 		return data
 		
