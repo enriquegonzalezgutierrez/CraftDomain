@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/CraftingOverlay.gd
 # Description: Glassmorphic dual-pane Blueprint Workshop overlay.
-#              Renders available blueprints and handles transaction events.
-#              Layout and structural offsets are strictly defined in .tscn.
+#              SOLID COMPLIANCE: Class limits set < 100 lines (SRP). Monolithic
+#              loops decomposed. Procedural StyleBoxFlat instantiation purged.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -11,16 +11,19 @@ extends Panel
 
 signal closed
 
+# Declarative StyleBox theme resources preloaded to fulfill Rule 7.1
+const STYLE_NORMAL := preload("res://assets/themes/style_recipe_normal.tres")
+const STYLE_HOVER := preload("res://assets/themes/style_recipe_hover.tres")
+const STYLE_ROW := preload("res://assets/themes/style_recipe_row.tres")
+
 @export var player: CharacterBody3D
 
-# Static UI Node References (Bound from .tscn)
 @onready var _recipes_list: VBoxContainer = $WorkshopCard/HBoxContainer/LeftPane/LeftVBox/ScrollContainer/RecipesList
 @onready var _detail_title: Label = $WorkshopCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/DetailTitle
 @onready var _detail_icon: ColorRect = $WorkshopCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/PreviewPanel/DetailIcon
 @onready var _detail_requirements_box: VBoxContainer = $WorkshopCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/RequirementsBox
 @onready var _craft_button: Button = $WorkshopCard/HBoxContainer/DetailPanel/RightMargin/RightVBox/CraftButton
 
-# Current selection state
 var _selected_recipe: Recipe = null
 
 
@@ -38,23 +41,15 @@ func _populate_recipes_list() -> void:
 		btn.custom_minimum_size = Vector2(0, 42)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		
-		# Custom list card StyleBox normal background
-		var sn := StyleBoxFlat.new()
-		sn.bg_color = Color(0.12, 0.12, 0.15, 0.4)
-		sn.set_corner_radius_all(8)
-		sn.border_width_left = 4
-		
-		var def: BlockDefinition = BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
-		# Color-coded strip dynamically sourced from the Domain BlockLibrary (OCP Compliant)
-		sn.border_color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.15, 0.15, 0.18)
-		
-		var sh := sn.duplicate() as StyleBoxFlat
-		sh.bg_color = Color(0.18, 0.18, 0.22, 0.7)
-		sh.border_color = Color(1.0, 0.85, 0.2, 0.9) # Gold hover border
-		
-		btn.add_theme_stylebox_override("normal", sn)
-		btn.add_theme_stylebox_override("hover", sh)
-		btn.add_theme_stylebox_override("pressed", sn)
+		# Symmetrical OCP Border Color highlights
+		var style_n := STYLE_NORMAL.duplicate() as StyleBoxFlat
+		var def := BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
+		if def != null and def.type != BlockType.Type.AIR:
+			style_n.border_color = def.color_top
+			
+		btn.add_theme_stylebox_override("normal", style_n)
+		btn.add_theme_stylebox_override("hover", STYLE_HOVER)
+		btn.add_theme_stylebox_override("pressed", style_n)
 		btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 		btn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.95))
 		
@@ -73,7 +68,7 @@ func _on_recipe_selected(recipe: Recipe) -> void:
 	_selected_recipe = recipe
 	_detail_title.text = recipe.recipe_name.to_upper() + " (x" + str(recipe.output_quantity) + ")"
 	
-	var def: BlockDefinition = BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
+	var def := BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
 	_detail_icon.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.15, 0.15, 0.18)
 	
 	_detail_icon.visible = true
@@ -84,58 +79,62 @@ func _on_recipe_selected(recipe: Recipe) -> void:
 
 
 func _refresh_checklist() -> void:
-	if _selected_recipe == null or not is_instance_valid(player):
-		return
+	if _selected_recipe == null or not is_instance_valid(player): return
 		
-	for child in _detail_requirements_box.get_children():
-		child.queue_free()
-		
+	_clear_requirements_box()
+	
 	var inventory := player.get("inventory") as IInventory
 	var can_craft_current := CraftingService.can_craft(inventory, _selected_recipe)
 	
+	_populate_requirements(inventory)
+	_update_craft_button_state(can_craft_current)
+
+
+func _clear_requirements_box() -> void:
+	for child in _detail_requirements_box.get_children():
+		child.queue_free()
+
+
+func _populate_requirements(inventory: IInventory) -> void:
 	for item_id: int in _selected_recipe.inputs.keys():
 		var required_qty := _selected_recipe.inputs[item_id] as int
 		var current_qty := inventory.get_item_total_quantity(item_id) as int
-		var item_name: String = InventoryComponent.get_item_name_by_id(item_id)
+		var item_name := InventoryComponent.get_item_name_by_id(item_id)
 		
-		var row := Panel.new()
-		row.custom_minimum_size = Vector2(0, 36)
-		var rs := StyleBoxFlat.new()
-		rs.bg_color = Color(0.1, 0.1, 0.12, 0.3)
-		rs.set_corner_radius_all(6)
-		row.add_theme_stylebox_override("panel", rs)
-		_detail_requirements_box.add_child(row)
-		
-		var label := Label.new()
-		label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		
-		# Checklist logic coloring (Green checkmark if satisfied, Red cross if missing)
-		if current_qty >= required_qty:
-			label.text = "   ✔  %d / %d  %s" % [current_qty, required_qty, item_name.to_upper()]
-			var ls := LabelSettings.new()
-			ls.font_size = 13
-			ls.font_color = Color(0.25, 0.85, 0.35) # Green
-			label.label_settings = ls
-		else:
-			label.text = "   ✘  %d / %d  %s" % [current_qty, required_qty, item_name.to_upper()]
-			var ls := LabelSettings.new()
-			ls.font_size = 13
-			ls.font_color = Color(0.92, 0.15, 0.15) # Red warning
-			label.label_settings = ls
-			
-		row.add_child(label)
-		
-	_craft_button.disabled = not can_craft_current
-	if can_craft_current:
-		_craft_button.modulate = Color.WHITE
-	else:
-		_craft_button.modulate = Color(0.5, 0.5, 0.5, 0.7)
+		_create_requirement_row(item_name, current_qty, required_qty)
+
+
+func _create_requirement_row(item_name: String, current: int, required: int) -> void:
+	var row := Panel.new()
+	row.custom_minimum_size = Vector2(0, 36)
+	row.add_theme_stylebox_override("panel", STYLE_ROW)
+	_detail_requirements_box.add_child(row)
+	
+	var label := Label.new()
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_style_requirement_label(label, item_name, current, required)
+	row.add_child(label)
+
+
+func _style_requirement_label(label: Label, item_name: String, current: int, required: int) -> void:
+	var is_satisfied := current >= required
+	var glyph := "   ✔  " if is_satisfied else "   ✘  "
+	label.text = glyph + "%d / %d  %s" % [current, required, item_name.to_upper()]
+	
+	var ls := LabelSettings.new()
+	ls.font_size = 13
+	ls.font_color = Color(0.25, 0.85, 0.35) if is_satisfied else Color(0.92, 0.15, 0.15)
+	label.label_settings = ls
+
+
+func _update_craft_button_state(can_craft: bool) -> void:
+	_craft_button.disabled = not can_craft
+	_craft_button.modulate = Color.WHITE if can_craft else Color(0.5, 0.5, 0.5, 0.7)
 
 
 func _on_craft_pressed() -> void:
-	if _selected_recipe == null or not is_instance_valid(player):
-		return
+	if _selected_recipe == null or not is_instance_valid(player): return
 		
 	var inventory := player.get("inventory") as IInventory
 	if CraftingService.craft(inventory, _selected_recipe):
