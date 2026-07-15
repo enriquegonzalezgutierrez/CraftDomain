@@ -7,6 +7,8 @@
 #   for chat and trade, delegating data state validation to the Domain services.
 # - Dependency Inversion Principle (DIP): Operates entirely on abstract IInventory
 #   contracts during peer trade initializations.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name P2PNetworkAdapter
 extends Node
@@ -18,6 +20,8 @@ signal trade_offer_updated(session_id: String, offer_data: Dictionary)
 signal trade_confirmation_updated(session_id: String, confirmed: bool)
 
 var _active_sessions: Dictionary = {} # session_id (String) -> P2PTradeSession
+
+const TRADE_REACH_DISTANCE_SQ: float = 25.0 # 5 meters squared max transaction range
 
 
 func _ready() -> void:
@@ -54,7 +58,7 @@ func _server_receive_message(raw_text: String) -> void:
 
 
 ## Client-Authoritative: Receives, bakes, and appends formatted BBCodes to the UI
-@rpc("reliable")
+@rpc("call_local", "reliable")
 func _client_receive_message(sender_id: int, sender_name: String, text: String, channel_val: int, target: String) -> void:
 	var msg := P2PChatService.ChatMessage.new(sender_id, sender_name, text, channel_val as P2PChatService.Channel, target)
 	var formatted := P2PChatService.format_message(msg)
@@ -89,8 +93,14 @@ func _server_receive_trade_request(target_id: int) -> void:
 		return
 		
 	var sender_id := multiplayer.get_remote_sender_id()
+	
+	# ANTI-CHEAT: Validate physical proximity before authorizing the handshake popup
 	if _is_within_interaction_distance(sender_id, target_id):
 		rpc_id(target_id, "_client_receive_trade_request", sender_id)
+	else:
+		# Provide system feedback to the violator
+		var err_text := "SYSTEM: Trade failed. Player is out of range."
+		rpc_id(sender_id, "_client_receive_message", 1, "SYSTEM", err_text, int(P2PChatService.Channel.SYSTEM), "")
 
 
 @rpc("reliable")
@@ -110,6 +120,11 @@ func _server_accept_trade_request(sender_id: int) -> void:
 		return
 		
 	var receiver_id := multiplayer.get_remote_sender_id()
+	
+	# Second validation pass to ensure players didn't move away during the prompt
+	if not _is_within_interaction_distance(sender_id, receiver_id):
+		return
+		
 	var session_id := "%d_%d" % [sender_id, receiver_id]
 	
 	rpc_id(sender_id, "_client_start_trade_session", session_id, receiver_id, true)
@@ -182,9 +197,10 @@ func _route_private_whisper(msg: P2PChatService.ChatMessage) -> void:
 	var target_id := _get_peer_id_by_name(msg.target_name)
 	if target_id != -1:
 		rpc_id(target_id, "_client_receive_message", msg.sender_id, msg.sender_name, msg.text, int(msg.channel), msg.target_name)
+		# Send confirmation echo to the original sender
 		rpc_id(msg.sender_id, "_client_receive_message", msg.sender_id, msg.sender_name, msg.text, int(msg.channel), msg.target_name)
 	else:
-		var err_text := "ERROR: PLAYER '%s' IS OFFLINE." % msg.target_name
+		var err_text := "ERROR: PLAYER '%s' IS OFFLINE OR OUT OF RANGE." % msg.target_name
 		rpc_id(msg.sender_id, "_client_receive_message", 1, "SYSTEM", err_text, int(P2PChatService.Channel.SYSTEM), "")
 
 
@@ -193,6 +209,7 @@ func _get_peer_id_by_name(p_name: String) -> int:
 	if is_instance_valid(bootstrap):
 		var controller := bootstrap.get("world_controller") as Node
 		if is_instance_valid(controller):
+			# The NetworkSpawnerService instantiates player nodes matching their integer Peer ID
 			var node := controller.get_node_or_null(p_name)
 			if is_instance_valid(node) and node is CharacterBody3D:
 				return p_name.to_int()
@@ -213,14 +230,16 @@ func _get_trade_partner_id(session_id: String, sender_id: int) -> int:
 
 
 func _is_within_interaction_distance(id_a: int, id_b: int) -> bool:
+	# Host is always ID 1, but we use string paths to locate active physics bodies
 	var bootstrap := get_node_or_null("/root/Bootstrap")
 	if not is_instance_valid(bootstrap): return false
 	
 	var ctrl := bootstrap.get("world_controller") as Node
 	if is_instance_valid(ctrl):
-		var node_a := ctrl.get_node_or_null(str(id_a)) as CharacterBody3D
-		var node_b := ctrl.get_node_or_null(str(id_b)) as CharacterBody3D
+		var node_a: CharacterBody3D = ctrl.get_node_or_null(str(id_a)) as CharacterBody3D if id_a != 1 else ctrl.get_node_or_null("Player") as CharacterBody3D
+		var node_b: CharacterBody3D = ctrl.get_node_or_null(str(id_b)) as CharacterBody3D if id_b != 1 else ctrl.get_node_or_null("Player") as CharacterBody3D
+		
 		if is_instance_valid(node_a) and is_instance_valid(node_b):
-			# Max interaction reach distance (5 meters squared)
-			return node_a.global_position.distance_squared_to(node_b.global_position) <= 25.0
+			return node_a.global_position.distance_squared_to(node_b.global_position) <= TRADE_REACH_DISTANCE_SQ
+			
 	return false

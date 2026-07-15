@@ -1,9 +1,13 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/WorldGenerator.gd
 # Description: Domain Generator responsible for procedurally carving chunk block data.
-#              SOLID COMPLIANCE: Class limits set < 300 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 15 lines.
-#              Corrected: Purged experimental block vegetation casts.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly procedural noise
+#   decimations and 3D cave carving.
+# - Open-Closed Principle (OCP): Closes terrain generation to modification while
+#   sculpting all wilderness biomes dynamically.
+# - Bedrock Aesthetics: Forces absolute bottom layer (Y=0) to compile as OBSIDIAN,
+#   providing a beautiful visual lecho in coordination with the WorldState shield.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -151,7 +155,10 @@ func _sculpt_single_voxel(chunk: Chunk, global_y: int, local_idx_z: Vector3i, gl
 	var block_type: BlockType.Type = BlockType.Type.AIR
 	var local_y: int = global_y - (chunk.position.y * Chunk.SIZE)
 	
-	if global_y <= target_height:
+	# BEDROCK ESTHETICS: Symmetrical 3D Floor is compiled permanently as Obsidian (ID 39)
+	if global_y == 0:
+		block_type = BlockType.Type.OBSIDIAN
+	elif global_y <= target_height:
 		block_type = _determine_voxel_solid_type(local_idx_z, global_xz, global_y, target_height, biome, biome_id, on_road)
 	else:
 		if not on_road and global_y <= biome_water_level:

@@ -7,7 +7,9 @@
 # - Single Responsibility Principle (SRP): Exclusively coordinates block states,
 #   grid conversions, and active timeline buffers.
 # - Open-Closed Principle (OCP): Provides a dual-timeline unpacking fallback 
-#   inside the state mutator, preventing old single-era files from crashing.
+#   inside the state mutator.
+# - Domain-Layer Bedrock Shield: Mutator method rejects changes at Y <= 0,
+#   mathematically securing the floor from void breaches.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -147,6 +149,11 @@ func get_block(global_pos: Vector3i) -> BlockType.Type:
 
 ## Sets a block in global world space coordinates and logs the modification.
 func set_block(global_pos: Vector3i, type: BlockType.Type) -> void:
+	# BEDROCK SHIELD: The floor of the world at Y <= 0 is indestructible and permanent.
+	# Any attempts to clear or modify this layer are safely ignored at the Domain level.
+	if global_pos.y <= 0:
+		return
+		
 	var chunk_pos := global_to_chunk_pos(global_pos)
 	var chunk := get_chunk(chunk_pos)
 	
