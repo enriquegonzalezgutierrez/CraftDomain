@@ -2,7 +2,12 @@
 # Pathfile: res://src/Infrastructure/UI/PlayerHUD.gd
 # Description: Central HUD Orchestrator and UI Coordinator. Handles modal toggles,
 #              LOD UI updates, and reactive Domain Event bindings.
-#              Integrates the Silicon Hacking Terminal Overlay.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly HUD layouts, 
+#   modal activations, and player state-display linkages.
+# - Chat Integration: Wired up `chat_box` and updated `is_any_menu_open()` 
+#   to include the chat's active typing state, preventing camera rotation 
+#   conflicts and resolving mouse cursor locks.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -28,6 +33,9 @@ var world_controller: Node3D
 @onready var _damage_widget: ColorRect = $DamageOverlayWidget
 @onready var _hotbar_dock_widget: Control = $HotbarDockWidget
 @onready var _pause_widget: Panel = $PauseMenuWidget
+
+# INTEGRATION: Binds safely to the instantiated Chat Box sub-scene if present
+@onready var chat_box: ChatBoxWidget = get_node_or_null("ChatBoxWidget") as ChatBoxWidget
 
 # UI Refresh Throttling Timer (Updates text metrics at 20Hz, stabilizing FPS)
 var _ui_update_timer: float = 0.0
@@ -303,8 +311,13 @@ func flash_damage_screen() -> void:
 
 
 func is_any_menu_open() -> bool:
+	var is_chat_typing := false
+	if is_instance_valid(chat_box):
+		is_chat_typing = chat_box._is_typing
+		
 	return (
 		_is_modal_active() or 
+		is_chat_typing or
 		(is_instance_valid(dialogue_coordinator) and is_instance_valid(dialogue_coordinator.active_dialogue))
 	)
 
