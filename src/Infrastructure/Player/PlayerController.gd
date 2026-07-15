@@ -5,9 +5,10 @@
 #              Integrates low-gravity scaling when inside active Glitch Rifts.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only manages local physical velocities,
-#   hotbars, and controller bindings, delegating camera bobbing to sub-components.
-# - Level Design Fix: Void Rescue threshold lowered from 2.0 to -5.0, allowing 
-#   players to explore deep caves and bedrock floors without false-positive teleports.
+#   hotbars, and controller bindings, keeping code strictly under 300 lines.
+# - High-Performance Rendering Fix: Bypassed the editor-restricted GPU readbacks 
+#   from `RenderingServer` by directly querying the CPU-side state trackers inside 
+#   `WeatherService` to resolve C++ exceptions.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -230,12 +231,23 @@ func _process_glider_physics(delta: float) -> void:
 	var wind_vector := Vector2.ZERO
 	var wind_strength := 0.0
 	var weather_node := get_parent().get_node_or_null("WeatherService")
+	
 	if is_instance_valid(weather_node):
-		wind_vector = RenderingServer.global_shader_parameter_get("wind_vector") as Vector2
-		wind_strength = RenderingServer.global_shader_parameter_get("wind_strength") as float
+		# HIGH-PERFORMANCE CPU QUERY: Read directly from the CPU state-trackers inside WeatherService.
+		# Bypasses the slow, editor-restricted global_shader_parameter_get() GPU calls.
+		wind_vector = weather_node.get("_current_wind_vector") as Vector2
+		wind_strength = weather_node.get("_current_wind_strength") as float
 
 	var look_direction := -camera.global_transform.basis.z.normalized() if is_instance_valid(camera) else Vector3.FORWARD
-	velocity = _glider_physics.calculate_glide_velocity(velocity, look_direction, wind_vector, wind_strength, delta)
+	
+	velocity = _glider_physics.calculate_glide_velocity(
+		velocity, 
+		look_direction, 
+		wind_vector, 
+		wind_strength, 
+		global_position.y, 
+		delta
+	)
 
 	var input_dir := _input_component.get_movement_vector() if is_instance_valid(_input_component) else Vector2.ZERO
 	if input_dir.x != 0.0:
