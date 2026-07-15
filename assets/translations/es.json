@@ -451,5 +451,9 @@
   "BLOCK_NETHER_BRICKS": "Ladrillos del Nether",
   "BLOCK_CACTUS": "Cactus del Desierto",
   "BLOCK_MAGMA": "Bloque de Magma",
-  "BLOCK_GLASS_SLAB_BOTTOM": "Losa de Vidrio (Abajo)"
+  "BLOCK_GLASS_SLAB_BOTTOM": "Losa de Vidrio (Abajo)",
+
+  "ITEM_VOXEL_GLIDER": "Planeador Voxel",
+  "ITEM_210_DESC": "Un planeador aerodinámico de gran altitud tallado a partir de tablones de madera de secuoya ligera y fibras suaves de nubes. Sumamente útil para planear y cruzar cañones masivos, valles profundos y fisuras temporales.",
+  "ITEM_210_USE": "Equipar en mano. Salta desde cualquier acantilado de gran altitud, luego presiona dos veces SALTO (Espacio) en el aire para desplegar las alas. Rota la cámara para maniobrar y planear suavemente con las corrientes de viento."
 }

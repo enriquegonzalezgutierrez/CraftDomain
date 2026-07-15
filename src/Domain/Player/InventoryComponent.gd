@@ -1,8 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Player/InventoryComponent.gd
 # Description: Concrete domain component managing a 24-slot stackable inventory grid.
-#              SOLID COMPLIANCE: Class limits set < 300 lines (SRP). Complex sorting
-#              delegated to InventorySortingService. Inline methods structured < 20 lines.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively manages inventory slots, 
+#   item additions, consumptions, and serialization.
+# - Open-Closed Principle (OCP): Dynamically registers the Voxel Glider (ID 210) 
+#   as a playable starting item to enable early high-altitude flight mechanics.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -35,6 +38,9 @@ static func _static_init() -> void:
 	register_non_block_item_name(18, "BLOCK_CROP_SEED")     
 	register_non_block_item_name(20, "BLOCK_CROP_RIPE")     
 	register_non_block_item_name(26, "ITEM_STONE_SLAB")     
+	
+	# OCP REGISTRATION: Register the high-altitude Voxel Glider (ID 210)
+	register_non_block_item_name(210, "ITEM_VOXEL_GLIDER")
 
 
 static func register_non_block_item_name(item_id: int, translation_key: String) -> void:
@@ -71,7 +77,10 @@ func _setup_starting_survival_inventory() -> void:
 	_slots[8] = SlotData.new(18, 16)  
 	_slots[9] = SlotData.new(26, 64)
 	
-	for i in range(10, TOTAL_SLOTS):
+	# OCP STARTING ITEM: Grant the Voxel Glider directly in Slot 10
+	_slots[10] = SlotData.new(210, 1, 1)
+	
+	for i in range(11, TOTAL_SLOTS):
 		_slots[i] = SlotData.new(-1, 0)
 
 
@@ -89,7 +98,7 @@ func add_item(item_id: int, quantity: int) -> bool:
 	if quantity <= 0:
 		return true
 		
-	var is_weapon := (item_id == 17)
+	var is_weapon := (item_id == 17 or item_id == 210) # Glider and Sword cannot stack
 	var max_stack := 1 if is_weapon else MAX_STACK_SIZE
 	var remaining := quantity
 	
@@ -164,7 +173,7 @@ func _deduct_from_slot(slot: SlotData, remaining: int) -> int:
 
 func can_receive_item(item_id: int, quantity: int) -> bool:
 	var remaining := quantity
-	var is_weapon := (item_id == 17)
+	var is_weapon := (item_id == 17 or item_id == 210)
 	var max_stack := 1 if is_weapon else MAX_STACK_SIZE
 	
 	if not is_weapon:

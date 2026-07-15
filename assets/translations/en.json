@@ -451,5 +451,9 @@
   "BLOCK_NETHER_BRICKS": "Nether Bricks",
   "BLOCK_CACTUS": "Cactus",
   "BLOCK_MAGMA": "Magma Block",
-  "BLOCK_GLASS_SLAB_BOTTOM": "Glass Slab (Bottom)"
+  "BLOCK_GLASS_SLAB_BOTTOM": "Glass Slab (Bottom)",
+
+  "ITEM_VOXEL_GLIDER": "Voxel Glider",
+  "ITEM_210_DESC": "An aerodynamic high-altitude glider crafted from lightweight redwood timber planks and soft cloud fibers. Extremely useful for soaring across massive canyons, deep valleys, and vertical rifts.",
+  "ITEM_210_USE": "Equip to Hand. Leap from any high altitude cliff, then double-press JUMP (Space) in mid-air to deploy the wings. Rotate the camera to steer and glide smoothly through wind currents."
 }
