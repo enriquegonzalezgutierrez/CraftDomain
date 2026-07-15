@@ -3,6 +3,11 @@
 # Description: Domain Aggregate Root representing the global voxel world, managing
 #              chunk storage, coordinate systems, and a double-buffered timeline 
 #              system to support seamless Present/Past chronological shifting.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates block states,
+#   grid conversions, and active timeline buffers.
+# - Open-Closed Principle (OCP): Provides a dual-timeline unpacking fallback 
+#   inside the state mutator, preventing old single-era files from crashing.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -29,14 +34,6 @@ var _timeline_modifications: Dictionary = {
 	Timeline.PRESENT: {},
 	Timeline.PAST: {}
 }
-
-## BACKWARD-COMPATIBILITY ADAPTER (SOLID / OCP Compliant)
-## Dynamically redirects queries for the old single-timeline modifications map 
-## to the active timeline's buffer, resolving serialization crashes.
-@warning_ignore("unused_private_class_variable")
-var _chunk_modifications: Dictionary:
-	get:
-		return _timeline_modifications[active_timeline] as Dictionary
 
 
 func _init() -> void:
@@ -106,15 +103,34 @@ func get_chunk_modifications(chunk_pos: Vector3i) -> Dictionary:
 	return {}
 
 
-## Overwrites and applies a list of saved modifications to a chunk's voxel grid.
+## Unpacks the consolidated dual-timeline dictionary and caches both epochs in RAM
 func apply_chunk_modifications(chunk_pos: Vector3i, modifications: Dictionary) -> void:
-	var active_mods: Dictionary = _timeline_modifications[active_timeline] as Dictionary
-	active_mods[chunk_pos] = modifications
+	var present_mods: Dictionary = {}
+	var past_mods: Dictionary = {}
 	
+	if modifications.has("present") or modifications.has("past"):
+		present_mods = modifications.get("present", {}) as Dictionary
+		past_mods = modifications.get("past", {}) as Dictionary
+	else:
+		# Backward-compatibility fallback: old flat files map to current active timeline
+		if active_timeline == Timeline.PRESENT:
+			present_mods = modifications
+		else:
+			past_mods = modifications
+			
+	# Cache both timelines to prevent data loss on subsequent overwrites
+	_timeline_modifications[Timeline.PRESENT][chunk_pos] = present_mods
+	_timeline_modifications[Timeline.PAST][chunk_pos] = past_mods
+	
+	_write_mods_to_chunk_mesh(chunk_pos, present_mods, past_mods)
+
+
+func _write_mods_to_chunk_mesh(chunk_pos: Vector3i, present_mods: Dictionary, past_mods: Dictionary) -> void:
 	var chunk := get_chunk(chunk_pos)
 	if chunk != null:
-		for local_pos: Vector3i in modifications.keys():
-			var type_val: int = modifications[local_pos] as int
+		var active_mods := present_mods if active_timeline == Timeline.PRESENT else past_mods
+		for local_pos: Vector3i in active_mods.keys():
+			var type_val: int = active_mods[local_pos] as int
 			chunk.set_block(local_pos.x, local_pos.y, local_pos.z, type_val as BlockType.Type)
 
 

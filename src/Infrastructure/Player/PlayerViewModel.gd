@@ -1,17 +1,15 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (First-Person Viewmodel & Arms)
-# Class: PlayerViewModel
-# Description: First-person arms viewmodel manager. Handles active hand-held 
-#              tool meshes, progressive bobbing, and click swing animations.
+# Pathfile: res://src/Infrastructure/Player/PlayerViewModel.gd
+# Description: First-person arms and tools viewmodel manager. Handles active 
+#              hand-held tool meshes, progressive bobbing, click swing animations,
+#              and dynamic voxel glider wings.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates first-person 
 #   arms drawings, sways, and active hand swing Tweens.
-# - Open-Closed Principle (OCP): Implements an extensible tool-mapping registry.
-#   All rigid checks for specific weapon or food item IDs are removed, closing 
-#   this file to modifications when adding new items.
-# - Liskov Substitution Principle (LSP): Fully compatible with standard 
-#   Node3D transformations, automatically rendering procedural fallbacks on missing assets.
+# - Open-Closed Principle (OCP): Implements an extensible tool-mapping registry,
+#   allowing glider wings to compile without changing core movement scripts.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PlayerViewModel
 extends Node3D
@@ -20,7 +18,8 @@ enum ToolType {
 	NONE,
 	SCROLL,     # Shown when selecting blocks (blueprints)
 	PICKAXE,    # Shown when selecting Stone, Dirt, or Grass (mining)
-	SWORD       # Shown when selecting the Sword slot (combat)
+	SWORD,      # Shown when selecting the Sword slot (combat)
+	GLIDER      # Shown when the high-altitude glider is deployed (flight)
 }
 
 const SWORD_MODEL_PATH := "res://assets/models/weapons/sword.glb"
@@ -47,23 +46,21 @@ const BASELINE_ROTATION := Vector3(deg_to_rad(10), deg_to_rad(20), deg_to_rad(-5
 static var _item_tools: Dictionary = {}
 
 
-## Static Constructor: Registers default base-game item tool categories on boot.
 static func _static_init() -> void:
 	register_item_tool_type(15, ToolType.SCROLL)  # Lava Bucket
 	register_item_tool_type(16, ToolType.SCROLL)  # Fried Chicken
 	register_item_tool_type(17, ToolType.SWORD)   # Wooden Sword
 	register_item_tool_type(18, ToolType.SCROLL)  # Crop Seeds
+	register_item_tool_type(210, ToolType.GLIDER) # Voxel Glider
 
 
 ## Public OCP Extension API: Registers a custom item tool type dynamically.
-## Can be called from custom items, weapon classes, or DLC loaders on startup.
 static func register_item_tool_type(item_id: int, tool_type: ToolType) -> void:
 	_item_tools[item_id] = tool_type
 	print("[PlayerViewModel] Registered dynamic OCP tool type for ID %d -> '%d'" % [item_id, tool_type])
 
 
 ## Static Router: Resolves the appropriate first-person ToolType for any item ID.
-## Blocks are mapped to the Pickaxe, while non-blocks are resolved from the OCP registry.
 static func get_tool_type_for_item(item_id: int) -> ToolType:
 	if item_id == -1:
 		return ToolType.NONE
@@ -73,7 +70,7 @@ static func get_tool_type_for_item(item_id: int) -> ToolType:
 		return _item_tools[item_id] as ToolType
 		
 	# 2. Symmetrical Fallback: Check if the item is a valid registered block
-	var def: BlockDefinition = BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
+	var def := BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
 	if def != null and def.type != 0: # 0 represents BlockType.Type.AIR
 		return ToolType.PICKAXE
 		
@@ -135,6 +132,8 @@ func switch_to_tool(new_tool: ToolType) -> void:
 			_build_pickaxe()
 		ToolType.SWORD:
 			_build_sword()
+		ToolType.GLIDER:
+			_build_glider()
 
 
 ## Executes a highly satisfying 3D swinging animation using God’s Tween engine.
@@ -178,29 +177,16 @@ func _build_pickaxe() -> void:
 	if ResourceLoader.exists(PICKAXE_MODEL_PATH):
 		var model_scene := load(PICKAXE_MODEL_PATH) as PackedScene
 		var model_node := model_scene.instantiate() as Node3D
-		
-		# Prune Blender's default lights and cameras
 		_prune_extraneous_nodes(model_node)
 		
-		# ======================================================================
-		# FIRST-PERSON VIEWMODEL CALIBRATION (V5 Telemetry & Screen-space fix)
-		# ======================================================================
-		# 1. Scale model by 5.5x to look perfect and nimble on the active screen
+		# First-person viewmodel calibration offsets
 		model_node.scale = Vector3(5.5, 5.5, 5.5)
-		
-		# 2. Origin is offset. Placed comfortably in the bottom-right hand
 		model_node.position = Vector3(0.15, -0.22, -0.32)
-		
-		# 3. Apply rotation offset so the pickaxe faces forward elegantly
 		model_node.rotation_degrees = Vector3(15, 110, -45)
-		# ======================================================================
 		
 		_tool_root.add_child(model_node)
 		_register_glb_materials(model_node)
 	else:
-		# ======================================================================
-		# LSP FALLBACK: Symmetrical procedural voxel construction
-		# ======================================================================
 		var handle_color := Color(0.45, 0.3, 0.15)
 		var stone_color := Color(0.48, 0.48, 0.48)
 		_create_box_mesh(_tool_root, Vector3(0.04, 0.45, 0.04), Vector3(0, 0, 0), handle_color) 
@@ -213,27 +199,16 @@ func _build_sword() -> void:
 	if ResourceLoader.exists(SWORD_MODEL_PATH):
 		var model_scene := load(SWORD_MODEL_PATH) as PackedScene
 		var model_node := model_scene.instantiate() as Node3D
-		
-		# Prune Blender's default lights and cameras
 		_prune_extraneous_nodes(model_node)
 		
-		# ======================================================================
-		# FIRST-PERSON VIEWMODEL CALIBRATION (V5 Telemetry & Upside-down Fix)
-		# ======================================================================
-		# 1. Scale model by 0.035x to look perfect and agile on-screen
+		# First-person viewmodel calibration offsets
 		model_node.scale = Vector3(0.035, 0.035, 0.035)
-		
-		# 2. Origin is offset. Pulled Y downward to drag the hilt into the palm
 		model_node.position = Vector3(0.12, -0.32, -0.42)
-		
-		# 3. Flip 180° on X to point the blade UP, and angle it forward on Y
 		model_node.rotation_degrees = Vector3(180, 45, 0)
-		# ======================================================================
 		
 		_tool_root.add_child(model_node)
 		_register_glb_materials(model_node)
 	else:
-		push_error("[PlayerViewModel] GLB sword not found at path: " + SWORD_MODEL_PATH)
 		_build_fallback_sword()
 
 
@@ -244,6 +219,23 @@ func _build_fallback_sword() -> void:
 	_create_box_mesh(_tool_root, Vector3(0.06, 0.52, 0.02), Vector3(0, 0.18, 0), blade_color) 
 	_create_box_mesh(_tool_root, Vector3(0.18, 0.04, 0.05), Vector3(0, -0.08, 0), guard_color) 
 	_create_box_mesh(_tool_root, Vector3(0.04, 0.14, 0.04), Vector3(0, -0.16, 0), hilt_color)  
+
+
+## Esculpe proceduralmente las alas extendidas en primera persona
+func _build_glider() -> void:
+	var handle_color := Color(0.45, 0.3, 0.15)  # Madera
+	var fabric_color := Color(0.92, 0.92, 0.95)  # Tela de nube blanca
+	
+	# Marco transversal principal del ala delta
+	_create_box_mesh(_tool_root, Vector3(0.75, 0.03, 0.03), Vector3(0.0, 0.12, -0.15), handle_color)
+	
+	# Ala Izquierda (Inclinación diagonal simulada)
+	_create_box_mesh(_tool_root, Vector3(0.55, 0.02, 0.38), Vector3(-0.38, 0.12, -0.28), fabric_color)
+	_create_box_mesh(_tool_root, Vector3(0.55, 0.03, 0.03), Vector3(-0.38, 0.13, -0.14), handle_color)
+	
+	# Ala Derecha (Inclinación diagonal simulada)
+	_create_box_mesh(_tool_root, Vector3(0.55, 0.02, 0.38), Vector3(0.38, 0.12, -0.28), fabric_color)
+	_create_box_mesh(_tool_root, Vector3(0.55, 0.03, 0.03), Vector3(0.38, 0.13, -0.14), handle_color)
 
 
 ## Recursively duplicates materials to prevent material-sharing leaks

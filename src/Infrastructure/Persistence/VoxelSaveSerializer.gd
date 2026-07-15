@@ -1,7 +1,13 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Persistence/VoxelSaveSerializer.gd
 # Description: Infrastructure Serialization Helper responsible for data formatting.
-#              Packs and unpacks coordinate vectors, arrays, and quest states (SRP).
+#              Packs and unpacks coordinate vectors, arrays, and dual-timeline
+#              modifications within unified JSON transactions (DIP/SRP).
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively data formatting 
+#   and structure translations, fully decoupled from disk I/O streams.
+# - Open-Closed Principle (OCP): Provides full backward-compatibility fallback 
+#   for older, single-timeline flat chunk files, keeping repository signatures intact.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -9,8 +15,37 @@ class_name VoxelSaveSerializer
 extends RefCounted
 
 
-## Compiles raw block modification deltas into a string-keyed JSON-compatible dictionary
+## Packs dual-timeline modifications into a unified, compatible JSON structure
 static func serialize_chunk_deltas(modifications: Dictionary) -> Dictionary:
+	var present_mods: Dictionary = modifications.get("present", {}) as Dictionary
+	var past_mods: Dictionary = modifications.get("past", {}) as Dictionary
+	
+	return {
+		"present": _serialize_single_timeline(present_mods),
+		"past": _serialize_single_timeline(past_mods)
+	}
+
+
+## Unpacks a structured dual-timeline JSON, providing automatic fallback for older files
+static func deserialize_chunk_deltas(serialized_data: Dictionary) -> Dictionary:
+	var result: Dictionary = {
+		"present": {},
+		"past": {}
+	}
+	
+	if serialized_data.has("present") or serialized_data.has("past"):
+		if serialized_data.has("present") and serialized_data["present"] is Dictionary:
+			result["present"] = _deserialize_single_timeline(serialized_data["present"] as Dictionary)
+		if serialized_data.has("past") and serialized_data["past"] is Dictionary:
+			result["past"] = _deserialize_single_timeline(serialized_data["past"] as Dictionary)
+	else:
+		# Backward-compatibility: Old flat format is safely mapped to Present timeline
+		result["present"] = _deserialize_single_timeline(serialized_data)
+		
+	return result
+
+
+static func _serialize_single_timeline(modifications: Dictionary) -> Dictionary:
 	var serialized: Dictionary = {}
 	for local_pos: Vector3i in modifications.keys():
 		var str_key := "%d,%d,%d" % [local_pos.x, local_pos.y, local_pos.z]
@@ -18,19 +53,26 @@ static func serialize_chunk_deltas(modifications: Dictionary) -> Dictionary:
 	return serialized
 
 
-## Unpacks a string-keyed JSON dictionary back into coordinate Vector3i keys
-static func deserialize_chunk_deltas(serialized_data: Dictionary) -> Dictionary:
+static func _deserialize_single_timeline(timeline_data: Dictionary) -> Dictionary:
 	var modifications: Dictionary = {}
-	for str_key: String in serialized_data.keys():
+	for str_key: String in timeline_data.keys():
 		var parts: PackedStringArray = str_key.split(",")
 		if parts.size() == 3:
 			var local_pos := Vector3i(int(parts[0]), int(parts[1]), int(parts[2]))
-			modifications[local_pos] = int(serialized_data[str_key])
+			modifications[local_pos] = int(timeline_data[str_key])
 	return modifications
 
 
 ## Packs the player's 3D vector variables and world state parameters into a structured dictionary
-static func serialize_global_state(player_pos: Vector3, player_rot: Vector3, seed_val: int, inventory_quantities: Array, active_quest_id: String, celestial_time: float, calendar_day: int) -> Dictionary:
+static func serialize_global_state(
+	player_pos: Vector3, 
+	player_rot: Vector3, 
+	seed_val: int, 
+	inventory_quantities: Array, 
+	active_quest_id: String, 
+	celestial_time: float, 
+	calendar_day: int
+) -> Dictionary:
 	return {
 		"player_pos": {
 			"x": player_pos.x,

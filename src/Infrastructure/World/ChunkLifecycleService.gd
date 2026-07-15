@@ -2,9 +2,11 @@
 # Pathfile: res://src/Infrastructure/World/ChunkLifecycleService.gd
 # Description: High-Performance Infrastructure Service responsible for managing 
 #              chunk instantiation, garbage collection, and physics Rid assignment.
-#              SOLID COMPLIANCE: Threading and queues are strictly delegated to 
-#              ChunkTaskScheduler. Monolithic methods decomposed to < 20 lines.
-#              Corrected: Restored 1-argument compatible signature for load queues.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly chunk instantiations, 
+#   recyling pool, and LOD switches, offloading threading to ChunkTaskScheduler.
+# - Open-Closed Principle (OCP): Integrates dual-timeline synchronization during 
+#   chunk rendering passes, preventing main thread I/O stutters.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -205,6 +207,11 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 		
 	if not task.is_rebuild and is_instance_valid(world_state):
 		world_state.add_chunk(task.chunk)
+		
+		# Symmetrical dual-timeline registration from compiler metadata
+		var saved_edits: Dictionary = task.get_meta("saved_edits") if task.has_meta("saved_edits") else {}
+		if not saved_edits.is_empty():
+			world_state.apply_chunk_modifications(chunk_pos, saved_edits)
 		
 	_register_navigation_nodes(task)
 	_apply_visuals_to_chunk_node(task, chunk_pos, static_body, is_distant)

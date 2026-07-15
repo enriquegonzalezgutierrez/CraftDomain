@@ -3,6 +3,10 @@
 # Description: First-person player physics controller managing local movements,
 #              aerodynamics, hotbar bindings, and network authority replication.
 #              Integrates low-gravity scaling when inside active Glitch Rifts.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Only manages local physical velocities,
+#   hotbars, and controller bindings, delegating camera bobbing to sub-components.
+# - Open-Closed Principle (OCP): Integrates dynamic Glider deployment and retraction.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -139,18 +143,18 @@ func _input(event: InputEvent) -> void:
 
 
 func _handle_pause_trigger() -> void:
-	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		if is_instance_valid(hud):
-			hud.toggle_pause_menu(true)
-		if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
-			world_controller.call("save_all")
-	else:
+	if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		if is_instance_valid(hud) and hud.is_any_menu_open():
 			return
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		if is_instance_valid(hud):
 			hud.toggle_pause_menu(false)
+	else:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		if is_instance_valid(hud):
+			hud.toggle_pause_menu(true)
+		if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
+			world_controller.call("save_all")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -227,12 +231,16 @@ func _evaluate_glider_deployment() -> void:
 	if is_glider_deployed and GliderItemStrategy.evaluate_auto_retraction(is_on_floor(), is_on_wall()):
 		is_glider_deployed = false
 		_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
+		if is_instance_valid(visual_component):
+			visual_component.set_glider_wings_visible(false)
 		return
 
 	if not is_on_floor() and is_instance_valid(_input_component) and _input_component.is_jump_just_pressed():
 		if is_instance_valid(inventory) and inventory.get_item_total_quantity(GLIDER_ITEM_ID) > 0:
 			is_glider_deployed = not is_glider_deployed
-			_set_viewmodel_tool(PlayerViewModel.ToolType.SCROLL if is_glider_deployed else PlayerViewModel.ToolType.NONE)
+			_set_viewmodel_tool(PlayerViewModel.ToolType.GLIDER if is_glider_deployed else PlayerViewModel.ToolType.NONE)
+			if is_instance_valid(visual_component):
+				visual_component.set_glider_wings_visible(is_glider_deployed)
 			if is_glider_deployed:
 				AudioService.play_sfx_static("loot_pickup")
 
@@ -256,13 +264,10 @@ func _process_glider_physics(delta: float) -> void:
 func _process_standard_movement(delta: float) -> void:
 	if not is_on_floor():
 		var active_gravity := gravity
-		
-		# DYNAMIC GRAVITY SHIFT: Apply 70% low-gravity modifier inside Glitch Rifts
 		if is_instance_valid(GlitchRiftService.instance):
 			var rift := GlitchRiftService.instance.get_active_rift_at(global_position)
 			if rift != null:
 				active_gravity = rift.get_localized_gravity(gravity)
-				
 		velocity.y = max(velocity.y - active_gravity * delta, TERMINAL_VELOCITY)
 			
 	if is_instance_valid(_input_component) and _input_component.is_jump_just_pressed() and is_on_floor():
@@ -313,7 +318,7 @@ func _apply_hotbar_selection(slot: int) -> void:
 	var tool_type: PlayerViewModel.ToolType = PlayerViewModel.get_tool_type_for_item(item_id)
 	_set_viewmodel_tool(tool_type)
 	
-	var block_def := BlockLibrary.get_definition(item_id)
+	var block_def := BlockLibrary.get_definition(item_id as BlockType.Type)
 	is_item_selected = (block_def != null and block_def.type != 0)
 	active_build_type = (item_id as BlockType.Type) if is_item_selected else BlockType.Type.AIR
 
@@ -347,6 +352,8 @@ func _on_domain_entity_died() -> void:
 	domain_entity.is_dead = false
 	is_active = false
 	is_glider_deployed = false
+	if is_instance_valid(visual_component):
+		visual_component.set_glider_wings_visible(false)
 	if is_instance_valid(hud):
 		hud.show_loading_screen()
 	position = Vector3(8.5, 14.0, 8.5)

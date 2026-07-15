@@ -1,9 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/ChunkTaskScheduler.gd
 # Description: Infrastructure scheduler managing background thread worker pools,
-#              active task queues, and asynchronous chunk compiling (SRP).
-#              SOLID COMPLIANCE: Decouples 100% of WorkerThreadPool interactions,
-#              Mutex locking, and queue prioritization from the Lifecycle service.
+#              active task queues, and asynchronous chunk compiling.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Decouples 100% of WorkerThreadPool 
+#   interactions, Mutex locking, and queue prioritization from the Lifecycle service.
+# - Open-Closed Principle (OCP): Integrates dual-timeline extraction during 
+#   asynchronous compiling, preventing main thread I/O stutters.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -132,10 +135,11 @@ func _dispatch_task(request: Dictionary) -> void:
 func _background_generate_task(chunk_pos: Vector3i, version: int) -> void:
 	var chunk := Chunk.new(chunk_pos)
 	_apply_generator(chunk)
-	_apply_saved_modifications(chunk)
+	
+	var saved_edits := _apply_saved_modifications(chunk)
 	MegaStructureService.apply_mega_structures(chunk)
 	
-	_compile_and_submit_task(chunk, version, false)
+	_compile_and_submit_task(chunk, version, false, saved_edits)
 	_finish_task_execution()
 
 
@@ -150,7 +154,7 @@ func _background_rebuild_task(chunk_pos: Vector3i, version: int) -> void:
 		return
 		
 	MegaStructureService.apply_mega_structures(chunk)
-	_compile_and_submit_task(chunk, version, true)
+	_compile_and_submit_task(chunk, version, true, {})
 	_finish_task_execution()
 
 
@@ -162,18 +166,31 @@ func _apply_generator(chunk: Chunk) -> void:
 		gen.generate_chunk(chunk)
 
 
-func _apply_saved_modifications(chunk: Chunk) -> void:
-	if not is_instance_valid(lifecycle) or not is_instance_valid(lifecycle.controller): return
+func _apply_saved_modifications(chunk: Chunk) -> Dictionary:
+	if not is_instance_valid(lifecycle) or not is_instance_valid(lifecycle.controller): return {}
 	var repo: WorldRepository = lifecycle.controller.get("repository") as WorldRepository
-	if not is_instance_valid(repo): return
+	if not is_instance_valid(repo): return {}
 	
 	var saved_edits: Dictionary = repo.load_chunk_modifications(chunk.position)
-	for local_pos: Vector3i in saved_edits.keys():
-		var type_id: int = saved_edits[local_pos] as int
+	if saved_edits.is_empty(): return {}
+	
+	var active_timeline := lifecycle.world_state.active_timeline
+	var key := "present" if active_timeline == WorldState.Timeline.PRESENT else "past"
+	
+	var active_mods: Dictionary = {}
+	if saved_edits.has(key) and saved_edits[key] is Dictionary:
+		active_mods = saved_edits[key] as Dictionary
+	elif not saved_edits.has("present") and not saved_edits.has("past"):
+		active_mods = saved_edits
+		
+	for local_pos: Vector3i in active_mods.keys():
+		var type_id: int = active_mods[local_pos] as int
 		chunk.set_block(local_pos.x, local_pos.y, local_pos.z, type_id as BlockType.Type)
+		
+	return saved_edits
 
 
-func _compile_and_submit_task(chunk: Chunk, version: int, is_rebuild: bool) -> void:
+func _compile_and_submit_task(chunk: Chunk, version: int, is_rebuild: bool, saved_edits: Dictionary) -> void:
 	var is_distant := lifecycle.call("_calculate_is_chunk_distant", chunk.position) as bool
 	var build_physics := not is_distant
 	var ws := lifecycle.world_state
@@ -188,6 +205,8 @@ func _compile_and_submit_task(chunk: Chunk, version: int, is_rebuild: bool) -> v
 	task_result.is_rebuild = is_rebuild
 	task_result.set_meta("version", version) 
 	
+	if not saved_edits.is_empty():
+		task_result.set_meta("saved_edits", saved_edits)
 	if build_physics:
 		_compile_collision_shape(task_result, visual_data)
 		
