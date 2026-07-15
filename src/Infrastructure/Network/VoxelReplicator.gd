@@ -107,6 +107,14 @@ func _on_local_block_modified(global_pos: Vector3i, type: BlockType.Type) -> voi
 	if multiplayer.multiplayer_peer == null or multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
 		return
 		
+	# NETWORK FIX: If we are the Server (Host), we are the absolute authority. 
+	# We apply modifications locally and broadcast them directly via rpc(), 
+	# preventing Godot's C++ "RPC on yourself is not allowed" error.
+	if multiplayer.is_server():
+		rpc("_client_receive_block_modification", global_pos, type as int)
+		return
+		
+	# Clients send the modification upstream to the Server for validation
 	rpc_id(1, "_server_receive_block_modification", global_pos, type as int)
 
 
