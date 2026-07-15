@@ -3,7 +3,11 @@
 # Description: Central composition root of the application. Orchestrates the 
 #              initialization of global systems, applies user configuration settings,
 #              injects decoupled dependencies, and manages network services.
-#              MILESTONE 16: Registered Lithic Lurker Boss (ID 50) to MobRegistry.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Only manages initial system startups, 
+#   registries compilation, and viewport transitions.
+# - Open-Closed Principle (OCP): Integrates the new P2PNetworkAdapter under the 
+#   network service node tree, activating the P2P chat and trade RPC pipelines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -13,12 +17,13 @@ extends Node
 const MAIN_MENU_SCENE := preload("res://src/Infrastructure/UI/main_menu.tscn")
 
 var main_menu: MainMenu
-var world_controller: WorldController
-var player_controller: PlayerController
+var world_controller: Node3D
+var player_controller: CharacterBody3D
 var audio_service: AudioService
 var celestial_service: CelestialService
 var weather_service: WeatherService
 var network_service: NetworkService
+var p2p_network_adapter: P2PNetworkAdapter
 
 var ai_telemetry_service: AITelemetryService
 var glitch_rift_service: GlitchRiftService
@@ -91,16 +96,16 @@ func _register_preloaded_mobs() -> void:
 	_register_scene_mob(2, SheepEntity, h_land, ai_fauna)
 	_register_scene_mob(3, CowEntity, h_land, ai_fauna)
 	_register_scene_mob(201, TurtleEntity, h_both, ai_fauna)
-	_register_scene_mob(209, ElephantEntity, h_land, ai_fauna)
 	_register_scene_mob(204, FoxEntity, h_land, ai_fauna)
+	_register_scene_mob(205, BirdEntity, h_land, ai_fauna)
 	_register_scene_mob(206, CatEntity, h_land, ai_fauna)
+	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna)
+	_register_scene_mob(208, CrabEntity, h_both, ai_fauna)
+	_register_scene_mob(209, ElephantEntity, h_land, ai_fauna)
+	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna)
 	_register_scene_mob(211, RaccoonEntity, h_land, ai_fauna)
 	_register_scene_mob(212, GrowlitheEntity, h_land, ai_fauna)
 	_register_scene_mob(213, MonkeyEntity, h_land, ai_fauna)
-	_register_scene_mob(205, BirdEntity, h_land, ai_fauna)
-	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna)
-	_register_scene_mob(208, CrabEntity, h_both, ai_fauna)
-	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna)
 	
 	_register_scene_mob(11, SharkEntity, h_water, ai_zombie)
 	_register_scene_mob(12, GargoyleEntity, h_land, ai_zombie)
@@ -109,10 +114,10 @@ func _register_preloaded_mobs() -> void:
 	
 	_register_scene_mob(107, GolemEntity, h_land, ai_guard)
 	_register_scene_mob(100, VillagerEntity, h_land)
+	_register_scene_mob(101, MerchantEntity, h_land)
 	_register_scene_mob(102, GuardEntity, h_land, ai_guard)
 	_register_scene_mob(103, FarmerEntity, h_land, ai_farmer)
 	_register_scene_mob(104, DruidEntity, h_land)
-	_register_scene_mob(101, MerchantEntity, h_land)
 	_register_scene_mob(105, MinerEntity, h_land)
 	_register_scene_mob(106, CyberCitizenEntity, h_land)
 	
@@ -161,7 +166,7 @@ func _load_and_apply_user_settings() -> void:
 	var settings := SettingsRepository.load_settings()
 	if settings.is_empty(): return
 	_apply_locale_and_buses(settings)
-	_apply_window_settings(settings)
+	_setup_window_modes_from_settings(settings)
 
 
 func _apply_locale_and_buses(settings: Dictionary) -> void:
@@ -181,7 +186,7 @@ func _set_bus_volume(bus_name: String, val: float) -> void:
 	AudioServer.set_bus_mute(idx, val <= -39.0)
 
 
-func _apply_window_settings(settings: Dictionary) -> void:
+func _setup_window_modes_from_settings(settings: Dictionary) -> void:
 	if OS.has_feature("editor") or not settings.has("window_mode"): return
 	var main_window := get_tree().root
 	var mode_val := int(settings["window_mode"])
@@ -236,9 +241,16 @@ func _load_main_menu() -> void:
 func _init_audio_and_menu() -> void:
 	_setup_celestial()
 	_setup_audio()
+	
 	network_service = NetworkService.new()
 	network_service.name = "NetworkService"
 	add_child(network_service)
+	
+	# Instantiate and attach the P2P network adapter under the network service node
+	p2p_network_adapter = P2PNetworkAdapter.new()
+	p2p_network_adapter.name = "P2PNetworkAdapter"
+	network_service.add_child(p2p_network_adapter)
+	
 	_load_main_menu()
 
 
