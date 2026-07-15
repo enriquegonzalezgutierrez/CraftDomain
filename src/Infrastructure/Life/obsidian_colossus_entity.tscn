@@ -1,0 +1,26 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/Life/ObsidianColossusEntity.gd" id="1_colossus"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_colossus"]
+size = Vector3(2.2, 3.5, 1.8)
+
+[node name="ObsidianColossusEntity" type="CharacterBody3D"]
+script = ExtResource("1_colossus")
+
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 0)
+shape = SubResource("BoxShape3D_colossus")
+
+[node name="NPCAIComponent" type="Node" parent="."]
+script = ExtResource("2_ai")
+
+[node name="NPCVisualComponent" type="Node" parent="."]
+script = ExtResource("3_vis")
+
+[node name="Visuals" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]

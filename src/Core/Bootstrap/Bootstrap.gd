@@ -6,8 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only manages initial system startups, 
 #   registries compilation, and viewport transitions.
-# - Open-Closed Principle (OCP): Integrates ModLoaderService dynamically, 
-#   enabling community-made mods to compile and load during boot.
+# - Open-Closed Principle (OCP): Cleans up dynamic sandbox rooms (AIShowcaseRoom)
+#   during main-menu transitions to prevent UI ghosting and memory leaks.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -300,6 +300,10 @@ func _cleanup_and_load_menu(unload_screen: Panel) -> void:
 	if is_instance_valid(world_controller):
 		world_controller.queue_free()
 		world_controller = null
+		
+	# Clean up the diagnostic showcase room node to prevent visual overlaps on menu exit
+	_cleanup_showcase_room_if_exists()
+	
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_menu()
 	await get_tree().create_timer(0.15).timeout
@@ -307,6 +311,12 @@ func _cleanup_and_load_menu(unload_screen: Panel) -> void:
 	var fade_tween := create_tween()
 	fade_tween.tween_property(unload_screen, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
 	fade_tween.chain().tween_callback(unload_screen.queue_free)
+
+
+func _cleanup_showcase_room_if_exists() -> void:
+	var room := get_node_or_null("AIShowcaseRoom")
+	if is_instance_valid(room):
+		room.queue_free()
 
 
 func _create_unload_loading_screen() -> Panel:
