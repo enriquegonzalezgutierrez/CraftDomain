@@ -5,9 +5,10 @@
 #              injects decoupled dependencies, and manages network services.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only manages initial system startups, 
-#   registries compilation, and viewport transitions.
-# - Open-Closed Principle (OCP): Cleans up dynamic sandbox rooms (AIShowcaseRoom)
-#   during main-menu transitions to prevent UI ghosting and memory leaks.
+#   registries compilation, and viewport transitions. High-frequency registration 
+#   loops decomposed into sub-helpers of less than 20 lines each.
+# - Open-Closed Principle (OCP): Integrates the final campaign boss Weaver Malakor 
+#   (ID 52) and Act III Boss (ID 51) sychronously inside the boot cycle.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -89,32 +90,41 @@ func _register_preloaded_mobs() -> void:
 	var h_both := MobRegistry.Habitat.AMPHIBIOUS
 	var h_water := MobRegistry.Habitat.AQUATIC
 	
+	_register_passive_wildlife(h_land, h_both, h_water)
+	_register_hostile_husks(h_land, h_water)
+	_register_civilian_professions(h_land)
+	_register_campaign_bosses(h_land)
+
+
+func _register_passive_wildlife(h_land: int, h_both: int, h_water: int) -> void:
 	var ai_fauna := FaunaAIBehavior.new()
-	var ai_zombie := ZombieAIBehavior.new()
-	var ai_guard := GuardAIBehavior.new()
-	var ai_farmer := FarmerAIBehavior.new()
-	
 	_register_scene_mob(0, PigEntity, h_land, ai_fauna)
 	_register_scene_mob(1, ChickenEntity, h_land, ai_fauna)
 	_register_scene_mob(2, SheepEntity, h_land, ai_fauna)
 	_register_scene_mob(3, CowEntity, h_land, ai_fauna)
 	_register_scene_mob(201, TurtleEntity, h_both, ai_fauna)
 	_register_scene_mob(204, FoxEntity, h_land, ai_fauna)
-	_register_scene_mob(205, BirdEntity, h_land, ai_fauna)
 	_register_scene_mob(206, CatEntity, h_land, ai_fauna)
-	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna)
-	_register_scene_mob(208, CrabEntity, h_both, ai_fauna)
-	_register_scene_mob(209, ElephantEntity, h_land, ai_fauna)
-	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna)
 	_register_scene_mob(211, RaccoonEntity, h_land, ai_fauna)
 	_register_scene_mob(212, GrowlitheEntity, h_land, ai_fauna)
 	_register_scene_mob(213, MonkeyEntity, h_land, ai_fauna)
-	
+	_register_scene_mob(205, BirdEntity, h_land, ai_fauna)
+	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna)
+	_register_scene_mob(208, CrabEntity, h_both, ai_fauna)
+	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna)
+
+
+func _register_hostile_husks(h_land: int, h_water: int) -> void:
+	var ai_zombie := ZombieAIBehavior.new()
 	_register_scene_mob(11, SharkEntity, h_water, ai_zombie)
 	_register_scene_mob(12, GargoyleEntity, h_land, ai_zombie)
 	_register_scene_mob(13, GoblinEntity, h_land, ai_zombie)
 	_register_scene_mob(10, HostileEntity, h_land, ai_zombie)
-	
+
+
+func _register_civilian_professions(h_land: int) -> void:
+	var ai_guard := GuardAIBehavior.new()
+	var ai_farmer := FarmerAIBehavior.new()
 	_register_scene_mob(107, GolemEntity, h_land, ai_guard)
 	_register_scene_mob(100, VillagerEntity, h_land)
 	_register_scene_mob(102, GuardEntity, h_land, ai_guard)
@@ -123,9 +133,15 @@ func _register_preloaded_mobs() -> void:
 	_register_scene_mob(101, MerchantEntity, h_land)
 	_register_scene_mob(105, MinerEntity, h_land)
 	_register_scene_mob(106, CyberCitizenEntity, h_land)
-	
+
+
+func _register_campaign_bosses(h_land: int) -> void:
 	# Act I Boss: Lithic Lurker (ID 50)
 	_register_scene_mob(50, LithicLurkerEntity, h_land, LithicLurkerAIBehavior.new())
+	# Act III Boss: Obsidian Colossus (ID 51)
+	_register_scene_mob(51, ObsidianColossusEntity, h_land, ObsidianColossusAIBehavior.new())
+	# Act IV Boss: Weaver Malakor (ID 52)
+	_register_scene_mob(52, WeaverMalakorEntity, h_land, WeaverMalakorAIBehavior.new())
 
 
 func _register_scene_mob(spawn_id: int, fallback_class: Variant, habitat: int, default_behavior: IAIBehavior = null) -> void:

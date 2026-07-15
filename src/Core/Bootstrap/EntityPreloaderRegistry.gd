@@ -5,7 +5,7 @@
 #              100+ lines of raw asset paths (SRP / OCP).
 # SOLID COMPLIANCE: Class limits set under 100 lines (SRP). All monolithic
 #              loops decomposed. Every method strictly remains below 20 lines.
-# - Open-Closed Principle (OCP): Registers Act I and III Boss scenes dynamically (IDs 50 & 51).
+# - Open-Closed Principle (OCP): Registers Act I, III, and IV Boss scenes dynamically (IDs 50, 51 & 52).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -63,9 +63,10 @@ static func _preload_hostile_husks() -> void:
 	_mobs_scenes[12] = preload("res://src/Infrastructure/Life/gargoyle_entity.tscn")
 	_mobs_scenes[13] = preload("res://src/Infrastructure/Life/goblin_entity.tscn")
 	
-	# Act I & III Boss Preloads
+	# Act I, III, and IV Boss Preloads
 	_mobs_scenes[50] = preload("res://src/Infrastructure/Life/lithic_lurker_entity.tscn")
 	_mobs_scenes[51] = preload("res://src/Infrastructure/Life/obsidian_colossus_entity.tscn")
+	_mobs_scenes[52] = preload("res://src/Infrastructure/Life/weaver_malakor_entity.tscn")
 
 
 static func _preload_civilian_humanoids() -> void:

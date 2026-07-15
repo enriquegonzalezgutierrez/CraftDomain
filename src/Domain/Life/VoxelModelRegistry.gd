@@ -54,7 +54,9 @@ static func initialize_registry() -> void:
 	register_builder(5, DruidModelBuilder.new())    # ID 5: Nature Forest Druid
 	register_builder(6, GolemModelBuilder.new())    # ID 6: Colossus Iron Golem
 	
-	# Act I Boss Integration
-	register_builder(50, LithicLurkerModelBuilder.new()) # ID 50: Lithic Lurker
+	# Campaign Boss Integrations
+	register_builder(50, LithicLurkerModelBuilder.new())     # ID 50: Lithic Lurker (Act I)
+	register_builder(51, ObsidianColossusModelBuilder.new()) # ID 51: Obsidian Colossus (Act III)
+	register_builder(52, WeaverMalakorModelBuilder.new())    # ID 52: Weaver Malakor (Act IV)
 	
 	print("[VoxelModelRegistry] Baseline initialization finished. Active builders: ", _builders.size())
