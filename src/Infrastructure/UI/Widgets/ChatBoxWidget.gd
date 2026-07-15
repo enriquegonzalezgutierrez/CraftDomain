@@ -6,8 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively the 2D presentation
 #   and input focus states of the chat box, delegating transmission to network adapters.
-# - Input Interception Fix: Swapped `_unhandled_input()` to `_input()` to intercept 
-#   key events before PlayerController's physics loop consumes them.
+# - High-Performance Input: Simplified `_input()` to only evaluate the `Escape` key 
+#   during active typing, offloading opening triggers to PlayerHUD.
 # - Warning Fix: Prefixed unused parameter inside `_on_input_submitted()` with 
 #   an underscore (`_text`) to satisfy Godot 2.0 static analyzers.
 # Author: Enrique González Gutiérrez
@@ -44,26 +44,15 @@ func _locate_p2p_network_adapter() -> void:
 			print("[ChatBox] Successfully connected to P2PNetworkAdapter.")
 
 
-## Captures 'T' and 'Enter' keys to toggle active typing states safely.
-## Evaluated globally at Viewport level to prevent PlayerController from consuming it first.
+## Captures only 'Escape' to cancel typing when the chat is active.
+## General open actions (T / Enter) are managed elegantly by PlayerHUD.
 func _input(event: InputEvent) -> void:
-	if not visible:
+	if not _is_typing:
 		return
 		
 	if event is InputEventKey and event.pressed:
 		var key_event := event as InputEventKey
-		
-		# Standard multiplayer PC 'T' key shortcut to chat
-		if key_event.keycode == KEY_T and not _is_typing:
-			get_viewport().set_input_as_handled() # Prevents 'T' from writing inside the box
-			_activate_typing_mode()
-		elif key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER:
-			get_viewport().set_input_as_handled()
-			if not _is_typing:
-				_activate_typing_mode()
-			else:
-				_submit_chat_message()
-		elif key_event.keycode == KEY_ESCAPE and _is_typing:
+		if key_event.keycode == KEY_ESCAPE:
 			get_viewport().set_input_as_handled()
 			_deactivate_typing_mode()
 

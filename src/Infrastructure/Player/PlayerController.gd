@@ -6,9 +6,12 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only manages local physical velocities,
 #   hotbars, and controller bindings, keeping code strictly under 300 lines.
-# - High-Performance Rendering Fix: Bypassed the editor-restricted GPU readbacks 
-#   from `RenderingServer` by directly querying the CPU-side state trackers inside 
-#   `WeatherService` to resolve C++ exceptions.
+# - Open-Closed Principle (OCP): Implements an active physical stabilization loop 
+#   ('_process_frozen_physics_movement') when menus are open. Keeps 'move_and_slide'
+#   active on the physics server to permanently prevent upward depenetration snaps.
+# - High-Performance Input Routing: Intercepts 'T' and 'Enter' keys sychronously 
+#   at the Node3D level inside `_input()`, bypassing captured mouse GUI blocks 
+#   to activate the chatbox reliably under any viewport state.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -26,7 +29,16 @@ const MOUSE_SENSITIVITY: float = 0.003
 const TERMINAL_VELOCITY: float = -20.0
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-var is_active: bool = false
+
+# Clean OCP Setter: Resets glider state instantly when deactivated
+var is_active: bool = false:
+	set(val):
+		is_active = val
+		if not is_active:
+			is_glider_deployed = false
+			if is_instance_valid(visual_component):
+				visual_component.set_glider_wings_visible(false)
+
 var domain_entity: VoxelEntity
 var inventory: IInventory
 
@@ -139,6 +151,17 @@ func _input(event: InputEvent) -> void:
 	if not is_multiplayer_authority(): return
 	if event.is_action_pressed("ui_cancel"):
 		_handle_pause_trigger()
+		return
+		
+	if is_active and event is InputEventKey and event.pressed:
+		var key_event := event as InputEventKey
+		var is_chat_key := (key_event.keycode == KEY_T or key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER)
+		
+		if is_chat_key and is_instance_valid(hud) and not hud.is_any_menu_open():
+			get_viewport().set_input_as_handled()
+			var chat := hud.chat_box
+			if is_instance_valid(chat) and chat.has_method("_activate_typing_mode"):
+				chat.call("_activate_typing_mode")
 
 
 func _handle_pause_trigger() -> void:
@@ -178,7 +201,9 @@ func _process_local_player(delta: float) -> void:
 	_process_cursor_grab_state()
 	_rescue_player_from_void()
 	
-	if not is_active: return
+	if not is_active:
+		_process_frozen_physics_movement(delta)
+		return
 
 	_process_hotbar_keys()
 	_update_interactions_and_gamepad(delta)
@@ -191,6 +216,29 @@ func _process_local_player(delta: float) -> void:
 
 	move_and_slide()
 	_apply_physics_effects(delta)
+
+
+func _process_frozen_physics_movement(delta: float) -> void:
+	# Continues to apply gravity to keep the player stably grounded during menus
+	if not is_on_floor():
+		var active_gravity := gravity
+		if is_instance_valid(GlitchRiftService.instance):
+			var rift := GlitchRiftService.instance.get_active_rift_at(global_position)
+			if rift != null: active_gravity = rift.get_localized_gravity(gravity)
+		velocity.y = max(velocity.y - active_gravity * delta, TERMINAL_VELOCITY)
+	else:
+		velocity.y = -0.1 # Constant soft downward snap to keep collider settled
+
+	velocity.x = 0.0
+	velocity.z = 0.0
+	
+	# Execute sliding collision checks to prevent accumulation of depenetration depth
+	move_and_slide()
+	
+	# Allow camera and visual effects to smoothly decay to zero
+	var current_flat_velocity := Vector2.ZERO
+	if is_instance_valid(_camera_effects): _camera_effects.process_camera_effects(delta)
+	if is_instance_valid(visual_component): visual_component.animate_movement(current_flat_velocity, is_on_floor(), delta)
 
 
 func _update_interactions_and_gamepad(delta: float) -> void:
@@ -233,8 +281,6 @@ func _process_glider_physics(delta: float) -> void:
 	var weather_node := get_parent().get_node_or_null("WeatherService")
 	
 	if is_instance_valid(weather_node):
-		# HIGH-PERFORMANCE CPU QUERY: Read directly from the CPU state-trackers inside WeatherService.
-		# Bypasses the slow, editor-restricted global_shader_parameter_get() GPU calls.
 		wind_vector = weather_node.get("_current_wind_vector") as Vector2
 		wind_strength = weather_node.get("_current_wind_strength") as float
 
@@ -355,7 +401,6 @@ func _on_inventory_changed() -> void:
 
 
 func _rescue_player_from_void() -> void:
-	# LEVEL DESIGN FIX: Lowered death barrier to -5.0 to allow deep cave and bedrock exploration
 	if global_position.y >= -5.0: return
 	velocity = Vector3.ZERO
 	var block_x := floori(position.x)

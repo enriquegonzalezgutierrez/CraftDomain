@@ -455,5 +455,7 @@
 
   "ITEM_VOXEL_GLIDER": "Planeador Voxel",
   "ITEM_210_DESC": "Un planeador aerodinámico de gran altitud tallado a partir de tablones de madera de secuoya ligera y fibras suaves de nubes. Sumamente útil para planear y cruzar cañones masivos, valles profundos y fisuras temporales.",
-  "ITEM_210_USE": "Equipar en mano. Salta desde cualquier acantilado de gran altitud, luego presiona dos veces SALTO (Espacio) en el aire para desplegar las alas. Rota la cámara para maniobrar y planear suavemente con las corrientes de viento."
+  "ITEM_210_USE": "Equipar en mano. Salta desde cualquier acantilado de gran altitud, luego presiona dos veces SALTO (Espacio) en el aire para desplegar las alas. Rota la cámara para maniobrar y planear suavemente con las corrientes de viento.",
+
+  "SETTINGS_USERNAME": "Nombre de Usuario",
 }

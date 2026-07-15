@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://c6b7v8nak1q5"]
+[gd_scene load_steps=14 format=3 uid="uid://c6b7v8nak1q5"]
 
 [ext_resource type="Script" path="res://src/Infrastructure/UI/SettingsMenu.gd" id="1_script"]
 
@@ -126,7 +126,7 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="MenuCard" type="Panel" parent="CenterContainer"]
-custom_minimum_size = Vector2(420, 510)
+custom_minimum_size = Vector2(420, 590)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
@@ -235,6 +235,19 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_dropdown_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_dropdown_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_dropdown_normal")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+
+[node name="NameLabel" type="Label" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "SETTINGS_USERNAME"
+label_settings = SubResource("LabelSettings_section")
+horizontal_alignment = 1
+
+[node name="NameEdit" type="LineEdit" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_dropdown_normal")
+alignment = 1
+max_length = 16
 
 [node name="Spacer3" type="Control" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 14)

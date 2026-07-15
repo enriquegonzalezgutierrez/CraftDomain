@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Persistence/SettingsRepository.gd
 # Description: Infrastructure Repository responsible for serialization and persistence
-#              of user configuration settings (volumes, language, render distance).
+#              of user configuration settings (volumes, language, render distance, username).
 # SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
 #              loops decomposed. Every method strictly remains below 10 lines.
 #              Corrected: Purged all print logs for silent, high-performance saving.
@@ -20,9 +20,10 @@ static func save_settings(
 	render_dist: int, 
 	locale: String, 
 	window_mode: int, 
-	window_size: Vector2i
+	window_size: Vector2i,
+	username: String
 ) -> void:
-	var data: Dictionary = _pack_settings_data(music_vol, sfx_vol, render_dist, locale, window_mode, window_size)
+	var data: Dictionary = _pack_settings_data(music_vol, sfx_vol, render_dist, locale, window_mode, window_size, username)
 	_write_settings_to_file(data)
 
 
@@ -32,7 +33,8 @@ static func _pack_settings_data(
 	render_dist: int, 
 	locale: String, 
 	window_mode: int, 
-	window_size: Vector2i
+	window_size: Vector2i,
+	username: String
 ) -> Dictionary:
 	return {
 		"music_volume": music_vol,
@@ -41,7 +43,8 @@ static func _pack_settings_data(
 		"locale": locale,
 		"window_mode": window_mode,
 		"window_size_x": window_size.x,
-		"window_size_y": window_size.y
+		"window_size_y": window_size.y,
+		"username": username
 	}
 
 

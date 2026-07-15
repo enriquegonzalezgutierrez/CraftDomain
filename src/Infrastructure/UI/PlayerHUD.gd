@@ -5,9 +5,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly HUD layouts, 
 #   modal activations, and player state-display linkages.
-# - Chat Integration: Wired up `chat_box` and updated `is_any_menu_open()` 
-#   to include the chat's active typing state, preventing camera rotation 
-#   conflicts and resolving mouse cursor locks.
+# - Bulletproof Node Search: Implements a recursive runtime search (`_find_chat_box_recursive`)
+#   to guarantee the chat box reference is successfully bound, even if nested.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -34,8 +33,8 @@ var world_controller: Node3D
 @onready var _hotbar_dock_widget: Control = $HotbarDockWidget
 @onready var _pause_widget: Panel = $PauseMenuWidget
 
-# INTEGRATION: Binds safely to the instantiated Chat Box sub-scene if present
-@onready var chat_box: ChatBoxWidget = get_node_or_null("ChatBoxWidget") as ChatBoxWidget
+# INTEGRATION: Binds safely to the Chat Box using a recursive search
+var chat_box: ChatBoxWidget
 
 # UI Refresh Throttling Timer (Updates text metrics at 20Hz, stabilizing FPS)
 var _ui_update_timer: float = 0.0
@@ -51,6 +50,13 @@ var _hacking_overlay: HackingTerminalOverlay
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	# Recursively locate the Chat Box in the scene tree to prevent null pointer exceptions
+	chat_box = _find_chat_box_recursive(self)
+	if is_instance_valid(chat_box):
+		print("[PlayerHUD] ChatBoxWidget successfully located and bound.")
+	else:
+		push_warning("[PlayerHUD WARNING] ChatBoxWidget was not found in the HUD hierarchy.")
 	
 	# Propagate dependencies down to child widgets safely on ready (LSP/DIP)
 	if is_instance_valid(minimap):
@@ -73,6 +79,18 @@ func _ready() -> void:
 	update_active_slot(0)
 
 
+## Bulletproof Search: Traverses the hierarchy recursively to locate any node 
+## extending ChatBoxWidget, preventing hardcoded path dependencies (OCP)
+func _find_chat_box_recursive(node: Node) -> ChatBoxWidget:
+	if node is ChatBoxWidget:
+		return node as ChatBoxWidget
+	for child in node.get_children():
+		var found := _find_chat_box_recursive(child)
+		if is_instance_valid(found):
+			return found
+	return null
+
+
 ## Throttled execution loop: Refreshes labels and minimap vectors at 20Hz
 func _process(delta: float) -> void:
 	_ui_update_timer += delta
@@ -91,6 +109,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if is_instance_valid(_pause_widget) and _pause_widget.visible:
 		return
 		
+	# 1. OVERLAYS SHORTCUTS
+	# Note: Chat keyboard shortcuts are handled safely in PlayerController.gd 
+	# at the Node3D level to bypass captured mouse input blocks.
 	if event.is_action_pressed("craft_item"):
 		get_viewport().set_input_as_handled()
 		toggle_crafting_workshop(_crafting_overlay == null)

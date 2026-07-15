@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/UI/PlayerHUD.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/damage_overlay_widget.tscn" id="2_damage"]
@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/quest_tracker_widget.tscn" id="7_quest"]
 [ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/hotbar_dock_widget.tscn" id="8_hotbar"]
 [ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/pause_menu_widget.tscn" id="9_pause"]
+[ext_resource type="PackedScene" path="res://src/Infrastructure/UI/Widgets/ChatBoxWidget.tscn" id="10_chat"]
 
 [node name="PlayerHUD" type="Control"]
 layout_mode = 3
@@ -47,6 +48,9 @@ layout_mode = 1
 layout_mode = 1
 
 [node name="HotbarDockWidget" parent="." instance=ExtResource("8_hotbar")]
+layout_mode = 1
+
+[node name="ChatBoxWidget" parent="." instance=ExtResource("10_chat")]
 layout_mode = 1
 
 [node name="PauseMenuWidget" parent="." instance=ExtResource("9_pause")]

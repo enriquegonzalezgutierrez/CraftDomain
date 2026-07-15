@@ -8,6 +8,9 @@
 #   Block mutations are now correctly delegated to ChunkLifecycleService.
 # - Dependency Inversion Principle (DIP): Bootstraps and connects isolated 
 #   domain services (Agriculture, Fluids, Structural Integrity) on ready.
+# - Safety Guardrail: Restricts player spawn activations and vertical height Y
+#   calculations strictly to authorized boots or teleport/death loops, permanently
+#   preventing background thread compiles from triggering teleports during open menus.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -55,10 +58,10 @@ var _loaded_inventory_data: Array = []
 
 func _ready() -> void:
 	assert(repository != null, "[WorldController] Fatal: WorldRepository missing!")
-	_initialize_systems()
+	_initialize_shadows_and_terrain_smoothing()
 
 
-func _initialize_systems() -> void:
+func _initialize_shadows_and_terrain_smoothing() -> void:
 	world_state = WorldState.new()
 	loader_service = ChunkLoaderService.new()
 	navigation_service = VoxelNavigationService.new()
@@ -70,13 +73,11 @@ func _initialize_systems() -> void:
 	_agriculture_service = AgricultureService.new(self, world_state)
 	_fluid_service = FluidSimulationService.new(self, world_state)
 	
-	# Bind isolated physical systems via Observer signals
 	block_modified.connect(_fluid_service._on_block_modified)
 	
 	chunk_lifecycle = ChunkLifecycleService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
 	
-	# Instantiate and wire the previously orphaned Structural Integrity system
 	structural_service = StructuralIntegrityService.new()
 	structural_service.name = "StructuralIntegrityService"
 	add_child(structural_service)
@@ -177,43 +178,12 @@ func get_active_chunk_nodes() -> Dictionary:
 	return chunk_lifecycle.get_active_nodes() if is_instance_valid(chunk_lifecycle) else {}
 
 
-## Coordinates global block changes. 
-## Delegates boundary calculations directly to the ChunkLifecycleService (DRY Compliant)
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	if is_instance_valid(chunk_lifecycle):
 		chunk_lifecycle.set_block_globally(global_pos, type)
 	
 	_apply_procedural_gravity_on_block_broken(global_pos, type)
 	block_modified.emit(global_pos, type)
-
-
-## Concrete Implementation: Solves chronological timeline warp swap
-func swap_world_timeline(timeline_val: int) -> void:
-	var target := timeline_val as WorldState.Timeline
-	if is_instance_valid(world_state):
-		world_state.swap_timeline(target)
-		
-		is_teleport_spawn = true
-		if is_instance_valid(player):
-			player.set("is_active", false)
-			player.position.y = world_state.get_highest_solid_y(floori(player.position.x), floori(player.position.z))
-			
-			var p_pos := player.global_position
-			_target_spawn_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z)))
-			
-			var hud_node: PlayerHUD = player.get("hud") as PlayerHUD
-			if is_instance_valid(hud_node):
-				hud_node.show_loading_screen()
-			
-			AudioService.play_sfx_static("chest_open", p_pos)
-
-
-## Intermediary Router: Dispatches the open UI request to the player HUD
-func open_hacking_terminal() -> void:
-	if is_instance_valid(player):
-		var hud_node: PlayerHUD = player.get("hud") as PlayerHUD
-		if is_instance_valid(hud_node):
-			hud_node.toggle_hacking_terminal(true)
 
 
 func _apply_procedural_gravity_on_block_broken(global_pos: Vector3i, type: BlockType.Type) -> void:
@@ -270,6 +240,11 @@ func spawn_entities_for_chunk(chunk: Chunk) -> Array[Node]:
 
 
 func check_player_spawn_activation() -> void:
+	# SAFETY GUARDRAIL: Prevent background thread visual compiles from 
+	# triggering coordinates adjustments or active control overrides during open menus!
+	if not (_is_startup_phase or is_teleport_spawn):
+		return
+		
 	if is_instance_valid(player) and not player.get("is_active"):
 		if is_instance_valid(chunk_lifecycle):
 			var _all_rendered := true
@@ -321,6 +296,33 @@ func _trigger_prioritized_spawn_loads() -> void:
 				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 0, _target_spawn_chunk_pos.z + z))
 				target_spawn_chunks.append(Vector3i(_target_spawn_chunk_pos.x + x, 1, _target_spawn_chunk_pos.z + z))
 		chunk_lifecycle.queue_prioritized_loads(target_spawn_chunks)
+
+
+func swap_world_timeline(timeline_val: int) -> void:
+	var target := timeline_val as WorldState.Timeline
+	if is_instance_valid(world_state):
+		world_state.swap_timeline(target)
+		
+		is_teleport_spawn = true 
+		if is_instance_valid(player):
+			player.set("is_active", false)
+			player.position.y = world_state.get_highest_solid_y(floori(player.position.x), floori(player.position.z))
+			
+			var p_pos := player.global_position
+			_target_spawn_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z)))
+			
+			var hud_node: PlayerHUD = player.get("hud") as PlayerHUD
+			if is_instance_valid(hud_node):
+				hud_node.show_loading_screen()
+			
+			AudioService.play_sfx_static("chest_open", p_pos)
+
+
+func open_hacking_terminal() -> void:
+	if is_instance_valid(player):
+		var hud_node: PlayerHUD = player.get("hud") as PlayerHUD
+		if is_instance_valid(hud_node):
+			hud_node.toggle_hacking_terminal(true)
 
 
 # ==============================================================================

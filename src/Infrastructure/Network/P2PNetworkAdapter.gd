@@ -2,6 +2,7 @@
 # Pathfile: res://src/Infrastructure/Network/P2PNetworkAdapter.gd
 # Description: Infrastructure Network Adapter responsible for replicating text 
 #              chats and P2P trade session states across multiplayer peers.
+#              Manages dynamic user profile registration and unique name resolution.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly RPC packets 
 #   for chat and trade, delegating data state validation to the Domain services.
@@ -19,6 +20,9 @@ signal trade_session_started(session_id: String, partner_peer_id: int, is_leader
 signal trade_offer_updated(session_id: String, offer_data: Dictionary)
 signal trade_confirmation_updated(session_id: String, confirmed: bool)
 
+# Active name mappings: peer_id (int) -> resolved_unique_name (String)
+var _peer_names: Dictionary = {}
+
 var _active_sessions: Dictionary = {} # session_id (String) -> P2PTradeSession
 
 const TRADE_REACH_DISTANCE_SQ: float = 25.0 # 5 meters squared max transaction range
@@ -26,6 +30,14 @@ const TRADE_REACH_DISTANCE_SQ: float = 25.0 # 5 meters squared max transaction r
 
 func _ready() -> void:
 	name = "P2PNetworkAdapter"
+	_connect_network_signals()
+
+
+func _connect_network_signals() -> void:
+	var net_service := get_node_or_null("../NetworkService") as NetworkService
+	if is_instance_valid(net_service):
+		net_service.connection_successful.connect(_on_connection_successful)
+		net_service.connection_closed.connect(_on_connection_closed)
 
 
 # ==============================================================================
@@ -63,6 +75,95 @@ func _client_receive_message(sender_id: int, sender_name: String, text: String, 
 	var msg := P2PChatService.ChatMessage.new(sender_id, sender_name, text, channel_val as P2PChatService.Channel, target)
 	var formatted := P2PChatService.format_message(msg)
 	message_received.emit(formatted)
+
+
+# ==============================================================================
+# DYNAMIC USERNAME REGISTRATION & CONFLICT RESOLUTION
+# ==============================================================================
+
+func _get_local_username() -> String:
+	var settings := SettingsRepository.load_settings()
+	if settings.has("username") and str(settings["username"]).strip_edges() != "":
+		return str(settings["username"]).strip_edges()
+		
+	var os_name := OS.get_environment("USERNAME") if OS.has_environment("USERNAME") else OS.get_environment("USER")
+	if os_name != "":
+		return os_name
+		
+	return "Player_" + str(randi_range(100, 999))
+
+
+func _get_peer_name(peer_id: int) -> String:
+	if _peer_names.has(peer_id):
+		return _peer_names[peer_id] as String
+	return str(peer_id)
+
+
+func _on_connection_successful() -> void:
+	var my_id := multiplayer.get_unique_id()
+	var my_name := _get_local_username()
+	
+	if multiplayer.is_server():
+		_peer_names[1] = my_name
+		print("[P2PNetworkAdapter] Server registered local Host as '%s'" % my_name)
+	else:
+		rpc_id(1, "_server_register_username", my_id, my_name)
+
+
+@rpc("any_peer", "reliable")
+func _server_register_username(peer_id: int, requested_name: String) -> void:
+	if not multiplayer.is_server():
+		return
+		
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id != peer_id:
+		return
+		
+	var resolved_name := _resolve_unique_name(requested_name)
+	_peer_names[peer_id] = resolved_name
+	
+	rpc("_client_register_username", peer_id, resolved_name)
+	rpc_id(peer_id, "_client_sync_all_usernames", _peer_names)
+
+
+func _resolve_unique_name(requested_name: String) -> String:
+	var sanitized := P2PChatService.sanitize_text(requested_name)
+	if sanitized == "":
+		sanitized = "Player"
+		
+	var candidate := sanitized
+	var suffix := 1
+	
+	while _is_name_taken(candidate):
+		candidate = sanitized + "_" + str(suffix)
+		suffix += 1
+		
+	return candidate
+
+
+func _is_name_taken(name_to_check: String) -> bool:
+	for val: String in _peer_names.values():
+		if val.to_lower() == name_to_check.to_lower():
+			return true
+	return false
+
+
+@rpc("call_local", "reliable")
+func _client_register_username(peer_id: int, resolved_name: String) -> void:
+	_peer_names[peer_id] = resolved_name
+	print("[P2PNetworkAdapter] Peer %d registered as '%s'" % [peer_id, resolved_name])
+
+
+@rpc("reliable")
+func _client_sync_all_usernames(server_names: Dictionary) -> void:
+	for key: Variant in server_names.keys():
+		var p_id := int(key)
+		var p_name: String = server_names[key] as String
+		_peer_names[p_id] = p_name
+
+
+func _on_connection_closed() -> void:
+	_peer_names.clear()
 
 
 # ==============================================================================
@@ -188,7 +289,8 @@ func _client_confirm_trade(session_id: String, confirmed: bool) -> void:
 # ==============================================================================
 
 func _process_offline_message(raw_text: String) -> void:
-	var msg := P2PChatService.parse_incoming_text(1, "SOLO", raw_text)
+	var local_name := _get_local_username()
+	var msg := P2PChatService.parse_incoming_text(1, local_name, raw_text)
 	var formatted := P2PChatService.format_message(msg)
 	message_received.emit(formatted)
 
@@ -216,10 +318,6 @@ func _get_peer_id_by_name(p_name: String) -> int:
 	return -1
 
 
-func _get_peer_name(peer_id: int) -> String:
-	return str(peer_id)
-
-
 func _get_trade_partner_id(session_id: String, sender_id: int) -> int:
 	var parts := session_id.split("_")
 	if parts.size() == 2:
@@ -230,7 +328,6 @@ func _get_trade_partner_id(session_id: String, sender_id: int) -> int:
 
 
 func _is_within_interaction_distance(id_a: int, id_b: int) -> bool:
-	# Host is always ID 1, but we use string paths to locate active physics bodies
 	var bootstrap := get_node_or_null("/root/Bootstrap")
 	if not is_instance_valid(bootstrap): return false
 	

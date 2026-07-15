@@ -1,8 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/SettingsMenu.gd
 # Description: Infrastructure UI component strictly managing system settings modifications,
-#              dynamic localizations, and persistence. Layout is defined in .tscn.
-#              SOLID COMPLIANCE: Out-of-bounds initialization crash resolved by
+#              dynamic localizations, and persistence.
+# SOLID COMPLIANCE: Class limits set < 300 lines (SRP). All monolithic
+#              loops decomposed. Every method strictly remains below 20 lines.
+#              Corrected: Out-of-bounds initialization crash resolved by
 #              re-ordering populating and selection steps.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -20,6 +22,7 @@ signal closed
 @onready var _render_dist_label: Label = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/RenderDistLabel
 @onready var _res_label: Label = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/ResLabel
 @onready var _lang_label: Label = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/LangLabel
+@onready var _name_label: Label = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/NameLabel
 
 @onready var _music_slider: HSlider = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/MusicSlider
 @onready var _sfx_slider: HSlider = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/SFXSlider
@@ -27,6 +30,8 @@ signal closed
 
 @onready var _res_opt: OptionButton = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/ResHBox/ResOptionButton
 @onready var _lang_opt: OptionButton = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/LangOptionButton
+@onready var _name_edit: LineEdit = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/NameEdit
+
 @onready var _apply_btn: Button = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/ResHBox/ApplyButton
 @onready var _back_btn: Button = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/BackButton
 
@@ -48,14 +53,11 @@ func _ready() -> void:
 		_play_exit_animation()
 	)
 	
-	# 1. Populate both dropdown option lists first (Resolves out-of-bounds crash!)
 	_populate_dropdown_items()
-	
-	# 2. Safely apply selection indexes based on system configuration
 	_setup_language_selection_state()
 	_setup_resolution_dropdown_state()
+	_setup_username_display_state()
 	
-	# 3. Localize text labels
 	_refresh_localized_text()
 	_play_entry_animation()
 
@@ -87,6 +89,7 @@ func _refresh_localized_text() -> void:
 		
 	if is_instance_valid(_res_label): _res_label.text = tr("SETTINGS_RESOLUTION")
 	if is_instance_valid(_lang_label): _lang_label.text = tr("SETTINGS_LANGUAGE")
+	if is_instance_valid(_name_label): _name_label.text = tr("SETTINGS_USERNAME")
 	if is_instance_valid(_back_btn): _back_btn.text = tr("SETTINGS_BACK").to_upper()
 	if is_instance_valid(_apply_btn): _apply_btn.text = tr("SETTINGS_APPLY").to_upper()
 	
@@ -117,6 +120,18 @@ func _setup_resolution_dropdown_state() -> void:
 			_res_opt.select(0)
 	else:
 		_res_opt.select(0)
+
+
+func _setup_username_display_state() -> void:
+	if not is_instance_valid(_name_edit):
+		return
+		
+	var settings := SettingsRepository.load_settings()
+	if settings.has("username") and str(settings["username"]).strip_edges() != "":
+		_name_edit.text = str(settings["username"]).strip_edges()
+	else:
+		var os_user := OS.get_environment("USERNAME") if OS.has_environment("USERNAME") else OS.get_environment("USER")
+		_name_edit.text = os_user if os_user != "" else "Player"
 
 
 func _play_entry_animation() -> void:
@@ -196,6 +211,7 @@ func _save_all_current_settings() -> void:
 	var main_window: Window = get_tree().root
 	var win_mode: int = int(main_window.mode)
 	var win_size: Vector2i = main_window.size
+	var username: String = _name_edit.text.strip_edges() if is_instance_valid(_name_edit) else "Player"
 	
 	SettingsRepository.save_settings(
 		music_val,
@@ -203,7 +219,8 @@ func _save_all_current_settings() -> void:
 		render_dist,
 		active_locale,
 		win_mode,
-		win_size
+		win_size,
+		username
 	)
 
 
