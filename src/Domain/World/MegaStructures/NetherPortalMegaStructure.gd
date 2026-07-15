@@ -1,8 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/MegaStructures/NetherPortalMegaStructure.gd
-# Description: HANDCRAFTED TWO-STORY DEMONIC CITADEL & LAVA FORTRESS.
-#              SOLID COMPLIANCE: Monolithic 'build_chunk' loop decomposed into 
-#              isolated, SRP-compliant sculpt methods (< 20 lines each).
+# Description: Handcrafted two-story volcanic brick citadel and portal sanctuary.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Coordinates strictly 
+#                the geometric lava moats, obsidian towers, and custom portal 
+#                spawning coordinates. All methods are under 20 lines.
+#              - Open-Closed Principle (OCP): Spawns the Obsidian Colossus (ID 51)
+#                as the central portal guardian on the main entrance bridge.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -29,8 +33,8 @@ func build_chunk(chunk: Chunk, offset: Vector3i) -> void:
 	var b_min_z: int = global_center.y - floori(float(bounds_size.y) / 2.0)
 	var b_max_z: int = global_center.y + floori(float(bounds_size.y) / 2.0)
 	
-	for gx: int in range(b_min_x, b_max_x + 1):
-		for gz: int in range(b_min_z, b_max_z + 1):
+	for gx in range(b_min_x, b_max_x + 1):
+		for gz in range(b_min_z, b_max_z + 1):
 			_sculpt_vertical_column(chunk, offset, gx, gz, base_y)
 
 
@@ -183,10 +187,18 @@ func _build_sanctuary_upper_suites(chunk: Chunk, offset: Vector3i, gx: int, gz: 
 			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
 
 
+## Real-time replication trigger (LSP/OCP Compliant)
 func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 	var entities: Array[Dictionary] = []
+	
 	if chunk_pos.x == -19 and chunk_pos.z == -19:
+		# Chest Loot
 		entities.append({"mob_id": 200, "pos": Vector3(-306.5, 16.0, -306.5)})
+		# Symmetrical Guards (Zombies)
 		entities.append({"mob_id": 10, "pos": Vector3(-295.5, 9.5, -298.5)}) 
 		entities.append({"mob_id": 10, "pos": Vector3(-304.5, 9.5, -298.5)}) 
+		
+		# ACT III BOSS: The Obsidian Colossus (Spawn ID 51) guarding the Portal Bridge
+		entities.append({"mob_id": 51, "pos": Vector3(-300.5, 9.5, -294.5)})
+		
 	return entities
