@@ -6,8 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only manages initial system startups, 
 #   registries compilation, and viewport transitions.
-# - Open-Closed Principle (OCP): Integrates the new P2PNetworkAdapter under the 
-#   network service node tree, activating the P2P chat and trade RPC pipelines.
+# - Open-Closed Principle (OCP): Integrates ModLoaderService dynamically, 
+#   enabling community-made mods to compile and load during boot.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -61,6 +61,9 @@ func _init_registries() -> void:
 	_setup_prop_registry()
 	DialogueRegistry.initialize_dialogue_database()
 	RecipeRegistry.initialize_recipes()
+	
+	# Activating Modding API: Scan and compile community mods on boot
+	ModLoaderService.scan_and_load_mods()
 
 
 func _register_biomes() -> void:
@@ -114,10 +117,10 @@ func _register_preloaded_mobs() -> void:
 	
 	_register_scene_mob(107, GolemEntity, h_land, ai_guard)
 	_register_scene_mob(100, VillagerEntity, h_land)
-	_register_scene_mob(101, MerchantEntity, h_land)
 	_register_scene_mob(102, GuardEntity, h_land, ai_guard)
 	_register_scene_mob(103, FarmerEntity, h_land, ai_farmer)
 	_register_scene_mob(104, DruidEntity, h_land)
+	_register_scene_mob(101, MerchantEntity, h_land)
 	_register_scene_mob(105, MinerEntity, h_land)
 	_register_scene_mob(106, CyberCitizenEntity, h_land)
 	
