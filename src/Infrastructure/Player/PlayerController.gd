@@ -6,7 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only manages local physical velocities,
 #   hotbars, and controller bindings, delegating camera bobbing to sub-components.
-# - Open-Closed Principle (OCP): Integrates dynamic Glider deployment and retraction.
+# - Level Design Fix: Void Rescue threshold lowered from 2.0 to -5.0, allowing 
+#   players to explore deep caves and bedrock floors without false-positive teleports.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -63,7 +64,6 @@ func _ready() -> void:
 	safe_margin = 0.015                
 	
 	_setup_player_geometry()
-	
 	if is_multiplayer_authority():
 		_setup_sub_components()
 		var inv_comp := inventory as InventoryComponent
@@ -101,7 +101,6 @@ func _setup_player_geometry() -> void:
 
 func _setup_sub_components() -> void:
 	inventory = InventoryComponent.new()
-	
 	viewmodel = PlayerViewModel.new()
 	viewmodel.player = self  
 	camera.add_child(viewmodel)
@@ -137,22 +136,18 @@ func _setup_decoupled_components() -> void:
 
 func _input(event: InputEvent) -> void:
 	if not is_multiplayer_authority(): return
-		
 	if event.is_action_pressed("ui_cancel"):
 		_handle_pause_trigger()
 
 
 func _handle_pause_trigger() -> void:
 	if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
-		if is_instance_valid(hud) and hud.is_any_menu_open():
-			return
+		if is_instance_valid(hud) and hud.is_any_menu_open(): return
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		if is_instance_valid(hud):
-			hud.toggle_pause_menu(false)
+		if is_instance_valid(hud): hud.toggle_pause_menu(false)
 	else:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		if is_instance_valid(hud):
-			hud.toggle_pause_menu(true)
+		if is_instance_valid(hud): hud.toggle_pause_menu(true)
 		if is_instance_valid(world_controller) and world_controller.has_method("save_all"):
 			world_controller.call("save_all")
 
@@ -160,30 +155,22 @@ func _handle_pause_trigger() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_multiplayer_authority() or not is_active or Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		return
-		
 	if event is InputEventMouseMotion and is_instance_valid(camera):
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
 		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
 	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_scroll_hotbar(-1)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_scroll_hotbar(1)
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP: _scroll_hotbar(-1)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: _scroll_hotbar(1)
 
 
 func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
-		_process_remote_replica(delta)
+		var remote_flat_velocity := Vector2(velocity.x, velocity.z)
+		if is_instance_valid(visual_component):
+			visual_component.animate_movement(remote_flat_velocity, is_on_floor(), delta)
 		return
-		
 	_process_local_player(delta)
-
-
-func _process_remote_replica(delta: float) -> void:
-	var remote_flat_velocity := Vector2(velocity.x, velocity.z)
-	if is_instance_valid(visual_component):
-		visual_component.animate_movement(remote_flat_velocity, is_on_floor(), delta)
 
 
 func _process_local_player(delta: float) -> void:
@@ -219,30 +206,24 @@ func _update_interactions_and_gamepad(delta: float) -> void:
 
 func _apply_physics_effects(delta: float) -> void:
 	var current_flat_velocity := Vector2(velocity.x, velocity.z)
-	if is_instance_valid(_camera_effects):
-		_camera_effects.process_camera_effects(delta)
-	if is_instance_valid(_footstep_player):
-		_footstep_player.process_footsteps(delta, current_flat_velocity)
-	if is_instance_valid(visual_component):
-		visual_component.animate_movement(current_flat_velocity, is_on_floor(), delta)
+	if is_instance_valid(_camera_effects): _camera_effects.process_camera_effects(delta)
+	if is_instance_valid(_footstep_player): _footstep_player.process_footsteps(delta, current_flat_velocity)
+	if is_instance_valid(visual_component): visual_component.animate_movement(current_flat_velocity, is_on_floor(), delta)
 
 
 func _evaluate_glider_deployment() -> void:
 	if is_glider_deployed and GliderItemStrategy.evaluate_auto_retraction(is_on_floor(), is_on_wall()):
 		is_glider_deployed = false
 		_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
-		if is_instance_valid(visual_component):
-			visual_component.set_glider_wings_visible(false)
+		if is_instance_valid(visual_component): visual_component.set_glider_wings_visible(false)
 		return
 
 	if not is_on_floor() and is_instance_valid(_input_component) and _input_component.is_jump_just_pressed():
 		if is_instance_valid(inventory) and inventory.get_item_total_quantity(GLIDER_ITEM_ID) > 0:
 			is_glider_deployed = not is_glider_deployed
 			_set_viewmodel_tool(PlayerViewModel.ToolType.GLIDER if is_glider_deployed else PlayerViewModel.ToolType.NONE)
-			if is_instance_valid(visual_component):
-				visual_component.set_glider_wings_visible(is_glider_deployed)
-			if is_glider_deployed:
-				AudioService.play_sfx_static("loot_pickup")
+			if is_instance_valid(visual_component): visual_component.set_glider_wings_visible(is_glider_deployed)
+			if is_glider_deployed: AudioService.play_sfx_static("loot_pickup")
 
 
 func _process_glider_physics(delta: float) -> void:
@@ -266,8 +247,7 @@ func _process_standard_movement(delta: float) -> void:
 		var active_gravity := gravity
 		if is_instance_valid(GlitchRiftService.instance):
 			var rift := GlitchRiftService.instance.get_active_rift_at(global_position)
-			if rift != null:
-				active_gravity = rift.get_localized_gravity(gravity)
+			if rift != null: active_gravity = rift.get_localized_gravity(gravity)
 		velocity.y = max(velocity.y - active_gravity * delta, TERMINAL_VELOCITY)
 			
 	if is_instance_valid(_input_component) and _input_component.is_jump_just_pressed() and is_on_floor():
@@ -295,8 +275,7 @@ func _scroll_hotbar(direction: int) -> void:
 func _process_hotbar_keys() -> void:
 	if not is_instance_valid(_input_component): return
 	var selection := _input_component.get_active_hotkey_selection()
-	if selection != -1:
-		_apply_hotbar_selection(selection)
+	if selection != -1: _apply_hotbar_selection(selection)
 
 
 func _apply_hotbar_selection(slot: int) -> void:
@@ -312,8 +291,7 @@ func _apply_hotbar_selection(slot: int) -> void:
 		return
 		
 	var item_id := slot_data.item_id
-	if is_instance_valid(visual_component):
-		visual_component.update_held_tool(item_id)
+	if is_instance_valid(visual_component): visual_component.update_held_tool(item_id)
 		
 	var tool_type: PlayerViewModel.ToolType = PlayerViewModel.get_tool_type_for_item(item_id)
 	_set_viewmodel_tool(tool_type)
@@ -327,13 +305,11 @@ func _clear_held_tool() -> void:
 	is_item_selected = false
 	active_build_type = BlockType.Type.AIR
 	_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
-	if is_instance_valid(visual_component):
-		visual_component.update_held_tool(-1)
+	if is_instance_valid(visual_component): visual_component.update_held_tool(-1)
 
 
 func _set_viewmodel_tool(tool_id: PlayerViewModel.ToolType) -> void:
-	if is_instance_valid(viewmodel):
-		viewmodel.switch_to_tool(tool_id)
+	if is_instance_valid(viewmodel): viewmodel.switch_to_tool(tool_id)
 
 
 func take_damage(amount: int, knockback_force: Vector3) -> void:
@@ -343,8 +319,7 @@ func take_damage(amount: int, knockback_force: Vector3) -> void:
 
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	if is_instance_valid(_camera_effects):
-		_camera_effects.apply_trauma_shake(0.32)
+	if is_instance_valid(_camera_effects): _camera_effects.apply_trauma_shake(0.32)
 
 
 func _on_domain_entity_died() -> void:
@@ -352,18 +327,15 @@ func _on_domain_entity_died() -> void:
 	domain_entity.is_dead = false
 	is_active = false
 	is_glider_deployed = false
-	if is_instance_valid(visual_component):
-		visual_component.set_glider_wings_visible(false)
-	if is_instance_valid(hud):
-		hud.show_loading_screen()
+	if is_instance_valid(visual_component): visual_component.set_glider_wings_visible(false)
+	if is_instance_valid(hud): hud.show_loading_screen()
 	position = Vector3(8.5, 14.0, 8.5)
 	velocity = Vector3.ZERO
 	if is_instance_valid(world_controller):
 		world_controller.set("is_teleport_spawn", true)
 		var ws: WorldState = world_controller.world_state
 		if is_instance_valid(ws):
-			var chunk_pos: Vector3i = ws.global_to_chunk_pos(Vector3i(8, 0, 8))
-			world_controller.set("_target_spawn_chunk_pos", chunk_pos)
+			world_controller.set("_target_spawn_chunk_pos", ws.global_to_chunk_pos(Vector3i(8, 0, 8)))
 
 
 func _on_inventory_changed() -> void:
@@ -371,24 +343,22 @@ func _on_inventory_changed() -> void:
 
 
 func _rescue_player_from_void() -> void:
-	if global_position.y >= 2.0: return
+	# LEVEL DESIGN FIX: Lowered death barrier to -5.0 to allow deep cave and bedrock exploration
+	if global_position.y >= -5.0: return
 	velocity = Vector3.ZERO
 	var block_x := floori(position.x)
 	var block_z := floori(position.z)
 	var found_safe_y: float = 14.0 
 	if is_instance_valid(world_controller) and "world_state" in world_controller:
 		var ws: WorldState = world_controller.world_state
-		if is_instance_valid(ws):
-			found_safe_y = ws.get_highest_solid_y(block_x, block_z)
+		if is_instance_valid(ws): found_safe_y = ws.get_highest_solid_y(block_x, block_z)
 	global_position.y = found_safe_y
 
 
 func _process_cursor_grab_state() -> void:
-	if not is_instance_valid(hud):
-		return
+	if not is_instance_valid(hud): return
 	if Input.is_action_pressed("free_cursor"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
-		if not hud.is_any_menu_open():
-			if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and not Input.is_action_pressed("ui_cancel"):
-				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		if not hud.is_any_menu_open() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and not Input.is_action_pressed("ui_cancel"):
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
