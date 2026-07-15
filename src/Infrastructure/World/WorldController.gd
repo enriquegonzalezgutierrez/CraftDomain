@@ -3,6 +3,11 @@
 # Description: Central World Controller and Redraw Orchestrator. Coordinates
 #              LOD updates, player spawn drop, sub-service ticks, network 
 #              replication, chronological timeline warp swaps, and UI triggers.
+# SOLID COMPLIANCE:
+# - Don't Repeat Yourself (DRY): Purged duplicate adjacent-chunk redraw logic. 
+#   Block mutations are now correctly delegated to ChunkLifecycleService.
+# - Dependency Inversion Principle (DIP): Bootstraps and connects isolated 
+#   domain services (Agriculture, Fluids, Structural Integrity) on ready.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -22,6 +27,7 @@ var world_modifier: IWorldModifier
 # Decoupled Sub-Services (SRP Compliant)
 var chunk_lifecycle: ChunkLifecycleService
 var persistence_service: WorldPersistenceService
+var structural_service: StructuralIntegrityService
 var _mob_spawning_service: MobSpawningService
 var _prop_spawning_service: PropSpawningService
 var _streetlight_service: StreetlightService
@@ -64,9 +70,17 @@ func _initialize_systems() -> void:
 	_agriculture_service = AgricultureService.new(self, world_state)
 	_fluid_service = FluidSimulationService.new(self, world_state)
 	
+	# Bind isolated physical systems via Observer signals
 	block_modified.connect(_fluid_service._on_block_modified)
+	
 	chunk_lifecycle = ChunkLifecycleService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
+	
+	# Instantiate and wire the previously orphaned Structural Integrity system
+	structural_service = StructuralIntegrityService.new()
+	structural_service.name = "StructuralIntegrityService"
+	add_child(structural_service)
+	structural_service.initialize(self, world_state)
 	
 	network_spawner = NetworkSpawnerService.new()
 	network_spawner.name = "NetworkSpawnerService"
@@ -163,15 +177,12 @@ func get_active_chunk_nodes() -> Dictionary:
 	return chunk_lifecycle.get_active_nodes() if is_instance_valid(chunk_lifecycle) else {}
 
 
+## Coordinates global block changes. 
+## Delegates boundary calculations directly to the ChunkLifecycleService (DRY Compliant)
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
-	if is_instance_valid(world_state):
-		world_state.set_block(global_pos, type)
+	if is_instance_valid(chunk_lifecycle):
+		chunk_lifecycle.set_block_globally(global_pos, type)
 	
-	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
-	chunk_lifecycle._chunk_versions[chunk_pos] = chunk_lifecycle._chunk_versions.get(chunk_pos, 0) + 1
-	chunk_lifecycle._rebuild_chunk_instantly(chunk_pos)
-	
-	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos)
 	_apply_procedural_gravity_on_block_broken(global_pos, type)
 	block_modified.emit(global_pos, type)
 
@@ -203,38 +214,6 @@ func open_hacking_terminal() -> void:
 		var hud_node: PlayerHUD = player.get("hud") as PlayerHUD
 		if is_instance_valid(hud_node):
 			hud_node.toggle_hacking_terminal(true)
-
-
-func _trigger_adjacent_boundary_redraws(global_pos: Vector3i, chunk_pos: Vector3i) -> void:
-	var local_pos := world_state.global_to_local_pos(global_pos)
-	var _cv: Dictionary = chunk_lifecycle._chunk_versions
-	
-	if local_pos.x == 0:
-		var n_pos := chunk_pos + Vector3i(-1, 0, 0)
-		_cv[n_pos] = _cv.get(n_pos, 0) + 1
-		_request_chunk_rebuild(n_pos)
-	elif local_pos.x == Chunk.SIZE - 1:
-		var n_pos := chunk_pos + Vector3i(1, 0, 0)
-		_cv[n_pos] = _cv.get(n_pos, 0) + 1
-		_request_chunk_rebuild(n_pos)
-		
-	if local_pos.y == 0:
-		var n_pos := chunk_pos + Vector3i(0, -1, 0)
-		_cv[n_pos] = _cv.get(n_pos, 0) + 1
-		_request_chunk_rebuild(n_pos)
-	elif local_pos.y == Chunk.SIZE - 1:
-		var n_pos := chunk_pos + Vector3i(0, 1, 0)
-		_cv[n_pos] = _cv.get(n_pos, 0) + 1
-		_request_chunk_rebuild(n_pos)
-		
-	if local_pos.z == 0:
-		var n_pos := chunk_pos + Vector3i(0, 0, -1)
-		_cv[n_pos] = _cv.get(n_pos, 0) + 1
-		_request_chunk_rebuild(n_pos)
-	elif local_pos.z == Chunk.SIZE - 1:
-		var n_pos := chunk_pos + Vector3i(0, 0, 1)
-		_cv[n_pos] = _cv.get(n_pos, 0) + 1
-		_request_chunk_rebuild(n_pos)
 
 
 func _apply_procedural_gravity_on_block_broken(global_pos: Vector3i, type: BlockType.Type) -> void:
@@ -274,11 +253,6 @@ func _resolve_unsupported_prop(prop: StaticBody3D) -> void:
 		tween.chain().tween_callback(func() -> void:
 			AudioService.play_sfx_static("footstep_stone", prop.global_position)
 		)
-
-
-func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
-	if is_instance_valid(chunk_lifecycle):
-		chunk_lifecycle._request_chunk_rebuild(chunk_pos)
 
 
 func save_all() -> void:

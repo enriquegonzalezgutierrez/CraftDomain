@@ -5,8 +5,10 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly chunk instantiations, 
 #   recyling pool, and LOD switches, offloading threading to ChunkTaskScheduler.
-# - Open-Closed Principle (OCP): Integrates dual-timeline synchronization during 
-#   chunk rendering passes, preventing main thread I/O stutters.
+# - Open-Closed Principle (OCP): Integrates dual-timeline synchronization.
+# 120 FPS GUARDRAIL FIX: 
+# - Adjacent boundary redraws and A* Navigation generation have been strictly
+#   decoupled from the synchronous Main-Thread loop and routed to background workers.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -31,6 +33,9 @@ var _chunk_versions: Dictionary = {}
 var _chunk_node_pool: Array[ChunkNode] = []
 static var _frictionless_material: PhysicsMaterial = null
 
+# Mutex binding required for scheduler callback synch flags
+var _queue_mutex: Mutex
+
 
 static func _get_frictionless_material() -> PhysicsMaterial:
 	if _frictionless_material == null:
@@ -46,10 +51,6 @@ func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
 	world_state = p_world_state
 	task_scheduler = ChunkTaskScheduler.new(self, _queue_mutex)
 	print("[ChunkLifecycle] Initialized lifecycle service and thread pool scheduler.")
-
-
-# Mutex binding required for scheduler callback synch flags
-var _queue_mutex: Mutex
 
 
 func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
@@ -126,7 +127,9 @@ func _check_neighbor_rebuild(condition: bool, chunk_pos: Vector3i, offset: Vecto
 	if condition:
 		var neighbor_pos := chunk_pos + offset
 		_chunk_versions[neighbor_pos] = _chunk_versions.get(neighbor_pos, 0) + 1
-		_rebuild_chunk_instantly(neighbor_pos)
+		# 120 FPS FIX: Adjacent border chunks MUST be offloaded to background threads.
+		# Synchronous rebuilding caused extreme lag spikes when mining near edges.
+		_request_chunk_rebuild(neighbor_pos)
 
 
 func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
@@ -147,8 +150,14 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	if static_body != null:
 		task_result.set_meta("static_body", static_body)
 		
-	task_result.set_meta("nav_nodes", ChunkNavigationBuilder.compile_walkable_nodes_asynchronous(chunk, world_state))
+	# 120 FPS FIX: Bypass the heavy 4096-iteration A* Navigation generation on the main thread!
+	# We pass an empty array to render the mesh/physics instantly with zero latency.
+	task_result.set_meta("nav_nodes", [])
 	_render_single_completed_task(task_result)
+	
+	# Immediately dispatch a background task to compile the missing A* navigation 
+	# graph and optimized data silently without stuttering the game.
+	_request_chunk_rebuild(chunk_pos)
 
 
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
