@@ -4,27 +4,27 @@
 [ext_resource type="VideoStream" path="res://src/Infrastructure/UI/Assets/menu_background.ogv" id="2_video"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
-font_size = 72
+font_size = 54
 font_color = Color(1, 0.95, 0.85, 1)
-outline_size = 14
+outline_size = 10
 outline_color = Color(0.06, 0.06, 0.08, 1)
-shadow_size = 12
+shadow_size = 8
 shadow_color = Color(0, 0, 0, 0.6)
-shadow_offset = Vector2(0, 6)
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
-bg_color = Color(0.05, 0.05, 0.07, 0.92)
+bg_color = Color(0.04, 0.04, 0.05, 0.35)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(1, 1, 1, 0.08)
+border_color = Color(1, 1, 1, 0.12)
 corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
-shadow_color = Color(0, 0, 0, 0.45)
-shadow_size = 35
+shadow_color = Color(0, 0, 0, 0.4)
+shadow_size = 25
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_play_normal"]
 content_margin_left = 20.0
@@ -172,7 +172,7 @@ grow_horizontal = 2
 grow_vertical = 2
 stream = ExtResource("2_video")
 autoplay = true
-loop = true
+loop = false
 expand = true
 mouse_filter = 2
 
@@ -187,20 +187,22 @@ color = Color(0.04, 0.04, 0.06, 0.45)
 
 [node name="CenterContainer" type="CenterContainer" parent="."]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 80.0
+offset_top = -255.0
+offset_right = 460.0
+offset_bottom = 255.0
 grow_vertical = 2
 
 [node name="MasterVBox" type="VBoxContainer" parent="CenterContainer"]
 layout_mode = 2
-theme_override_constants/separation = 35
+theme_override_constants/separation = 20
 alignment = 1
 
 [node name="GameTitle" type="Label" parent="CenterContainer/MasterVBox"]
 layout_mode = 2
-pivot_offset = Vector2(250, 45)
 text = "MENU_GAME_TITLE"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
