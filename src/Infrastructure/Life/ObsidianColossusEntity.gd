@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/Life/ObsidianColossusEntity.gd
 # Description: Physical character controller for the Obsidian Colossus Act III Boss.
 #              Orchestrates physical collision setups, ground stomp impacts,
-#              emissive magma particles, and lava-themed loot drops.
+#              unstoppable mass physics, and dynamic magma fissure emissions.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively physical combat 
 #   impacts, damage receiving, and particle setups. Decisions fully delegated to AI.
@@ -127,10 +127,55 @@ func _apply_stomp_proximity_effects(dist_sq: float) -> void:
 		player.call("take_damage", STOMP_DAMAGE, knockback)
 
 
+## Modifies incoming damage. The Colossus possesses Unstoppable Mass, 
+## taking standard health damage but ignoring all physical knockback vectors.
+func take_damage(amount: int, _knockback_force: Vector3, attacker: Node = null) -> void:
+	if domain_entity.is_dead:
+		return
+		
+	# Unstoppable Mass: Send Vector3.ZERO to base to completely negate weapon knockback
+	super(amount, Vector3.ZERO, attacker)
+	AudioService.play_sfx_static("hit_sword", global_position)
+	_spawn_rage_spark_embers() # Small ember pop on sword hit
+	
+	# Magma Fissures: Glow intensity scales up dynamically as health depletes
+	var damage_ratio := 1.0 - (float(domain_entity.health) / float(BOSS_MAX_HEALTH))
+	var target_emission := 3.0 + (damage_ratio * 4.0) # Scales from 3.0 up to 7.0 energy
+	
+	var visual_root := visual_component.get("visual_root") as Node3D if is_instance_valid(visual_component) else null
+	if is_instance_valid(visual_root):
+		_apply_magma_emission(visual_root, target_emission)
+
+
+func _apply_magma_emission(node: Node, energy: float) -> void:
+	if node is MeshInstance3D:
+		var mat := node.material_override as StandardMaterial3D
+		if is_instance_valid(mat) and mat.emission_enabled and mat.emission == Color(1.0, 0.35, 0.0):
+			mat.emission_energy_multiplier = energy
+			
+	for child in node.get_children():
+		_apply_magma_emission(child, energy)
+
+
 func _drop_loot(inv: IInventory) -> void:
 	# Epic Volcanic Drops: 3x Obsidian Blocks and 2x Lava Buckets
 	inv.add_item(39, 3)
 	inv.add_item(15, 2)
+
+
+## High-Frequency Physics Loop (Runs at 120Hz on the physics thread)
+func _physics_tick(_delta: float) -> void:
+	if domain_entity.is_dead:
+		return
+		
+	var state := 0
+	if has_meta(ObsidianColossusAIBehavior.META_STATE):
+		state = get_meta(ObsidianColossusAIBehavior.META_STATE) as int
+		
+	if state == 2: # STATE_CHARGING (Rage phase)
+		# Spills continuous active embers while charging at high speeds
+		if Engine.get_physics_frames() % 16 == 0:
+			_spawn_rage_spark_embers()
 
 
 # ==============================================================================

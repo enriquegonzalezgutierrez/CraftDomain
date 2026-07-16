@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/LithicLurkerEntity.gd
 # Description: Physical character controller for the Lithic Lurker Act I Boss.
-#              Orchestrates the physics, AoE ground pound impacts, and dynamic
-#              procedural voxel assembly without modifying global enums.
+#              Orchestrates the physics, AoE ground pound impacts, reflective 
+#              armor invulnerability, and dynamic core flashing.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles strictly physical interactions,
 #   hitboxes, and particle feedbacks. AI is fully delegated to LithicLurkerAIBehavior.
@@ -19,6 +19,7 @@ const POUND_RADIUS_SQ: float = 36.0 # 6.0 meters squared
 const BOSS_MAX_HEALTH: int = 24     # 12 Hearts of health
 
 var player: CharacterBody3D
+var _animation_time: float = 0.0
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -147,6 +148,46 @@ func _drop_loot(inv: IInventory) -> void:
 	# Epic Boss Loot: 1x Lava Bucket and 5x Diamonds
 	inv.add_item(15, 1)
 	inv.add_item(28, 5)
+
+
+## High-Frequency Physics Loop (Runs at 120Hz on the physics thread)
+func _physics_tick(delta: float) -> void:
+	if domain_entity.is_dead:
+		return
+		
+	var state := 0
+	if has_meta(LithicLurkerAIBehavior.META_STATE):
+		state = get_meta(LithicLurkerAIBehavior.META_STATE) as int
+		
+	if state == 3: # STATE_STUNNED
+		_process_stunned_visuals(delta)
+
+
+func _process_stunned_visuals(delta: float) -> void:
+	_animation_time += delta
+	var visual_root := visual_component.get("visual_root") as Node3D if is_instance_valid(visual_component) else null
+	
+	if is_instance_valid(visual_root):
+		# Core flashing logic (Alerts player of vulnerability)
+		var flash_intensity: float = absf(sin(_animation_time * 18.0)) * 3.5
+		_apply_cyan_core_emission(visual_root, flash_intensity)
+
+
+## Called by LithicLurkerAIBehavior when waking up from Stunned to Chasing
+func _restore_chasing_armor() -> void:
+	var visual_root := visual_component.get("visual_root") as Node3D if is_instance_valid(visual_component) else null
+	if is_instance_valid(visual_root):
+		_apply_cyan_core_emission(visual_root, 2.5) # Restore standard steady glow
+
+
+func _apply_cyan_core_emission(node: Node, energy: float) -> void:
+	if node is MeshInstance3D:
+		var mat := node.material_override as StandardMaterial3D
+		if is_instance_valid(mat) and mat.emission_enabled and mat.emission == Color(0.0, 0.95, 0.95):
+			mat.emission_energy_multiplier = energy
+			
+	for child in node.get_children():
+		_apply_cyan_core_emission(child, energy)
 
 
 # ==============================================================================

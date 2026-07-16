@@ -2,11 +2,12 @@
 # Pathfile: res://src/Domain/Life/LithicLurkerAIBehavior.gd
 # Description: Specialized AI behavior strategy implementing a multi-phase boss 
 #              state machine for the Lithic Lurker (Act I Boss).
-#              Phases: Sleep -> Chase -> Ground Pound -> Stunned (Core Exposed).
+#              Phases: Sleep -> Chase -> Ground Pound (w/ Hang Time) -> Stunned.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Isolates strictly the mathematical 
 #   decision-making and phase transition timers for the boss.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports hang-time 
+#   suspension variables completely decoupled from Godot physics integrations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,14 +17,15 @@ extends IAIBehavior
 # Localized Multi-Phase State Machine
 enum State {
 	SLEEPING,    # Waiting for player proximity in the magma chasm
-	CHASING,     # Heavy pursuit
-	LAUNCHING,   # Mid-air during a ground-pound attack
+	CHASING,     # Heavy armored pursuit (Invulnerable to knockback)
+	LAUNCHING,   # Mid-air during a ground-pound attack with apex hang-time
 	STUNNED      # Recovering from pound, exposing the cyan core
 }
 
 const SPEED_CHASE: float = 2.6
 const RANGE_SIGHT_SQ: float = 400.0 # 20m detection range
 const RANGE_POUND_SQ: float = 25.0  # 5m strike radius
+
 const COOLDOWN_POUND_SEC: float = 6.0
 const DURATION_STUN_SEC: float = 3.5
 
@@ -35,6 +37,7 @@ const TASK_WORKING = 6
 const META_STATE := "lurker_state"
 const META_COOLDOWN := "lurker_pound_cooldown"
 const META_STUN_TIMER := "lurker_stun_timer"
+const META_HANG_TIME := "lurker_hang_time" # Tracks apex suspension duration
 
 
 func _init() -> void:
@@ -58,7 +61,7 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		State.CHASING:
 			_process_chasing_phase(host, player_node)
 		State.LAUNCHING:
-			_process_launching_phase(host)
+			_process_launching_phase(host, delta)
 		State.STUNNED:
 			_process_stunned_phase(host)
 
@@ -112,19 +115,37 @@ func _process_chasing_phase(host: Object, player_node: Object) -> void:
 
 func _trigger_ground_pound_launch(host: Object, forward_dir: Vector3) -> void:
 	host.set_meta(META_STATE, State.LAUNCHING)
+	host.set_meta(META_HANG_TIME, 0.4) # Suspend at the apex for 0.4 seconds to telegraph the smash!
 	
 	var ai: Object = host.get("ai_component")
 	if is_instance_valid(ai): ai.set("wander_direction", forward_dir)
 		
 	var velocity: Vector3 = host.get("velocity") as Vector3
-	velocity.y = 8.5 # High leap
-	velocity.x = forward_dir.x * (SPEED_CHASE * 1.5)
-	velocity.z = forward_dir.z * (SPEED_CHASE * 1.5)
+	velocity.y = 9.5 # High heavy leap
+	velocity.x = forward_dir.x * (SPEED_CHASE * 1.8)
+	velocity.z = forward_dir.z * (SPEED_CHASE * 1.8)
 	host.set("velocity", velocity)
 
 
-func _process_launching_phase(host: Object) -> void:
-	# Wait until the boss physically lands back on the floor
+func _process_launching_phase(host: Object, delta: float) -> void:
+	var velocity: Vector3 = host.get("velocity") as Vector3
+	
+	# Apex Hang-Time Telegraphing
+	if velocity.y <= 1.0 and velocity.y >= -1.0:
+		var hang_timer: float = host.get_meta(META_HANG_TIME) as float
+		if hang_timer > 0.0:
+			host.set_meta(META_HANG_TIME, hang_timer - delta)
+			velocity.y = 0.0 # Freeze vertically
+			velocity.x = 0.0 # Freeze horizontally
+			host.set("velocity", velocity)
+			return
+			
+	# Rapid drop after hang-time
+	if velocity.y < 0.0:
+		velocity.y -= 12.0 * delta # Accelerate downward smash
+		host.set("velocity", velocity)
+
+	# Transition to Stunned upon hitting the ground
 	if host.call("is_on_floor"):
 		host.set_meta(META_STATE, State.STUNNED)
 		host.set_meta(META_COOLDOWN, COOLDOWN_POUND_SEC)
@@ -145,6 +166,8 @@ func _process_stunned_phase(host: Object) -> void:
 	var stun_timer: float = host.get_meta(META_STUN_TIMER) as float
 	if stun_timer <= 0.0:
 		host.set_meta(META_STATE, State.CHASING)
+		if host.has_method("_restore_chasing_armor"):
+			host.call("_restore_chasing_armor")
 
 
 func _halt_movement(host: Object) -> void:
@@ -171,6 +194,7 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 	if not host.has_meta(META_STATE): host.set_meta(META_STATE, State.SLEEPING)
 	if not host.has_meta(META_COOLDOWN): host.set_meta(META_COOLDOWN, 0.0)
 	if not host.has_meta(META_STUN_TIMER): host.set_meta(META_STUN_TIMER, 0.0)
+	if not host.has_meta(META_HANG_TIME): host.set_meta(META_HANG_TIME, 0.0)
 
 
 func _get_player_node(host: Object) -> Object:
