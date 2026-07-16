@@ -2,6 +2,11 @@
 # Pathfile: res://src/Infrastructure/World/StreetlightEntity.gd
 # Description: Infrastructure Static Entity representing an interactive 3D Streetlight.
 #              Controls real-time light and glass emission material transitions.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles its own material duplication
+#   and tween-based lighting transitions safely.
+# - Open-Closed Principle (OCP): Dynamically accepts injection of regional Biome 
+#   color palettes without altering its internal logic structure.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -38,6 +43,43 @@ func _ready() -> void:
 	# Auto-ignite lights on spawn if it is currently nighttime
 	var is_night: bool = CelestialService.is_night_time_static()
 	set_lights_active(is_night)
+
+
+## Injected by PropSpawningService: Modifies the visual geometry to match the regional biome
+func apply_biome_theme(theme: Dictionary) -> void:
+	if theme.is_empty(): return
+	
+	_apply_mesh_color("Visuals/Base", theme.get("stone_dark", Color.DARK_GRAY))
+	_apply_mesh_color("Visuals/Pole", theme.get("wood_pole", Color.BROWN))
+	_apply_mesh_color("Visuals/Crossbar", theme.get("wood_pole", Color.BROWN))
+	
+	var iron_color: Color = theme.get("iron_black", Color(0.12, 0.12, 0.14))
+	_apply_mesh_color("Visuals/LeftLanternCap", iron_color)
+	_apply_mesh_color("Visuals/LeftLanternBase", iron_color)
+	_apply_mesh_color("Visuals/RightLanternCap", iron_color)
+	_apply_mesh_color("Visuals/RightLanternBase", iron_color)
+	
+	_setup_emissive_theme_colors(theme)
+
+
+func _setup_emissive_theme_colors(theme: Dictionary) -> void:
+	if is_instance_valid(_left_light):
+		_left_light.light_color = theme.get("light_tint", Color(1.0, 0.72, 0.3))
+	if is_instance_valid(_right_light):
+		_right_light.light_color = theme.get("light_tint", Color(1.0, 0.72, 0.3))
+		
+	var glow: Color = theme.get("lantern_glow", Color(1.0, 0.6, 0.1))
+	if is_instance_valid(_left_mat): _left_mat.emission = glow
+	if is_instance_valid(_right_mat): _right_mat.emission = glow
+
+
+func _apply_mesh_color(path: String, col: Color) -> void:
+	var mesh := get_node_or_null(path) as MeshInstance3D
+	if is_instance_valid(mesh):
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = col
+		mat.roughness = 0.85
+		mesh.set_surface_override_material(0, mat)
 
 
 ## Smoothly interpolates lighting energy and material emission on night transitions

@@ -9,6 +9,8 @@
 #   projection formulas of road layouts and roadside lamp intervals.
 # - Open-Closed Principle (OCP): Extensible with new highway segments by 
 #   appending vector coordinates to the _road_segments database.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name RoadGeneratorService
 extends RefCounted
@@ -125,7 +127,9 @@ static func get_roadside_lamps_for_chunk(chunk_pos: Vector3i) -> Array[Vector3]:
 				
 				if is_inside_chunk_x and is_inside_chunk_z:
 					# Return coordinate mapping, height Y=0 is placeholder (will be dropped to ground level dynamically)
-					lamps.append(Vector3(shoulder_pos_2d.x, 0.0, shoulder_pos_2d.y))
+					var lamp_coord := Vector3(shoulder_pos_2d.x, 0.0, shoulder_pos_2d.y)
+					lamps.append(lamp_coord)
+					print("[RoadGenerator] Evaluated target shoulder coordinate for chunk %s at 2D %s" % [chunk_pos, shoulder_pos_2d])
 					
 			current_dist += segment.lamp_interval
 			
