@@ -1,7 +1,5 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic)
-# Class: RoadGeneratorService
+# Pathfile: res://src/Domain/World/RoadGeneratorService.gd
 # Description: Pure Domain Service responsible for calculating and sculpting paved 
 #              connecting roads and roadside streetlight placements deterministically.
 # SOLID COMPLIANCE:
@@ -9,6 +7,8 @@
 #   projection formulas of road layouts and roadside lamp intervals.
 # - Open-Closed Principle (OCP): Extensible with new highway segments by 
 #   appending vector coordinates to the _road_segments database.
+# - Method Size Limits (Rule 4.2): All monolithic loops and coordinate boundaries
+#   decomposed into small helper functions under 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -55,43 +55,42 @@ static func is_on_road(global_x: float, global_z: float) -> bool:
 	if distance_from_center < 25.0:
 		return false # Safe zone around spawning sandy shoreline
 		
-	# ==========================================================================
-	# TACTICAL BOUNDING BOX EXCLUSIONS (OCP / SOLID COMPLIANCE)
-	# Terminates the road generator exactly where the outer gates/entrances
-	# of the handcrafted global landmark structures begin, preventing 
-	# highway pavement from breaking internal rooms or creating y+1 steps.
-	# ==========================================================================
-	
-	# 1. Grand Castle [Center: (200, 200) | Outer boundary radius: 24]
-	if abs(global_x - 200.0) <= 24.0 and abs(global_z - 200.0) <= 24.0:
+	if _is_within_landmark_exclusions(global_x, global_z):
 		return false
+		
+	return _evaluate_road_segments(p)
+
+
+static func _is_within_landmark_exclusions(gx: float, gz: float) -> bool:
+	# 1. Grand Castle [Center: (200, 200) | Outer boundary radius: 24]
+	if absf(gx - 200.0) <= 24.0 and absf(gz - 200.0) <= 24.0:
+		return true
 		
 	# 2. Steve's Settlement [Center: (300, -300) | Outer boundary radius: 20]
-	if abs(global_x - 300.0) <= 20.0 and abs(global_z - (-300.0)) <= 20.0:
-		return false
+	if absf(gx - 300.0) <= 20.0 and absf(gz - (-300.0)) <= 20.0:
+		return true
 		
 	# 3. Seaport & Galleon [Center: (-150, 0) | Outer boundary radius: 20]
-	if abs(global_x - (-150.0)) <= 20.0 and abs(global_z - 0.0) <= 20.0:
-		return false
+	if absf(gx - (-150.0)) <= 20.0 and absf(gz - 0.0) <= 20.0:
+		return true
 		
 	# 4. Nether Portal Outpost [Center: (-300, -300) | Outer boundary radius: 18]
-	if abs(global_x - (-300.0)) <= 18.0 and abs(global_z - (-300.0)) <= 18.0:
-		return false
+	if absf(gx - (-300.0)) <= 18.0 and absf(gz - (-300.0)) <= 18.0:
+		return true
 		
-	# --------------------------------------------------------------------------
-	
+	return false
+
+
+static func _evaluate_road_segments(p: Vector2) -> bool:
 	for segment: RoadSegment in _road_segments:
 		var v := segment.end_point - segment.start_point
 		var w := p - segment.start_point
 		
 		# Proportional projection factor t along the line segment
-		var t := w.dot(v) / v.length_squared()
-		t = clamp(t, 0.0, 1.0)
-		
+		var t := clampf(w.dot(v) / v.length_squared(), 0.0, 1.0)
 		var closest_point := segment.start_point + t * v
-		var distance_to_segment := p.distance_to(closest_point)
 		
-		if distance_to_segment <= segment.road_width:
+		if p.distance_to(closest_point) <= segment.road_width:
 			return true
 			
 	return false
@@ -101,36 +100,38 @@ static func is_on_road(global_x: float, global_z: float) -> bool:
 ## roadside streetlights should spawn deterministically along the highway shoulders.
 static func get_roadside_lamps_for_chunk(chunk_pos: Vector3i) -> Array[Vector3]:
 	var lamps: Array[Vector3] = []
-	var chunk_start_x := chunk_pos.x * Chunk.SIZE
-	var chunk_start_z := chunk_pos.z * Chunk.SIZE
+	var chunk_start := Vector2(float(chunk_pos.x * Chunk.SIZE), float(chunk_pos.z * Chunk.SIZE))
 	
 	for segment: RoadSegment in _road_segments:
-		var segment_vector := segment.end_point - segment.start_point
-		var segment_len := segment_vector.length()
-		var road_dir := segment_vector.normalized()
-		
-		# Calculate the perpendicular offset vector (pointing to the road shoulder/arcén)
-		var perpendicular := Vector2(-road_dir.y, road_dir.x).normalized()
-		
-		# Iterate along the segment length at regular intervals
-		var current_dist := segment.lamp_interval
-		while current_dist < segment_len - 15.0:
-			var center_road_pos_2d := segment.start_point + (road_dir * current_dist)
-			
-			# Symmetrical placement: Place one lamp on each side of the road (Left & Right shoulders)
-			for side: int in [-1, 1]:
-				var shoulder_pos_2d := center_road_pos_2d + (perpendicular * (segment.road_width + 1.25) * float(side))
-				
-				# Check if the calculated 2D shoulder position falls inside the requested Chunk's grid
-				var is_inside_chunk_x := shoulder_pos_2d.x >= chunk_start_x and shoulder_pos_2d.x < chunk_start_x + Chunk.SIZE
-				var is_inside_chunk_z := shoulder_pos_2d.y >= chunk_start_z and shoulder_pos_2d.y < chunk_start_z + Chunk.SIZE
-				
-				if is_inside_chunk_x and is_inside_chunk_z:
-					# Return coordinate mapping, height Y=0 is placeholder (will be dropped to ground level dynamically)
-					var lamp_coord := Vector3(shoulder_pos_2d.x, 0.0, shoulder_pos_2d.y)
-					lamps.append(lamp_coord)
-					print("[RoadGenerator] Evaluated target shoulder coordinate for chunk %s at 2D %s" % [chunk_pos, shoulder_pos_2d])
-					
-			current_dist += segment.lamp_interval
+		_process_segment_lamps(segment, chunk_start, lamps)
 			
 	return lamps
+
+
+static func _process_segment_lamps(segment: RoadSegment, chunk_start: Vector2, lamps: Array[Vector3]) -> void:
+	var segment_vector := segment.end_point - segment.start_point
+	var segment_len := segment_vector.length()
+	var road_dir := segment_vector.normalized()
+	
+	# Calculate the perpendicular offset vector (pointing to the road shoulder/arcén)
+	var perpendicular := Vector2(-road_dir.y, road_dir.x).normalized()
+	
+	# Iterate along the segment length at regular intervals
+	var current_dist := segment.lamp_interval
+	while current_dist < segment_len - 15.0:
+		var center_road_pos_2d := segment.start_point + (road_dir * current_dist)
+		_evaluate_shoulder_pair(center_road_pos_2d, perpendicular, segment.road_width, chunk_start, lamps)
+		current_dist += segment.lamp_interval
+
+
+static func _evaluate_shoulder_pair(center_road: Vector2, perp: Vector2, road_width: float, chunk_start: Vector2, lamps: Array[Vector3]) -> void:
+	# Symmetrical placement: Place one lamp on each side of the road (Left & Right shoulders)
+	for side: int in [-1, 1]:
+		var shoulder := center_road + (perp * (road_width + 1.25) * float(side))
+		
+		# Check if the calculated 2D shoulder position falls inside the requested Chunk's grid
+		var is_inside_chunk_x := shoulder.x >= chunk_start.x and shoulder.x < chunk_start.x + float(Chunk.SIZE)
+		var is_inside_chunk_z := shoulder.y >= chunk_start.y and shoulder.y < chunk_start.y + float(Chunk.SIZE)
+		
+		if is_inside_chunk_x and is_inside_chunk_z:
+			lamps.append(Vector3(shoulder.x, 0.0, shoulder.y))

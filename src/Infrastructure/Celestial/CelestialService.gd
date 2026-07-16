@@ -45,7 +45,6 @@ func _process(delta: float) -> void:
 
 
 func _setup_dynamic_moon_light() -> void:
-	print("[CelestialService] Creating dynamic MoonLight source...")
 	moon_light = DirectionalLight3D.new()
 	moon_light.name = "MoonLight"
 	moon_light.shadow_enabled = true
@@ -68,7 +67,6 @@ func _update_orbital_timers(delta: float) -> void:
 		_calendar_days += 1
 		if _calendar_days > 28:
 			_calendar_days = 1
-		print("[CelestialService] Day Crossed! Day: ", _calendar_days, " | Phase: ", get_moon_phase_name())
 
 
 func _update_sun_rotation() -> void:

@@ -1,7 +1,5 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Quest System / Pure Business Rules)
-# Class: QuestService
+# Pathfile: res://src/Domain/Quest/QuestService.gd
 # Description: Pure Domain Service acting as a Registry and Coordinator for 
 #              game Quests, tracking active objectives and global progression.
 # SOLID COMPLIANCE: 
@@ -11,6 +9,9 @@
 #   Hotspot Registry. The hardcoded match tables are completely replaced by a 
 #   dynamic mapping lookup, closing this class to modifications when adding new 
 #   resource types or quest categories.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name QuestService
 extends RefCounted
@@ -52,7 +53,6 @@ static func _static_init() -> void:
 ## Can be called from custom biomes, structures, mods, or DLC loaders on startup.
 static func register_resource_hotspot(item_id: int, target_position: Vector3) -> void:
 	_resource_hotspots[item_id] = target_position
-	print("[QuestService] Registered dynamic OCP hotspot for Item ID %d at %s" % [item_id, target_position])
 
 
 ## Registers a quest into the system database.
@@ -76,7 +76,6 @@ static func set_active_quest(quest_id: String, player_pos: Vector3 = Vector3.ZER
 			
 			# Dynamic Resource Routing: Map coordinates to resource hotspots if applicable
 			_update_gathering_target_position(_active_quest, player_pos)
-			print("[QuestService] Active Quest changed to: ", _active_quest.title)
 
 
 ## Returns the currently tracked active quest (null if none).
@@ -87,21 +86,17 @@ static func get_active_quest() -> Quest:
 ## Clears the active quest track (Used when loading a fully completed campaign save).
 static func clear_active_quest() -> void:
 	_active_quest = null
-	print("[QuestService] Active quest cleared (Campaign previously completed).")
 
 
 ## Marks the active quest as completed, grants rewards, and chains the next one.
 static func complete_active_quest(player_node: CharacterBody3D = null) -> void:
 	if _active_quest != null:
 		_active_quest.status = Quest.Status.COMPLETED
-		print("[QuestService] Active Quest successfully completed: ", _active_quest.title)
 		
 		# Grant inventory rewards safely if the player instance is provided
 		if player_node != null and _active_quest.reward_item_index >= 0:
 			var inv: IInventory = player_node.get("inventory") as IInventory
 			if is_instance_valid(inv):
-				# Reward items added safely. The HUD will update automatically 
-				# by listening to the `inventory_changed` signal.
 				var _success := inv.add_item(_active_quest.reward_item_index, _active_quest.reward_quantity)
 				
 		# Cache the next quest link before clearing
@@ -120,10 +115,8 @@ static func _update_gathering_target_position(quest: Quest, _player_pos: Vector3
 		return
 		
 	# OCP RESOLUTION: Look up the coordinate dynamically from the registered hotspots.
-	# Completely removes hardcoded item IDs and coordinate vectors from the method body.
 	if _resource_hotspots.has(quest.required_item_index):
 		var registered_target: Vector3 = _resource_hotspots[quest.required_item_index]
 		quest.target_position = registered_target
-		print("[QuestService] Dynamically mapped target position for '%s' to registered hotspot: %s" % [quest.quest_id, registered_target])
 	else:
 		push_warning("[QuestService WARNING] No registered hotspot found for required Item ID: %d" % quest.required_item_index)

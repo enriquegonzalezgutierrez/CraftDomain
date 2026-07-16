@@ -9,6 +9,7 @@
 #   hardcoded constructors have been decoupled. Adding new voxel NPC roles 
 #   is done dynamically at runtime via `register_builder()`, without modifying 
 #   any other engine systems.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -23,7 +24,6 @@ static var _builders: Dictionary = {}
 ## Enables mods, plugins, or expansions to inject custom voxel models at runtime.
 static func register_builder(role_id: int, builder: IVoxelModelBuilder) -> void:
 	_builders[role_id] = builder
-	print("[VoxelModelRegistry] Registered dynamic model builder for Role ID: ", role_id)
 
 
 ## Dynamic Router API: Resolves and returns the registered builder strategy for a given Role ID.
@@ -42,7 +42,6 @@ static func get_builder(role_id: int) -> IVoxelModelBuilder:
 ## Initializer: Automatically populates and binds the default set of 
 ## compiled, high-performance voxel models on game boot.
 static func initialize_registry() -> void:
-	print("[VoxelModelRegistry] Initializing and compiling baseline voxel models...")
 	_builders.clear()
 	
 	# We compile and bind the default roles in RAM instantly
@@ -58,5 +57,3 @@ static func initialize_registry() -> void:
 	register_builder(50, LithicLurkerModelBuilder.new())     # ID 50: Lithic Lurker (Act I)
 	register_builder(51, ObsidianColossusModelBuilder.new()) # ID 51: Obsidian Colossus (Act III)
 	register_builder(52, WeaverMalakorModelBuilder.new())    # ID 52: Weaver Malakor (Act IV)
-	
-	print("[VoxelModelRegistry] Baseline initialization finished. Active builders: ", _builders.size())

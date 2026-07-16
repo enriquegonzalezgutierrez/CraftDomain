@@ -16,7 +16,6 @@ const MANIFEST_FILE_NAME: String = "mod.json"
 
 
 static func scan_and_load_mods() -> void:
-	print("[ModLoader] Initiating external mod scan at: ", MODS_BASE_DIR)
 	_ensure_mods_directory_exists()
 	_scan_mods_directory()
 
@@ -24,7 +23,6 @@ static func scan_and_load_mods() -> void:
 static func _ensure_mods_directory_exists() -> void:
 	if not DirAccess.dir_exists_absolute(MODS_BASE_DIR):
 		DirAccess.make_dir_recursive_absolute(MODS_BASE_DIR)
-		print("[ModLoader] Created missing mods directory: ", MODS_BASE_DIR)
 
 
 static func _scan_mods_directory() -> void:
@@ -40,15 +38,11 @@ static func _scan_mods_directory() -> void:
 
 static func _iterate_mods_directory(dir: DirAccess) -> void:
 	var file_name: String = dir.get_next()
-	var loaded_mods_count: int = 0
 	
 	while file_name != "":
 		if dir.current_is_dir() and not file_name.begins_with("."):
 			_process_mod_folder(file_name)
-			loaded_mods_count += 1
 		file_name = dir.get_next()
-		
-	print("[ModLoader] Mod scan finished. Total external mods loaded: ", loaded_mods_count)
 
 
 static func _process_mod_folder(folder_name: String) -> void:
@@ -64,10 +58,6 @@ static func _load_mod_manifest(manifest_path: String, mod_dir_path: String) -> v
 	var manifest := _parse_manifest_json(manifest_path)
 	if manifest.is_empty(): return
 		
-	var mod_name: String = str(manifest.get("name", "Unnamed Mod"))
-	var mod_version: String = str(manifest.get("version", "1.0.0"))
-	print("[ModLoader] Loading Mod: '%s' [v%s]" % [mod_name, mod_version])
-	
 	_parse_mod_translations(manifest, mod_dir_path)
 	_parse_mod_recipes(manifest)
 

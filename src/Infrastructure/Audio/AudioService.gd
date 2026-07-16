@@ -57,7 +57,6 @@ func _ready() -> void:
 
 
 func _preload_audio_resources() -> void:
-	print("[AudioService] Preloading all progressive EDM tracks...")
 	_streams_cache[TrackType.MENU] = load(MENU_MUSIC_PATH)
 	_streams_cache[TrackType.WORLD] = load(WORLD_MUSIC_PATH)
 	_streams_cache[TrackType.COMBAT] = load(COMBAT_MUSIC_PATH) if ResourceLoader.exists(COMBAT_MUSIC_PATH) else _streams_cache[TrackType.WORLD]

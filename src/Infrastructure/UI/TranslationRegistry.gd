@@ -1,5 +1,7 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Infrastructure (UI / Localization)
+# Class: TranslationRegistry
 # Description: Pure Infrastructure Registry responsible for dynamically loading
 #              and compiling translation files from external JSON packs.
 # SOLID COMPLIANCE: 
@@ -9,6 +11,9 @@
 #   new languages (e.g., fr.json) is done purely via external assets.
 # - Safe Type Validation: Uses explicit type checks before casting to prevent
 #   GDScript engine invalid cast crashes on unaligned files.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name TranslationRegistry
 extends RefCounted
@@ -17,7 +22,6 @@ const TRANSLATIONS_DIR := "res://assets/translations/"
 
 ## Scans the translations folder and registers all present JSON locales dynamically
 static func initialize_translations() -> void:
-	print("[TranslationRegistry] Scanning directory for language packs: ", TRANSLATIONS_DIR)
 	_ensure_directory_exists()
 	_scan_and_load_translation_files()
 
@@ -25,7 +29,6 @@ static func initialize_translations() -> void:
 static func _ensure_directory_exists() -> void:
 	if not DirAccess.dir_exists_absolute(TRANSLATIONS_DIR):
 		DirAccess.make_dir_recursive_absolute(TRANSLATIONS_DIR)
-		print("[TranslationRegistry] Created missing translations directory: ", TRANSLATIONS_DIR)
 
 
 ## Dynamically registers every translation JSON into Godot's TranslationServer
@@ -37,7 +40,6 @@ static func _scan_and_load_translation_files() -> void:
 		
 	dir.list_dir_begin()
 	var file_name := dir.get_next()
-	var loaded_files_count := 0
 	
 	while file_name != "":
 		if not dir.current_is_dir() and file_name.ends_with(".json"):
@@ -45,11 +47,9 @@ static func _scan_and_load_translation_files() -> void:
 			var locale_code := file_name.get_basename() # Extract "en" or "es"
 			
 			_load_translation_pack(full_path, locale_code)
-			loaded_files_count += 1
 		file_name = dir.get_next()
 		
 	dir.list_dir_end()
-	print("[TranslationRegistry] Dynamic scan finished. Language packs loaded: ", loaded_files_count)
 
 
 ## Parses a specific JSON file and binds it to the engine translation service
@@ -82,4 +82,3 @@ static func _load_translation_pack(file_path: String, locale_code: String) -> vo
 		translation.add_message(key, str(translation_data[key]))
 		
 	TranslationServer.add_translation(translation)
-	print("  -> Bounded dynamic translation pack: ", file_path, " [Locale: ", locale_code, "]")

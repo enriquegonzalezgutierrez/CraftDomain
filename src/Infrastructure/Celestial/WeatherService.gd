@@ -3,7 +3,7 @@
 # Description: Infrastructure Weather Service managing dynamic meteorological cycles.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates particle setups 
-#                and climate routines.
+#                and climate routines. All methods kept strictly < 20 lines.
 #              - Dependency Inversion Principle (DIP): Receives player and world 
 #                references explicitly via dependency injection instead of SceneTree lookups.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
@@ -71,7 +71,6 @@ func _setup_global_wind_parameters() -> void:
 		return
 	_globals_initialized = true
 	
-	print("[WeatherService] Initializing Global GPU Shader Parameters...")
 	RenderingServer.global_shader_parameter_add("wind_vector", RenderingServer.GLOBAL_VAR_TYPE_VEC2, Vector2(0.3, 0.1))
 	RenderingServer.global_shader_parameter_add("wind_strength", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.4)
 
@@ -136,38 +135,36 @@ func _setup_particles_system() -> void:
 ## Automates weather state shifts based on regional biomes
 func _cycle_weather() -> void:
 	_weather_timer = randf_range(60.0, 120.0) # Next shift in 1-2 minutes
-	
-	# 1. Determine region to customize local climate
-	var is_polar_region := false
-	if is_instance_valid(player) and is_instance_valid(world_controller):
-		var p_pos := player.global_position
-		var generator: WorldGenerator = world_controller.get("generator") as WorldGenerator
-		
-		if is_instance_valid(generator):
-			var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
-			if terrain_noise != null:
-				var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), terrain_noise) as BiomeService.BiomeProfile
-				# Biome 4 is Frostbite Glaciers (North Cap), Biome 9 is Cloud Kingdom
-				is_polar_region = (profile.biome_id == 4 or profile.biome_id == 9)
-
-	# 2. Roll a weather change
 	var roll := randf()
 	
 	if roll < 0.45:
 		current_weather = WeatherType.SUNNY
 		_particles.emitting = false
-		print("[WeatherService] Weather shifted to: SUNNY.")
 	else:
-		if is_polar_region:
-			current_weather = WeatherType.SNOWY
-			_apply_snow_parameters()
-			_particles.emitting = true
-			print("[WeatherService] Weather shifted to: SNOWY (Regional Glacial Snowflake).")
-		else:
-			current_weather = WeatherType.RAINY
-			_apply_rain_parameters()
-			_particles.emitting = true
-			print("[WeatherService] Weather shifted to: RAINY (Regional Rain needles).")
+		_trigger_stormy_overcast(_check_if_polar_region())
+
+
+func _check_if_polar_region() -> bool:
+	if is_instance_valid(player) and is_instance_valid(world_controller):
+		var p_pos := player.global_position
+		var generator := world_controller.get("generator") as WorldGenerator
+		
+		if is_instance_valid(generator) and generator.get("_terrain_noise") != null:
+			var noise := generator.get("_terrain_noise") as FastNoiseLite
+			var profile := BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), noise) as BiomeService.BiomeProfile
+			return (profile.biome_id == 4 or profile.biome_id == 9)
+	return false
+
+
+func _trigger_stormy_overcast(is_polar: bool) -> void:
+	if is_polar:
+		current_weather = WeatherType.SNOWY
+		_apply_snow_parameters()
+		_particles.emitting = true
+	else:
+		current_weather = WeatherType.RAINY
+		_apply_rain_parameters()
+		_particles.emitting = true
 
 
 ## Sets up thin, fast-falling translucent blue rain needles

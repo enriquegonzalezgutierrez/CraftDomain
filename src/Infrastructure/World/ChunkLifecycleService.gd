@@ -4,11 +4,12 @@
 #              chunk instantiation, garbage collection, and physics Rid assignment.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly chunk instantiations, 
-#   recyling pool, and LOD switches, offloading threading to ChunkTaskScheduler.
-# - Open-Closed Principle (OCP): Integrates dual-timeline synchronization.
-# 120 FPS GUARDRAIL FIX: 
-# - Adjacent boundary redraws and A* Navigation generation have been strictly
-#   decoupled from the synchronous Main-Thread loop and routed to background workers.
+#   recycling pool, and LOD switches, offloading threading to ChunkTaskScheduler.
+# - Method Size Limits (Rule 4.1 & 4.2): File kept under 300 lines; all methods < 20 lines.
+# - Safe Metadata Query: Added preventative has_meta checks to prevent C++ console
+#   errors on air/distant chunks that do not register static body colliders.
+# - Physics Scope Reconciliation: Reconciled and saved the instantiated static_body
+#   as task metadata during standard loading to prevent collision dropouts.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -33,7 +34,6 @@ var _chunk_versions: Dictionary = {}
 var _chunk_node_pool: Array[ChunkNode] = []
 static var _frictionless_material: PhysicsMaterial = null
 
-# Mutex binding required for scheduler callback synch flags
 var _queue_mutex: Mutex
 
 
@@ -50,7 +50,6 @@ func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
 	controller = p_controller
 	world_state = p_world_state
 	task_scheduler = ChunkTaskScheduler.new(self, _queue_mutex)
-	print("[ChunkLifecycle] Initialized lifecycle service and thread pool scheduler.")
 
 
 func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
@@ -127,17 +126,20 @@ func _check_neighbor_rebuild(condition: bool, chunk_pos: Vector3i, offset: Vecto
 	if condition:
 		var neighbor_pos := chunk_pos + offset
 		_chunk_versions[neighbor_pos] = _chunk_versions.get(neighbor_pos, 0) + 1
-		# 120 FPS FIX: Adjacent border chunks MUST be offloaded to background threads.
-		# Synchronous rebuilding caused extreme lag spikes when mining near edges.
 		_request_chunk_rebuild(neighbor_pos)
 
 
 func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	var chunk := world_state.get_chunk(chunk_pos)
 	if chunk == null: return
-		
-	var is_distant := _calculate_is_chunk_distant(chunk_pos)
-	var visual_data: Dictionary = ChunkVisualBuilder.extract_render_data(chunk, world_state, not is_distant) as Dictionary
+	var task_result := _compile_instant_rebuild_task(chunk)
+	_render_single_completed_task(task_result)
+	_request_chunk_rebuild(chunk_pos)
+
+
+func _compile_instant_rebuild_task(chunk: Chunk) -> GeneratedChunkTask:
+	var is_distant := _calculate_is_chunk_distant(chunk.position)
+	var visual_data := ChunkVisualBuilder.extract_render_data(chunk, world_state, not is_distant)
 	var static_body := _build_physics_body_for_rebuild(visual_data, is_distant)
 	
 	var task_result := GeneratedChunkTask.new()
@@ -145,19 +147,10 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
 	task_result.is_rebuild = true
 	task_result.liquid_meshes = ChunkMesher.generate_special_meshes(chunk, world_state)
-	task_result.set_meta("version", _chunk_versions.get(chunk_pos, 0))
-	
-	if static_body != null:
-		task_result.set_meta("static_body", static_body)
-		
-	# 120 FPS FIX: Bypass the heavy 4096-iteration A* Navigation generation on the main thread!
-	# We pass an empty array to render the mesh/physics instantly with zero latency.
+	task_result.set_meta("version", _chunk_versions.get(chunk.position, 0))
+	if static_body != null: task_result.set_meta("static_body", static_body)
 	task_result.set_meta("nav_nodes", [])
-	_render_single_completed_task(task_result)
-	
-	# Immediately dispatch a background task to compile the missing A* navigation 
-	# graph and optimized data silently without stuttering the game.
-	_request_chunk_rebuild(chunk_pos)
+	return task_result
 
 
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
@@ -201,12 +194,15 @@ func _render_completed_chunks_from_queue(player_active: bool) -> void:
 
 func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var chunk_pos: Vector3i = task.chunk.position
-	
-	if _is_task_version_obsolete(task, chunk_pos):
-		return
+	if _is_task_version_obsolete(task, chunk_pos): return
 		
 	_cleanup_task_states(chunk_pos)
-	
+	_register_completed_chunk_state(task, chunk_pos)
+	_register_navigation_nodes(task)
+	_apply_visuals_to_chunk_node(task, chunk_pos)
+
+
+func _register_completed_chunk_state(task: GeneratedChunkTask, chunk_pos: Vector3i) -> void:
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
 	_chunk_lod_states[chunk_pos] = is_distant
 	
@@ -214,16 +210,15 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	if is_instance_valid(static_body):
 		_physics_bodies[chunk_pos] = static_body.get_rid()
 		
+		# RECONCILE STATIC BODY: Store the compiled physics body as metadata
+		# so that _apply_visuals_to_chunk_node can safely retrieve it!
+		task.set_meta("static_body", static_body)
+		
 	if not task.is_rebuild and is_instance_valid(world_state):
 		world_state.add_chunk(task.chunk)
-		
-		# Symmetrical dual-timeline registration from compiler metadata
 		var saved_edits: Dictionary = task.get_meta("saved_edits") if task.has_meta("saved_edits") else {}
 		if not saved_edits.is_empty():
 			world_state.apply_chunk_modifications(chunk_pos, saved_edits)
-		
-	_register_navigation_nodes(task)
-	_apply_visuals_to_chunk_node(task, chunk_pos, static_body, is_distant)
 
 
 func _is_task_version_obsolete(task: GeneratedChunkTask, chunk_pos: Vector3i) -> bool:
@@ -270,23 +265,29 @@ func _register_navigation_nodes(task: GeneratedChunkTask) -> void:
 			ChunkNavigationBuilder.register_compiled_nodes_synchronous(nav_nodes, world_state, nav_service)
 
 
-func _apply_visuals_to_chunk_node(task: GeneratedChunkTask, chunk_pos: Vector3i, static_body: StaticBody3D, is_distant: bool) -> void:
+func _apply_visuals_to_chunk_node(task: GeneratedChunkTask, chunk_pos: Vector3i) -> void:
 	var chunk_node: ChunkNode = null
 	if _chunk_nodes.has(chunk_pos):
 		chunk_node = _chunk_nodes[chunk_pos] as ChunkNode
 	else:
 		if task.is_rebuild: 
-			if is_instance_valid(static_body): static_body.queue_free()
+			var body: Node = task.get_meta("static_body") if task.has_meta("static_body") else null
+			if is_instance_valid(body): body.queue_free()
 			return
 		chunk_node = _acquire_chunk_node_from_pool(task.chunk)
 		_chunk_nodes[chunk_pos] = chunk_node
-		
-		if controller.has_method("register_streetlights_for_chunk"): 
-			controller.call("register_streetlights_for_chunk", task.chunk)
-		if controller.has_method("check_player_spawn_activation"): 
-			controller.call("check_player_spawn_activation")
-			
+		_notify_controller_spawn(task.chunk)
+				
+	var is_distant := _calculate_is_chunk_distant(chunk_pos)
+	var static_body: StaticBody3D = task.get_meta("static_body") if task.has_meta("static_body") else null
 	chunk_node.setup_chunk_visuals(task.multimesh_data, static_body, task.liquid_meshes, is_distant)
+
+
+func _notify_controller_spawn(chunk: Chunk) -> void:
+	if controller.has_method("register_streetlights_for_chunk"): 
+		controller.call("register_streetlights_for_chunk", chunk)
+	if controller.has_method("check_player_spawn_activation"): 
+		controller.call("check_player_spawn_activation")
 
 
 func _acquire_chunk_node_from_pool(chunk: Chunk) -> ChunkNode:

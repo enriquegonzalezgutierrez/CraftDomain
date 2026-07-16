@@ -9,6 +9,7 @@
 #                internally on startup, removing registration bloat from Bootstrap.
 # MILESTONE 16 UPGRADE:
 #              - Registered the newly designed LithicLurkerLairMegaStructure (Act I Boss).
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -22,7 +23,6 @@ static var _structures: Array[IMegaStructure] = []
 ## Startup Initializer: Instantiates and registers the default set of 
 ## global fixed POI mega-structures, keeping Bootstrap.gd clean.
 static func initialize_megastructures() -> void:
-	print("[MegaStructureService] Initializing and registering fixed POI Mega-Structures...")
 	_structures.clear()
 	
 	register_structure(GrandCastleMegaStructure.new())
@@ -31,8 +31,6 @@ static func initialize_megastructures() -> void:
 	register_structure(StevesCabinMegaStructure.new())
 	register_structure(DesertOasisMegaStructure.new())
 	register_structure(LithicLurkerLairMegaStructure.new())
-	
-	print("[MegaStructureService] Initialization complete. Registered Mega-Structures count: ", _structures.size())
 
 
 ## Static registry API: Registers a new fixed mega-structure at boot.

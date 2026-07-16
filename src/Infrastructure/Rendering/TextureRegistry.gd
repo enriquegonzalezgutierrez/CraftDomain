@@ -12,6 +12,9 @@
 #   supporting any new custom blocks and textures without changes.
 # - Dependency Inversion Principle (DIP): Centralizes asset lifecycles, allowing 
 #   easy integration with low-level graphic renderers.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name TextureRegistry
 extends RefCounted
@@ -33,9 +36,6 @@ static func initialize_textures() -> void:
 		return
 	_initialized = true
 	
-	print("[TextureRegistry] Initiating dynamic OCP texture preloading...")
-	var success_count := 0
-	
 	# Iterate dynamically through all registered block definitions (OCP compliant)
 	for b_id: int in BlockLibrary._definitions.keys():
 		var def := BlockLibrary.get_definition(b_id) as BlockDefinition
@@ -47,9 +47,6 @@ static func initialize_textures() -> void:
 			var tex := load(path) as Texture2D
 			if tex != null:
 				_textures_cache[b_id] = tex
-				success_count += 1
-				
-	print("[TextureRegistry] Preloading finished. Total block textures cached: %d" % success_count)
 
 
 ## Public Reader API: Queries and returns the cached 2D texture for any given Block ID.
@@ -65,4 +62,3 @@ static func get_block_texture(block_id: int) -> Texture2D:
 static func register_custom_texture(block_id: int, texture: Texture2D) -> void:
 	if texture != null:
 		_textures_cache[block_id] = texture
-		print("[TextureRegistry] Registered custom dynamic texture for Block ID %d" % block_id)
