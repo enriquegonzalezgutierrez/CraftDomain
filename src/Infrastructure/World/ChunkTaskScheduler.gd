@@ -124,7 +124,9 @@ func _get_dynamic_thread_limit() -> int:
 	# Thread Budgeting Inversion: 
 	# Maximize threads during loadscreens/teleports to generate chunks instantly.
 	# Restrict background threads to 1 or 2 during active gameplay to preserve 120 FPS frame pacing.
-	return _max_concurrent_bg_tasks if is_loading_teleport else clampi(_max_concurrent_bg_tasks / 4, 1, 2)
+	# WARNING SILENCED: Explicitly cast float division back to int to prevent compiler warnings.
+	var gameplay_threads_limit := clampi(int(float(_max_concurrent_bg_tasks) / 4.0), 1, 2)
+	return _max_concurrent_bg_tasks if is_loading_teleport else gameplay_threads_limit
 
 
 func _dispatch_task(request: Dictionary) -> void:
