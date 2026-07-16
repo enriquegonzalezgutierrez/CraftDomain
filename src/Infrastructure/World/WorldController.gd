@@ -8,9 +8,9 @@
 #   Block mutations are now correctly delegated to ChunkLifecycleService.
 # - Dependency Inversion Principle (DIP): Bootstraps and connects isolated 
 #   domain services (Agriculture, Fluids, Structural Integrity) on ready.
-# - Safety Guardrail: Restricts player spawn activations and vertical height Y
-#   calculations strictly to authorized boots or teleport/death loops, permanently
-#   preventing background thread compiles from triggering teleports during open menus.
+# - Single Responsibility Principle (SRP): Decomposed target structural props 
+#   into elastic falling-bounces supporting both StaticBody3D and Node3D vegetation
+#   through 100% strong static typing.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -198,8 +198,9 @@ func _check_and_resolve_floating_props(mined_pos: Vector3i) -> void:
 	var expected_y_max := float(mined_pos.y) + 1.1
 	
 	for child: Node in get_children():
-		if child is StaticBody3D and child.name.begins_with("Prop_"):
-			var prop_node := child as StaticBody3D 
+		# 100% Strong Typing check: Validamos herencia C++ nativa, eliminando hashes de texto frágiles
+		if _is_unsupported_prop_type(child):
+			var prop_node := child as Node3D 
 			var c_pos: Vector3 = prop_node.global_position
 			var match_x: bool = absf(c_pos.x - expected_x) < 0.1
 			var match_z: bool = absf(c_pos.z - expected_z) < 0.1
@@ -209,7 +210,18 @@ func _check_and_resolve_floating_props(mined_pos: Vector3i) -> void:
 				_resolve_unsupported_prop(prop_node)
 
 
-func _resolve_unsupported_prop(prop: StaticBody3D) -> void:
+func _is_unsupported_prop_type(node: Node) -> bool:
+	return (
+		node is BarrelEntity or
+		node is ChestEntity or
+		node is CampfireEntity or
+		node is WishingWellEntity or
+		node is StreetlightEntity or
+		node is VegetationProp
+	)
+
+
+func _resolve_unsupported_prop(prop: Node3D) -> void:
 	if prop is BarrelEntity or prop is ChestEntity or prop is CampfireEntity:
 		if prop.has_method("interact") and is_instance_valid(player):
 			prop.call("interact", player)
@@ -221,8 +233,20 @@ func _resolve_unsupported_prop(prop: StaticBody3D) -> void:
 		var tween := create_tween()
 		tween.tween_property(prop, "global_position:y", target_y, 0.4).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 		tween.chain().tween_callback(func() -> void:
-			AudioService.play_sfx_static("footstep_stone", prop.global_position)
+			_play_prop_impact_sound(prop)
 		)
+
+
+func _play_prop_impact_sound(prop: Node3D) -> void:
+	if not is_instance_valid(prop):
+		return
+		
+	if prop is VegetationProp:
+		# Sonido de vegetación suave/pincel de hojas para las flores flotantes
+		AudioService.play_sfx_static("footstep_grass", prop.global_position)
+	else:
+		# Sonido de piedra para los faroles de calle y pozo medieval
+		AudioService.play_sfx_static("footstep_stone", prop.global_position)
 
 
 func save_all() -> void:
@@ -240,8 +264,6 @@ func spawn_entities_for_chunk(chunk: Chunk) -> Array[Node]:
 
 
 func check_player_spawn_activation() -> void:
-	# SAFETY GUARDRAIL: Prevent background thread visual compiles from 
-	# triggering coordinates adjustments or active control overrides during open menus!
 	if not (_is_startup_phase or is_teleport_spawn):
 		return
 		
