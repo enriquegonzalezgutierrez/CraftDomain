@@ -1,7 +1,5 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (World / Fluid Cellular Automata)
-# Class: FluidSimulationService
+# Pathfile: res://src/Infrastructure/World/FluidSimulationService.gd
 # Description: Infrastructure Service responsible for simulating high-performance
 #              cellular automata fluid dynamics (Water & Lava flow/fusion rules).
 # SOLID COMPLIANCE:
@@ -11,6 +9,10 @@
 #   the Observer Pattern, keeping the world controller closed to modifications.
 # - Dependency Inversion Principle (DIP): Modifies blocks globally through the 
 #   abstract WorldController/WorldState networks.
+# - Proactive Adjacency Wakeup: Re-registers neighboring stable fluids into the
+#   simulation queue when solid blocks are mined, preventing underwater air pockets.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name FluidSimulationService
 extends RefCounted
@@ -75,6 +77,31 @@ func _on_block_modified(global_pos: Vector3i, type: BlockType.Type) -> void:
 		register_fluid_block(global_pos, type)
 	else:
 		unregister_fluid_block(global_pos)
+		
+		# Proactive Adjacent Fluid Activation:
+		# If a solid block becomes AIR, scan all 6 neighbors. 
+		# If any neighbor is a fluid, reactivate it so it flows into the empty space.
+		if type == BlockType.Type.AIR:
+			_reactivate_adjacent_fluids(global_pos)
+
+
+## Scans all 6 adjacent neighbors and re-registers any stable fluid block into the queue.
+func _reactivate_adjacent_fluids(global_pos: Vector3i) -> void:
+	if world_state == null:
+		return
+		
+	var offsets: Array[Vector3i] = [
+		Vector3i(0, 1, 0), Vector3i(0, -1, 0),
+		Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
+		Vector3i(0, 0, 1), Vector3i(0, 0, -1)
+	]
+	
+	for offset: Vector3i in offsets:
+		var neighbor_pos := global_pos + offset
+		var neighbor_type := world_state.get_block(neighbor_pos)
+		
+		if neighbor_type == BlockType.Type.WATER or neighbor_type == BlockType.Type.LAVA:
+			register_fluid_block(neighbor_pos, neighbor_type)
 
 
 # ==============================================================================

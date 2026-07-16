@@ -6,9 +6,8 @@
 #   movement, gravity slides, and hit boxes, delegating UI overlays to EntityUIComponent.
 # - Liskov Substitution Principle (LSP): Subclasses inherit these contracts 
 #   seamlessly, implementing custom habitat and naming definitions.
-# - Habitat Flotation Overhaul: Removed artificial floatation for terrestrial 
-#   species inside liquids. Pigs and Villagers will now fall and sink to the 
-#   ocean/lava floor, permanently preventing them from walking on water.
+# - Flight Physics Bypass: Bypasses standard environmental gravity when the entity 
+#   can fly, enabling smooth, continuous flight simulations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -360,15 +359,24 @@ func _update_sleeping_state() -> void:
 func _apply_environmental_physics(delta: float) -> void:
 	var is_in_liquid := _check_in_liquid_state()
 	
+	# Flight Physics Bypass: If the entity can fly and is actively soaring/gliding,
+	# we bypass standard heavy gravity to let the specialized flight vectors execute.
+	if _can_fly() and not is_in_liquid:
+		var flight_state := 0
+		if has_meta("avian_flight_state"):
+			flight_state = get_meta("avian_flight_state") as int
+		if flight_state != 2:
+			return
+			
 	if (not is_on_floor() or is_in_liquid) and _get_habitat() != 2 and not is_in_liquid:
 		velocity.y -= gravity * delta
 	elif is_in_liquid:
 		var habitat := _get_habitat()
-		if habitat == 2: # AQUATIC (Neutral buoyancy)
+		if habitat == 2: # AQUATIC
 			velocity.y = move_toward(velocity.y, 0.0, gravity * 0.5 * delta)
-		elif habitat == 1: # AMPHIBIOUS (Slight buoyancy / slow sinking)
+		elif habitat == 1: # AMPHIBIOUS
 			velocity.y = move_toward(velocity.y, -0.2, gravity * 0.5 * delta)
-		else: # TERRESTRIAL (Heavy sink - falls to ocean floor!)
+		else: # TERRESTRIAL
 			velocity.y = move_toward(velocity.y, -1.8, gravity * 0.5 * delta)
 	else:
 		if _get_habitat() == 2 and not is_in_liquid:

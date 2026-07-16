@@ -1,20 +1,27 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/BirdEntity.gd
-# Description: Physical character controller for the flying Yellow Bird.
-#              Sanitization is delegated strictly to GLBModelSanitizer (DRY).
+# Description: Physical character controller and flight physics simulator 
+#              for the flying Yellow Bird.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates first-person visual bobs 
+#   and high-frequency flight physics, delegating decisions to AvianAIBehavior.
+# - 120 FPS Guardrail: Computes aerodynamic flight paths at 120Hz inside the
+#   physics thread to guarantee ultra-smooth movement under high framerates.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name BirdEntity
 extends PassiveEntity
 
-var _animation_time: float = 0.0
-var _model_node: Node3D
-
 const MODEL_BASE_Y: float = 0.0
 const COOLDOWN_CHAT_MIN_SEC: float = 15.0
 const COOLDOWN_CHAT_MAX_SEC: float = 25.0
 
+const FLIGHT_SPEED_SOAR: float = 1.6
+const FLIGHT_SPEED_GLIDE: float = 2.4
+
+var _animation_time: float = 0.0
+var _model_node: Node3D
 var _chat_timer: float = randf_range(5.0, 15.0)
 
 
@@ -55,6 +62,77 @@ func _can_fly() -> bool:
 
 func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(16, 1)
+
+
+## High-Frequency Physics Loop (Runs at 120Hz on the physics thread)
+func _physics_tick(delta: float) -> void:
+	if domain_entity.is_dead:
+		return
+		
+	var flight_state := 0 # 0 = SOARING, 1 = LANDING, 2 = PERCHED
+	if has_meta(AvianAIBehavior.META_STATE):
+		flight_state = get_meta(AvianAIBehavior.META_STATE) as int
+		
+	match flight_state:
+		2: # STATE_PERCHED
+			_process_perched_physics(delta)
+		1: # STATE_LANDING
+			_process_landing_physics(delta)
+		0: # STATE_SOARING
+			_process_soaring_physics(delta)
+
+
+func _process_perched_physics(delta: float) -> void:
+	velocity.x = 0.0
+	velocity.z = 0.0
+	if not is_on_floor():
+		velocity.y -= gravity * 0.2 * delta # Soft gravity to sit flatly on branches
+	else:
+		velocity.y = -0.1
+
+
+func _process_landing_physics(delta: float) -> void:
+	var target_leaf: Vector3i = get_meta(AvianAIBehavior.META_TARGET_LEAF) if has_meta(AvianAIBehavior.META_TARGET_LEAF) else Vector3i(0, -999, 0)
+	if target_leaf.y == -999:
+		return
+		
+	var target_pos := Vector3(target_leaf) + Vector3(0.5, 1.05, 0.5)
+	var diff := target_pos - global_position
+	
+	if diff.length_squared() > 0.4:
+		var glide_dir := diff.normalized()
+		velocity.x = glide_dir.x * FLIGHT_SPEED_GLIDE
+		velocity.z = glide_dir.z * FLIGHT_SPEED_GLIDE
+		velocity.y = lerp(velocity.y, glide_dir.y * FLIGHT_SPEED_GLIDE, delta * 6.0)
+	else:
+		# Landing completed: halt and switch to perched state
+		velocity = Vector3.ZERO
+		set_meta(AvianAIBehavior.META_STATE, 2)
+		set_meta(AvianAIBehavior.META_REST_TIMER, AvianAIBehavior.PERCH_DURATION_SEC)
+
+
+func _process_soaring_physics(delta: float) -> void:
+	var ai := ai_component
+	if not is_instance_valid(ai): return
+		
+	var is_panicking := ai.get("current_task") as int == 5 # TASK_PANIC
+	var time_sec := float(Time.get_ticks_msec()) / 1000.0
+	
+	# Circular thermal-glide path calculations
+	var speed := FLIGHT_SPEED_SOAR * (2.2 if is_panicking else 1.0)
+	var freq := 0.8 if is_panicking else 0.45
+	var soar_dir := Vector3(sin(time_sec * freq), 0.0, cos(time_sec * freq)).normalized()
+	
+	# Glide up and down gently using a thermal wave pattern
+	var target_y := 22.0 if is_panicking else 18.0
+	var vertical_drift := (target_y - global_position.y) * 0.15
+	var wave_offset := sin(time_sec * 2.5) * 0.25
+	
+	velocity.x = soar_dir.x * speed
+	velocity.z = soar_dir.z * speed
+	velocity.y = lerp(velocity.y, vertical_drift + wave_offset, delta * 4.0)
+	
+	ai.set("wander_direction", soar_dir)
 
 
 func _process(delta: float) -> void:
