@@ -7,6 +7,10 @@
 #   interactions, Mutex locking, and queue prioritization from the Lifecycle service.
 # - Open-Closed Principle (OCP): Integrates dual-timeline extraction during 
 #   asynchronous compiling, preventing main thread I/O stutters.
+# - 120 FPS Guardrail: Inverts thread budgeting logic, maximizing CPU cores during 
+#   loading screens and strictly capping background tasks to 1-2 threads during active gameplay.
+# - Universal LOD Decimation: Deploys 8x8x8 low-density geometry for distant chunks
+#   universally on all platforms to save massive GPU fillrate overhead.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -32,6 +36,7 @@ func _init(p_lifecycle: ChunkLifecycleService, p_mutex: Mutex) -> void:
 	_max_concurrent_bg_tasks = clampi(OS.get_processor_count() + 1, 4, 16)
 
 
+## Queues standard chunk generation loads, maintaining high-priority rebuild requests
 func queue_loads(chunk_positions: Array[Vector3i], versions: Dictionary) -> void:
 	_queue_mutex.lock()
 	var preserved_tasks := _extract_preserved_tasks()
@@ -47,6 +52,7 @@ func queue_loads(chunk_positions: Array[Vector3i], versions: Dictionary) -> void
 	_trigger_next_background_tasks()
 
 
+## Queues high-priority chunk loads (e.g. immediate spawn loading zones)
 func queue_prioritized_loads(chunk_positions: Array[Vector3i], versions: Dictionary) -> void:
 	_queue_mutex.lock()
 	for pos: Vector3i in chunk_positions:
@@ -55,6 +61,7 @@ func queue_prioritized_loads(chunk_positions: Array[Vector3i], versions: Diction
 	_trigger_next_background_tasks()
 
 
+## Enqueues a chunk rebuild request dynamically when voxel edits occur
 func request_chunk_rebuild(pos: Vector3i, version: int) -> void:
 	if not lifecycle.is_chunk_rendered(pos): return
 		
@@ -113,7 +120,11 @@ func _get_dynamic_thread_limit() -> int:
 		var raw_player: Variant = lifecycle.controller.get("player")
 		if typeof(raw_player) == TYPE_OBJECT and is_instance_valid(raw_player as Node3D):
 			is_loading_teleport = not (raw_player.get("is_active") as bool)
-	return 2 if is_loading_teleport else _max_concurrent_bg_tasks
+			
+	# Thread Budgeting Inversion: 
+	# Maximize threads during loadscreens/teleports to generate chunks instantly.
+	# Restrict background threads to 1 or 2 during active gameplay to preserve 120 FPS frame pacing.
+	return _max_concurrent_bg_tasks if is_loading_teleport else clampi(_max_concurrent_bg_tasks / 4, 1, 2)
 
 
 func _dispatch_task(request: Dictionary) -> void:
@@ -218,7 +229,8 @@ func _compile_and_submit_task(chunk: Chunk, version: int, is_rebuild: bool, save
 
 
 func _compile_visual_data(chunk: Chunk, is_distant: bool, build_physics: bool) -> Dictionary:
-	if is_distant and OS.has_feature("mobile"):
+	if is_distant:
+		# Universal LOD Decimation: Uses down-sampled 8x8x8 geometry for far chunks on ALL platforms
 		return {
 			"multimesh": LODMesher.generate_decimated_mesh_data(chunk, lifecycle.world_state),
 			"collision_vertices": PackedVector3Array()

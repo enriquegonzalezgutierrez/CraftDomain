@@ -1,7 +1,5 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Infrastructure (Presentation / Rigging)
-# Class: NPCVisualComponent
+# Pathfile: res://src/Infrastructure/Life/NPCVisualComponent.gd
 # Description: Rigging component managing visual joints, parent bobbing, 
 #              gaze slerping, and role-based 180-degree rotation compensations.
 # SOLID COMPLIANCE:
@@ -9,9 +7,10 @@
 #   and joint translations, keeping AI strategies completely free of rendering code.
 # - Open-Closed Principle (OCP): Distinguishes humanoids from fauna dynamically 
 #   and supports custom rotation offsets per entity, preventing mesh-alignment conflicts.
-# - Liskov Substitution Principle (LSP): Works transparently across all 
-#   scene-based or procedurally chiseled passive hosts.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# - 120 FPS Guardrail: Caches procedural materials statically by color to reduce 
+#   runtime allocations, eliminating Garbage Collection frame stutters.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NPCVisualComponent
 extends Node
@@ -42,6 +41,7 @@ var _ai_component: NPCAIComponent
 
 # Static visual cache for shared high-frequency pixel grain textures
 static var _shared_grain_texture: NoiseTexture2D = null
+static var _material_cache_by_color: Dictionary = {}
 
 
 func _ready() -> void:
@@ -141,6 +141,7 @@ func _preload_shared_grain_texture() -> void:
 	_shared_grain_texture.noise = noise
 
 
+## Programmatic builder: Reuses cached materials instead of allocating new instances (120 FPS)
 func create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -148,19 +149,27 @@ func create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> 
 	mesh_instance.mesh = box_mesh
 	mesh_instance.position = box_pos
 	
+	mesh_instance.material_override = _get_cached_material(color)
+	parent.add_child(mesh_instance)
+	return mesh_instance
+
+
+static func _get_cached_material(color: Color) -> StandardMaterial3D:
+	if _material_cache_by_color.has(color):
+		return _material_cache_by_color[color] as StandardMaterial3D
+		
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 1.0
-	mat.metallic_specular = 0.0 
+	mat.metallic_specular = 0.0
 	
 	if _shared_grain_texture != null:
 		mat.albedo_texture = _shared_grain_texture
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 		mat.albedo_texture_force_srgb = true
 		
-	mesh_instance.material_override = mat
-	parent.add_child(mesh_instance)
-	return mesh_instance
+	_material_cache_by_color[color] = mat
+	return mat
 
 
 func _process_blinking_cycle(delta: float) -> void:
@@ -192,7 +201,6 @@ func _process_procedural_animations(delta: float) -> void:
 	var wander_dir := Vector3.ZERO
 	var is_talking: bool = _host.get("is_talking") == true
 	
-	# Determine logical direction or use the real velocity of the physics frame
 	if is_talking and is_instance_valid(_host.get("_talking_partner")):
 		var partner: CharacterBody3D = _host.get("_talking_partner") as CharacterBody3D
 		if is_instance_valid(partner):
@@ -207,34 +215,23 @@ func _process_procedural_animations(delta: float) -> void:
 		if is_instance_valid(_ai_component):
 			active_task = _ai_component.current_task
 			
-	wander_dir.y = 0.0 # Maintain vertical orientation
+	wander_dir.y = 0.0 
 	var is_moving: bool = wander_dir.length_squared() > 0.01
 	
-	# ==========================================================================
-	# SMOOTH LERP ROTATION ENGINE (lerp_angle)
-	# ==========================================================================
 	if is_instance_valid(visual_root) and is_moving:
 		var target_angle := atan2(wander_dir.x, wander_dir.z)
 		
-		# Humanoids have a 180 Y offset due to Mixamo imports facing +Z
 		var is_humanoid: bool = _host.has_method("_get_humanoid_role") and int(_host.call("_get_humanoid_role")) >= 0
 		if is_humanoid:
 			target_angle += PI
 			
-		# ======================================================================
-		# DYNAMIC OVERRIDE EXTRACTION (OCP SHIELD)
-		# Checks if the host entity script defines a custom model Y-axis offset,
-		# allowing unique Mixamo imports to calibrate orientation seamlessly.
-		# ======================================================================
 		if "gaze_rotation_offset" in _host:
 			target_angle += float(_host.get("gaze_rotation_offset"))
 			
-		# Interpolate angle smoothly
 		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, target_angle, delta * 12.0)
 		visual_root.rotation.x = 0.0
 		visual_root.rotation.z = 0.0
 		
-	# B. Body Bouncing Bobbing Calculations
 	if is_instance_valid(body_bob_node):
 		if is_moving and _host.is_on_floor() and not is_talking:
 			var speed_mult := 18.0 if active_task == NPCAIComponent.TaskState.PANIC else (12.0 if _host.call("_is_avian") else 10.0)
@@ -244,7 +241,6 @@ func _process_procedural_animations(delta: float) -> void:
 			var breathe_offset: float = (sin(_animation_time * 2.0) + 1.0) * 0.0075
 			body_bob_node.position.y = lerp(body_bob_node.position.y, breathe_offset, delta * 5.0)
 			
-	# C. Specialized Joint Sways (Head & Arms)
 	if active_task == NPCAIComponent.TaskState.GREETING or active_task == NPCAIComponent.TaskState.CHATTIING or is_talking:
 		if is_instance_valid(head_node):
 			head_node.rotation.x = sin(_animation_time * 6.0) * 0.15
