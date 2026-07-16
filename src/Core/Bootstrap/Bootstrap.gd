@@ -107,11 +107,12 @@ func _register_passive_wildlife(h_land: int, h_both: int, h_water: int) -> void:
 	var ai_pig := PigAIBehavior.new() # Injected typesafe Pig AI behavior strategy
 	var ai_chicken := ChickenAIBehavior.new() # Injected typesafe Chicken AI behavior strategy
 	var ai_sheep := SheepAIBehavior.new() # Injected typesafe Sheep AI behavior strategy
+	var ai_cow := CowAIBehavior.new() # Injected typesafe Cow AI behavior strategy
 	
 	_register_scene_mob(0, PigEntity, h_land, ai_pig) # ID 0 = Wild Pig
 	_register_scene_mob(1, ChickenEntity, h_land, ai_chicken) # ID 1 = Prairie Chicken
 	_register_scene_mob(2, SheepEntity, h_land, ai_sheep) # ID 2 = Fluffy Sheep
-	_register_scene_mob(3, CowEntity, h_land, ai_fauna)
+	_register_scene_mob(3, CowEntity, h_land, ai_cow) # ID 3 = Clay Cow
 	_register_scene_mob(201, TurtleEntity, h_both, ai_fauna)
 	_register_scene_mob(204, FoxEntity, h_land, ai_fauna)
 	_register_scene_mob(206, CatEntity, h_land, ai_fauna)
