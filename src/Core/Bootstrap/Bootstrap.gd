@@ -9,6 +9,8 @@
 #   loops decomposed into sub-helpers of less than 20 lines each.
 # - Open-Closed Principle (OCP): Integrates the final campaign boss Weaver Malakor 
 #   (ID 52) and Act III Boss (ID 51) sychronously inside the boot cycle.
+# - Dynamic Script Attachment: Force-attaches the typesafe VegetationProp script
+#   to all spawned flora on instantiation, ensuring bulletproof collision checks.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,6 +18,7 @@ class_name Bootstrap
 extends Node
 
 const MAIN_MENU_SCENE := preload("res://src/Infrastructure/UI/main_menu.tscn")
+const VEGETATION_PROP_SCRIPT := preload("res://src/Infrastructure/World/VegetationProp.gd")
 
 var main_menu: MainMenu
 var world_controller: Node3D
@@ -175,6 +178,12 @@ func _register_prop(prop_id: int, _prop_class: Variant) -> void:
 		if is_instance_valid(scene):
 			var inst := scene.instantiate() as Node3D
 			inst.position = pos
+			
+			# Dynamic Script Attachment: Force-attach typesafe VegetationProp script
+			# to all spawned flora (IDs 220 to 235) upon instantiation.
+			if prop_id >= 220 and prop_id <= 235:
+				inst.set_script(VEGETATION_PROP_SCRIPT)
+				
 			return inst
 		assert(false, "[Bootstrap ERROR] Preloaded prop scene is invalid for ID: " + str(prop_id))
 		return null

@@ -193,13 +193,13 @@ func _apply_procedural_gravity_on_block_broken(global_pos: Vector3i, type: Block
 
 func _check_and_resolve_floating_props(mined_pos: Vector3i) -> void:
 	for child: Node in get_children():
-		# Filtro de tipo e interfaz polimórfica estricta
+		# 100% Typesafe Class check: Validates C++ class inheritance directly
 		if child is Node3D and _is_unsupported_prop_type(child):
 			var prop_node := child as Node3D 
 			var c_pos: Vector3 = prop_node.global_position
 			
-			# LÓGICA DE CELDA DE REJILLA: 
-			# Verificamos si las coordenadas de dispersión horizontal caen dentro de la celda de la rejilla 1x1 del bloque minado.
+			# GRID-CELL SNAP LOGIC: 
+			# Evaluates if the dynamic float horizontal coordinates fall within the 1x1 boundaries of the mined block.
 			var match_x: bool = floori(c_pos.x) == mined_pos.x
 			var match_z: bool = floori(c_pos.z) == mined_pos.z
 			var match_y: bool = absf(c_pos.y - (float(mined_pos.y) + 1.0)) <= 0.4
@@ -215,8 +215,7 @@ func _is_unsupported_prop_type(node: Node) -> bool:
 		node is CampfireEntity or
 		node is WishingWellEntity or
 		node is StreetlightEntity or
-		node is VegetationProp or
-		node.name.ends_with("Prop") # Salvaguarda de integración para escenas .tscn sin script asignado
+		node is VegetationProp
 	)
 
 
@@ -240,11 +239,11 @@ func _play_prop_impact_sound(prop: Node3D) -> void:
 	if not is_instance_valid(prop):
 		return
 		
-	if prop is VegetationProp or prop.name.ends_with("Prop"):
-		# Sonido de vegetación suave/pincel de hojas para las flores flotantes
+	if prop is VegetationProp:
+		# Soft vegetation rustle sound effect for wild flora
 		AudioService.play_sfx_static("footstep_grass", prop.global_position)
 	else:
-		# Sonido de piedra para los faroles de calle y pozo medieval
+		# Solid stone impact sound effect for heavy structural props
 		AudioService.play_sfx_static("footstep_stone", prop.global_position)
 
 
