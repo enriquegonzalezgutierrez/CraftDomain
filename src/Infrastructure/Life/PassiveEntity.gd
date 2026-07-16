@@ -1,8 +1,14 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical base class representing NPCs and Wildlife.
-#              SOLID COMPLIANCE: Class limits set < 300 lines (SRP). Physics loops
-#              decomposed to < 20 lines. Death particles migrated to Unshaded CPUParticles3D.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly physical passive 
+#   movement, gravity slides, and hit boxes, delegating UI overlays to EntityUIComponent.
+# - Liskov Substitution Principle (LSP): Subclasses inherit these contracts 
+#   seamlessly, implementing custom habitat and naming definitions.
+# - Habitat Flotation Overhaul: Removed artificial floatation for terrestrial 
+#   species inside liquids. Pigs and Villagers will now fall and sink to the 
+#   ocean/lava floor, permanently preventing them from walking on water.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -354,10 +360,16 @@ func _update_sleeping_state() -> void:
 func _apply_environmental_physics(delta: float) -> void:
 	var is_in_liquid := _check_in_liquid_state()
 	
-	if not is_on_floor() and _get_habitat() != 2 and not is_in_liquid:
+	if (not is_on_floor() or is_in_liquid) and _get_habitat() != 2 and not is_in_liquid:
 		velocity.y -= gravity * delta
 	elif is_in_liquid:
-		velocity.y = move_toward(velocity.y, 0.0, gravity * 0.5 * delta)
+		var habitat := _get_habitat()
+		if habitat == 2: # AQUATIC (Neutral buoyancy)
+			velocity.y = move_toward(velocity.y, 0.0, gravity * 0.5 * delta)
+		elif habitat == 1: # AMPHIBIOUS (Slight buoyancy / slow sinking)
+			velocity.y = move_toward(velocity.y, -0.2, gravity * 0.5 * delta)
+		else: # TERRESTRIAL (Heavy sink - falls to ocean floor!)
+			velocity.y = move_toward(velocity.y, -1.8, gravity * 0.5 * delta)
 	else:
 		if _get_habitat() == 2 and not is_in_liquid:
 			velocity.y -= gravity * delta
@@ -370,7 +382,7 @@ func _check_in_liquid_state() -> bool:
 	if is_instance_valid(parent_node_ref) and "world_state" in parent_node_ref:
 		var ws: WorldState = parent_node_ref.world_state
 		if ws != null:
-			var my_coord := Vector3i(floori(global_position.x), floori(global_position.y), floori(global_position.z))
+			var my_coord := Vector3i(floori(global_position.x), floori(global_position.y + 0.2), floori(global_position.z))
 			return (ws.get_block(my_coord) == 6 or ws.get_block(my_coord) == 15 or \
 					ws.get_block(my_coord + Vector3i(0, -1, 0)) == 6 or ws.get_block(my_coord + Vector3i(0, -1, 0)) == 15)
 	return false

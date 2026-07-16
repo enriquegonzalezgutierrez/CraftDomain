@@ -1,5 +1,5 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Infrastructure/World/ChunkNavigationBuilder.gd
 # Description: Infrastructure Service compiling spatial voxel grids into 3D navigation nodes.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively spatial chunk scans,
@@ -8,14 +8,14 @@
 #   climbs (like ladders or vines) can be integrated by adding offset connect rules.
 # - Dependency Inversion Principle (DIP): Communicates directly with the abstract
 #   VoxelNavigationService, decoupling graph mathematics from the scene tree.
-# BACKGROUND NAVIGATION COMPILATION (Phase 4 Optimization):
+# BACKGROUND NAVIGATION COMPILATION:
 # - Split the navigation pipeline into an asynchronous thread-safe compilation stage 
-#   (`compile_walkable_nodes_asynchronous`) and a rapid main-thread registration stage 
-#   (`register_compiled_nodes_synchronous`).
-# - This completely cuts down the main-thread 16x16x16 loop overhead to zero, 
-#   preventing CPU frame spikes during exploration.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/World/ChunkNavigationBuilder.gd
+#   and a rapid main-thread registration stage.
+# WATER PATHFINDING FIX:
+# - Explicitly filters out WATER and LAVA from the A* walkable floor validation,
+#   preventing terrestrial NPCs from attempting to path over oceans.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ChunkNavigationBuilder
 extends RefCounted
@@ -82,7 +82,9 @@ static func register_compiled_nodes_synchronous(walkable_nodes: Array[Dictionary
 static func _is_node_walkable(pos: Vector3i, world_state: WorldState) -> bool:
 	# 1. Floor must be solid
 	var block_below: BlockType.Type = world_state.get_block(pos + Vector3i(0, -1, 0))
-	if not BlockType.is_solid(block_below):
+	
+	# EXPLICIT WATER/LAVA SHIELD: Never generate A* nodes over liquid surfaces!
+	if not BlockType.is_solid(block_below) or block_below == BlockType.Type.WATER or block_below == BlockType.Type.LAVA:
 		return false
 		
 	# 2. Self block must be non-solid (empty standing area)
@@ -112,7 +114,6 @@ static func _check_is_roofed(pos: Vector3i, world_state: WorldState) -> bool:
 
 ## Checks neighbors horizontally and vertically to map stair climbs and steep drops
 static func _connect_walkable_neighbors(pos: Vector3i, world_state: WorldState, nav_service: VoxelNavigationService) -> void:
-	# FIX: Explicit static typing on loop offset iterator
 	for offset: Vector3i in HORIZONTAL_OFFSETS:
 		
 		# ----------------------------------------------------------------------
