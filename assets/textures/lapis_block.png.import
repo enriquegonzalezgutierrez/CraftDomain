@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bxwk2twu4bgta"
-path="res://.godot/imported/lapis_block.png-8349fd681b99a53c72e1ed12070790f6.ctex"
+path.s3tc="res://.godot/imported/lapis_block.png-8349fd681b99a53c72e1ed12070790f6.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/lapis_block.png"
-dest_files=["res://.godot/imported/lapis_block.png-8349fd681b99a53c72e1ed12070790f6.ctex"]
+dest_files=["res://.godot/imported/lapis_block.png-8349fd681b99a53c72e1ed12070790f6.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

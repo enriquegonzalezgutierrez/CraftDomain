@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://qbp378ih7o4p"
-path="res://.godot/imported/redwood_log.png-a75621e38519f9ec2e2134d19275e2b3.ctex"
+path.bptc="res://.godot/imported/redwood_log.png-a75621e38519f9ec2e2134d19275e2b3.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/redwood_log.png"
-dest_files=["res://.godot/imported/redwood_log.png-a75621e38519f9ec2e2134d19275e2b3.ctex"]
+dest_files=["res://.godot/imported/redwood_log.png-a75621e38519f9ec2e2134d19275e2b3.bptc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0

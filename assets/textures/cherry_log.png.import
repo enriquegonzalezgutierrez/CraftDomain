@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bxk6o8wdl27hr"
-path="res://.godot/imported/cherry_log.png-09a25612e4986fd0c40a46ab096d9408.ctex"
+path.bptc="res://.godot/imported/cherry_log.png-09a25612e4986fd0c40a46ab096d9408.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/cherry_log.png"
-dest_files=["res://.godot/imported/cherry_log.png-09a25612e4986fd0c40a46ab096d9408.ctex"]
+dest_files=["res://.godot/imported/cherry_log.png-09a25612e4986fd0c40a46ab096d9408.bptc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0

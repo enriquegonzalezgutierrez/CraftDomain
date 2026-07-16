@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dm7i2dwhip8u3"
-path="res://.godot/imported/gold_ore.png-bcd47c5424a1bc711cd26e7b6e94be92.ctex"
+path.s3tc="res://.godot/imported/gold_ore.png-bcd47c5424a1bc711cd26e7b6e94be92.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/gold_ore.png"
-dest_files=["res://.godot/imported/gold_ore.png-bcd47c5424a1bc711cd26e7b6e94be92.ctex"]
+dest_files=["res://.godot/imported/gold_ore.png-bcd47c5424a1bc711cd26e7b6e94be92.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

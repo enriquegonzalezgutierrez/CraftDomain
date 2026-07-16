@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bb8h5ms7tldag"
-path="res://.godot/imported/mycelium_top.png-4369e124775c10bd9da68d730fee390b.ctex"
+path.s3tc="res://.godot/imported/mycelium_top.png-4369e124775c10bd9da68d730fee390b.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/mycelium_top.png"
-dest_files=["res://.godot/imported/mycelium_top.png-4369e124775c10bd9da68d730fee390b.ctex"]
+dest_files=["res://.godot/imported/mycelium_top.png-4369e124775c10bd9da68d730fee390b.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

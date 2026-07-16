@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b8kqfl3kscp6"
-path="res://.godot/imported/diamond_block.png-858fb295991003bbc2e9c7c1aefba107.ctex"
+path.bptc="res://.godot/imported/diamond_block.png-858fb295991003bbc2e9c7c1aefba107.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/diamond_block.png"
-dest_files=["res://.godot/imported/diamond_block.png-858fb295991003bbc2e9c7c1aefba107.ctex"]
+dest_files=["res://.godot/imported/diamond_block.png-858fb295991003bbc2e9c7c1aefba107.bptc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0

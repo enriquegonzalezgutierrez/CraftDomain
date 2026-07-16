@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c1a85yd758v1e"
-path="res://.godot/imported/wooden_planks.png-abf37ad9973e3c65fc2a74104e2aaee7.ctex"
+path.bptc="res://.godot/imported/wooden_planks.png-abf37ad9973e3c65fc2a74104e2aaee7.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/wooden_planks.png"
-dest_files=["res://.godot/imported/wooden_planks.png-abf37ad9973e3c65fc2a74104e2aaee7.ctex"]
+dest_files=["res://.godot/imported/wooden_planks.png-abf37ad9973e3c65fc2a74104e2aaee7.bptc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0

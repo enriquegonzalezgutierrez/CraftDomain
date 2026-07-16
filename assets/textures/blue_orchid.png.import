@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://hdd0r6b8afgv"
-path="res://.godot/imported/blue_orchid.png-7b6c744e98736fcfa3173cc2ed2585f7.ctex"
+path.s3tc="res://.godot/imported/blue_orchid.png-7b6c744e98736fcfa3173cc2ed2585f7.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/blue_orchid.png"
-dest_files=["res://.godot/imported/blue_orchid.png-7b6c744e98736fcfa3173cc2ed2585f7.ctex"]
+dest_files=["res://.godot/imported/blue_orchid.png-7b6c744e98736fcfa3173cc2ed2585f7.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://rt4rpp6kcchu"
-path="res://.godot/imported/ancient_runes.png-4491324e79d730bed1789186ac042ca8.ctex"
+path.bptc="res://.godot/imported/ancient_runes.png-4491324e79d730bed1789186ac042ca8.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/ancient_runes.png"
-dest_files=["res://.godot/imported/ancient_runes.png-4491324e79d730bed1789186ac042ca8.ctex"]
+dest_files=["res://.godot/imported/ancient_runes.png-4491324e79d730bed1789186ac042ca8.bptc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
