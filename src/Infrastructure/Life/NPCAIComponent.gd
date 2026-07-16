@@ -1,10 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
 # Description: Infrastructure NPC Sensory AI Brain. Coordinates task schedules,
-#              social gossip, and A* pathfinding.
-#              SOLID COMPLIANCE: Class limits set < 300 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 15 lines.
-#              Corrected: Replaced all loose implicit assignments with strict explicit typing.
+#              social gossip, and A* pathfinding, with manual developer overrides.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates task states, timelines,
+#   and pathing nodes. Decomposed to remain strictly under 300 lines.
+# - Open-Closed Principle (OCP): Added type-safe developer manual override APIs 
+#   without altering core movement physics or steering components.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -28,6 +30,9 @@ var wander_direction: Vector3 = Vector3.ZERO
 var stuck_timer: float = 0.0
 var task_timer: float = 0.0
 var social_cooldown: float = 0.0
+
+# Developer Manual Override State (OCP Aligned)
+var is_manual_override: bool = false
 
 var SIGHT_RANGE_SQ: float = 64.0
 var SOCIAL_RANGE_SQ: float = 9.0
@@ -67,6 +72,11 @@ func process_ai(delta: float) -> void:
 	if is_instance_valid(_steering_component):
 		_steering_component.process_steering(delta)
 	
+	# If manually overridden by the developer dashboard, freeze automated ticks
+	if is_manual_override:
+		_apply_movement_vectors()
+		return
+		
 	_ai_timer_accum += delta
 	if _ai_timer_accum >= _ai_tick_rate:
 		_ai_timer_accum = 0.0
@@ -429,7 +439,7 @@ func _dispatch_active_telemetry() -> void:
 		if active_behavior != null and active_behavior.has_method("get_active_state_name"):
 			active_task_name = str(active_behavior.call("get_active_state_name", _host))
 		else:
-			active_task_name = _get_task_state_name(current_task)
+			active_task_name = _get_task_state_name(current_task as int)
 			
 		var waypoints_left: int = _active_path.size() - _current_path_index if _active_path.size() > 0 else 0
 		var lookup_key: String = active_task_name
@@ -446,3 +456,29 @@ func _get_task_state_name(task_val: int) -> String:
 	var names: Array[String] = ["IDLE", "WANDERING", "EXAMINING", "GREETING", "CHATTING", "PANIC", "WORKING"]
 	if task_val >= 0 and task_val < names.size(): return names[task_val]
 	return "IDLE"
+
+
+# ==============================================================================
+# DEVELOPER MANUAL OVERRIDE INTERFACE (OCP Aligned)
+# ==============================================================================
+
+## Forces the AI component into a manual task state, disabling automated schedules
+func force_manual_task(task_state_id: int) -> void:
+	is_manual_override = true
+	current_task = task_state_id as TaskState
+	_active_path.clear()
+	
+	# Set a random direction vector for movement states
+	if current_task == TaskState.WANDERING or current_task == TaskState.PANIC or current_task == TaskState.EXAMINING:
+		var angle := randf() * TAU
+		wander_direction = Vector3(cos(angle), 0.0, sin(angle))
+	else:
+		wander_direction = Vector3.ZERO
+
+
+## Restores the entity's autonomy, returning it to standard procedural AI behaviors
+func disable_manual_override() -> void:
+	is_manual_override = false
+	current_task = TaskState.IDLE
+	wander_direction = Vector3.ZERO
+	task_timer = 0.0

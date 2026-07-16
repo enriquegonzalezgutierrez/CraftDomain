@@ -3,6 +3,11 @@
 # Description: Infrastructure Component managing floating UI decorations for 
 #              NPCs (Nameplates, Speech Bubbles, and Quest Indicator Arrows).
 #              Decouples all UI presentation logic from PassiveEntity (SRP).
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Only manages visual labels and 
+#   decorations overlays.
+# - Open-Closed Principle (OCP): Reads manual overrides from the AI brain 
+#   without altering standard game behavior states.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -64,7 +69,7 @@ func _setup_nameplate() -> void:
 	_nameplate.position = Vector3(0.0, _collision_height + 0.35, 0.0)
 	
 	host.add_child(_nameplate)
-	host.set("_nameplate", _nameplate) # Back-write reference for child classes compatibility
+	host.set("_nameplate", _nameplate)
 	_apply_uniform_ui_scaling(_nameplate)
 
 
@@ -94,7 +99,7 @@ func _setup_quest_arrow() -> void:
 	_quest_arrow.visible = false
 	
 	host.add_child(_quest_arrow)
-	host.set("_quest_arrow", _quest_arrow) # Back-write reference for child classes compatibility
+	host.set("_quest_arrow", _quest_arrow)
 	_apply_uniform_ui_scaling(_quest_arrow)
 
 
@@ -107,7 +112,7 @@ func _setup_floating_bubble() -> void:
 	if sb_script != null:
 		_bubble = sb_script.new() as Node3D
 		host.add_child(_bubble)
-		host.set("_bubble", _bubble) # Back-write reference for child classes compatibility
+		host.set("_bubble", _bubble)
 		_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
 		_apply_uniform_ui_scaling(_bubble)
 
@@ -160,8 +165,13 @@ func _get_task_subtitle() -> String:
 		return ""
 		
 	var task_name := "IDLE"
+	var is_manual := false
+	if "is_manual_override" in ai:
+		is_manual = ai.get("is_manual_override") as bool
+		
 	var active_behavior: IAIBehavior = ai.active_behavior as IAIBehavior
-	if active_behavior != null and active_behavior.has_method("get_active_state_name"):
+	# Si está en modo de control manual del banco de pruebas, ignoramos la estrategia autónoma
+	if not is_manual and active_behavior != null and active_behavior.has_method("get_active_state_name"):
 		task_name = str(active_behavior.call("get_active_state_name", host))
 	else:
 		var task_val: int = ai.get("current_task") as int

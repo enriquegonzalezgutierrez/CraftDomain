@@ -1,7 +1,13 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/MonkeyAIBehavior.gd
-# Description: Specialized AI behavior strategy implementing acrobatic and arboreal 
-#              routines for the Tropical Monkey. Decomposed into short methods (SRP).
+# Description: Specialized AI behavior strategy implementing acrobatic, agile,
+#              and proactive obstacle-avoidance routines for the Tropical Monkey.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively the mathematical
+#   decision-making, path projection, and state transitions of the Monkey.
+# - Open-Closed Principle (OCP): Closes the physics controller to modifications
+#   by housing advanced 3D path-checking directly inside this strategy.
+# - Liskov Substitution Principle (LSP): Fully compatible with IAIBehavior.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -17,8 +23,8 @@ enum State {
 	ACROBATICS  
 }
 
-const SPEED_PATROL: float = 1.2
-const SPEED_CLIMB: float = 1.8
+const SPEED_PATROL: float = 2.2 # INTEGRATED: Sprinted from 1.2 to 2.2
+const SPEED_CLIMB: float = 2.8  # INTEGRATED: Sprinted from 1.8 to 2.8
 const COOLDOWN_FLIP_SEC: float = 5.0
 const RANGE_SENSE_SQ: float = 100.0 
 
@@ -167,7 +173,12 @@ func _process_ground_acrobatics(host: Object, is_panicking: bool, delta: float) 
 		var roll := randf()
 		if roll < 0.45 or is_panicking:
 			host.set_meta(META_MONKEY_STATE, State.WANDERING)
-			wander_dir = Vector3(cos(randf() * TAU), 0.0, sin(randf() * TAU))
+			var angle := randf() * TAU
+			var candidate_dir := Vector3(cos(angle), 0.0, sin(angle))
+			
+			# PROACTIVE WALL CHECK: Filter candidate directions dynamically before moving
+			var parent: Node = host.call("get_parent") as Node
+			wander_dir = candidate_dir if _is_direction_safe_monkey(host, candidate_dir, parent) else Vector3.ZERO
 		elif roll < 0.65 and flip_cooldown <= 0.0:
 			host.set_meta(META_MONKEY_STATE, State.ACROBATICS)
 			host.set_meta(META_FLIP_COOLDOWN, COOLDOWN_FLIP_SEC)
@@ -229,6 +240,38 @@ func _scan_for_nearby_leaves(host_pos: Vector3, ws: WorldState) -> Vector3i:
 				if ws.get_block(check_coord) == 5: # 5 = Leaves
 					return check_coord
 	return Vector3i(0, -999, 0)
+
+
+## Proactive 3D Obstacle & Sight Scanner: Prevents collison bump loops
+func _is_direction_safe_monkey(host: Object, dir: Vector3, world_node: Node) -> bool:
+	if not is_instance_valid(world_node) or not "world_state" in world_node:
+		return true
+	var ws: WorldState = world_node.get("world_state") as WorldState
+	if ws == null:
+		return true
+		
+	var host_pos: Vector3 = host.get("global_position")
+	var check_pos := host_pos + dir * 1.5 # Project sights 1.5m ahead
+	
+	var b_below := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
+	var b_feet := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
+	var b_chest := Vector3i(floori(check_pos.x), floori(check_pos.y) + 1, floori(check_pos.z))
+	var b_head := Vector3i(floori(check_pos.x), floori(check_pos.y) + 2, floori(check_pos.z))
+	
+	# 1. Reject voids, drops and liquid hazards
+	var below_block := ws.get_block(b_below)
+	if below_block == 0 or below_block == 6 or below_block == 15:
+		return false
+		
+	# 2. Reject unclimbable double-height solid walls
+	if BlockType.is_solid(ws.get_block(b_feet)) and BlockType.is_solid(ws.get_block(b_chest)):
+		return false
+		
+	# 3. Reject solid ceilings to prevent clipping
+	if BlockType.is_solid(ws.get_block(b_head)):
+		return false
+		
+	return true
 
 
 func get_active_state_name(host: Object) -> String:

@@ -1,22 +1,22 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/AIShowcaseDashboard.gd
 # Description: Infrastructure UI Presenter managing the 2D developer dashboard.
-#              Provides decoupled sliders, controls, and live 20Hz telemetry reports.
+#              Provides decoupled sliders, controls, and live 20Hz telemetry reports
+#              augmented with manual action/task override triggers.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively 2D control panels 
-#   and diagnostic telemetry readouts, completely decoupled from 3D space.
-# - Open-Closed Principle (OCP): Queries behaviors polymorphically via 
-#   `get_active_state_name` and duck-typing, removing raw entity checks.
-# - Liskov Substitution Principle (LSP): Fully supports any CharacterBody3D subject.
-# - Scope Correction (DIP): Localized physical constants to ensure complete 
-#   compilation autonomy of the UI.
+#   and diagnostic telemetry readouts.
+# - Open-Closed Principle (OCP): Dynamically overrides active task states on 
+#   any spawned subject through the NPCAIComponent.force_manual_task() API.
+# - Dependency Inversion Principle (DIP): Sourced the AI brain directly through 
+#   the public 'ai_component' property of the active subject.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name AIShowcaseDashboard
 extends CanvasLayer
 
-# --- UI INTERACTIVE CONSTANTS (Section 5.3) ---
+# --- UI INTERACTIVE CONSTANTS ---
 const SIDEBAR_WIDTH: float = 260.0
 const PANEL_RIGHT_WIDTH: float = 290.0
 const BUTTON_HEIGHT: float = 38.0
@@ -29,12 +29,16 @@ const COLOR_CARD_BACKGROUND := Color(0.06, 0.06, 0.08, 0.92)
 const COLOR_CARD_BORDER := Color(0.3, 0.85, 1.0, 0.4)
 const COLOR_LURE_TRUE := Color(0.2, 0.95, 0.35)
 
-# --- 20HZ THROTTLING CONSTANTS (Rule 7.2) ---
+# --- 20HZ THROTTLING CONSTANTS ---
 const THROTTLE_INTERVAL_SEC: float = 0.05
 
 var _showcase_room: AIShowcaseRoom
 var _active_subject: CharacterBody3D = null
 var _ui_accumulated_time: float = 0.0
+
+# Manual Override state trackers (DIP / OCP Aligned)
+var _current_override_index: int = 0
+var _override_states: Array[int] = [-1, 0, 1, 5, 6] # -1 representando Modo Autónomo/Auto
 
 # UI Node References
 var _sidebar_vbox: VBoxContainer
@@ -42,10 +46,10 @@ var _telemetry_label: Label
 var _chicken_checkbox: CheckButton
 var _storm_checkbox: CheckButton
 var _slowmo_slider: HSlider
+var _override_button: Button
 
 
 func _ready() -> void:
-	name = "AIShowcaseDashboard"
 	_showcase_room = get_parent() as AIShowcaseRoom
 	
 	if is_instance_valid(_showcase_room):
@@ -145,6 +149,7 @@ func _build_right_control_panel(parent_hbox: HBoxContainer) -> void:
 func _populate_right_controls_and_telemetry(right_vbox: VBoxContainer) -> void:
 	_add_control_header(right_vbox)
 	_setup_interactive_checkbuttons(right_vbox)
+	_setup_manual_override_button(right_vbox)
 	_add_spawn_zombie_button(right_vbox)
 	_setup_speed_scale_slider(right_vbox)
 	_add_telemetry_labels(right_vbox)
@@ -171,6 +176,15 @@ func _setup_interactive_checkbuttons(parent_vbox: VBoxContainer) -> void:
 	_storm_checkbox.text = tr("SHOWCASE_RAIN_OVERCAST")
 	_storm_checkbox.toggled.connect(_on_rain_overcast_toggled)
 	parent_vbox.add_child(_storm_checkbox)
+
+
+func _setup_manual_override_button(parent_vbox: VBoxContainer) -> void:
+	_override_button = Button.new()
+	_override_button.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
+	_setup_button_style(_override_button, Color(0.12, 0.45, 0.82))
+	_override_button.pressed.connect(_on_override_pressed)
+	_update_override_button_label()
+	parent_vbox.add_child(_override_button)
 
 
 func _add_spawn_zombie_button(parent_vbox: VBoxContainer) -> void:
@@ -261,7 +275,9 @@ func _populate_sidebar_mobs_deck() -> void:
 
 func _on_subject_spawned(subject: CharacterBody3D) -> void:
 	_active_subject = subject
-	_ui_accumulated_time = THROTTLE_INTERVAL_SEC # Force immediate UI update
+	_current_override_index = 0
+	_update_override_button_label()
+	_ui_accumulated_time = THROTTLE_INTERVAL_SEC
 
 
 func _on_subject_despawned() -> void:
@@ -305,15 +321,49 @@ func _on_exit_pressed() -> void:
 		bootstrap.call("return_to_main_menu")
 
 
+## Action Override: Cycles through mock test tasks in the active subject
+func _on_override_pressed() -> void:
+	if _active_subject == null: return
+	var ai: Object = _active_subject.get("ai_component") as Object
+	if not is_instance_valid(ai): return
+	
+	_current_override_index = (_current_override_index + 1) % _override_states.size()
+	var state_id := _override_states[_current_override_index]
+	
+	if state_id == -1:
+		ai.call("disable_manual_override")
+	else:
+		ai.call("force_manual_task", state_id)
+		
+	_update_override_button_label()
+	
+	# Forzar un refresco síncrono e inmediato en las etiquetas flotantes
+	if _active_subject.has_method("_update_quest_bubble_state"):
+		_active_subject.call("_update_quest_bubble_state")
+		
+	AudioService.play_sfx_static("ui_click")
+
+
+func _update_override_button_label() -> void:
+	if not is_instance_valid(_override_button): return
+	var state_id := _override_states[_current_override_index]
+	match state_id:
+		-1: _override_button.text = "🤖 " + tr("SHOWCASE_MODE_AUTO").to_upper()
+		0:  _override_button.text = "💤 " + tr("SHOWCASE_TASK_IDLE")
+		1:  _override_button.text = "👣 " + tr("SHOWCASE_TASK_WANDER")
+		5:  _override_button.text = "☠️ " + tr("SHOWCASE_TASK_PANIC")
+		6:  _override_button.text = "🛠️ " + tr("SHOWCASE_TASK_WORKING")
+
+
 # ==============================================================================
-# 20HZ DIAGNOSTIC TELEMETRY LOGS (SRP/OCP - Section 7.2)
+# 20HZ DIAGNOSTIC TELEMETRY LOGS (Section 7.2)
 # ==============================================================================
 
 func _update_live_telemetry_display() -> void:
 	if not is_instance_valid(_telemetry_label) or not is_instance_valid(_active_subject):
 		return
 		
-	var ai: Object = _active_subject.get_node_or_null("NPCAIComponent")
+	var ai: Object = _active_subject.get("ai_component") as Object
 	var domain_entity: Object = _active_subject.get("domain_entity")
 	
 	var task_str := "SHOWCASE_TASK_IDLE"
@@ -344,13 +394,13 @@ func _update_live_telemetry_display() -> void:
 func _gather_active_behavior_metadata() -> String:
 	var state_details := ""
 	
-	# Pure OCP: query the AI Component behavior for metadata logging if it supports it
-	var ai: Object = _active_subject.get_node_or_null("NPCAIComponent")
+	var ai: Object = _active_subject.get("ai_component") as Object
 	if is_instance_valid(ai) and ai.get("active_behavior") != null:
 		var behavior: IAIBehavior = ai.get("active_behavior") as IAIBehavior
 		if is_instance_valid(behavior) and behavior.has_method("get_active_state_name"):
 			var state_key := behavior.call("get_active_state_name", _active_subject) as String
-			state_details += "• %s: %s\n" % [tr("SHOWCASE_TEL_META_HEADER").to_upper(), tr(state_key).to_upper()]
+			var full_translation_key := "SHOWCASE_TASK_" + state_key.to_upper()
+			state_details += "• %s: %s\n" % [tr("SHOWCASE_TEL_META_HEADER").to_upper(), tr(full_translation_key).to_upper()]
 			
 	return state_details
 
