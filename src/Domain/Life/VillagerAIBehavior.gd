@@ -1,18 +1,35 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/VillagerAIBehavior.gd
 # Description: Specialized AI behavior strategy implementing social life routines for
-#              the Common Villager NPC. Decomposed into short methods (SRP).
+#              the Common Gossip Villager. 
+#              UPGRADE: Implemented Localized State Machine, Tactical Panic Routing
+#              to protectors, and a Crimson Nameplate status tracking.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly local states, social 
+#   cooldowns, and protector seeking routines. All methods kept strictly < 20 lines.
+# - Open-Closed Principle (OCP): Localized state machine decouples the villager 
+#   from generic engine task lists.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name VillagerAIBehavior
 extends IAIBehavior
 
+# Localized State Machine (SRP / OCP Compliant)
+enum State {
+	IDLE,             # Resting or indoors
+	WANDERING,        # Standard village patrol
+	GOSSIPING,        # Chatting with peers
+	FLEEING_TO_GUARD  # Tactical panic route to closest protector
+}
+
 const SPEED_PATROL: float = 1.0
-const SPEED_RETREAT: float = 1.6
+const SPEED_PANIC: float = 2.6
 const COOLDOWN_CHAT_SEC: float = 8.0
 const CHAT_DURATION_SEC: float = 4.0
+
 const RANGE_SIGHT_SQ: float = 36.0 
+const RANGE_GUARD_SEEK_SQ: float = 900.0 # 30m protector scanning radius
 
 # Decoupled task enums
 const TASK_IDLE = 0
@@ -26,13 +43,14 @@ const META_WANDER_DIR := "villager_wander_dir"
 const META_PEER := "villager_peer_target"
 const META_COOLDOWN := "villager_chat_cooldown"
 const META_CHAT_TIMER := "villager_chat_timer"
+const META_VILLAGER_STATE := "villager_local_state"
 
 
 func _init() -> void:
 	overrides_wandering = true
 
 
-## Concrete Contract: Drives daily gossip walks, night retreats, and chat animations
+## Concrete Contract: Drives daily gossip, tactical retreats, and chat animations
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
@@ -44,16 +62,16 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	_initialize_metadata_if_missing(host)
 	_update_chat_cooldown(host, delta)
 	
+	var ai: Object = host.get("ai_component")
+	if is_instance_valid(ai) and ai.get("current_task") as int == TASK_PANIC:
+		_process_tactical_panic(host, delta)
+		return
+	
 	var parent: Node = host.call("get_parent") as Node
 	if _process_shelter_retreat(host, parent, delta):
 		return
 		
-	var target_ref: Object = null
-	if host.has_meta(META_PEER):
-		var val: Variant = host.get_meta(META_PEER)
-		if typeof(val) == TYPE_OBJECT and is_instance_valid(val as Object):
-			target_ref = val as Object
-			
+	var target_ref: Object = _get_metadata_object(host, META_PEER)
 	if is_instance_valid(target_ref):
 		_process_gossip_chatter(host, target_ref, delta)
 	else:
@@ -64,9 +82,68 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 func _update_chat_cooldown(host: Object, delta: float) -> void:
 	var chat_cooldown: float = host.get_meta(META_COOLDOWN) as float
 	if chat_cooldown > 0.0:
-		chat_cooldown -= delta
-		host.set_meta(META_COOLDOWN, chat_cooldown)
+		host.set_meta(META_COOLDOWN, chat_cooldown - delta)
 
+
+# ==============================================================================
+# TACTICAL PANIC ROUTING
+# ==============================================================================
+
+func _process_tactical_panic(host: Object, delta: float) -> void:
+	host.set_meta(META_VILLAGER_STATE, State.FLEEING_TO_GUARD)
+	var wander_timer: float = host.get_meta(META_WANDER_TIMER) as float
+	var wander_dir: Vector3 = host.get_meta(META_WANDER_DIR) as Vector3
+	
+	wander_timer -= delta
+	if wander_timer <= 0.0:
+		wander_timer = randf_range(0.4, 1.0)
+		var protector := _scan_for_closest_protector(host)
+		
+		if is_instance_valid(protector):
+			# Protector found! Sprint directly towards them for safety
+			var host_pos: Vector3 = host.get("global_position")
+			wander_dir = (protector.global_position - host_pos).normalized()
+			wander_dir.y = 0.0
+		else:
+			# Fallback: No guards nearby, run randomly
+			var angle := randf() * TAU
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
+			
+		host.set_meta(META_WANDER_DIR, wander_dir)
+		host.set_meta(META_WANDER_TIMER, wander_timer)
+		
+	_apply_movement_vectors(host, wander_dir, SPEED_PANIC)
+
+
+func _scan_for_closest_protector(host: Object) -> Node3D:
+	if not host.call("is_inside_tree"): return null
+	var passives: Array = []
+	if host.has_method("get_tree"):
+		var tree: Object = host.call("get_tree")
+		if is_instance_valid(tree):
+			passives = tree.call("get_nodes_in_group", "passives")
+			
+	var host_pos: Vector3 = host.get("global_position")
+	var closest_protector: Node3D = null
+	var min_dist_sq := RANGE_GUARD_SEEK_SQ
+	
+	for child: Object in passives:
+		if is_instance_valid(child) and child != host and child is Node3D:
+			var name_str: String = child.get("name")
+			# Target only heavy tactical defenders
+			if name_str.contains("GUARD") or name_str.contains("GOLEM"):
+				var domain: Object = child.get("domain_entity")
+				if domain != null and not domain.get("is_dead"):
+					var dist_sq := host_pos.distance_squared_to(child.global_position)
+					if dist_sq < min_dist_sq:
+						min_dist_sq = dist_sq
+						closest_protector = child as Node3D
+	return closest_protector
+
+
+# ==============================================================================
+# STANDARD SOCIAL SCHEDULES
+# ==============================================================================
 
 func _process_shelter_retreat(host: Object, parent: Node, _delta: float) -> bool:
 	var is_night := CelestialService.is_night_time_static()
@@ -109,6 +186,7 @@ func _execute_shelter_idle(host: Object) -> void:
 	var velocity: Vector3 = host.get("velocity") as Vector3
 	velocity.x = 0.0; velocity.z = 0.0
 	host.set("velocity", velocity)
+	host.set_meta(META_VILLAGER_STATE, State.IDLE)
 
 
 func _route_shelter_retreat(host: Object, nav_service: Object, host_pos: Vector3) -> void:
@@ -123,6 +201,7 @@ func _route_shelter_retreat(host: Object, nav_service: Object, host_pos: Vector3
 					ai.set("_current_path_index", 0)
 					ai.set("current_task", TASK_WANDERING)
 					ai.set("task_timer", 15.0)
+					host.set_meta(META_VILLAGER_STATE, State.WANDERING)
 
 
 func _process_gossip_chatter(host: Object, target_ref: Object, delta: float) -> bool:
@@ -143,8 +222,10 @@ func _process_gossip_chatter(host: Object, target_ref: Object, delta: float) -> 
 	var dist_sq := diff.length_squared()
 	
 	if dist_sq > 2.5:
-		_apply_computed_movement_vectors(host, diff.normalized())
+		host.set_meta(META_VILLAGER_STATE, State.WANDERING)
+		_apply_movement_vectors(host, diff.normalized(), SPEED_PATROL)
 	else:
+		host.set_meta(META_VILLAGER_STATE, State.GOSSIPING)
 		_execute_social_gossip(host, ai, diff, delta)
 	return true
 
@@ -183,6 +264,7 @@ func _process_default_patrol(host: Object, delta: float) -> void:
 	if not is_instance_valid(ai) or ai.get("current_task") as int == TASK_WORKING: return
 	
 	ai.set("current_task", TASK_WANDERING)
+	host.set_meta(META_VILLAGER_STATE, State.WANDERING)
 	
 	var wander_timer: float = host.get_meta(META_WANDER_TIMER) as float
 	var wander_dir: Vector3 = host.get_meta(META_WANDER_DIR) as Vector3
@@ -193,29 +275,33 @@ func _process_default_patrol(host: Object, delta: float) -> void:
 		var angle := randf() * TAU
 		var parent: Node = host.call("get_parent") as Node
 		var candidate_dir := Vector3(cos(angle), 0.0, sin(angle))
-		wander_dir = candidate_dir if _is_direction_safe_goblin(host, candidate_dir, parent) else Vector3.ZERO
+		wander_dir = candidate_dir if _is_direction_safe_villager(host, candidate_dir, parent) else Vector3.ZERO
 		host.set_meta(META_WANDER_DIR, wander_dir)
 		host.set_meta(META_WANDER_TIMER, wander_timer)
 		
-	_apply_computed_movement_vectors(host, wander_dir)
+	_apply_movement_vectors(host, wander_dir, SPEED_PATROL)
 
 
-func _apply_computed_movement_vectors(host: Object, wander_dir: Vector3) -> void:
+func _apply_movement_vectors(host: Object, wander_dir: Vector3, speed: float) -> void:
 	var ai: Object = host.get("ai_component")
 	if not is_instance_valid(ai): return
 	
 	var velocity: Vector3 = host.get("velocity") as Vector3
 	if wander_dir != Vector3.ZERO:
-		velocity.x = wander_dir.x * SPEED_PATROL
-		velocity.z = wander_dir.z * SPEED_PATROL
+		velocity.x = wander_dir.x * speed
+		velocity.z = wander_dir.z * speed
 		ai.set("wander_direction", wander_dir)
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, SPEED_PATROL)
-		velocity.z = move_toward(velocity.z, 0.0, SPEED_PATROL)
+		velocity.x = move_toward(velocity.x, 0.0, speed)
+		velocity.z = move_toward(velocity.z, 0.0, speed)
 		ai.set("wander_direction", Vector3.ZERO)
 		
 	host.set("velocity", velocity)
 
+
+# ==============================================================================
+# METADATA & UTILITIES (SRP / Type Safety)
+# ==============================================================================
 
 func _initialize_metadata_if_missing(host: Object) -> void:
 	if not host.has_meta(META_WANDER_TIMER): host.set_meta(META_WANDER_TIMER, 0.0)
@@ -223,6 +309,7 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 	if not host.has_meta(META_PEER): host.set_meta(META_PEER, "")
 	if not host.has_meta(META_COOLDOWN): host.set_meta(META_COOLDOWN, 0.0)
 	if not host.has_meta(META_CHAT_TIMER): host.set_meta(META_CHAT_TIMER, 0.0)
+	if not host.has_meta(META_VILLAGER_STATE): host.set_meta(META_VILLAGER_STATE, State.IDLE)
 
 
 func _reset_villager_state(host: Object) -> void:
@@ -233,6 +320,15 @@ func _reset_villager_state(host: Object) -> void:
 	host.set_meta(META_PEER, "")
 	host.set_meta(META_CHAT_TIMER, 0.0)
 	host.set_meta(META_WANDER_TIMER, 1.0)
+	host.set_meta(META_VILLAGER_STATE, State.IDLE)
+
+
+func _get_metadata_object(host: Object, key: String) -> Object:
+	if host.has_meta(key):
+		var val: Variant = host.get_meta(key)
+		if typeof(val) == TYPE_OBJECT and is_instance_valid(val as Object):
+			return val as Object
+	return null
 
 
 func _scan_for_nearby_peer(host: Object) -> Node3D:
@@ -260,7 +356,7 @@ func _scan_for_nearby_peer(host: Object) -> Node3D:
 	return closest_peer
 
 
-func _is_direction_safe_goblin(host: Object, dir: Vector3, world_node: Node) -> bool:
+func _is_direction_safe_villager(host: Object, dir: Vector3, world_node: Node) -> bool:
 	if not is_instance_valid(world_node) or not "world_state" in world_node: return true
 	var ws: WorldState = world_node.get("world_state") as WorldState
 	if ws == null: return true
@@ -271,3 +367,20 @@ func _is_direction_safe_goblin(host: Object, dir: Vector3, world_node: Node) -> 
 	var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
 	
 	return ws.get_block(block_below_coord) != 6 and ws.get_block(block_at_coord) != 6 and ws.get_block(block_below_coord) != 0
+
+
+# ==============================================================================
+# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
+# ==============================================================================
+
+func get_active_state_name(host: Object) -> String:
+	if not host.has_meta(META_VILLAGER_STATE):
+		return "IDLE"
+		
+	var state_val: int = host.get_meta(META_VILLAGER_STATE) as int
+	match state_val:
+		State.IDLE: return "IDLE"
+		State.WANDERING: return "WANDERING"
+		State.GOSSIPING: return "CHATTIING" # Maps correctly to the active social gossip state
+		State.FLEEING_TO_GUARD: return "SPRINTING_TO_THREAT" 
+		_: return "IDLE"

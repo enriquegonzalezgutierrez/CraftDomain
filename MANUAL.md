@@ -1,229 +1,176 @@
-# CraftDomain - Gameplay & Survival Manual
+# CraftDomain - System Mechanics & Survival Manual
 *Written by Enrique González Gutiérrez (enrique.gonzalez.gutierrez@gmail.com)*
 
-Welcome to **CraftDomain**, a high-performance, infinite procedural voxel sandbox engine. This manual is a comprehensive, step-by-step documentation designed to help you navigate, mine, build, fight, trade, sort your backpack, and craft advanced tools under a stable, locked **120 FPS** performance profile.
+Welcome to **CraftDomain**, a high-performance, infinite procedural voxel sandbox engine. This manual is a comprehensive, system-level documentation designed to help you navigate, mine, build, fight, trade, and craft within the simulation. 
+
+The game is engineered to sustain a locked **120 FPS** performance profile. Every gameplay mechanic described below is backed by strictly decoupled **Domain-Driven Design (DDD)** architectures.
 
 ---
 
-## 1. Getting Started: The Main Menu & Settings
+## 🌐 1. Multiplayer Lobby & Network Protocols
 
-When you launch CraftDomain, you enter a polished, **Tactile Glassmorphic Main Menu** set against a scenic, rotating procedurally generated backdrop. 
+CraftDomain features a zero-configuration P2P Multiplayer system leveraging UPnP port mapping and asynchronous HTTP public IP detection.
 
-To prevent SSD write-wear during settings modifications, all user preferences (volumes, resolutions, language, and render distance) are written in a single atomic transaction only when applying changes or exiting menus, leaving game files completely untouched.
-
-### Menu Options
-*   **PLAY WORLD / NEW GAME:** Instantly initiates or restores your infinite world. If a save file is detected, you will be loaded precisely at your last coordinates, with your edits, modifications, and exact inventory quantities intact.
-*   **SETTINGS:** Opens the responsive settings overlay to dynamically control Music Volume, Sound Effects (SFX) Volume, Render Distance (up to 14 chunks), Interface Languages (English vs Español), and Display Resolutions.
-*   **EXIT GAME:** Closes the game application window safely.
-
-*Note: All menus feature physical 3D button styling that depresses visually on click, complete with hover scaling and smooth transition animations. The full-screen backdrops use a 98% opaque dark wash to completely block background rendering, saving massive GPU fillrate overhead.*
+*   **Host Game:** Click "HOST GAME" to automatically spin up a local Listen-Server on port `25565`. The engine will negotiate with your router via UPnP and generate a secure, obfuscated alphanumeric **Join Code** (e.g., `CD-5A8C3D9F-2556`).
+*   **Join Game:** Paste a friend's Join Code into the lobby. The `NetworkJoinCodeSolver` mathematically translates the hash back into an absolute IPv4 address and connects you instantly.
+*   **Late-Join Sync:** Newcomers receive a compressed JSON stream of all dual-timeline (Past/Present) chunk modifications, ensuring perfect world-state parity upon spawning.
 
 ---
 
-## 2. Character Mechanics, Navigation & UI
+## 🗺️ 2. Navigation, UI Throttling & Fast Travel
 
-As you join the world, the engine runs a vertical spawn scan at your coordinates, finding the top-most solid block (up to height 31) and dropping you smoothly onto the surface.
+The GPS Navigation Overlay and Circular Radar Minimap provide real-time 3D tracking. To preserve the 120 FPS guardrail, non-physical UI data is strictly throttled.
 
-### Quadrupled Horizon View Distance (162-Chunk Radius)
-Through massive occlusion culling and opaque Far-LOD material bypassing, the engine pushes a **9x2x9 3D loading grid**. This active volume of **162 procedural chunks** quadruples the standard visual draw distance natively, allowing you to see mountain peaks and castles way in the distance while maintaining a locked 120 FPS.
+```mermaid
+graph LR
+    subgraph Engine_Tick [Main Thread execution]
+        Physics[Physics Process 120Hz]
+        Render[Render Process 120Hz]
+    end
 
-### The GPS HUD & 2D Circular Radar Minimap
-Located in the upper right-hand corner of your screen is a high-contrast **GPS Navigation Overlay** designed to keep you oriented. To save CPU cycles, these metrics are intelligently throttled to refresh exactly **20 times per second (20Hz)**, reducing Main Thread CPU load by over 80% without losing visual responsiveness.
-*   **The Selected Arrow (Center):** Represents your character on the circular radar. It rotates dynamically in real-time.
-*   **Real-time Grid Coordinates:** Located at the top center of the HUD, showing your exact global `[ X  ·  Y  ·  Z ]` block coordinates alongside the synchronized 24-hour clock.
-*   **Active Mission Tracker:** Renders active quest descriptions, remaining distance in meters, and inventory progress bars. For gathering quests, it dynamically routes you to the nearest natural resource hotspot (e.g., pointing to Nether Outposts for Lava).
-*   **Holographic GPS Path Line:** The minimap renders a dynamic, pulsing, dashed pink path-line connecting your character's center position directly to the active quest target.
-*   **Tactical Compass Pointer:** The GPS HUD dynamically identifies the closest Global Mega-Structure, displaying its name, distance, and cardinal direction (N, NE, E, SE, S, SW, W, NW).
-*   **3D Altitude-Aware Radar:** Displays dynamic height indicators. For tracked targets, the minimap renders specialized vertical chevrons (`^` or `v`) indicating whether the target lies far above (on a cliff/air) or deep below (inside a cave/mine shaft), providing full tridimensional navigation.
+    subgraph UI_Throttler [PlayerHUD.gd]
+        Accumulator{Delta Accumulator}
+        Tick[20Hz Dispatch]
+    end
 
----
+    subgraph Widgets [Visual Components]
+        GPS[GPS Coordinates]
+        Minimap[Radar Pins]
+        Quest[Quest Tracker]
+    end
 
-## 3. Keyboard & Mouse Controls Reference
+    Render -->|Delta time| Accumulator
+    Accumulator -- "≥ 0.05s" --> Tick
+    Tick --> GPS
+    Tick --> Minimap
+    Tick --> Quest
+    
+    style UI_Throttler fill:#1e293b,stroke:#00f3f3,stroke-width:2px
+```
 
-The input mapping system is processed in raw hardware buffers to avoid high-frequency jitter. 
-
-| Action | Primary Key | Secondary Key | Mouse Action | Description |
-| :--- | :---: | :---: | :---: | :--- |
-| **Move Forward** | `W` | `Up Arrow` | - | Walk forward |
-| **Move Backward**| `S` | `Down Arrow` | - | Walk backward |
-| **Move Left**    | `A` | `Left Arrow` | - | Strafe left |
-| **Move Right**   | `D` | `Right Arrow` | - | Strafe right |
-| **Jump**         | `Space` | - | - | Jump over blocks |
-| **Pause & Save** | `Escape` | - | - | Opens the Pause Menu & Auto-saves |
-| **Mining/Attack**| `E` | - | `Left-Click` | Swing active tool, break block, hit |
-| **Build/Interact**| `Q` | - | `Right-Click` | Place block, eat chicken, trade, open chest |
-| **Scroll Hotbar** | - | - | `Mouse Wheel` | Scroll left/right through slots |
-| **Open Inventory**| `I` | - | - | Toggle Backpack Grid & Item Inspector |
-| **Open Crafting** | `C` | - | - | Toggle Blueprint Catalog & Crafting Workshop |
-| **Open World Map**| `M` | - | - | Toggle Fullscreen Tactical Map Overlay |
-| **Free Cursor**   | `Left Alt` | - | - | Hold to release captured mouse cursor |
+*   **Tactical Map (`M`):** Opens a fullscreen map. Click on any discovered Global Mega-Structure pin to Fast Travel.
+*   **Dynamic Cursor Release (`Hold L-Alt`):** Freezes first-person camera rotation and releases the hardware mouse pointer to click HUD elements smoothly.
 
 ---
 
-## 4. Mining, Building & Audio Soundscapes
+## ⌨️ 3. Input & Hardware Controls
 
-Interacting with voxels is governed by a **5-meter Reach Distance**. The engine features an immersive **Observer-Driven Audio System**: every footstep, block break, and placement triggers terrain-specific 3D positional audio (Grass, Stone, Wood, Snow).
+Input mappings are processed via hardware buffers, supporting both Keyboard/Mouse and automatic XInput/DirectInput Gamepad detection.
 
-### Holographic Placement Preview & Safety Shields
-When holding a buildable block, a 3D preview box outlines your target:
-*   **Emerald Green:** The spot is valid and empty.
-*   **Ruby Red:** The spot is blocked by your own body. The engine mathematically pads your collision by 5cm, preventing you from trapping your character inside solid blocks.
-
-### Advanced Building (Slabs & Liquids)
-1.  **Standard Blocks:** Select a material, aim at an adjacent face, and Right-Click.
-2.  **Half-Slabs (ID 26):** CraftDomain features advanced fractional raycasting. 
-    * Aiming at the *top half* of a block face places a Top Slab.
-    * Aiming at the *bottom half* places a Bottom Slab.
-    * **Merging:** Right-clicking directly on the top face of a Bottom Slab (or bottom face of a Top Slab) will magically fuse them into a single, solid full Stone block!
-3.  **Lava Placement:** Right-Clicking with a **Lava Bucket** (ID 15) places glowing, flowing orange Lava in the world, consuming 1 Bucket.
-4.  **Crop Planting:** Right-Clicking with **Crop Seeds** (ID 18) on top of Grass or Dirt will sow a young sprout that grows over time.
-5.  **Sub-pixel Hermetic Sealing:** Transparent liquid and slab vertices are mathematically scaled outward from their block center by a factor of `1.002` (2 millimeters), tightly overlapping chunk borders to permanently eliminate all Z-fighting and sub-pixel light leaks.
-6.  **Compile-Free Unshaded Particles:** Spawns unshaded `CPUParticles3D` on block breaking, bypassing runtime GPU shader compilations completely and maintaining a solid 120 FPS.
-7.  **Unified Surface Normals Baking:** Slabs and transparent fluids are compiled inside `ChunkMesher` with dynamic normal generation (`generate_normals()`), securing realistic specular lighting highlights and allowing water/lava waves to sway along the custom wind direction correctly.
+| Action | PC (KBM) | Gamepad | System Trigger |
+| :--- | :---: | :---: | :--- |
+| **Move** | `W/A/S/D` | `Left Stick` | CharacterBody3D Velocity |
+| **Look** | `Mouse` | `Right Stick` | Camera3D Rotation |
+| **Jump / Glide** | `Space` | `A / Cross` | Y-Axis Impulse / Aerodynamic Lift |
+| **Mine / Attack** | `Left-Click` | `R1 / RB` | Raycast Voxel / Entity Damage |
+| **Place / Interact** | `Right-Click` | `L1 / LB` | `IWorldModifier` placement |
+| **Inventory** | `I` | `X / Square` | 24-Slot Array overlay |
+| **Crafting** | `C` | `Y / Triangle` | Recipe Dictionary parsing |
 
 ---
 
-## 5. Procedural Voxel Biomes & Weather Atmosphere
+## ⛏️ 4. Voxel Interaction & Structural Integrity
 
-The world features 10 completely distinct geographical regions, each implementing its own **Polymorphic Boundary Strategy** (`is_coordinate_inside()`) to dynamically determine their territorial limits:
+Interacting with voxels is governed by a **5-meter Raycast Range**. The engine incorporates a physics-less structural integrity solver.
 
-*   **Bay of Sails:** Tropical shores with aquatic Sea Turtles.
-*   **Warp Plateau:** Vibrant green step-plateaus with giant Mario mushrooms.
-*   **Golden Bazaar:** Trading plains with Oak, Sakura, and Birch trees.
-*   **Craggy Peaks & Caves:** Jagged stone mountains and dark caverns.
-*   **Frostbite Glaciers:** Freezing, quiet basin of solid ice and deep snowdrifts.
-*   **Whispering Redwood Forest:** Mossy green valleys with towering 12-block Redwoods.
-*   **Red Sandstone Canyons:** Terraced badlands with twisted Dead Shrubs.
-*   **Neon Ruins:** Dark technological craters with glowing cyan/magenta pyramids.
-*   **Swamp of Sighs:** Depressed, murky valleys filled with dark mud.
-*   **Cloud Kingdom:** High-altitude floating white cloud islands.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Player
+    participant Raycast as InteractionComponent
+    participant Solver as StructuralIntegritySolver
+    participant World as WorldController
+    participant Prop as FallingBlockEntity
 
-### Atmospheric Shading & Weather
-*   **Soft Ambient Fill:** Shadows are filled with a realistic atmospheric blue-gray ambient light, making blocks and NPCs inside tree shadows completely readable.
-*   **Dynamic GPU Overcast System:** When rain or snow begins, the sky smoothly fades to a heavy slate-grey. Clouds thicken and dim the Sun/Moon by 85%.
-*   **Global Wind Engine:** Water waves and tree leaves deform and sway physically, reacting in real-time to the global wind direction and storm strength.
+    Player->>Raycast: Left-Click (Mine Block)
+    Raycast->>World: set_block_globally(AIR)
+    World->>Solver: verify_integrity(adjacent_blocks)
+    activate Solver
+    Solver-->>World: False (Cantilever limit exceeded)
+    deactivate Solver
+    World->>Prop: Instantiate & start_fall()
+    Prop-->>Player: Visual slide & thud impact
+```
 
----
-
-## 6. Passive Fauna, Active AI & The Trading Economy
-
-The procedural world is populated with active creatures and villagers featuring detailed pixel-grain textures, blinking eyes, and physical body-bobbing walk cycles.
-
-### High-Performance AI Throttling
-To keep the game running at a flawless 120 FPS, AI tactical scans are heavily optimized. They utilize Godot's $O(1)$ group registries and are throttled to run exactly **4 times per second**, reducing CPU load by 95% without losing responsiveness.
-*   **Dynamic AI Tick Throttle (LOD AI):** Mobs right next to the player (<15m) update at 20Hz, while distant mobs scale down their logical updates to 4Hz or 0.5Hz, saving massive CPU cycles.
-
-### Intelligent 3D Pathfinding & Schedulers
-*   **A* Voxel Pathfinding:** NPCs navigate using a 3D coordinate graph. They calculate paths around obstacles, climb stairs/slabs, and walk along village layouts.
-*   **Day/Night & Storm Shelter Schedules:** At sunset or during storms, civilian NPCs (Villagers, Merchants, Farmers, Miners, Druids) cancel their tasks, locate the closest registered indoor shelter (roofed coordinates), and plan an A* path to run inside safely.
-*   **Intelligent Land/Water Boundary checks:** Land-dwelling civilians strictly avoid falling into deep voids (AIR) or walking into liquid Water/Lava, while aquatic species (Turtles) remain constrained to water and sand shores. Bumping against walls instantly triggers course-corrections.
-
-### 17+ Specialized Decoupled AI Strategies
-Instead of raw, bulky physics scripts, every entity delegates its decisions to isolated strategy classes in the Domain:
-*   **Gossip Villagers:** Seek nearby peers to stand in gossip circles, chatting and gesticulating while emitting cyan dialogue bubbles.
-*   **Barkeep Merchants:** Tend shopfront stalls by day and retreat to safe village taverns to count their golden coins by night (spawning shiny golden sparks).
-*   **Agricultural Farmers:** Search for mature wheat, walk over, draw a visual hoe to harvest and replant seeds with green particle feedback.
-*   **Industrial Cave Miners:** Scan adjacent coordinates for deep Coal Veins, walk over, draw a visual pickaxe to mine, and replace the coal globally with raw Stone while triggering rocky break particles.
-*   **Forest Sages (Druids):** Patrol redwood glades, meditate near shrines, and channel visual streams of unshaded emerald éter particles to completely heal injured nearby animals.
-*   **Cyber Citizens (Androids):** Align to paved highway roads, walking in strict angles and halting to execute 360-degree security sweeps emitting cyan laser beams.
-*   **Sea Turtles & Beach Crabs:** Unified amphibious strategies. Swim with fluid sinusoid buoyancy sways in deep water and crawl slowly with heavy speed penalties on sandy beach shores.
-*   **Deep-Water Octopuses:** Swim using timed jet propulsion bursts followed by drift gliding, and trigger an emergency siphon spraying a thick black ink cloud when damaged.
-*   **Forest Fox Predators:** Sneak and crawl flatly along the grass to avoid drawing alert, and launch themselves in majestic high-parabola pounce jumps to hunt chickens and birds.
-*   **Colossal Elephants:** March in slow, ponderous stride cycles. Completing a stride triggers a heavy stone thud and a camera shake rumble for nearby players. Immune to push knockbacks due to mass.
-*   **Avian Yellow Birds & Parrots:** Flight height compensated avians. Soar high in wide 3D thermal gliding soar rings, and descend to perch flatly on top of tree canopies.
-
-### Interactive 3D Loot Chests & Trading
-1.  **Loot Chests:** Right-click a 3D chest in a village. It will pop, play a `chest_open` sound effect, grant you a reward, and vanish safely.
-2.  **Lava-Fried Chicken Trade:** Hold a **Lava Bucket** and Right-Click a Merchant. They will hop with joy, consume the lava, and give you 1x **Fried Chicken**.
-3.  **Voxel-Support Block Gravity:** Breaking blocks underneath props cause them to fall: destructible props (barrels, chests, campfires) shatter and drop loot, while heavy structural props (wishing wells, streetlights) slide down to the new floor level with elastic bouncing Tweens.
+*   **Slab Merging:** Aiming at the top half of a bottom-slab places a top-slab. Clicking the same space again fuses them into a solid Full Block.
+*   **Sub-pixel Hermetic Sealing:** Transparent liquid and slab vertices are mathematically scaled outward by `1.002` to perfectly overlap chunk boundaries, permanently eliminating Z-fighting light leaks.
 
 ---
 
-## 7. Combat, Defenders & Hostile Entities
+## 🧠 5. AI Schedules, Economy & Defense Networks
 
-As night falls, dangerous hostiles emerge. Getting bit deals **1 Heart** of damage, flashes your screen with a deep red vignette, and triggers camera trauma shake.
+The procedural world is populated with entities driven by the `IAIBehavior` strategy pattern. Their schedules react dynamically to the `CelestialService` and `WeatherService`.
 
-### Warning RED Nameplates
-All hostile entities (Zombies, Goblins, Gargoyles, Sharks) now render with aggressive **Crimson Red Nameplates** displaying their names above their heads.
-*   **Gargoyle Flight Tracking:** The Gargoyle's nameplate dynamically tracks its model vertical position in real-time, gliding smoothly up and down during flight sways.
+### Day / Night Cycle & Shelter Logic
+```mermaid
+stateDiagram-v2
+    [*] --> WANDERING
+    WANDERING --> WORKING : Find Task (Farm, Mine)
+    WORKING --> WANDERING : Task Complete
+    
+    WANDERING --> PANIC : Threat Detected
+    WORKING --> PANIC : Threat Detected
+    
+    WANDERING --> SHELTER_SEEK : Sunset / Storm
+    WORKING --> SHELTER_SEEK : Sunset / Storm
+    
+    SHELTER_SEEK --> IDLE_INDOORS : Reached A* Node
+    IDLE_INDOORS --> WANDERING : Sunrise / Clear Skies
+```
 
-### The Golem & Guard Defenders
+### The Village Defense Network (`AlertNetworkService`)
 Villages are actively protected by tactical defenders (Guards and Golems) which register themselves into a shared **Alert Alarm Network** upon spawning.
-*   **Coordinated Alarm Interceptions:** Struck civilians immediately broadcast a proximity alarm. Nearby protectors within a 30m radius will break their patrols, sprint to the rescue, and intercept the attacker.
-*   **Iron Golems:** Colossal stone giants covered in ivy. If a zombie comes near, they execute a heavy double-arm launch attack, dealing massive damage and throwing the zombie **9.5 meters into the air**.
-*   **Guards:** Armored knights with a sheathed iron sword and wooden shield. They proactively draw their weapons, sprint towards hostiles, and execute coordinated striking overwatch cooldowns.
-
-### The Lithic Lurker (Act I Boss Battle)
-Located deep within the volcanic basalt crater of the Craggy Peaks (`[-100, 100]`), the **Lithic Lurker** is a massive, Null-corrupted rock elemental guarding the Lava Heart.
-*   **Combat States & Phases:**
-    1.  **Dormant Sleep:** Sits completely motionless in the center of the basalt arena. Approaching within 20 meters triggers an echoing, glitched awakening roar.
-    2.  **Heavy Pursuit:** Slowly marches toward the player. During this phase, its dense stone armor makes it completely immune to knockback forces and standard sword damage.
-    3.  **Earthquake Ground-Pound:** When close (<5m), it leaps high into the air and slams down on the basalt, creating a massive dust shockwave, dealing heavy AoE damage, and triggering a localized screen-shake camera trauma.
-	4.  **Vulnerable Stun (Exposed Core):** The ground-pound impact temporarily destabilizes the boss's joints, stunning it for 3.5 seconds. Its glowing cyan chest core becomes exposed. This brief window is your only opportunity to deal standard damage!
-*   **Defeating the Boss:** It takes 8 successful strikes on its exposed core to crack the basalt armor. Upon crumbling, it drops 1x **Lava Bucket** (representing the Lava Heart) and 5x **Diamonds** directly into your inventory. Take the Lava Heart back to Valerius the Merchant to obtain the Golem Activation Core!
+1.  A Cave Zombie hits a Civilian.
+2.  The Civilian emits a proximity alarm via the `AlertNetworkService`.
+3.  Nearby Protectors (< 30m) instantly break their patrol loops, set the Zombie as their `_combat_target`, and sprint to intercept.
+4.  **Iron Golems** execute a heavy double-arm launch attack, throwing hostiles **9.5 meters into the air**.
 
 ---
 
-## 8. Backpack Inventory & Item Inspector (`I`)
+## 🎒 6. Inventory, Crafting & Alchemical Transmutation
 
-Pressing **`I`** freezes the gameplay physics and opens a detailed **Backpack Inventory & Inspector** overlay.
+The Backpack operates on a strict `IInventory` interface, segregating it from the player's physical node.
 
-### 24-Slot Storage & Auto-Sorting
-*   **Decoupled Grid Slot Widgets:** Inventory slots use isolated `InventorySlotWidget` nodes, completely separating cell drawing and drag-and-drop mechanics from container layouts.
-*   **Stacking:** Items stack dynamically up to 64 units per slot.
-*   **Sequential Swapping:** Click Slot A (glows in gold), then click Slot B to instantly swap their contents.
-*   **⚡ AUTO-SORT:** Click the "SORT" button in the Backpack header. The engine will instantly consolidate all fragmented stacks and sort your backpack by Item ID in ascending order, leaving your active Hotbar completely untouched for combat safety!
+### Auto-Sorting & Compaction
+Click the **"⚡ SORT"** button in the backpack. The engine runs a linear $O(N)$ sweep to consolidate fragmented stacks and re-sorts slots 8 through 23 by Item ID ascending, leaving your Hotbar (0-7) completely untouched.
 
-### The Item Inspector
-Clicking any item displays its Lore Tooltip, Stock quantity, and Action buttons. Consumable foods like Fried Chicken can be eaten directly from the menu by clicking **CONSUME**, healing 1 Heart instantly.
+### Crafting Validation Pipeline
+Pressing **`C`** opens the Blueprint Workshop. The validation engine strictly queries cumulative total stocks rather than raw slot indexes.
 
----
-
-## 9. Blueprint Taller & Crafting Workshop (`C`)
-
-Pressing **`C`** opens a dual-pane **Blueprint Taller & Crafting Workshop** overlay, parsed entirely from external JSON data files.
-
-*   **Inputs Checklist:** Scans your entire 24-slot inventory dynamically to aggregate your stock, showing a green checkmark (`✔`) if you have enough materials.
-*   **Corrected Checklist Verification:** The checklist strictly queries cumulative total stocks globally using `get_item_total_quantity()`, resolving old slot-matching lookup discrepancies.
-*   **Fabricate Action:** Clicking the green "Fabricate" button consumes the inputs globally, grants the crafted outcome, triggers a viewmodel hand-swing, plays a satisfying `craft_clink` audio cue, and pops a sliding success notification.
-
-### Recipe Quick Reference:
-*   **Organic Composting:** `3x Leaves` ➔ `1x Dirt`
-*   **Sod Cultivation:** `2x Dirt` + `1x Leaves` ➔ `2x Grass`
-*   **Soil Pulverizer:** `1x Stone` ➔ `3x Dirt`
-*   **Igneous Cobbling:** `4x Dirt` + `1x Lava` ➔ `4x Stone`
-*   **Geothermal Charcoal Fuel:** `6x Wood` + `1x Lava` ➔ `3x Lava Buckets`
-*   **Reinforced Stone Slabs:** `2x Stone` + `1x Dirt` ➔ `3x Stone Slabs (Half-height)`
-*   **Composite Planks:** `2x Wood` + `1x Stone` ➔ `4x Wood`
-*   **Wooden Sword:** `4x Wood` ➔ `1x Wooden Sword`
-*   **Emergency Herbal Rations:** `10x Leaves` + `1x Wood` ➔ `1x Fried Chicken`
+```mermaid
+graph TD
+	A[Player Selects Recipe] --> B{CraftingService.can_craft}
+	B -->|Check 1| C[Query Total Ingredients]
+	B -->|Check 2| D[Query Available Output Space]
+	
+	C -- "Insufficient" --> E[Disable Craft Button]
+	D -- "Inventory Full" --> E
+	
+	C -- "OK" --> F[Enable Craft Button]
+	D -- "OK" --> F
+	
+	F --> G[Player Clicks Craft]
+	G --> H[Consume Ingredients Globally]
+	H --> I[Add Output Item]
+	I --> J[Play Audio & Toast Notification]
+```
 
 ---
 
-## 10. Handcrafted Global Mega-Structures
-The world features 6 handcrafted global landmarks, seamlessly integrated with sloped-terrain blending:
-*   **The Grand Castle `[200, 200]`:** A colossal two-story stone fortress featuring a majestic double-height Throne Hall, symmetrical rising double-wing staircases, private chambers (King's bedroom with cloud sheets, Queen's suite, and War Council), a high-security Royal Treasury, and crenellated rooftop battlements. Fast-travel drops are calibrated on the outer stone bridge.
-*   **The Seaport & Galleon `[-150, 0]`:** A coastal port featuring wood-planked boardwalks, stacked cargo, a cozy two-story harbor tavern ("The Salty Sailor Inn" with bar and rooms), and a moored three-deck Galleon Ship containing crew bunks, cargo hold, and a captain's cabin with glass popa windows.
-*   **The Nether Fortress `[-300, -300]`:** A tattered volcanic brick citadel flanked by hot concentric lava canals and stone bridges, guarding a colossal double-height central Portal Sanctuary and an elevated treasure pedestal.
-*   **Steve's Settlement `[300, -300]`:** A playable village spanned by a giant mossy parabolic stone archway, central water fountain, irrigated wheat fields, a two-story log lodge, and a medieval windmill with fully accessible interior floors.
-*   **Desert Oasis Pyramid `[-150, 250]`:** A stepped 10-tier sandstone pyramid built over water, housing a central pharaoh's sarcophagus altar, comfortable side stone stairs, and an enclosed Pharaoh's Vault containing the Loot Chest sitting on a brick pedestal.
-*   **The Lithic Lurker Lair `[-100, 100]`:** A deep basalt-crater arena with scattered volcanic lava pools and raised stone rims, guarding the ancient Lava Heart and serving as the enclosed tactical battleground for the Act I Boss.
+## 🏛️ 7. Epic Boss Encounters (Campaign Acts)
+
+The campaign features advanced multi-phase boss state machines.
+
+*   **Act I - The Lithic Lurker (Craggy Peaks):** Sleeps in a basalt crater `[-100, 100]`. Immune to knockback. Executes a heavy AoE Ground Pound. Upon impact, it enters a `STUNNED` state for 3.5 seconds, exposing its cyan core to standard damage.
+*   **Act III - Obsidian Colossus (Nether Outpost):** Guards the bridge at `[-300, -300]`. Features **Unstoppable Mass** (takes damage but completely ignores physical weapon knockback). Enters a fast `RAGE CHARGE` when health drops below 50%.
+*   **Act IV - Weaver Malakor (Cloud Kingdom):** The final antagonist. Initiates a `GRAVITY INVERSION` phase, forcing the player to deploy their Voxel Glider, dodging unshaded laser beams while airborne.
 
 ---
 
-## 11. The Automated Delta-Save Pipeline
+## 💾 8. Automated Delta-Save Pipeline
 
 CraftDomain features a silent, zero-stutter background **Delta-Save** process. You never have to manually click a save button:
 
 1.  Pressing **Escape** pauses the game, opens the sleek Pause Menu, and triggers the save sequence.
 2.  The engine instantly gathers your current `(X, Y, Z)` position, camera look angles, world seed, celestial calendar day (persisting moon phases), active quest states, and full 24-slot backpack item quantities, writing them to `user://world_save/global_save.json`.
 3.  Simultaneously, any blocks you broke or placed are gathered as localized modification deltas and saved directly to chunk files on disk (e.g., `chunk_-21_1_10.json`).
-
----
-
-## 12. Dynamic Cursor Release Engine (`Left Alt` Hold)
-
-To easily bridge the gap between first-person look controls and HUD-element interactions:
-*   **Holding `Left Alt`:** Freezes camera rotation and reveals the hardware mouse pointer. You can move the pointer freely to click on the HUD shortcut icons (`🎒` to open inventory or `🛠️` to open the crafting workshop).
-*   **Releasing `Left Alt` Hides Pointer:** Locks it back into first-person rotation mode. 
-*   **Open-Close Safety Hook:** Releasing `Left Alt` will *not* lock the cursor if any overlay window (Backpack, Workshop, Map, Pause, or Dialogue) is actively open on the screen.

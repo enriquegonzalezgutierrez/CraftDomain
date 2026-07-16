@@ -1,252 +1,180 @@
-# CraftDomain
+# CraftDomain (Codename: Dolores)
 
 ![MainMenu Background](src/Infrastructure/UI/Assets/menu_background.png)
 
-A high-performance infinite procedural voxel sandbox game engine built in **Godot 4.6.3** adhering to strict **Domain-Driven Design (DDD)** principles, Conventional Commits tracking, and rigorous **SOLID** software engineering compliance. Architected to demonstrate a highly decoupled, modular, and extensible system capable of maintaining a locked **120 FPS** with smooth frame pacing in massive, thread-populated 3D environments.
+A high-performance, infinite procedural voxel sandbox engine built in **Godot 4.6.3**. 
+
+CraftDomain is engineered strictly under **Domain-Driven Design (DDD)** and **SOLID** software engineering principles. It serves as a masterclass in highly decoupled, modular, and extensible system architecture capable of maintaining a rock-solid **120 FPS** frame rate with smooth frame pacing in massive, thread-populated 3D environments.
 
 ---
 
-## 🏗️ Architectural Philosophy: Domain-Driven Design (DDD)
+## 🏗️ 1. Core Architectural Mandate (DDD)
 
-CraftDomain is architected using **Domain-Driven Design (DDD)** patterns. By segregating the codebase into distinct layers, we isolate pure business rules (the "Domain") from framework-specific engine details (the "Infrastructure"), such as Vulkan rendering, physics bodies collisions, disk JSON I/O, and audio buses.
-
-### 1. Architectural Layers & Dependency Flow
-To enforce a strict one-way dependency flow where dependencies point exclusively inwards toward the Domain, the system's boundary limits are segmented as follows:
+We segregate the codebase into three distinct layers with a **strict one-way dependency flow**. Dependencies must only point inwards toward the Domain layer. 
 
 ```mermaid
 graph TD
-	subgraph Core_Layer [Core / Composition Root]
+	subgraph Core_Layer ["Core (Composition Root)"]
 		Bootstrap[Bootstrap.gd]
 		Preloader[EntityPreloaderRegistry.gd]
 	end
 
-	subgraph Infra_Layer [Infrastructure Layer]
-		Controller[WorldController.gd]
-		Player[PlayerController.gd]
-		Persistence[DiskWorldRepository.gd]
-		Audio[AudioService.gd]
+	subgraph Infra_Layer ["Infrastructure (Framework & I/O)"]
+		WorldCtrl[WorldController.gd]
+		PlayerCtrl[PlayerController.gd]
+		DiskRepo[DiskWorldRepository.gd]
+		NetSync[VoxelReplicator.gd]
 	end
 
-	subgraph Domain_Layer [Domain Layer]
-		State[WorldState.gd]
-		Chunk[Chunk.gd]
-		Entity[VoxelEntity.gd]
-		Interfaces[Interfaces / Strategies]
+	subgraph Domain_Layer ["Domain (Pure Business Rules)"]
+		WorldState[WorldState.gd]
+		Entities[VoxelEntity.gd]
+		Strategies[IAIBehavior / IStructureBlueprint]
+		Interfaces[IWorldModifier / IInventory]
 	end
 
-	Bootstrap -->|Injects| Controller
-	Bootstrap -->|Queries| Preloader
-	Controller -->|Mutates| State
-	State -->|Aggregates| Chunk
-	Player -->|Queries| Interfaces
-	Persistence -->|Implements| Interfaces
-	Audio -->|Observes| State
+	Core_Layer -->|Instantiates & Injects| Infra_Layer
+	Infra_Layer -->|Implements & Uses| Domain_Layer
+	Core_Layer -->|Registers| Domain_Layer
+	
+	style Domain_Layer fill:#1e293b,stroke:#00f3f3,stroke-width:2px
 ```
+
+*   **The Domain Layer:** 100% agnostic of Godot's SceneTree. It contains pure data structures (`Chunk.gd`), mathematical solvers (`StructuralIntegritySolver.gd`), and logic boundaries. Inheriting from `Node` or accessing `RenderingServer` here is strictly prohibited.
+*   **The Infrastructure Layer:** Manages Godot's visual representation, Vulkan rendering, ENet multiplayer sockets, and JSON disk saving.
+*   **The Core Layer:** Acts as the Composition Root. It wires the dependencies together (e.g., injecting `DiskWorldRepository` into `WorldController`) and boots the application safely.
 
 ---
 
-### 2. Startup Initialization & Boot Sequence
-The **Composition Root** (`Bootstrap.gd`) orchestrates the initial boot sequence in RAM, preloading assets and injecting decoupled dependencies during the viewport transition:
+## ⚡ 2. High-Performance Voxel Pipeline (120 FPS Guardrail)
+
+To prevent Main Thread stutters during infinite exploration or massive explosions, chunk generation and occlusion culling are offloaded to a dynamically budgeted `WorkerThreadPool`. 
 
 ```mermaid
 sequenceDiagram
 	autonumber
-	participant Engine as Godot Engine
-	participant Boot as Bootstrap (Composition Root)
-	participant Cache as EntityPreloaderRegistry
-	participant Ctrl as WorldController
-	participant Player as PlayerController
+	participant Main as Main Thread (120Hz)
+	participant Sched as ChunkTaskScheduler
+	participant Pool as WorkerThreadPool
+	participant GPU as Vulkan Server
 
-	Engine->>Boot: _ready()
-	activate Boot
-	Boot->>Cache: _static_init() (Preload scenes in RAM)
-	Boot->>Boot: _init_registries() (Biomes, blue-prints, recipes)
-	Boot->>Ctrl: Instantiate & Inject WorldRepository
-	Boot->>Player: Instantiate & Inject Inventory
-	Boot->>Engine: Transition viewport to active world
-	deactivate Boot
+	Main->>Sched: Request chunk load (Player moved)
+	Sched->>Pool: Dispatch _background_generate_task()
+	activate Pool
+	Pool->>Pool: 3D Simplex Noise & Biome Carving
+	Pool->>Pool: Extract Render Data (Occlusion Culling)
+	Pool->>Pool: Bake Normals (Water/Lava Fluids)
+	Pool-->>Sched: Yield GeneratedChunkTask
+	deactivate Pool
+	Sched-->>Main: Pop completed task
+	Main->>GPU: Commit MultiMesh Buffers (ChunkNode)
 ```
+
+*   **Universal LOD Decimation:** Distant chunks are automatically down-sampled from 16³ to 8x8x8 voxel geometry, slashing vertex shading overhead by 87.5% on mobile/integrated GPUs.
+*   **Compile-Free Particles:** All mining debris uses `CPUParticles3D` with `SHADING_MODE_UNSHADED`. This prevents dynamic shader compilation stalls on the GPU during runtime.
 
 ---
 
-### 3. Voxel Rendering & Chunk Meshing Pipeline
-Voxel geometry calculations, face culling, and transparent normal-baking are compiled in parallel threads, allowing zero-latency mesh updates during real-time world edits:
+## 🧠 3. Decoupled AI Strategy Pattern
+
+Entities strictly separate their physical translations (Gravity, Wall sliding) from their logical decisions. AI "Brains" dynamically swap pure Domain strategy classes (`IAIBehavior`) at runtime without modifying the physical controllers.
+
+```mermaid
+classDiagram
+	class CharacterBody3D {
+		<<Godot Node>>
+	}
+	class PassiveEntity {
+		+velocity: Vector3
+		+_physics_process()
+	}
+	class NPCAIComponent {
+		+current_task: TaskState
+		+active_behavior: IAIBehavior
+		+process_ai()
+	}
+	class IAIBehavior {
+		<<Interface>>
+		+evaluate_and_execute(host, delta)
+	}
+	class GargoyleAIBehavior {
+		+State: STONE | AWAKE
+	}
+	class FarmerAIBehavior {
+		+State: SCANNING | HARVESTING
+	}
+
+	CharacterBody3D <|-- PassiveEntity
+	PassiveEntity *-- NPCAIComponent : Contains
+	NPCAIComponent o-- IAIBehavior : Delegates to
+	IAIBehavior <|.. GargoyleAIBehavior
+	IAIBehavior <|.. FarmerAIBehavior
+```
+
+*   **Dynamic LOD AI Tick Rate:** Sensory sweeps (A* pathfinding, hostile targeting) scale based on player distance. Close range updates at 20Hz, mid-range at 4Hz, and far range drops to 0.5Hz, reducing CPU overhead by 95% in heavily populated areas.
+
+---
+
+## 🌐 4. Multiplayer & State Synchronization
+
+CraftDomain supports P2P Multiplayer with Server-Authoritative Anti-Cheat validation and Late-Join Delta Synchronization. 
 
 ```mermaid
 graph LR
-	subgraph CPU_Generation [Thread-Pool Compile Loop]
-		Builder[ChunkVisualBuilder.gd]
-		Mesher[ChunkMesher.gd]
-		NormalBaker[CPU Normal Baker]
+	subgraph Server_Authority ["Host (Server Authority)"]
+		SV_Rep[VoxelReplicator.gd]
+		SV_AntiCheat[Distance Validation]
+		SV_State[(WorldState Deltas)]
+	end
+	
+	subgraph Remote_Client ["Remote Peer"]
+		CL_Rep[VoxelReplicator.gd]
+		CL_Action(Player places block)
+	end
+	
+	subgraph Late_Joiner ["New Peer"]
+		LJ_Rep[VoxelReplicator.gd]
 	end
 
-	subgraph GPU_Render [Vulkan Server]
-		Node[ChunkNode.gd]
-		Shader[Triplanar Shader]
-		Material[VoxelMaterialFactory.gd]
-	end
-
-	WorldState[WorldState.gd] -->|Read Chunk Grid| Builder
-	Builder -->|Occlusion Face Culling| Mesher
-	Mesher -->|Bake Slabs & Fluid Normals| NormalBaker
-	NormalBaker -->|Commit Mesh Buffers| Node
-	Node -->|Apply Cached Materials| Material
-	Material -->|Bake Parameters| Shader
+	CL_Action -- "rpc_id(1, block_id)" --> SV_AntiCheat
+	SV_AntiCheat -- "Valid (Dist < 8m)" --> SV_Rep
+	SV_AntiCheat -- "Invalid" --> CL_Rep : Force Rubberband
+	SV_Rep -- "rpc(block_id)" --> CL_Rep : Broadcast
+	SV_Rep --> SV_State
+	
+	SV_State -- "JSON Payload" --> LJ_Rep : Delta Stream on Join
+	
+	style Server_Authority fill:#1e293b,stroke:#ffaa00,stroke-width:2px
 ```
 
----
-
-### 4. Decoupled AI Brain & Steering Strategy
-Humanoids and wildlife delegate sensory scans and pathing decisions to pure Domain strategies. Walk cycle interpolations and obstacle-jumping are offloaded to lightweight components:
-
-```mermaid
-graph TD
-	subgraph Sensory_Brain [NPCAIComponent.gd]
-		Timer[LOD Tick Timer - 4Hz]
-		Schedule[Day/Night Schedules]
-	end
-
-	subgraph Steering_Network [NPCObstacleSteering.gd]
-		Whiskers[3D Raycast Whiskers]
-		StepClimb[1-Block Step Climber]
-	end
-
-	subgraph Decision_Strategy [IAIBehavior.gd]
-		Gossip[Villager Social Gossip]
-		Harvest[Farmer Crop Harvester]
-		Flee[Fauna Panic Escape]
-	end
-
-	Host[CharacterBody3D] -->|Sensor Tick| Timer
-	Timer -->|Evaluate Schedules| Schedule
-	Schedule -->|Delegate Decisions| Decision_Strategy
-	Host -->|Physics Step| Whiskers
-	Whiskers -->|Resolve Obstacles| StepClimb
-	StepClimb -->|Adjust Velocity| Host
-```
+*   **Extrapolation & Rubberbanding:** `NetworkPlayerReplica.gd` uses linear extrapolation to predict movement during packet loss. If a client attempts to speedhack or reach too far, the server denies the RPC and issues a rubberband correction.
+*   **Dual-Timeline Streaming:** When a new peer joins, the server serializes both `Past` and `Present` chunk modifications, sending a unified JSON payload to synchronize the newcomer instantly.
 
 ---
 
-### 5. Persistence, Serialization & I/O Boundaries
-World persistence implements a background **Delta-Saving** pipeline, preserving modified chunk coordinates on disk while keeping main thread execution uninterrupted:
+## 🛡️ 5. SOLID Compliance Checklist
 
-```mermaid
-sequenceDiagram
-	autonumber
-	participant Ctrl as WorldController
-	participant State as WorldState (Aggregate Root)
-	participant Service as WorldPersistenceService
-	participant Serializer as VoxelSaveSerializer
-	participant Repo as DiskWorldRepository
-
-	Ctrl->>Ctrl: Trigger Auto-Save (Pause Menu)
-	Ctrl->>Service: save_game(player, world_state)
-	activate Service
-	Service->>State: Read local chunk modifications
-	Service->>Serializer: serialize_chunk_deltas(modifications)
-	Serializer-->>Service: String-keyed JSON Dictionary
-	Service->>Repo: save_chunk_modifications(pos, data)
-	activate Repo
-	Repo-->>Repo: Write to user://world_save/chunks/
-	deactivate Repo
-	deactivate Service
-```
+*   **[S] Single Responsibility:** Controllers like `WorldController` only coordinate; they do not calculate geometry. `DiskWorldRepository` only streams files; it does not pack JSON data.
+*   **[O] Open-Closed:** `BlockLibrary`, `MobRegistry`, and `StructureLibrary` dynamically load plugins/mods from `user://mods/` without modifying core engine scripts.
+*   **[L] Liskov Substitution:** All structure blueprints (`IStructureBlueprint`) and biomes (`IBiome`) perfectly honor their interfaces. The engine can iterate through any of them safely.
+*   **[I] Interface Segregation:** Services like `TradingService` and `CraftingService` rely strictly on `IInventory`, remaining entirely ignorant of `PlayerController` physics or camera vectors.
+*   **[D] Dependency Inversion:** `PlayerController` places blocks via the abstract `IWorldModifier` interface, ensuring pure Domain systems never directly access Godot's `SceneTree`.
 
 ---
 
-## 🛡️ SOLID Software Engineering Compliance
+## ⌨️ 6. Controls Reference
 
-The architecture of CraftDomain is optimized to comply with the five SOLID software engineering design principles:
-
-### 1. Single Responsibility Principle (SRP)
-Every class has a single, strictly defined responsibility, and therefore only one reason to change.
-* **`WorldController.gd`:** Offloaded from physical and visual meshing calculations. It acts strictly as an asynchronous coordinator for chunk I/O and thread scheduling, delegating 3D matrix grouping to the stateless `ChunkVisualBuilder.gd` and saving pipelines to `WorldPersistenceService.gd`.
-* **`PlayerController.gd`:** Responsible *only* for movement physics, camera input handling, and velocity calculations. It delegates all raycasting, block mining, building, eating, and combat actions to `VoxelInteractionComponent.gd`.
-* **`PassiveEntity.gd`:** Purified to handle strictly physical translations, gravity, and lifecycles. It delegates all floating UI billboards, Nameplates, and SpeechBubbles to `EntityUIComponent.gd`.
-* **`VoxelInteractionComponent.gd`:** Focuses exclusively on Raycast solving and item placements, delegating 3D cracking mesh overlays to `BlockCrackingVisuals.gd`.
-* **`NPCAIComponent.gd`:** Acts as the AI sensory brain, managing task timers, scheduling, and active behaviors, delegating 3D wrapper steering and step-climbing to `NPCObstacleSteering.gd`.
-
-### 2. Open-Closed Principle (OCP)
-*Classes are open for extension, but closed for modification.*
-CraftDomain utilizes data-driven registry, loading, and strategy patterns to ensure new content can be added without modifying existing code.
-* **Data-Driven i18n Translations:** The engine dynamically loads translation data from `assets/translations/en.json` and `es.json`. Dialogue trees, item names, UI headers, and even floating speech bubbles are parsed using localization keys without hardcoding raw text in the controllers.
-* **100% Compiled Procedural Blueprints:** Obsolete JSON structures have been completely replaced. Natural flora, retro warp pipes, mine pillars, and market cabins are registered as OCP compiled strategy scripts (`IStructureBlueprint.gd`) executing directly in RAM at zero startup I/O cost.
-* **Dynamic Streetlight Themes:** `StreetlightEntity.gd` is agnostic of specific biome styles. It queries the active biome strategy for a custom configuration dictionary (`get_streetlight_theme()`) to paint lights and poles dynamically.
-
-### 3. Liskov Substitution Principle (LSP)
-Subclasses must be substitutable for their base classes without altering program correctness.
-* Any strategy implementing `IBiome` can be processed by `BiomeService` and evaluated by `WorldGenerator` without runtime exceptions.
-* Any blueprint implementing `IStructureBlueprint` (such as `WarpPipeBlueprint.gd` or `AdaptiveMinePillarBlueprint.gd`) is processed dynamically inside the meshing threads without type mismatches.
-* **Fauna Segregation:** The virtual contract `_has_ui_decorations()` restricts floating speech bubbles, quest arrows, and conversation states exclusively to humanoid civilians. Wild animals return `false` on this check, avoiding redundant UI overhead and complying cleanly with LSP.
-
-### 4. Interface Segregation Principle (ISP)
-*Clients should not be forced to depend upon interfaces they do not use.*
-* Instead of passing the entire `PlayerController.gd` (which contains camera vectors, physics movement, and input states) to the trading, loot drop, or crafting systems, the game defines `IInventory.gd`.
-* `TradingService`, `CraftingService`, and `PassiveEntity` (NPCs) interact *only* with the abstract `IInventory` interface, completely separating transaction logic from character movement and camera physics.
-
-### 5. Dependency Inversion Principle (DIP)
-*High-level modules must not depend on low-level modules; both must depend on abstractions.*
-* `WorldController.gd` (High-level coordinator) never directly instantiates or imports `DiskWorldRepository.gd` (Low-level JSON file details). Instead, it holds a reference to the abstract class `WorldRepository`.
-* `VoxelInteractionComponent.gd` interacts with the world grid via an injected `IWorldModifier` adapter, preventing the Domain from coupling with concrete Godot SceneTree nodes.
-* **Decoupled AI Strategy Integration:** High-level entities inject their decision-making logic dynamically into `NPCAIComponent.gd` through the `IAIBehavior` strategy interface, completely decoupling NPC physics controllers from logical routines.
-
----
-
-## ⚡ High-Performance Voxel Sandbox Optimizations (120 FPS Guardrail)
-
-Maintaining a locked, rock-solid **120 FPS frame rate** with smooth frame pacing is an absolute priority of the Dolores engine. No feature is allowed to introduce micro-stutters. We implement custom lower-level optimizations to maintain this performance:
-
-### 1. Hybrid Instant/Threaded Mesher (120 FPS Mining)
-To prevent Main Thread stutters and lag when placing or breaking blocks, CraftDomain utilizes a dual-pipeline meshing system:
-* The modified chunk is rebuilt synchronously on the Main Thread (`_rebuild_chunk_instantly`), completing in less than 0.5ms to provide instantaneous physical/visual feedback.
-* Any adjacent boundary chunks affected by the edit are offloaded asynchronously as high-priority tasks to background thread workers via the `WorkerThreadPool` (`_request_chunk_rebuild`), preventing rendering freezes completely.
-
-### 2. Time-Sliced Physics Budgeting & Object Pooling
-* **Dynamic Throttling:** Background threads are capped strictly to 2 during teleports or startup, leaving CPU cores free for Vulkan shader compiles.
-* **Physics Budgeting:** `ChunkLifecycleService` compiles a maximum of 1-2 heavy concave collision bodies per frame, spreading physics registration overhead evenly and guaranteeing zero frame drops.
-* **Object Pooling:** Inactive chunks are stored in `_chunk_node_pool` and recycled dynamically instead of triggering expensive Garbage Collection `queue_free()` sweeps.
-
-### 3. Decoupled AI Strategy Pattern & Throttling
-* **Strategy Pattern AI (`IAIBehavior`):** Extracted specialized entity AI routines from physical scripts into distinct strategies (e.g. `GargoyleAIBehavior`, `GoblinAIBehavior`, `AmphibiousAIBehavior`, `MinerAIBehavior`, `CatAIBehavior`, `DruidAIBehavior`, `LithicLurkerAIBehavior`). Keeping physical entities strictly focused on translations while delegating logical decisions to the Domain.
-* **LOD AI Tick Rate:** AI sensory sweeps, threat scans, and pathfinding calculations scale their update intervals dynamically based on distance to the player: Close Range (<15m) updates at 20Hz, Mid Range (15-35m) at 4Hz, and Far Range (>35m) at 0.5Hz, reducing village CPU overhead by over 95%.
-* **Smooth Vector Continuation:** Walk-cycle vector interpolations and local obstacle-jumping are processed every frame on the physics thread, ensuring entities continue to slide smoothly on screen even during throttled frames.
-* **$O(1)$ Targeting:** Active entities scan for targets by querying Godot's C++ native group registry (`"hostiles"` and `"passives"`), eliminating the performance spikes of old $O(N)$ child-scanning loops.
-
-### 4. Compile-Free Unshaded Particles & Safe Shutdowns
-* To prevent dynamic Vulkan pipeline compilations (which drop FPS down to single digits during block mining), mining debris has been migrated to `CPUParticles3D` using `SHADING_MODE_UNSHADED` materials. This runs entirely on the CPU at zero compile cost.
-* **Memory-Safe Timers:** All temporary particle timers connect their `timeout` signals directly to `particles.queue_free` instead of compiling dynamic lambda captures, permanently preventing `Lambda capture at index 0 was freed` memory leaks upon world exit.
-
-### 5. Opaque Far-LOD Culling, Unified Meshing & Normal Baking
-* **Alpha-Blend Bypass:** Distant chunks automatically switch translucent materials (Water, Glass, Clouds, Ice) to `TRANSPARENCY_DISABLED`. This bypasses expensive depth-sorting and alpha-blending passes on the GPU horizon, saving massive pixel fillrate overhead.
-* **Sub-pixel Hermetic Sealing:** Transparent liquid and slab vertices are mathematically scaled outward from their center by a factor of `1.002` (2 millimeters). This tightly overlaps chunk borders, perfectly fixing all Z-fighting and Z-clipping leaks.
-* **Unified Mesh Baker (`ChunkMesher`):** Dispatches water, lava, and stone slab meshes inside a high-performance single-pass loop. Pre-bakes physical face normals (`generate_normals()`) on the CPU before committing buffers, securing proper PBR specularity and enabling precise vertex-wave displacement (`NORMAL.y > 0.5`) in GPU shaders.
-
----
-
-## 🗺️ Handcrafted Global Mega-Structures
-The world features 6 handcrafted global landmarks, seamlessly integrated with sloped-terrain blending:
-*   **The Grand Castle `[200, 200]`:** A colossal two-story stone fortress featuring a majestic double-height Throne Hall, symmetrical rising double-wing staircases, private chambers (King's bedroom with cloud sheets, Queen's suite, and War Council), a high-security Royal Treasury, and crenellated rooftop battlements. Fast-travel drops are calibrated on the outer stone bridge.
-*   **The Seaport & Galleon `[-150, 0]`:** A coastal port featuring wood-planked boardwalks, stacked cargo, a cozy two-story harbor tavern ("The Salty Sailor Inn" with bar and rooms), and a moored three-deck Galleon Ship containing crew bunks, cargo hold, and a captain's cabin with glass popa windows.
-*   **The Nether Fortress `[-300, -300]`:** A tattered volcanic brick citadel flanked by hot concentric lava canals and stone bridges, guarding a colossal double-height central Portal Sanctuary and an elevated treasure pedestal.
-*   **Steve's Settlement `[300, -300]`:** A playable village spanned by a giant mossy parabolic stone archway, central water fountain, irrigated wheat fields, a two-story log lodge, and a medieval windmill with fully accessible interior floors.
-*   **Desert Oasis Pyramid `[-150, 250]`:** A stepped 10-tier sandstone pyramid built over water, housing a central pharaoh's sarcophagus altar, comfortable side stone stairs, and an enclosed Pharaoh's Vault containing the Loot Chest sitting on a brick pedestal.
-*   **The Lithic Lurker Lair `[-100, 100]`:** A deep volcanic basalt crater arena with bubbling geothermal lava pools, guarding the ancient Lava Heart and acting as the combat sanctuary for the Act I Boss.
-
----
-
-## ⌨️ Controls Reference
-
-* **`W`, `A`, `S`, `D` or Arrow Keys:** Move around.
-* **Mouse Movement:** Look around (Smooth camera rotation processed inside `_unhandled_input` to match high-refresh monitor rates).
-* **`Space`:** Jump.
-* **`M`:** Open Fullscreen Tactical Map & Fast Travel.
-* **`I` (or clicking the HUD 🎒 button):** Toggle the 24-slot Backpack Inventory & Inspector overlay.
-* **`C` (or clicking the HUD 🛠️ button):** Toggle the Context-aware Crafting & Blueprint Workshop.
-* **`Left Alt` (Hold):** Release the captured mouse cursor to click HUD shortcut buttons.
-* **Mouse Scroll Wheel or Keys `1` to `8`:** Scroll through Hotbar slots.
-* **Left-Click (or `E`):** Mine blocks (generating color-matched voxel debris particles) or swing the active weapon.
-* **Right-Click (or `Q`):** Place blocks, plant seeds, consume items, or interact (Talking with villagers/guards/miners/wells).
-* **`Escape`:** Unlocks mouse cursor, pauses game, and triggers a silent background auto-save.
+| Action | PC (KBM) | Gamepad | Description |
+| :--- | :---: | :---: | :--- |
+| **Move** | `W/A/S/D` | `Left Stick` | Move character horizontally. |
+| **Look** | `Mouse` | `Right Stick` | Rotate first-person camera. |
+| **Jump / Glide** | `Space` | `A / Cross` | Jump or deploy Voxel Glider mid-air. |
+| **Mine / Attack** | `Left-Click` | `R1 / RB` | Break blocks or swing active weapon. |
+| **Place / Interact** | `Right-Click` | `L1 / LB` | Build blocks or talk to NPCs. |
+| **Inventory** | `I` | `X / Square` | Open 24-slot Backpack & Inspector. |
+| **Crafting** | `C` | `Y / Triangle` | Open Blueprint Workshop. |
+| **Map** | `M` | `Back / Share` | Open Tactical World Map. |
+| **Free Cursor** | `Hold L-Alt` | - | Releases captured mouse for UI clicking. |
 
 ---
 
