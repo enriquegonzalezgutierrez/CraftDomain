@@ -10,7 +10,7 @@
 #   domain services (Agriculture, Fluids, Structural Integrity) on ready.
 # - Single Responsibility Principle (SRP): Decomposed target structural props 
 #   into elastic falling-bounces supporting both StaticBody3D and Node3D vegetation
-#   through 100% strong static typing.
+#   through 100% strong static typing and grid-cell snapping.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -192,19 +192,17 @@ func _apply_procedural_gravity_on_block_broken(global_pos: Vector3i, type: Block
 
 
 func _check_and_resolve_floating_props(mined_pos: Vector3i) -> void:
-	var expected_x := float(mined_pos.x) + 0.5
-	var expected_z := float(mined_pos.z) + 0.5
-	var expected_y_min := float(mined_pos.y) + 0.9
-	var expected_y_max := float(mined_pos.y) + 1.1
-	
 	for child: Node in get_children():
-		# 100% Strong Typing check: Validamos herencia C++ nativa, eliminando hashes de texto frágiles
-		if _is_unsupported_prop_type(child):
+		# Filtro de tipo e interfaz polimórfica estricta
+		if child is Node3D and _is_unsupported_prop_type(child):
 			var prop_node := child as Node3D 
 			var c_pos: Vector3 = prop_node.global_position
-			var match_x: bool = absf(c_pos.x - expected_x) < 0.1
-			var match_z: bool = absf(c_pos.z - expected_z) < 0.1
-			var match_y: bool = c_pos.y >= expected_y_min - 0.2 and c_pos.y <= expected_y_max + 0.2
+			
+			# LÓGICA DE CELDA DE REJILLA: 
+			# Verificamos si las coordenadas de dispersión horizontal caen dentro de la celda de la rejilla 1x1 del bloque minado.
+			var match_x: bool = floori(c_pos.x) == mined_pos.x
+			var match_z: bool = floori(c_pos.z) == mined_pos.z
+			var match_y: bool = absf(c_pos.y - (float(mined_pos.y) + 1.0)) <= 0.4
 			
 			if match_x and match_z and match_y:
 				_resolve_unsupported_prop(prop_node)
@@ -217,7 +215,8 @@ func _is_unsupported_prop_type(node: Node) -> bool:
 		node is CampfireEntity or
 		node is WishingWellEntity or
 		node is StreetlightEntity or
-		node is VegetationProp
+		node is VegetationProp or
+		node.name.ends_with("Prop") # Salvaguarda de integración para escenas .tscn sin script asignado
 	)
 
 
@@ -241,7 +240,7 @@ func _play_prop_impact_sound(prop: Node3D) -> void:
 	if not is_instance_valid(prop):
 		return
 		
-	if prop is VegetationProp:
+	if prop is VegetationProp or prop.name.ends_with("Prop"):
 		# Sonido de vegetación suave/pincel de hojas para las flores flotantes
 		AudioService.play_sfx_static("footstep_grass", prop.global_position)
 	else:
