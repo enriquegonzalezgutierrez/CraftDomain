@@ -1,22 +1,22 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/World/SakuraTreeBlueprint.gd
 # Description: Concrete Structure Blueprint implementing the 3D procedural growth 
 #              algorithm for an artistic, wide-branching pink Sakura Tree.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively manages the growth ratios, 
 #   height parameters, and branching coordinates specific to the Sakura species.
-# - Open-Closed Principle (OCP): Inherits from IStructureBlueprint. Sakura-specific 
-#   growth parameters are closed to modifications from other trees.
-# - Dependency Inversion Principle (DIP): Delegates heavy geometry drawing to 
-#   the decoupled static utility class 'ProceduralTools'.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/SakuraTreeBlueprint.gd
+# - Open-Closed Principle (OCP): Inherits from IStructureBlueprint. Integrated 
+#   Type-safe BlockType.Type.CHERRY_LOG enum member to permanently silence warnings.
+# - Scope Correction (LSP): Renamed loop counters to lx, ly, and lz to prevent 
+#   3D parser namespace collisions.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SakuraTreeBlueprint
 extends IStructureBlueprint
 
 # Sakura Biological Constants
-const TRUNK_BLOCK := BlockType.Type.WOOD
+const TRUNK_BLOCK := BlockType.Type.CHERRY_LOG # INTEGRATED: Type-safe CherryLogBlock enum member
 const LEAVES_BLOCK := BlockType.Type.NEON_MAGENTA # Glowing pink blossom foliage proxy
 
 const MIN_HEIGHT: int = 5
@@ -34,7 +34,7 @@ func get_structure_id() -> int:
 
 ## Concrete Implementation: Grows an organic sakura tree with leaning trunk, wide branches, and pink leaf spheres
 func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
-	# 1. Seed local RNG based on coordinates for reload stability
+	# Seed RNG deterministically based on coordinates to guarantee reload stability
 	var coordinate_hash := int(abs(start_x * 73856093 ^ start_z * 19349663))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = coordinate_hash
@@ -45,7 +45,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 	var current_pos := Vector3(float(start_x), float(ground_y), float(start_z))
 	var trunk_nodes: Array[Vector3i] = []
 	
-	# 2. Grow Crooked Organic Trunk
+	# Grow Crooked Organic Trunk
 	for h in range(height):
 		current_pos.y += 1.0
 		# Apply frequent, wider random walk steps to simulate a bent trunk
@@ -57,7 +57,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 		trunk_nodes.append(node)
 		ProceduralTools.set_block_safe(chunk, node, TRUNK_BLOCK)
 		
-	# 3. Sprout Wide Branches (Bifurcation begins at 50% height)
+	# Sprout Wide Branches (Bifurcation begins at 50% height)
 	var split_index := int(float(trunk_nodes.size()) * 0.5)
 	var leaf_hubs: Array[Vector3i] = []
 	
@@ -89,18 +89,18 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 					
 			branches_spawned += 1
 			
-	# 4. Sculpt Massive Fluffy Pink Clouds of leaves
+	# Sculpt Massive Fluffy Pink Clouds of leaves
 	for hub in leaf_hubs:
 		_sculpt_sakura_pink_sphere(chunk, hub, LEAF_RADIUS, rng)
 
 
-## Private Helper: Overrides standard leaf painting to sculpt beautiful pink sakura clouds
+## Private Helper: Sculpt beautiful pink sakura clouds
 static func _sculpt_sakura_pink_sphere(chunk: Chunk, hub: Vector3i, radius: float, rng: RandomNumberGenerator) -> void:
 	var r_int := int(ceil(radius))
-	for x in range(-r_int, r_int + 1):
-		for y in range(-r_int, r_int + 1):
-			for z in range(-r_int, r_int + 1):
-				var dist_sq := float(x * x + y * y + z * z)
+	for lx in range(-r_int, r_int + 1):
+		for ly in range(-r_int, r_int + 1):
+			for lz in range(-r_int, r_int + 1):
+				var dist_sq := float(lx * lx + ly * ly + lz * lz)
 				var target_radius_sq := radius * radius
 				
 				# Add structural noise to make the blossom cloud look irregular
@@ -108,9 +108,9 @@ static func _sculpt_sakura_pink_sphere(chunk: Chunk, hub: Vector3i, radius: floa
 					target_radius_sq *= 0.85
 					
 				if dist_sq <= target_radius_sq:
-					var target_pos := hub + Vector3i(x, y, z)
+					var target_pos := hub + Vector3i(lx, ly, lz)
 					
 					var existing := chunk.get_block(target_pos.x, target_pos.y, target_pos.z)
 					# Do not overwrite solid trunk wood with sakura blossom leaves
-					if existing != BlockType.Type.WOOD:
+					if existing != BlockType.Type.WOOD and existing != BlockType.Type.CHERRY_LOG:
 						ProceduralTools.set_block_safe(chunk, target_pos, LEAVES_BLOCK)

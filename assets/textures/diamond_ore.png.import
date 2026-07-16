@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bke3whxinf77l"
-path="res://.godot/imported/nether_bricks.jpg-4a4c7480fa26fe7710a64eb7b46697cb.ctex"
+uid="uid://cixb0oj8jgokw"
+path="res://.godot/imported/diamond_ore.png-983715aaa724e87fc57cc1356f367d71.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/nether_bricks.jpg"
-dest_files=["res://.godot/imported/nether_bricks.jpg-4a4c7480fa26fe7710a64eb7b46697cb.ctex"]
+source_file="res://assets/textures/diamond_ore.png"
+dest_files=["res://.godot/imported/diamond_ore.png-983715aaa724e87fc57cc1356f367d71.ctex"]
 
 [params]
 

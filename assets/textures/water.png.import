@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dwkdrc1bbr02p"
-path="res://.godot/imported/lapis_block.jpg-bc0cf7dd6d5dd943696bbafa0bd042d6.ctex"
+uid="uid://jkcw38hyddpy"
+path="res://.godot/imported/water.png-f21c23d7964344de93bfec34a6ac1079.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/lapis_block.jpg"
-dest_files=["res://.godot/imported/lapis_block.jpg-bc0cf7dd6d5dd943696bbafa0bd042d6.ctex"]
+source_file="res://assets/textures/water.png"
+dest_files=["res://.godot/imported/water.png-f21c23d7964344de93bfec34a6ac1079.ctex"]
 
 [params]
 

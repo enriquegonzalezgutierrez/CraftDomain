@@ -1,12 +1,13 @@
 // ==============================================================================
-# Shader: Triplanar Blocks PBR (Corrected Repeat Mode)
-# Description: Custom world-space triplanar mapping shader optimized for voxel
-#              materials. Forces repeat mode to ensure seamless texture wrapping
-#              across infinite coordinates.
-# SOLID COMPLIANCE: Dedicated exclusively to surface fragment projection and
-#                   light-shading calculations (SRP compliant).
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader
+// Shader: Triplanar Blocks PBR with Procedural Edge Beveling
+// Description: Custom world-space triplanar mapping shader optimized for voxel
+//              materials. Programmatically bended normals near block edges to 
+//              simulate smooth rounded bevels (chamfer highlights) under sunlight 
+//              without extra polygon overhead.
+// SOLID COMPLIANCE: Dedicated exclusively to surface fragment projection and
+//                   light-shading calculations (SRP compliant).
+// Author: Enrique González Gutiérrez
+// Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, diffuse_burley, specular_schlick_ggx;
@@ -29,8 +30,9 @@ uniform sampler2D ambient_texture : hint_default_white, filter_nearest_mipmap, r
 uniform bool use_specular_map = false;
 uniform sampler2D specular_texture : hint_default_white, filter_nearest_mipmap, repeat_enable;
 
-// Parallax/POM parameters (Reserved for high-end PBR configurations)
-uniform bool use_parallax = false;
+// Procedural Bevel parameters (Smooths blocky corners under direct lighting)
+uniform float bevel_width : hint_range(0.01, 0.15) = 0.06;      // Bevel width in meters (6cm)
+uniform float bevel_strength : hint_range(0.0, 1.5) = 0.65;    // Rounding curvature intensity
 
 // Emissive parameters (For glowing cybernetic pathways)
 uniform vec4 emission_color : source_color = vec4(0.0);
@@ -67,6 +69,7 @@ void fragment() {
 	ROUGHNESS = roughness_val;
 
 	// 3. Optional Normal Mapping projection
+	vec3 resolved_normal = world_normal;
 	if (use_normal_map) {
 		vec4 norm_x = texture(normal_texture, world_pos.zy);
 		vec4 norm_y = texture(normal_texture, world_pos.xz);
@@ -80,11 +83,33 @@ void fragment() {
 		normal_out += vec3(tex_normal.r, 0.0, tex_normal.g) * world_normal.y;
 		normal_out += vec3(tex_normal.r, tex_normal.g, 0.0) * world_normal.z;
 		
-		NORMAL_MAP = normalize(normal_out) * 0.5 + 0.5;
+		resolved_normal = normalize(normal_out);
+		NORMAL_MAP = resolved_normal * 0.5 + 0.5;
 		NORMAL_MAP_DEPTH = normal_scale;
 	}
 
-	// 4. Optional Ambient Occlusion projection
+	// 4. Procedural Edge Beveling Calculation (Bends normal vectors near cube borders)
+	vec3 local_pos = fract(world_pos);
+	vec3 center_dir = local_pos - vec3(0.5);
+	vec3 dist_to_edge = vec3(0.5) - abs(center_dir);
+	
+	// Calculate smooth-curve interpolation factor near the arris boundaries
+	vec3 bevel_factor = smoothstep(bevel_width, 0.0, dist_to_edge);
+	vec3 perturb = sign(center_dir) * bevel_factor * bevel_strength;
+	
+	// Apply bended normal offsets perpendicular to the current face normal plane
+	vec3 final_normal = resolved_normal;
+	if (abs(world_normal.y) > 0.5) {
+		final_normal.xz += perturb.xz;
+	} else if (abs(world_normal.x) > 0.5) {
+		final_normal.yz += perturb.yz;
+	} else {
+		final_normal.xy += perturb.xy;
+	}
+	
+	NORMAL = normalize(final_normal);
+
+	// 5. Optional Ambient Occlusion projection
 	if (use_ambient_map) {
 		vec4 ao_x = texture(ambient_texture, world_pos.zy);
 		vec4 ao_y = texture(ambient_texture, world_pos.xz);
@@ -94,7 +119,7 @@ void fragment() {
 		AO_LIGHT_AFFECT = 1.0;
 	}
 
-	// 5. Optional Specular and Metallic projection
+	// 6. Optional Specular and Metallic projection
 	if (use_specular_map) {
 		vec4 spec_x = texture(specular_texture, world_pos.zy);
 		vec4 spec_y = texture(specular_texture, world_pos.xz);
@@ -108,7 +133,7 @@ void fragment() {
 		SPECULAR = 0.5;
 	}
 
-	// 6. Cybernetic Emissive Lighting
+	// 7. Cybernetic Emissive Lighting
 	if (emission_energy > 0.01) {
 		EMISSION = emission_color.rgb * emission_energy;
 	}

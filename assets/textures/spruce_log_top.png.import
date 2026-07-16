@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://3oghudjxf0df"
-path="res://.godot/imported/magma.jpg-0fca584e837fc73dadd9aadeae7d6577.ctex"
+uid="uid://dmxxumicfrc2q"
+path="res://.godot/imported/spruce_log_top.png-26100e4f8e10b4bc03e9635024494b88.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/magma.jpg"
-dest_files=["res://.godot/imported/magma.jpg-0fca584e837fc73dadd9aadeae7d6577.ctex"]
+source_file="res://assets/textures/spruce_log_top.png"
+dest_files=["res://.godot/imported/spruce_log_top.png-26100e4f8e10b4bc03e9635024494b88.ctex"]
 
 [params]
 

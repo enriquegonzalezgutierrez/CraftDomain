@@ -1,26 +1,18 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/World/NeonRuinsBiome.gd
 # Description: Concrete Biome Strategy implementing rules for Neon Ruins.
-#              SOLID COMPLIANCE: 
-#              - Liskov Substitution Principle (LSP): Fully implements IBiome.
-#              - Open-Closed Principle (OCP): Returns specialized Cyber Citizens (106)
-#                and Guards (102) for its outposts.
-#              DESIGN UPGRADE (ATMOSPHERIC TECH-NOIR):
-#              - Replaced eye-searing neon ground terrain with a carbon paved surface 
-#                (ROAD) and deep volcanic coal bedrock (COAL_ORE).
-#              - Spawns mystical glowing giant fungi (UnderworldFungus) and 
-#                neon stepped pyramids (NeonPyramid) to create elegant contrast.
-# GEOGRAPHICAL SENSING (Phase 4):
-#              - Implements `is_coordinate_inside()` to encapsulate its own 
-#                spawning boundaries (polar angle slice between -1.178 and -0.392 rad).
-# STREETLIGHT PROP PORTABLE THEMING (OCP Compliant):
-#              - Overrides `get_streetlight_theme()` to polimorphically supply 
-#                its own Cyberpunk theme parameters (obsidian-steel base, cyan neon pole).
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/NeonRuinsBiome.gd
+# SOLID COMPLIANCE: 
+# - Single Responsibility Principle (SRP): Exclusively coordinates environmental
+#   topography heights, wildlife tables, and block-depth layers.
+# - Liskov Substitution Principle (LSP): Fully implements IBiome interface.
+# - Open-Closed Principle (OCP): Integrated Type-safe Cyber Panel, Metal Grate,
+#   and Warning Stripes enum members to permanently silence compiler warnings.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NeonRuinsBiome
 extends IBiome
+
 
 func get_biome_id() -> int:
 	return 7
@@ -41,12 +33,25 @@ func get_base_height(noise_value: float) -> int:
 	return int(8.0 + (noise_value + 1.0) * 2.0)
 
 
-## Concrete Implementation: Maps paved tech-noir surface (ROAD) and deep dark carbon coal bedrock (COAL_ORE)
+## Concrete Implementation: Maps roads, warning signs, grates, and subsurface conduits
 func get_block_for_depth(y: int, base_height: int) -> BlockType.Type:
-	if y < base_height - 2:
+	if y < base_height - 3:
 		return BlockType.Type.STONE
+		
 	if y == base_height:
+		# Pavement surface detail decimation
+		var surface_seed := base_height % 10
+		if surface_seed == 1:
+			return BlockType.Type.METAL_GRATE # INTEGRATED: Type-safe Metal Grate
+		elif surface_seed == 2:
+			return BlockType.Type.WARNING_STRIPES # INTEGRATED: Type-safe Warning Stripes
 		return BlockType.Type.ROAD
+		
+	# Sub-pavement industrial conduits
+	var depth_seed := (y + base_height) % 6
+	if depth_seed == 0:
+		return BlockType.Type.CYBER_PANEL # INTEGRATED: Type-safe Cyber Panel
+		
 	return BlockType.Type.COAL_ORE
 
 

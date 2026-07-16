@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cdllleqw432ni"
-path="res://.godot/imported/netherrack.jpg-7b8173e68d6e852225300e60596dfbac.ctex"
+uid="uid://jmoa1yl4jjlo"
+path="res://.godot/imported/glowstone.png-9566f855b8ba4e02c1e17b7d216cfd67.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/netherrack.jpg"
-dest_files=["res://.godot/imported/netherrack.jpg-7b8173e68d6e852225300e60596dfbac.ctex"]
+source_file="res://assets/textures/glowstone.png"
+dest_files=["res://.godot/imported/glowstone.png-9566f855b8ba4e02c1e17b7d216cfd67.ctex"]
 
 [params]
 

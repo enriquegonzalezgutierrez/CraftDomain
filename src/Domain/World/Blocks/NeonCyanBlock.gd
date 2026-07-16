@@ -1,13 +1,14 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: NeonCyanBlock
+# Pathfile: res://src/Domain/World/Blocks/NeonCyanBlock.gd
 # Description: Concrete Domain Definition for the emissive Cyber Conduit.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Contains exclusively the physical,
 #   procedural coloring, and emissive configurations for Neon Cyan.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
-#   its local drop variables within the constructor to decouple mining drop tables.
+# - Open-Closed Principle (OCP): Extends BlockDefinition. Overrides 
+#   its local drop and texture variables within the constructor to 
+#   correctly consume "neon_cyan.png" instead of the forest leaves.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NeonCyanBlock
 extends BlockDefinition
@@ -23,7 +24,7 @@ func _init() -> void:
 	is_solid = true
 	is_transparent = false
 	
-	# OCP/SOLID Compliance: Cyber cian conduit breaks into Stone Blocks (ID 1)
+	# Cyber cyan conduit breaks into Stone Blocks (ID 1)
 	drop_item_id = 1
 	drop_quantity = 1
 	
@@ -33,16 +34,12 @@ func _init() -> void:
 	color_bottom = Color(0.02, 0.18, 0.25)
 	
 	# High-fidelity visual descriptions for Infrastructure PBR compilation
-	texture_file_name = "leaves.png" # Reuses leaf texture for high-frequency patterns
+	texture_file_name = "neon_cyan.png" # CORRECTED: Points directly to neon_cyan asset
 	roughness = 0.85
 	metallic = 0.0
 	rendering_type = "default"
 	
-	# ==========================================================================
-	# EMISSIVE CONFIGURATION:
-	# Used by the Infrastructure layer to apply glow shaders and 
-	# bake real-time emission without hardcoded logic.
-	# ==========================================================================
+	# Emissive setup for high-contrast cyber glow pathways
 	is_emissive = true
 	emission_color = color_top
 	emission_energy = 1.5

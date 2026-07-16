@@ -1,22 +1,22 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/World/RedwoodTreeBlueprint.gd
 # Description: Concrete Structure Blueprint implementing the 3D procedural growth 
 #              algorithm for a towering, radial-skirted conifer Redwood Tree.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively manages the growth ratios, 
 #   height parameters, and radial layered foliage specific to the Redwood species.
-# - Open-Closed Principle (OCP): Inherits from IStructureBlueprint. Redwood-specific 
-#   growth parameters are closed to modifications from other trees.
+# - Open-Closed Principle (OCP): Inherits from IStructureBlueprint. Integrated 
+#   Type-safe BlockType.Type.REDWOOD_LOG enum member to permanently silence warnings.
 # - Dependency Inversion Principle (DIP): Delegates heavy geometry drawing to 
 #   the decoupled static utility class 'ProceduralTools'.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/RedwoodTreeBlueprint.gd
+# Author: Enrique González Gutiérrez 
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name RedwoodTreeBlueprint
 extends IStructureBlueprint
 
 # Redwood Biological Constants
-const TRUNK_BLOCK := BlockType.Type.WOOD
+const TRUNK_BLOCK := BlockType.Type.REDWOOD_LOG # INTEGRATED: Type-safe RedwoodLogBlock enum member
 const LEAVES_BLOCK := BlockType.Type.LEAVES
 
 const MIN_HEIGHT: int = 10
@@ -32,7 +32,7 @@ func get_structure_id() -> int:
 
 ## Concrete Implementation: Grows a towering straight redwood conifer with radial layered rings and top needle
 func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
-	# 1. Seed local RNG based on coordinates for reload stability
+	# Seed RNG deterministically based on coordinates to guarantee reload stability
 	var coordinate_hash := int(abs(start_x * 73856093 ^ start_z * 19349663))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = coordinate_hash
@@ -43,7 +43,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 	var current_pos := Vector3(float(start_x), float(ground_y), float(start_z))
 	var trunk_nodes: Array[Vector3i] = []
 	
-	# 2. Grow Towering Straight Trunk
+	# Grow Towering Straight Trunk
 	for h in range(height):
 		current_pos.y += 1.0
 		# Minimal sway allowed for giant conifers to prevent lean distortion
@@ -55,7 +55,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 		trunk_nodes.append(node)
 		ProceduralTools.set_block_safe(chunk, node, TRUNK_BLOCK)
 		
-	# 3. Create Conifer Radial Skirts (Occurs along the upper 70% height segment of the trunk)
+	# Create Conifer Radial Skirts (Occurs along the upper 70% height segment of the trunk)
 	var canopy_start_y := int(float(height) * 0.3)
 	
 	for i in range(canopy_start_y, height):
@@ -68,7 +68,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 		# Sculpt flat conifer radial leaves plate
 		ProceduralTools.sculpt_conifer_flat_ring(chunk, node, current_skirt_radius)
 		
-	# 4. Mount High-Density Pinnacle Needle on top of the spire
+	# Mount High-Density Pinnacle Needle on top of the spire
 	var tip := trunk_nodes.back()
 	ProceduralTools.set_block_safe(chunk, tip + Vector3i(0, 1, 0), LEAVES_BLOCK)
 	ProceduralTools.set_block_safe(chunk, tip + Vector3i(0, 2, 0), LEAVES_BLOCK)

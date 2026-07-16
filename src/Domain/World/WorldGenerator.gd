@@ -3,11 +3,9 @@
 # Description: Domain Generator responsible for procedurally carving chunk block data.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly procedural noise
-#   decimations and 3D cave carving.
+#   decimations and 3D cave carving. Methods decomposed to under 20 lines each.
 # - Open-Closed Principle (OCP): Closes terrain generation to modification while
-#   sculpting all wilderness biomes dynamically.
-# - Bedrock Aesthetics: Forces absolute bottom layer (Y=0) to compile as OBSIDIAN,
-#   providing a beautiful visual lecho in coordination with the WorldState shield.
+#   sculpting all wilderness biomes dynamically. Integrated IronVeinBlueprint.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -62,6 +60,7 @@ func _init(p_seed: int = 42) -> void:
 
 	_ore_veins.append(CoalVeinBlueprint.new())        
 	_ore_veins.append(DiamondGeodeBlueprint.new())   
+	_ore_veins.append(IronVeinBlueprint.new()) # INTEGRATED: Added raw iron veins
 
 
 func generate_chunk(chunk: Chunk) -> void:
@@ -155,7 +154,6 @@ func _sculpt_single_voxel(chunk: Chunk, global_y: int, local_idx_z: Vector3i, gl
 	var block_type: BlockType.Type = BlockType.Type.AIR
 	var local_y: int = global_y - (chunk.position.y * Chunk.SIZE)
 	
-	# BEDROCK ESTHETICS: Symmetrical 3D Floor is compiled permanently as Obsidian (ID 39)
 	if global_y == 0:
 		block_type = BlockType.Type.OBSIDIAN
 	elif global_y <= target_height:
@@ -223,7 +221,7 @@ func _process_subterranean_veins(chunk: Chunk, offset_x: int, offset_z: int) -> 
 	var vein_rng := RandomNumberGenerator.new()
 	vein_rng.seed = abs(chunk.position.x * 73856093 ^ chunk.position.z * 19349663)
 
-	var vein_clusters_count: int = vein_rng.randi_range(3, 6)
+	var vein_clusters_count: int = vein_rng.randi_range(4, 8)
 	for i in range(vein_clusters_count):
 		var rx: int = vein_rng.randi() % Chunk.SIZE
 		var rz: int = vein_rng.randi() % Chunk.SIZE
@@ -232,10 +230,12 @@ func _process_subterranean_veins(chunk: Chunk, offset_x: int, offset_z: int) -> 
 		var spawn_roll: float = vein_rng.randf()
 		var selected_vein: IOreVeinBlueprint = null
 
-		if spawn_roll < 0.72:
-			selected_vein = _ore_veins[0] 
+		if spawn_roll < 0.45:
+			selected_vein = _ore_veins[0] # Coal
+		elif spawn_roll < 0.85:
+			selected_vein = _ore_veins[2] # INTEGRATED: Iron Ore
 		elif ry < 8: 
-			selected_vein = _ore_veins[1] 
+			selected_vein = _ore_veins[1] # Diamond
 
 		if selected_vein != null:
 			var unique_vein_seed: int = abs(int(offset_x + rx) * 3121 ^ int(offset_z + rz) * 19331 ^ (ry * 777))
