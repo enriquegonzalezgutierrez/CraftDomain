@@ -1,27 +1,22 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Life & Entities / AI Strategies)
-# Class: ZombieAIBehavior
+# Pathfile: res://src/Domain/Life/ZombieAIBehavior.gd
+# Description: Pure Domain AI behavior strategy implementing hostile zombie routines,
+#              including player tracking, glitched spotted roars, and wall flanking.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly zombie state 
+#   transitions, alert roaring periods, and flanking vectors.
+# - Layered DDD Compliance: Pure logical state calculations with zero framework 
+#   leakage, keeping physical translations and audio players in Infrastructure.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
-# Description: Concrete AI behavior strategy implementing hostile zombie routines,
-#              including player tracking, wall flanking steering, and coordinate bites.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Declares and manages its own local 
-#   state machine (WANDERING, CHASING, ATTACKING) and telemetry reporting,
-#   completely independent of monolithic global enums.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. You can add new zombie 
-#   states (like feeding, hiding) locally in this file without modifying any other 
-#   AI system or the parent presenter.
-# - Liskov Substitution Principle (LSP): Fully compatible with the IAIBehavior 
-#   contract signatures.
 # ==============================================================================
 class_name ZombieAIBehavior
 extends IAIBehavior
 
-# Localized State Machine (SRP / OCP Compliant)
+# Localized State Machine
 enum State {
 	WANDERING,  # Standard passive roaming
+	ALERTED,    # Spotted player: freezing and roaring for 0.8s
 	CHASING,    # Aggressive player pursuit
 	ATTACKING   # Executing coordinate bites
 }
@@ -32,173 +27,160 @@ const SPEED_WANDER: float = 1.1
 const RANGE_CHASE_SQ: float = 256.0 # 16.0 meters squared
 const RANGE_ATTACK_SQ: float = 1.44 # 1.2 meters squared
 const COOLDOWN_ATTACK_SEC: float = 1.5
+const ALERT_DURATION_SEC: float = 0.8
 
-# Decoupled metadata keys to store state variables safely on the host node
+# Decoupled task enums
+const TASK_IDLE = 0
+const TASK_WANDERING = 1
+const TASK_PANIC = 5
+const TASK_WORKING = 6
+
+# Decoupled metadata keys
 const META_WANDER_TIMER := "zombie_wander_timer"
 const META_WANDER_DIR := "zombie_wander_dir"
 const META_COOLDOWN := "zombie_attack_cooldown"
 const META_STUCK_TIMER := "zombie_stuck_timer"
 const META_ZOMBIE_STATE := "zombie_local_state"
+const META_SPOTTED_PLAYER := "zombie_spotted_player"
+const META_ALERT_TIMER := "zombie_alert_timer"
 
 
 func _init() -> void:
-	# Hostiles completely intercept movement, bypassing generic civilian schedules
 	overrides_wandering = true
 
 
-## Concrete Implementation: Evaluates scent boundaries and drives aggressive pursuit
+## Concrete Contract: Drives scent-tracking alert roars, pursuit, and attack cycles
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
 		
 	_initialize_metadata_if_missing(host)
+	_update_cooldowns(host, delta)
 	
-	# Extract trackers from host metadata
-	var wander_timer: float = host.get_meta(META_WANDER_TIMER)
-	var wander_dir: Vector3 = host.get_meta(META_WANDER_DIR)
-	var cooldown: float = host.get_meta(META_COOLDOWN)
-	var stuck_timer: float = host.get_meta(META_STUCK_TIMER)
-	
-	if cooldown > 0.0:
-		cooldown -= delta
-		host.set_meta(META_COOLDOWN, cooldown)
-		
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai):
+	var state: int = host.get_meta(META_ZOMBIE_STATE) as int
+	if state == State.ALERTED:
+		_process_alert_state(host, delta)
 		return
 		
-	# Unify physical velocity reading at top level
-	var velocity: Vector3 = host.get("velocity")
-		
-	# 1. TACTICAL PLAYER PROXIMITY EVALUATION
-	var player_node: Object = host.get_parent().call("get_node_or_null", "Player")
+	var player_node := _get_player_node(host)
 	var is_tracking := false
 	
 	if is_instance_valid(player_node) and player_node.get("is_active") == true:
-		var host_pos: Vector3 = host.get("global_position")
-		var player_pos: Vector3 = player_node.get("global_position")
-		var dist_sq := host_pos.distance_squared_to(player_pos)
+		is_tracking = _process_active_combat_decisions(host, player_node, state)
 		
-		if dist_sq < RANGE_CHASE_SQ:
-			is_tracking = true
+	if not is_tracking:
+		_process_passive_wandering(host, delta)
+
+
+func _update_cooldowns(host: Object, delta: float) -> void:
+	var cooldown: float = host.get_meta(META_COOLDOWN) as float
+	if cooldown > 0.0:
+		host.set_meta(META_COOLDOWN, cooldown - delta)
+
+
+func _process_alert_state(host: Object, delta: float) -> void:
+	var ai: Object = host.get("ai_component")
+	if not is_instance_valid(ai): return
+		
+	ai.set("current_task", TASK_WORKING) # Disables autonomous wander animations
+	ai.set("wander_direction", Vector3.ZERO)
+	
+	var alert_timer: float = host.get_meta(META_ALERT_TIMER) as float
+	alert_timer -= delta
+	
+	if alert_timer <= 0.0:
+		# Alert roar finished, proceed to active chase
+		host.set_meta(META_ZOMBIE_STATE, State.CHASING)
+	else:
+		host.set_meta(META_ALERT_TIMER, alert_timer)
+
+
+func _process_active_combat_decisions(host: Object, player_node: Object, current_state: int) -> bool:
+	var host_pos: Vector3 = host.get("global_position")
+	var player_pos: Vector3 = player_node.get("global_position")
+	var dist_sq := host_pos.distance_squared_to(player_pos)
+	
+	if dist_sq >= RANGE_CHASE_SQ:
+		host.set_meta(META_SPOTTED_PLAYER, false)
+		return false
+		
+	var ai: Object = host.get("ai_component")
+	if not is_instance_valid(ai): return false
+	
+	var is_spotted: bool = host.get_meta(META_SPOTTED_PLAYER) as bool
+	if not is_spotted:
+		# Trigger the initial glitched spotted roar phase
+		host.set_meta(META_SPOTTED_PLAYER, true)
+		host.set_meta(META_ZOMBIE_STATE, State.ALERTED)
+		host.set_meta(META_ALERT_TIMER, ALERT_DURATION_SEC)
+		host.set_meta(META_WANDER_DIR, Vector3.ZERO)
+		
+		if host.has_method("_play_spotted_roar"):
+			host.call("_play_spotted_roar", player_node)
+		return true
+		
+	# Determine if within bite reach
+	if dist_sq <= RANGE_ATTACK_SQ:
+		host.set_meta(META_ZOMBIE_STATE, State.ATTACKING)
+		host.set_meta(META_WANDER_DIR, Vector3.ZERO)
+	else:
+		if current_state != State.ALERTED:
+			host.set_meta(META_ZOMBIE_STATE, State.CHASING)
 			var to_player := (player_pos - host_pos).normalized()
 			to_player.y = 0.0
-			wander_dir = to_player
+			host.set_meta(META_WANDER_DIR, to_player)
 			
-			# Flanking Wall Steering (Using metadata to query collision state)
-			if host.call("is_on_wall"):
-				var wall_normal: Vector3 = host.call("get_wall_normal")
-				var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-				if flat_normal != Vector3.ZERO:
-					var slide_dir := (wander_dir - flat_normal * (wander_dir.dot(flat_normal))).normalized()
-					if slide_dir != Vector3.ZERO:
-						wander_dir = slide_dir
-						
-			# Attack Trigger
-			if dist_sq <= RANGE_ATTACK_SQ:
-				host.set_meta(META_ZOMBIE_STATE, State.ATTACKING)
-				
-				velocity.x = 0.0
-				velocity.z = 0.0
-				host.set("velocity", velocity)
-				if cooldown <= 0.0:
-					_bite_player(host, player_node)
-					cooldown = COOLDOWN_ATTACK_SEC
-					host.set_meta(META_COOLDOWN, cooldown)
-					
-					var vis_rep: IEntityVisualRepresentation = host.get("visual_representation") as IEntityVisualRepresentation
-					if vis_rep != null:
-						vis_rep.trigger_attack_visuals()
-				return
-			else:
-				host.set_meta(META_ZOMBIE_STATE, State.CHASING)
-						
-	# 2. STANDARD RANDOM WANDERING STATE (If player is out of range)
-	if not is_tracking:
-		host.set_meta(META_ZOMBIE_STATE, State.WANDERING)
-		
-		wander_timer -= delta
-		if wander_timer <= 0.0:
-			var is_moving := randf() > 0.4
-			if is_moving:
-				var angle := randf() * TAU
-				wander_dir = Vector3(cos(angle), 0, sin(angle))
-				wander_timer = randf_range(2.0, 5.0)
-			else:
-				wander_dir = Vector3.ZERO
-				wander_timer = randf_range(1.0, 3.0)
-				
-		host.set_meta(META_WANDER_TIMER, wander_timer)
-		host.set_meta(META_WANDER_DIR, wander_dir)
-		
-		# Obstacle wall slide-bounce checks
-		if wander_dir != Vector3.ZERO and host.call("is_on_wall"):
-			stuck_timer += delta
-			if stuck_timer > 0.4:
-				stuck_timer = 0.0
-				var wall_normal := host.call("get_wall_normal")
-				var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-				if flat_normal != Vector3.ZERO:
-					wander_dir = wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
-					host.set_meta(META_WANDER_DIR, wander_dir)
-				else:
-					var angle := randf() * TAU
-					wander_dir = Vector3(cos(angle), 0, sin(angle))
-					host.set_meta(META_WANDER_DIR, wander_dir)
-			host.set_meta(META_STUCK_TIMER, stuck_timer)
-		else:
-			stuck_timer = 0.0
-			host.set_meta(META_STUCK_TIMER, stuck_timer)
+	return true
 
-	# 3. APPLY DISPATCHED VELOCITY VECTORS
-	if wander_dir != Vector3.ZERO:
-		var active_speed := SPEED_CHASE if is_tracking else SPEED_WANDER
-		velocity.x = wander_dir.x * active_speed
-		velocity.z = wander_dir.z * active_speed
-		host.set("velocity", velocity)
-		ai.set("wander_direction", wander_dir)
+
+func _process_passive_wandering(host: Object, delta: float) -> void:
+	var ai: Object = host.get("ai_component")
+	if not is_instance_valid(ai): return
+		
+	ai.set("current_task", TASK_WANDERING)
+	host.set_meta(META_ZOMBIE_STATE, State.WANDERING)
+	
+	var wander_timer: float = host.get_meta(META_WANDER_TIMER) as float
+	wander_timer -= delta
+	
+	if wander_timer <= 0.0:
+		var is_moving := randf() > 0.4
+		if is_moving:
+			var angle := randf() * TAU
+			host.set_meta(META_WANDER_DIR, Vector3(cos(angle), 0, sin(angle)))
+			host.set_meta(META_WANDER_TIMER, randf_range(2.0, 5.0))
+		else:
+			host.set_meta(META_WANDER_DIR, Vector3.ZERO)
+			host.set_meta(META_WANDER_TIMER, randf_range(1.0, 3.0))
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, SPEED_WANDER)
-		velocity.z = move_toward(velocity.z, 0.0, SPEED_WANDER)
-		host.set("velocity", velocity)
-		ai.set("wander_direction", Vector3.ZERO)
+		host.set_meta(META_WANDER_TIMER, wander_timer)
 
 
 func _initialize_metadata_if_missing(host: Object) -> void:
-	if not host.has_meta(META_WANDER_TIMER):
-		host.set_meta(META_WANDER_TIMER, 0.0)
-	if not host.has_meta(META_WANDER_DIR):
-		host.set_meta(META_WANDER_DIR, Vector3.ZERO)
-	if not host.has_meta(META_COOLDOWN):
-		host.set_meta(META_COOLDOWN, 0.0)
-	if not host.has_meta(META_STUCK_TIMER):
-		host.set_meta(META_STUCK_TIMER, 0.0)
-	if not host.has_meta(META_ZOMBIE_STATE):
-		host.set_meta(META_ZOMBIE_STATE, State.WANDERING)
+	if not host.has_meta(META_WANDER_TIMER): host.set_meta(META_WANDER_TIMER, 0.0)
+	if not host.has_meta(META_WANDER_DIR): host.set_meta(META_WANDER_DIR, Vector3.ZERO)
+	if not host.has_meta(META_COOLDOWN): host.set_meta(META_COOLDOWN, 0.0)
+	if not host.has_meta(META_STUCK_TIMER): host.set_meta(META_STUCK_TIMER, 0.0)
+	if not host.has_meta(META_ZOMBIE_STATE): host.set_meta(META_ZOMBIE_STATE, State.WANDERING)
+	if not host.has_meta(META_SPOTTED_PLAYER): host.set_meta(META_SPOTTED_PLAYER, false)
+	if not host.has_meta(META_ALERT_TIMER): host.set_meta(META_ALERT_TIMER, 0.0)
 
 
-func _bite_player(host: Object, player_node: Object) -> void:
-	var host_pos: Vector3 = host.get("global_position")
-	var player_pos: Vector3 = player_node.get("global_position")
-	var dir := (player_pos - host_pos).normalized()
-	var knockback := Vector3(dir.x * 5.5, 0.25, dir.z * 5.5)
-	if player_node.has_method("take_damage"):
-		player_node.call("take_damage", 1, knockback)
+func _get_player_node(host: Object) -> Object:
+	if host.has_method("get_parent"):
+		var parent: Node = host.call("get_parent") as Node
+		if is_instance_valid(parent):
+			return parent.call("get_node_or_null", "Player")
+	return null
 
 
-# ==============================================================================
-# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
-# ==============================================================================
-
-## Symmetrical Override: Maps the localized, private State enum to 
-## human-readable telemetry strings.
 func get_active_state_name(host: Object) -> String:
 	if not host.has_meta(META_ZOMBIE_STATE):
-		return "WANDERING"
+		return "WANDER"
 		
 	var state_val: int = host.get_meta(META_ZOMBIE_STATE) as int
 	match state_val:
-		State.WANDERING: return "WANDERING"
-		State.CHASING:   return "CHASING"
+		State.ALERTED: return "EXAMINE"  # Maps to "EXAMINING ENTORNO" on UI
+		State.CHASING: return "CHASING"  # Maps to "CHASING" on UI
 		State.ATTACKING: return "ATTACKING"
-		_: return "WANDERING"
+		_: return "WANDER"
