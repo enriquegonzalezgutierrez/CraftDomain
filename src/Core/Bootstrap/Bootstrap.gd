@@ -7,10 +7,8 @@
 # - Single Responsibility Principle (SRP): Only manages initial system startups, 
 #   registries compilation, and viewport transitions. High-frequency registration 
 #   loops decomposed into sub-helpers of less than 20 lines each.
-# - Open-Closed Principle (OCP): Integrates the final campaign boss Weaver Malakor 
-#   (ID 52) and Act III Boss (ID 51) sychronously inside the boot cycle.
-# - Dynamic Script Attachment: Force-attaches the typesafe VegetationProp script
-#   to all spawned flora on instantiation, ensuring bulletproof collision checks.
+# - Open-Closed Principle (OCP): Integrates DynamicResolutionService automatically
+#   on boot to maintain rock-solid 120 FPS via FSR 2.2 temporal scaling.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -31,6 +29,7 @@ var p2p_network_adapter: P2PNetworkAdapter
 
 var ai_telemetry_service: AITelemetryService
 var glitch_rift_service: GlitchRiftService
+var dynamic_resolution_service: DynamicResolutionService
 var world_repository: WorldRepository
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
@@ -51,6 +50,11 @@ func _initialize_application() -> void:
 func _init_telemetry_and_settings() -> void:
 	ai_telemetry_service = AITelemetryService.new()
 	glitch_rift_service = GlitchRiftService.new()
+	
+	# Instantiate and add the Dynamic Resolution Scaling service to monitor 120 FPS budgets
+	dynamic_resolution_service = DynamicResolutionService.new()
+	add_child(dynamic_resolution_service)
+	
 	_load_and_apply_user_settings()
 	TranslationRegistry.initialize_translations()
 	TextureRegistry.initialize_textures()
@@ -104,15 +108,15 @@ func _register_preloaded_mobs() -> void:
 
 func _register_passive_wildlife(h_land: int, h_both: int, h_water: int) -> void:
 	var ai_fauna := FaunaAIBehavior.new()
-	var ai_pig := PigAIBehavior.new() # Injected typesafe Pig AI behavior strategy
-	var ai_chicken := ChickenAIBehavior.new() # Injected typesafe Chicken AI behavior strategy
-	var ai_sheep := SheepAIBehavior.new() # Injected typesafe Sheep AI behavior strategy
-	var ai_cow := CowAIBehavior.new() # Injected typesafe Cow AI behavior strategy
+	var ai_pig := PigAIBehavior.new() 
+	var ai_chicken := ChickenAIBehavior.new() 
+	var ai_sheep := SheepAIBehavior.new() 
+	var ai_cow := CowAIBehavior.new() 
 	
-	_register_scene_mob(0, PigEntity, h_land, ai_pig) # ID 0 = Wild Pig
-	_register_scene_mob(1, ChickenEntity, h_land, ai_chicken) # ID 1 = Prairie Chicken
-	_register_scene_mob(2, SheepEntity, h_land, ai_sheep) # ID 2 = Fluffy Sheep
-	_register_scene_mob(3, CowEntity, h_land, ai_cow) # ID 3 = Clay Cow
+	_register_scene_mob(0, PigEntity, h_land, ai_pig) 
+	_register_scene_mob(1, ChickenEntity, h_land, ai_chicken) 
+	_register_scene_mob(2, SheepEntity, h_land, ai_sheep) 
+	_register_scene_mob(3, CowEntity, h_land, ai_cow) 
 	_register_scene_mob(201, TurtleEntity, h_both, ai_fauna)
 	_register_scene_mob(204, FoxEntity, h_land, ai_fauna)
 	_register_scene_mob(206, CatEntity, h_land, ai_fauna)
@@ -184,8 +188,6 @@ func _register_prop(prop_id: int, _prop_class: Variant) -> void:
 			var inst := scene.instantiate() as Node3D
 			inst.position = pos
 			
-			# Dynamic Script Attachment: Force-attach typesafe VegetationProp script
-			# to all spawned flora (IDs 220 to 235) upon instantiation.
 			if prop_id >= 220 and prop_id <= 235:
 				inst.set_script(VEGETATION_PROP_SCRIPT)
 				
@@ -366,7 +368,7 @@ func _add_unloading_title(parent: Control) -> void:
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	parent.add_child(vbox)
 	var title := Label.new()
-	title.text = tr("LOADING_UNLOAD_WORLD").to_upper()
+	title.text = tr("LOADING_STATUS").to_upper()
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ts := LabelSettings.new()
 	ts.font_size = 28

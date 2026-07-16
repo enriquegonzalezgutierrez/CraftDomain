@@ -4,13 +4,10 @@
 #              active task queues, and asynchronous chunk compiling.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Decouples 100% of WorkerThreadPool 
-#   interactions, Mutex locking, and queue prioritization from the Lifecycle service.
-# - Open-Closed Principle (OCP): Integrates dual-timeline extraction during 
-#   asynchronous compiling, preventing main thread I/O stutters.
-# - 120 FPS Guardrail: Inverts thread budgeting logic, maximizing CPU cores during 
-#   loading screens and strictly capping background tasks to 1-2 threads during active gameplay.
-# - Universal LOD Decimation: Deploys 8x8x8 low-density geometry for distant chunks
-#   universally on all platforms to save massive GPU fillrate overhead.
+#   interactions and queue prioritization. All methods kept strictly < 20 lines.
+# - Open-Closed Principle (OCP): Integrates dual-timeline in-memory and disk 
+#   cache merging during background generations to prevent block-reappearing rollbacks.
+# - 120 FPS Guardrail: Inverts thread budgeting dynamically during game sessions.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -31,8 +28,8 @@ var _max_concurrent_bg_tasks: int = 4
 
 
 func _init(p_lifecycle: ChunkLifecycleService, p_mutex: Mutex) -> void:
-	lifecycle = p_lifecycle
 	_queue_mutex = p_mutex
+	lifecycle = p_lifecycle
 	_max_concurrent_bg_tasks = clampi(OS.get_processor_count() + 1, 4, 16)
 
 
@@ -121,10 +118,6 @@ func _get_dynamic_thread_limit() -> int:
 		if typeof(raw_player) == TYPE_OBJECT and is_instance_valid(raw_player as Node3D):
 			is_loading_teleport = not (raw_player.get("is_active") as bool)
 			
-	# Thread Budgeting Inversion: 
-	# Maximize threads during loadscreens/teleports to generate chunks instantly.
-	# Restrict background threads to 1 or 2 during active gameplay to preserve 120 FPS frame pacing.
-	# WARNING SILENCED: Explicitly cast float division back to int to prevent compiler warnings.
 	var gameplay_threads_limit := clampi(int(float(_max_concurrent_bg_tasks) / 4.0), 1, 2)
 	return _max_concurrent_bg_tasks if is_loading_teleport else gameplay_threads_limit
 
@@ -179,28 +172,33 @@ func _apply_generator(chunk: Chunk) -> void:
 		gen.generate_chunk(chunk)
 
 
+## Symmetrical Cache-Merger: Atomic blending of on-disk save states with fresh
+## in-memory unwritten WorldState modifications to prevent block reappearing rollbacks.
 func _apply_saved_modifications(chunk: Chunk) -> Dictionary:
 	if not is_instance_valid(lifecycle) or not is_instance_valid(lifecycle.controller): return {}
-	var repo: WorldRepository = lifecycle.controller.get("repository") as WorldRepository
+	var repo := lifecycle.controller.get("repository") as WorldRepository
 	if not is_instance_valid(repo): return {}
 	
-	var saved_edits: Dictionary = repo.load_chunk_modifications(chunk.position)
-	if saved_edits.is_empty(): return {}
+	var saved_edits := repo.load_chunk_modifications(chunk.position)
+	var ws := lifecycle.world_state
+	var key := "present" if ws.active_timeline == WorldState.Timeline.PRESENT else "past"
 	
-	var active_timeline := lifecycle.world_state.active_timeline
-	var key := "present" if active_timeline == WorldState.Timeline.PRESENT else "past"
-	
+	var in_memory_mods := ws.get_chunk_modifications(chunk.position)
 	var active_mods: Dictionary = {}
 	if saved_edits.has(key) and saved_edits[key] is Dictionary:
-		active_mods = saved_edits[key] as Dictionary
+		active_mods = (saved_edits[key] as Dictionary).duplicate()
 	elif not saved_edits.has("present") and not saved_edits.has("past"):
-		active_mods = saved_edits
+		active_mods = saved_edits.duplicate()
+		
+	for local_pos: Vector3i in in_memory_mods.keys():
+		active_mods[local_pos] = in_memory_mods[local_pos]
 		
 	for local_pos: Vector3i in active_mods.keys():
-		var type_id: int = active_mods[local_pos] as int
-		chunk.set_block(local_pos.x, local_pos.y, local_pos.z, type_id as BlockType.Type)
+		chunk.set_block(local_pos.x, local_pos.y, local_pos.z, active_mods[local_pos] as BlockType.Type)
 		
-	return saved_edits
+	var merged_edits := saved_edits.duplicate()
+	merged_edits[key] = active_mods
+	return merged_edits
 
 
 func _compile_and_submit_task(chunk: Chunk, version: int, is_rebuild: bool, saved_edits: Dictionary) -> void:
@@ -232,7 +230,6 @@ func _compile_and_submit_task(chunk: Chunk, version: int, is_rebuild: bool, save
 
 func _compile_visual_data(chunk: Chunk, is_distant: bool, build_physics: bool) -> Dictionary:
 	if is_distant:
-		# Universal LOD Decimation: Uses down-sampled 8x8x8 geometry for far chunks on ALL platforms
 		return {
 			"multimesh": LODMesher.generate_decimated_mesh_data(chunk, lifecycle.world_state),
 			"collision_vertices": PackedVector3Array()

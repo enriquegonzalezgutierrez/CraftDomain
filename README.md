@@ -2,7 +2,7 @@
 
 ![MainMenu Background](src/Infrastructure/UI/Assets/menu_background.png)
 
-A high-performance, infinite procedural voxel sandbox engine built in **Godot 4.6.3**. 
+A high-performance, infinite procedural voxel sandbox game engine built in **Godot 4.6.3**. 
 
 CraftDomain is engineered strictly under **Domain-Driven Design (DDD)** and **SOLID** software engineering principles. It serves as a masterclass in highly decoupled, modular, and extensible system architecture capable of maintaining a rock-solid **120 FPS** frame rate with smooth frame pacing in massive, thread-populated 3D environments.
 
@@ -138,11 +138,11 @@ graph LR
 
 	CL_Action -- "rpc_id(1, block_id)" --> SV_AntiCheat
 	SV_AntiCheat -- "Valid (Dist < 8m)" --> SV_Rep
-	SV_AntiCheat -- "Invalid" --> CL_Rep : Force Rubberband
-	SV_Rep -- "rpc(block_id)" --> CL_Rep : Broadcast
+	SV_AntiCheat -- "Invalid (Force Rubberband)" --> CL_Rep
+	SV_Rep -- "rpc Broadcast (block_id)" --> CL_Rep
 	SV_Rep --> SV_State
 	
-	SV_State -- "JSON Payload" --> LJ_Rep : Delta Stream on Join
+	SV_State -- "JSON Delta Stream on Join" --> LJ_Rep
 	
 	style Server_Authority fill:#1e293b,stroke:#ffaa00,stroke-width:2px
 ```
