@@ -2,18 +2,31 @@
 # Pathfile: res://src/Domain/Life/GoblinAIBehavior.gd
 # Description: Specialized AI behavior strategy implementing the Goblin's 
 #              sneaky hit-and-run skirmishing routines. Decomposed into short methods (SRP).
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Isolates guerrilla tracking logic, 
+#   retreat timers, and directional flanking parameters.
+# - Asymmetrical Tactics: The goblin is significantly faster when running away 
+#   (SPEED_RETREAT) than when approaching (SPEED_CHASE), enhancing its elusive nature.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GoblinAIBehavior
 extends IAIBehavior
 
+# Localized State Machine
+enum State {
+	WANDERING,  # Standard passive roaming
+	CHASING,    # Aggressive player pursuit
+	RETREATING, # Running away rapidly after landing a hit
+	ATTACKING   # Executing coordinate bites
+}
+
 const SPEED_CHASE: float = 3.5
 const SPEED_WANDER: float = 1.6
-const SPEED_RETREAT: float = 3.8
+const SPEED_RETREAT: float = 4.5
 
-const RANGE_CHASE_SQ: float = 256.0 
-const RANGE_ATTACK_SQ: float = 1.44 
+const RANGE_CHASE_SQ: float = 256.0 # 16.0 meters squared
+const RANGE_ATTACK_SQ: float = 1.44 # 1.2 meters squared
 const COOLDOWN_ATTACK_SEC: float = 1.2
 
 # Decoupled task enums
@@ -26,6 +39,7 @@ const META_WANDER_TIMER := "goblin_wander_timer"
 const META_WANDER_DIR := "goblin_wander_dir"
 const META_COOLDOWN := "goblin_attack_cooldown"
 const META_RETREAT_TIMER := "goblin_retreat_timer"
+const META_GOBLIN_STATE := "goblin_local_state"
 
 
 func _init() -> void:
@@ -42,13 +56,16 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	
 	var player_node := _get_player_node(host)
 	
+	# Priority 1: Retreat
 	if _process_guerrilla_retreat(host, player_node, delta):
 		return
 		
+	# Priority 2: Chase and Attack
 	var is_tracking := false
 	if is_instance_valid(player_node):
 		is_tracking = _process_active_combat(host, player_node, delta)
 		
+	# Priority 3: Default wandering
 	if not is_tracking:
 		_process_default_roam(host, delta)
 
@@ -67,6 +84,7 @@ func _process_guerrilla_retreat(host: Object, player_node: Object, delta: float)
 		
 	retreat_timer -= delta
 	host.set_meta(META_RETREAT_TIMER, retreat_timer)
+	host.set_meta(META_GOBLIN_STATE, State.RETREATING)
 	
 	var ai: Object = host.get("ai_component")
 	if not is_instance_valid(ai): return true
@@ -79,14 +97,18 @@ func _process_guerrilla_retreat(host: Object, player_node: Object, delta: float)
 		var opposite_dir: Vector3 = (host.global_position - player_pos).normalized()
 		opposite_dir.y = 0.0
 		
+		# Proactive Wall Bounce: If trapped against a wall while retreating, bounce sideways
 		if host.call("is_on_wall"):
 			var wall_normal: Vector3 = host.call("get_wall_normal")
-			opposite_dir = opposite_dir.bounce(wall_normal).normalized()
-			
+			var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+			if flat_normal != Vector3.ZERO:
+				opposite_dir = opposite_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
+				
 		velocity.x = opposite_dir.x * SPEED_RETREAT
 		velocity.z = opposite_dir.z * SPEED_RETREAT
 		host.set("velocity", velocity)
 		ai.set("wander_direction", opposite_dir)
+		
 	return true
 
 
@@ -107,8 +129,10 @@ func _process_active_combat(host: Object, player_node: Object, delta: float) -> 
 	to_player.y = 0.0
 	
 	if dist_sq <= RANGE_ATTACK_SQ:
+		host.set_meta(META_GOBLIN_STATE, State.ATTACKING)
 		_execute_goblin_strike(host, ai, to_player, delta)
 	else:
+		host.set_meta(META_GOBLIN_STATE, State.CHASING)
 		_apply_computed_movement_vectors(host, to_player, SPEED_CHASE)
 	return true
 
@@ -128,7 +152,7 @@ func _execute_goblin_strike(host: Object, ai: Object, to_player: Vector3, delta:
 		if host.has_method("_bite_player"):
 			host.call("_bite_player")
 			
-		host.set_meta(META_RETREAT_TIMER, 1.2) # Trigger retreat
+		host.set_meta(META_RETREAT_TIMER, 1.4) # Trigger agile retreat sequence for 1.4s
 		
 		var vis_rep: Object = host.get("visual_representation")
 		if is_instance_valid(vis_rep) and vis_rep.has_method("trigger_attack_visuals"):
@@ -139,6 +163,7 @@ func _process_default_roam(host: Object, delta: float) -> void:
 	var ai: Object = host.get("ai_component")
 	if not is_instance_valid(ai): return
 	
+	host.set_meta(META_GOBLIN_STATE, State.WANDERING)
 	ai.set("current_task", TASK_WANDERING)
 	
 	var wander_timer: float = host.get_meta(META_WANDER_TIMER) as float
@@ -179,6 +204,7 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 	if not host.has_meta(META_WANDER_DIR): host.set_meta(META_WANDER_DIR, Vector3.ZERO)
 	if not host.has_meta(META_COOLDOWN): host.set_meta(META_COOLDOWN, 0.0)
 	if not host.has_meta(META_RETREAT_TIMER): host.set_meta(META_RETREAT_TIMER, 0.0)
+	if not host.has_meta(META_GOBLIN_STATE): host.set_meta(META_GOBLIN_STATE, State.WANDERING)
 
 
 func _get_player_node(host: Object) -> Object:
@@ -200,3 +226,20 @@ func _is_direction_safe_goblin(host: Object, dir: Vector3, world_node: Node) -> 
 	var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
 	
 	return ws.get_block(block_below_coord) != 6 and ws.get_block(block_at_coord) != 6 and ws.get_block(block_below_coord) != 0
+
+
+# ==============================================================================
+# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
+# ==============================================================================
+
+func get_active_state_name(host: Object) -> String:
+	if not host.has_meta(META_GOBLIN_STATE):
+		return "WANDER"
+		
+	var state_val: int = host.get_meta(META_GOBLIN_STATE) as int
+	match state_val:
+		State.WANDERING: return "WANDERING"
+		State.CHASING:   return "CHASING"  
+		State.ATTACKING: return "ATTACKING"
+		State.RETREATING: return "PANIC" # Maps to the "ESCAPE" UI task string
+		_: return "WANDER"

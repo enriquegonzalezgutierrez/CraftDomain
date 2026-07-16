@@ -1,15 +1,19 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/GargoyleEntity.gd
 # Description: Physical character controller for the hostile nocturnal Gargoyle.
-#              Coordinates state transitions, flight, and combat parameters (OCP).
-#              Corrected: Resolved invisible nameplate due to bypassed update loops.
+#              Manages day/night petrification state transitions, flight physics, 
+#              unshaded basalt dust particles, and combat tracking.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
+#   sound triggers, and particle emissions, delegating state decisions to GargoyleAIBehavior.
+# - 120 FPS Guardrail: Computes procedural material transitions, flight sways, and 
+#   basalt wing beats at 120Hz inside the physics thread to guarantee ultra-smooth movements.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GargoyleEntity
 extends PassiveEntity
 
-# Viewmodel and camera parameters (Section 5.3)
 const SPEED: float = 3.0
 const MODEL_BASE_Y: float = 0.8982
 
@@ -28,7 +32,7 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 
 
 func _ready() -> void:
-	# Register in the hostile group for O(1) targeting sweeps
+	# Group migration for O(1) hostile targeting sweeps
 	add_to_group("hostiles")
 	if is_in_group("passives"):
 		remove_from_group("passives")
@@ -42,28 +46,29 @@ func _ready() -> void:
 		GLBModelSanitizer.sanitize_model(_model_node)
 		
 	_locate_player()
-	
-	# Symmetrical lifecycle initialization call (Resolves missing nameplate)
 	_execute_lifecycle_initialization()
 	
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GargoyleAIBehavior.new()
 
 
-# ==============================================================================
-# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
-# ==============================================================================
-
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_GARGOYLE"
 
 
 func _get_nameplate_color() -> Color:
-	return Color(0.95, 0.15, 0.15) # Hostile Red (LSP Compliant)
+	return Color(0.95, 0.15, 0.15) # Hostile Red
 
 
-func _build_visual_representation() -> void:
-	pass
+func _is_avian() -> bool:
+	return true # Treats visual animations with wing sways
+
+
+func _can_fly() -> bool:
+	var state := 0
+	if has_meta(GargoyleAIBehavior.META_STATE):
+		state = get_meta(GargoyleAIBehavior.META_STATE) as int
+	return state == 1 # Can fly only when awakened during the night
 
 
 func _locate_player() -> void:
@@ -73,11 +78,11 @@ func _locate_player() -> void:
 
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
-	pass
+	pass 
 
 
 func _drop_loot(inv: IInventory) -> void:
-	inv.add_item(1, 1) # Drops 1x Stone Block on defeat
+	inv.add_item(1, 1)
 
 
 func _set_gargoyle_stone_appearance(is_stone: bool) -> void:
@@ -108,12 +113,75 @@ func _bite_player() -> void:
 			player.call("take_damage", 1, knockback)
 
 
-func _process(delta: float) -> void:
+## High-Frequency Physics Loop (Runs at 120Hz on the physics thread)
+func _physics_tick(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
 		
+	var state := 0
+	if has_meta(GargoyleAIBehavior.META_STATE):
+		state = get_meta(GargoyleAIBehavior.META_STATE) as int
+		
+	if state == 1: # STATE_AWAKE (Nocturnal Flight)
+		_process_gargoyle_flight_physics(delta)
+	else: # STATE_STONE (Daytime Petrification)
+		velocity.x = 0.0
+		velocity.z = 0.0
+
+
+func _process_gargoyle_flight_physics(delta: float) -> void:
+	_animation_time += delta
+	var flat_velocity := Vector2(velocity.x, velocity.z)
+	var is_moving := flat_velocity.length_squared() > 0.1
+	
+	# Smoothly hover at +2.5m altitude using sinusoidal waves
+	var target_y := 2.5 + sin(_animation_time * 4.0) * 0.22
+	velocity.y = lerp(velocity.y, (target_y - _model_node.position.y) * 5.0, delta * 6.0)
+	
+	if is_moving:
+		# Periodic basalt wing-beats: spawn grey dust particles under wings
+		if Engine.get_physics_frames() % 12 == 0:
+			_spawn_basalt_dust_particles()
+			AudioService.play_sfx_static("footstep_stone", global_position)
+
+
+func _spawn_basalt_dust_particles() -> void:
+	var particles := CPUParticles3D.new()
+	particles.amount = 6
+	particles.one_shot = true
+	particles.explosiveness = 0.9
+	particles.lifetime = 0.45
+	
+	# Spawn symmetrically under the heavy wings
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	particles.emission_box_extents = Vector3(0.6, 0.1, 0.4)
+	particles.direction = Vector3.DOWN
+	particles.spread = 15.0
+	particles.initial_velocity_min = 1.0
+	particles.initial_velocity_max = 2.0
+	particles.gravity = Vector3(0.0, -9.8, 0.0)
+	
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.08, 0.08, 0.08)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.35, 0.35, 0.38, 0.7) # Basalt grey dust
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh.material = mat
+	
+	particles.mesh = mesh
+	particles.finished.connect(particles.queue_free)
+	get_parent().add_child(particles)
+	
+	particles.global_position = global_position + Vector3(0.0, 1.2, 0.0)
+	particles.emitting = true
+
+
+func _process(delta: float) -> void:
+	if domain_entity.is_dead:
+		return
+			
 	if is_instance_valid(_model_node):
-		_animation_time += delta
 		var state := 0
 		if has_meta(GargoyleAIBehavior.META_STATE):
 			state = get_meta(GargoyleAIBehavior.META_STATE) as int
@@ -170,7 +238,6 @@ func _physics_process(delta: float) -> void:
 
 	_apply_absolute_boundary_forcefield(delta)
 	
-	# Symmetrical interface update tick (Resolves empty invisible nameplate)
 	quest_check_timer -= delta
 	if quest_check_timer <= 0.0:
 		quest_check_timer = 0.5

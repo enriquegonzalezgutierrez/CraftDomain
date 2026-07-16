@@ -1,7 +1,14 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/SharkAIBehavior.gd
-# Description: Specialized AI behavior strategy implementing the Great White 
-#              Shark's aquatic predator routines. Decomposed into short methods (SRP).
+# Description: Pure Domain AI behavior strategy implementing hunting and 
+#              hydrodynamic patrolling for the hostile Great White Shark.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly shark state 
+#   transitions, scent tracking, and attack triggers.
+# - Open-Closed Principle (OCP): Extends IAIBehavior, closing existing 
+#   movement systems to modification.
+# - Volume-Based Navigation: Evaluates fluid/air volume transitability, 
+#   completely eliminating floor-bound boundary check bugs for aquatic entities.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -91,9 +98,7 @@ func _process_player_hunting(host: Object, player_node: Object, delta: float) ->
 
 
 func _execute_shark_bite(host: Object, ai: Object, player_node: Object, to_player: Vector3, delta: float) -> void:
-	# Avoid unused parameters warning
 	var _d := delta
-	
 	host.set_meta(META_SHARK_STATE, State.LEAP_ATTACK)
 	
 	var velocity: Vector3 = host.get("velocity") as Vector3
@@ -134,6 +139,8 @@ func _process_aquatic_patrol(host: Object, delta: float) -> void:
 		var parent: Node = host.call("get_parent") as Node
 		var angle := randf() * TAU
 		var candidate_dir := Vector3(cos(angle), 0.0, sin(angle))
+		
+		# Proactively verify transitability of the target coordinate
 		wander_dir = candidate_dir if _is_direction_safe_shark(host, candidate_dir, parent) else Vector3.ZERO
 		host.set_meta(META_WANDER_DIR, wander_dir)
 		host.set_meta(META_WANDER_TIMER, wander_timer)
@@ -166,16 +173,6 @@ func _initialize_metadata_if_missing(host: Object) -> void:
 	if not host.has_meta(META_SHARK_STATE): host.set_meta(META_SHARK_STATE, State.SWIMMING)
 
 
-func _reset_shark_state(host: Object) -> void:
-	var ai: Object = host.get("ai_component")
-	if is_instance_valid(ai):
-		ai.set("current_task", TASK_IDLE)
-		ai.set("wander_direction", Vector3.ZERO)
-	host.set_meta(META_WANDER_TIMER, 0.0)
-	host.set_meta(META_WANDER_DIR, Vector3.ZERO)
-	host.set_meta(META_SHARK_STATE, State.SWIMMING)
-
-
 func _get_player_node(host: Object) -> Object:
 	if host.has_method("get_parent"):
 		var parent: Node = host.call("get_parent") as Node
@@ -184,18 +181,22 @@ func _get_player_node(host: Object) -> Object:
 	return null
 
 
+## Fluid Volume Scanner: Validates if the target coordinate is safely transitable (Water, Lava, or Air during leaps)
 func _is_direction_safe_shark(host: Object, dir: Vector3, world_node: Node) -> bool:
-	if not is_instance_valid(world_node) or not "world_state" in world_node: return true
+	if not is_instance_valid(world_node) or not "world_state" in world_node: 
+		return true
 	var ws: WorldState = world_node.get("world_state") as WorldState
-	if ws == null: return true
+	if ws == null: 
+		return true
 	
 	var host_pos: Vector3 = host.get("global_position")
 	var check_pos := host_pos + dir * 2.0
-	var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
-	var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
-	var block_below := ws.get_block(block_below_coord)
-	var block_at := ws.get_block(block_at_coord)
 	
-	if BlockType.is_solid(block_at): return false
+	# Map the 3D coordinate the shark wishes to swim into
+	var target_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
+	var target_block := ws.get_block(target_coord)
 	
-	return block_below == 6 or block_at == 6
+	# Safe to swim if target is fluid (Water 6, Lava 15) or Air (0, for leaps)
+	var is_fluid_or_air: bool = (target_block == 6 or target_block == 15 or target_block == 0)
+	
+	return is_fluid_or_air and not BlockType.is_solid(target_block)
