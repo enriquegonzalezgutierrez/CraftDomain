@@ -63,6 +63,9 @@ func _init_registries() -> void:
 	DialogueRegistry.initialize_dialogue_database()
 	RecipeRegistry.initialize_recipes()
 	
+	# Apply customized gamepad hardware rebindings on startup
+	GamepadBindingsRepository.load_and_apply_bindings()
+	
 	# Activating Modding API: Scan and compile community mods on boot
 	ModLoaderService.scan_and_load_mods()
 
@@ -136,11 +139,8 @@ func _register_civilian_professions(h_land: int) -> void:
 
 
 func _register_campaign_bosses(h_land: int) -> void:
-	# Act I Boss: Lithic Lurker (ID 50)
 	_register_scene_mob(50, LithicLurkerEntity, h_land, LithicLurkerAIBehavior.new())
-	# Act III Boss: Obsidian Colossus (ID 51)
 	_register_scene_mob(51, ObsidianColossusEntity, h_land, ObsidianColossusAIBehavior.new())
-	# Act IV Boss: Weaver Malakor (ID 52)
 	_register_scene_mob(52, WeaverMalakorEntity, h_land, WeaverMalakorAIBehavior.new())
 
 
@@ -265,7 +265,6 @@ func _init_audio_and_menu() -> void:
 	network_service.name = "NetworkService"
 	add_child(network_service)
 	
-	# Instantiate and attach the P2P network adapter under the network service node
 	p2p_network_adapter = P2PNetworkAdapter.new()
 	p2p_network_adapter.name = "P2PNetworkAdapter"
 	network_service.add_child(p2p_network_adapter)
@@ -317,7 +316,6 @@ func _cleanup_and_load_menu(unload_screen: Panel) -> void:
 		world_controller.queue_free()
 		world_controller = null
 		
-	# Clean up the diagnostic showcase room node to prevent visual overlaps on menu exit
 	_cleanup_showcase_room_if_exists()
 	
 	if is_instance_valid(audio_service):

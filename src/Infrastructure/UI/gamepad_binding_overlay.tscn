@@ -1,0 +1,204 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/UI/GamepadBindingOverlay.gd" id="1_overlay"]
+[ext_resource type="Script" path="res://src/Infrastructure/UI/GamepadBindingController.gd" id="2_controller"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_backdrop"]
+bg_color = Color(0.02, 0.02, 0.03, 0.75)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.06, 0.06, 0.08, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.3, 0.85, 1, 0.4)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 25
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font_size = 20
+font_color = Color(1, 0.85, 0.2, 1)
+outline_size = 4
+outline_color = Color(0, 0, 0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.12, 0.12, 0.15, 0.7)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.25, 0.25, 0.3, 0.5)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.18, 0.18, 0.22, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.85, 0.2, 0.8)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_btn_focus"]
+
+[sub_resource type="Theme" id="Theme_gamepad"]
+Button/font_sizes/font_size = 13
+Button/styles/focus = SubResource("StyleBoxEmpty_btn_focus")
+Button/styles/hover = SubResource("StyleBoxFlat_btn_hover")
+Button/styles/normal = SubResource("StyleBoxFlat_btn_normal")
+Button/styles/pressed = SubResource("StyleBoxFlat_btn_normal")
+
+[node name="GamepadBindingOverlay" type="Panel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_backdrop")
+script = ExtResource("1_overlay")
+
+[node name="GamepadBindingController" type="Node" parent="."]
+script = ExtResource("2_controller")
+
+[node name="Card" type="Panel" parent="."]
+custom_minimum_size = Vector2(480, 560)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -240.0
+offset_top = -280.0
+offset_right = 240.0
+offset_bottom = 280.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("Theme_gamepad")
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="VBox" type="VBoxContainer" parent="Card"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="Card/VBox"]
+layout_mode = 2
+text = "BUTTON_PAD_TITLE"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="Card/VBox"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="Grid" type="GridContainer" parent="Card/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/h_separation = 20
+theme_override_constants/v_separation = 12
+columns = 2
+
+[node name="JumpLabel" type="Label" parent="Card/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BUTTON_PAD_JUMP_LABEL"
+
+[node name="JumpButton" type="Button" parent="Card/VBox/Grid"]
+custom_minimum_size = Vector2(160, 36)
+layout_mode = 2
+text = "BUTTON_PAD_UNKNOWN"
+
+[node name="AttackLabel" type="Label" parent="Card/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BUTTON_PAD_ATTACK_LABEL"
+
+[node name="AttackButton" type="Button" parent="Card/VBox/Grid"]
+custom_minimum_size = Vector2(160, 36)
+layout_mode = 2
+text = "BUTTON_PAD_UNKNOWN"
+
+[node name="InteractLabel" type="Label" parent="Card/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BUTTON_PAD_INTERACT_LABEL"
+
+[node name="InteractButton" type="Button" parent="Card/VBox/Grid"]
+custom_minimum_size = Vector2(160, 36)
+layout_mode = 2
+text = "BUTTON_PAD_UNKNOWN"
+
+[node name="InventoryLabel" type="Label" parent="Card/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BUTTON_PAD_INVENTORY_LABEL"
+
+[node name="InventoryButton" type="Button" parent="Card/VBox/Grid"]
+custom_minimum_size = Vector2(160, 36)
+layout_mode = 2
+text = "BUTTON_PAD_UNKNOWN"
+
+[node name="CraftLabel" type="Label" parent="Card/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BUTTON_PAD_CRAFT_LABEL"
+
+[node name="CraftButton" type="Button" parent="Card/VBox/Grid"]
+custom_minimum_size = Vector2(160, 36)
+layout_mode = 2
+text = "BUTTON_PAD_UNKNOWN"
+
+[node name="MapLabel" type="Label" parent="Card/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BUTTON_PAD_MAP_LABEL"
+
+[node name="MapButton" type="Button" parent="Card/VBox/Grid"]
+custom_minimum_size = Vector2(160, 36)
+layout_mode = 2
+text = "BUTTON_PAD_UNKNOWN"
+
+[node name="PauseLabel" type="Label" parent="Card/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BUTTON_PAD_PAUSE_LABEL"
+
+[node name="PauseButton" type="Button" parent="Card/VBox/Grid"]
+custom_minimum_size = Vector2(160, 36)
+layout_mode = 2
+text = "BUTTON_PAD_UNKNOWN"
+
+[node name="ResetButton" type="Button" parent="Card/VBox"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "BUTTON_PAD_RESET"
+
+[node name="CloseButton" type="Button" parent="Card/VBox"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "SETTINGS_BACK"

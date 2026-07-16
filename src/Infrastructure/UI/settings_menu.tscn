@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://c6b7v8nak1q5"]
+[gd_scene load_steps=15 format=3 uid="uid://c6b7v8nak1q5"]
 
 [ext_resource type="Script" path="res://src/Infrastructure/UI/SettingsMenu.gd" id="1_script"]
 
@@ -126,7 +126,7 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="MenuCard" type="Panel" parent="CenterContainer"]
-custom_minimum_size = Vector2(420, 590)
+custom_minimum_size = Vector2(420, 650)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
@@ -250,8 +250,17 @@ alignment = 1
 max_length = 16
 
 [node name="Spacer3" type="Control" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 14)
+custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
+
+[node name="GamepadButton" type="Button" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_gray_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_gray_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_gray_pressed")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "SETTINGS_GAMEPAD_BINDINGS"
 
 [node name="BackButton" type="Button" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 48)

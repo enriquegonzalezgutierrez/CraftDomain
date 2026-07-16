@@ -4,8 +4,8 @@
 #              dynamic localizations, and persistence.
 # SOLID COMPLIANCE: Class limits set < 300 lines (SRP). All monolithic
 #              loops decomposed. Every method strictly remains below 20 lines.
-#              Corrected: Out-of-bounds initialization crash resolved by
-#              re-ordering populating and selection steps.
+# - Open-Closed Principle (OCP): Integrates the custom Gamepad Binding Overlay 
+#   via runtime instantiation without changing core settings repositories.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -13,6 +13,8 @@ class_name SettingsMenu
 extends Panel
 
 signal closed
+
+const BINDING_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/gamepad_binding_overlay.tscn")
 
 @onready var _menu_card: Panel = $CenterContainer/MenuCard
 
@@ -32,6 +34,7 @@ signal closed
 @onready var _lang_opt: OptionButton = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/LangOptionButton
 @onready var _name_edit: LineEdit = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/NameEdit
 
+@onready var _gamepad_btn: Button = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/GamepadButton
 @onready var _apply_btn: Button = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/ResHBox/ApplyButton
 @onready var _back_btn: Button = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/BackButton
 
@@ -45,6 +48,7 @@ func _ready() -> void:
 	_sfx_slider.value_changed.connect(_on_sfx_changed)
 	_dist_slider.value_changed.connect(_on_render_distance_changed)
 	
+	_gamepad_btn.pressed.connect(_on_gamepad_bindings_pressed)
 	_apply_btn.pressed.connect(_on_apply_resolution_pressed)
 	_lang_opt.item_selected.connect(_on_language_changed)
 	
@@ -90,6 +94,7 @@ func _refresh_localized_text() -> void:
 	if is_instance_valid(_res_label): _res_label.text = tr("SETTINGS_RESOLUTION")
 	if is_instance_valid(_lang_label): _lang_label.text = tr("SETTINGS_LANGUAGE")
 	if is_instance_valid(_name_label): _name_label.text = tr("SETTINGS_USERNAME")
+	if is_instance_valid(_gamepad_btn): _gamepad_btn.text = tr("SETTINGS_GAMEPAD_BINDINGS").to_upper()
 	if is_instance_valid(_back_btn): _back_btn.text = tr("SETTINGS_BACK").to_upper()
 	if is_instance_valid(_apply_btn): _apply_btn.text = tr("SETTINGS_APPLY").to_upper()
 	
@@ -200,6 +205,15 @@ func _on_language_changed(index: int) -> void:
 		TranslationServer.set_locale("es")
 		
 	_save_all_current_settings()
+
+
+func _on_gamepad_bindings_pressed() -> void:
+	var overlay := BINDING_OVERLAY_SCENE.instantiate() as GamepadBindingOverlay
+	add_child(overlay)
+	overlay.closed.connect(func() -> void:
+		overlay.queue_free()
+	)
+	AudioService.play_sfx_static("ui_click")
 
 
 func _save_all_current_settings() -> void:
