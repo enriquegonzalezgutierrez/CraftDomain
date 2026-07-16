@@ -483,4 +483,8 @@
   "BUTTON_PAD_L2": "Gatillo Izquierdo (L2)",
   "BUTTON_PAD_R2": "Gatillo Derecho (R2)",
   "BUTTON_PAD_UNKNOWN": "No Mapeado",
+
+  "NPC_NAME_WEAVER_MALAKOR": "Tejedor Malakor",
+  "SHOWCASE_TASK_STUNNED": "NÚCLEO EXPUESTO",
+  "SHOWCASE_TASK_FRACTURING": "FRACTURANDO LA ARENA",
 }

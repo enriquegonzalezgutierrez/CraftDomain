@@ -38,7 +38,7 @@ var _ui_accumulated_time: float = 0.0
 
 # Manual Override state trackers (DIP / OCP Aligned)
 var _current_override_index: int = 0
-var _override_states: Array[int] = [-1, 0, 1, 5, 6] # -1 representando Modo Autónomo/Auto
+var _override_states: Array[int] = [-1, 0, 1, 5, 6] # -1 representing Autonomous/Auto
 
 # UI Node References
 var _sidebar_vbox: VBoxContainer
@@ -260,6 +260,11 @@ func _populate_sidebar_mobs_deck() -> void:
 	for spawn_id: int in keys:
 		var btn := Button.new()
 		var translation_key := _get_mob_translation_key(spawn_id)
+		
+		# Skip invalid or deprecated entity keys to prevent broken UI
+		if translation_key == "INVENTORY_UNKNOWN":
+			continue
+			
 		btn.text = " " + tr("SHOWCASE_SPAWN_PREFIX") + " " + tr(translation_key).to_upper()
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
@@ -337,7 +342,7 @@ func _on_override_pressed() -> void:
 		
 	_update_override_button_label()
 	
-	# Forzar un refresco síncrono e inmediato en las etiquetas flotantes
+	# Force synchronous update of the hovering labels
 	if _active_subject.has_method("_update_quest_bubble_state"):
 		_active_subject.call("_update_quest_bubble_state")
 		
@@ -417,6 +422,7 @@ func _get_mob_translation_key(spawn_id: int) -> String:
 		13: return "NPC_NAME_GOBLIN"
 		50: return "NPC_NAME_LITHIC_LURKER"
 		51: return "NPC_NAME_OBSIDIAN_COLOSSUS"
+		52: return "NPC_NAME_WEAVER_MALAKOR" # INTEGRATED: Act IV Boss support mapping
 		100: return "NPC_NAME_VILLAGER"
 		101: return "NPC_NAME_MERCHANT"
 		102: return "NPC_NAME_GUARD"
