@@ -2,13 +2,11 @@
 # Pathfile: res://src/Infrastructure/World/PropSpawningService.gd
 # Description: Infrastructure Service responsible for calculating and spawning
 #              inert scenery props and interactive decorations inside loaded chunks.
-# SOLID COMPLIANCE: 
+# SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates all static prop instantiations.
-# - Open-Closed Principle (OCP): Reconnected the Highway Streetlight Generator,
-#   dynamically injecting the regional Biome palettes into the streetlight props.
-# - Structural Ground Fix: Added a specialized foundation scanner to allow 
-#   architectural props to spawn on sterile blocks (like Stone), bypassing 
-#   the biological `is_spawnable_soil` restriction.
+# - Thread-Safe Physics (DDD Inversion): Removed direct physics server space queries 
+#   (which caused thread locks during idle frames) in favor of pure, 
+#   high-performance, and thread-safe WorldState voxel occupancy checks.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -59,7 +57,6 @@ func _scatter_wilderness_vegetation(chunk: Chunk, chunk_offset: Vector3, world_s
 	var rng := RandomNumberGenerator.new()
 	rng.seed = scatter_hash
 	
-	# Seeds 4 to 8 vegetation props per chunk for realistic organic density
 	var plants_count := rng.randi_range(4, 8)
 	for i in range(plants_count):
 		_spawn_random_vegetation_prop(chunk_offset, world_state, world_node, biome, rng, entities_list)
@@ -73,7 +70,6 @@ func _spawn_random_vegetation_prop(chunk_offset: Vector3, world_state: WorldStat
 	var global_x: float = chunk_offset.x + rx
 	var global_z: float = chunk_offset.z + rz
 	
-	# HIGHWAY PROTECTION EXCLUSION: Abort spawning before scanning ground if on roads
 	if RoadGeneratorService.is_on_road(global_x, global_z):
 		return
 		
@@ -93,7 +89,7 @@ func _spawn_megastructure_props(chunk_pos: Vector3i, world_state: WorldState, wo
 		
 		if PropRegistry.has_prop(mob_id):
 			var spawn_pos := exact_pos
-			if _is_physics_spawn_space_free(world_node, spawn_pos):
+			if _is_voxel_spawn_space_free(world_state, spawn_pos):
 				var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
 				if BlockType.is_solid(block_at_pos):
 					spawn_pos.y = _get_structural_ground_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
@@ -103,10 +99,6 @@ func _spawn_megastructure_props(chunk_pos: Vector3i, world_state: WorldState, wo
 					world_node.add_child(prop)
 					entities_list.append(prop)
 
-
-# ==============================================================================
-# PROCEDURAL HIGHWAY STREETLIGHTS INTEGRATION
-# ==============================================================================
 
 func _spawn_roadside_streetlights(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, entities_list: Array[Node]) -> void:
 	var lamps := RoadGeneratorService.get_roadside_lamps_for_chunk(chunk_pos)
@@ -118,32 +110,25 @@ func _evaluate_and_spawn_streetlight(lamp_pos: Vector3, chunk_pos: Vector3i, wor
 	var gx := floori(lamp_pos.x)
 	var gz := floori(lamp_pos.z)
 	
-	# Structural props bypass biological soil filters and use raw bedrock foundations
 	var gy := _get_structural_ground_y(world_state, gx, gz)
 	if gy <= 0.0: 
-		print("[PropSpawning] Rejected Streetlight: No structural ground at X:%d Z:%d" % [gx, gz])
 		return
 	
-	# Liquid shield: Ensure it doesn't spawn floating on the ocean or lava!
 	var floor_block := world_state.get_block(Vector3i(gx, floori(gy - 1.0), gz))
 	if floor_block == BlockType.Type.WATER or floor_block == BlockType.Type.LAVA:
-		print("[PropSpawning] Rejected Streetlight: Over liquid at X:%d Z:%d" % [gx, gz])
 		return
 		
 	var spawn_pos := Vector3(lamp_pos.x, gy, lamp_pos.z)
-	_instantiate_streetlight(spawn_pos, chunk_pos, world_node, list)
+	_instantiate_streetlight(spawn_pos, chunk_pos, world_state, world_node, list)
 
 
-func _instantiate_streetlight(spawn_pos: Vector3, chunk_pos: Vector3i, world_node: Node, list: Array[Node]) -> void:
-	if _is_physics_spawn_space_free(world_node, spawn_pos):
-		var prop := PropRegistry.create_prop(202, spawn_pos) # 202 = StreetlightEntity
+func _instantiate_streetlight(spawn_pos: Vector3, chunk_pos: Vector3i, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
+	if _is_voxel_spawn_space_free(world_state, spawn_pos):
+		var prop := PropRegistry.create_prop(202, spawn_pos) 
 		if prop != null:
-			print("[PropSpawning] Successfully spawned Streetlight at: ", spawn_pos)
 			_apply_streetlight_theme(prop, chunk_pos, world_node)
 			world_node.add_child(prop)
 			list.append(prop)
-	else:
-		print("[PropSpawning] Rejected Streetlight: Physics space blocked at ", spawn_pos)
 
 
 func _apply_streetlight_theme(prop: Node, chunk_pos: Vector3i, world_node: Node) -> void:
@@ -167,7 +152,6 @@ func _spawn_and_register_prop(prop_id: int, offset: Vector3, lx: float, lz: floa
 		list.append(prop)
 
 
-## Evaluates ground height explicitly for heavy architectural structures (Ignores fertility)
 func _get_structural_ground_y(world_state: WorldState, global_x: int, global_z: int) -> float:
 	for y in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
@@ -179,7 +163,6 @@ func _get_structural_ground_y(world_state: WorldState, global_x: int, global_z: 
 	return -1.0
 
 
-## Evaluates ground height for organic props (Enforces `is_spawnable_soil` fertility)
 func _get_biological_ground_y(world_state: WorldState, global_x: int, global_z: int) -> float:
 	for y in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
@@ -190,11 +173,22 @@ func _get_biological_ground_y(world_state: WorldState, global_x: int, global_z: 
 			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
 			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
 			
-			# LIQUID OCEAN SHIELD: Prohibit spawning if the above blocks are WATER (ID 6) or LAVA (ID 15)
 			if space_above_1 == BlockType.Type.AIR and space_above_2 == BlockType.Type.AIR:
 				return float(y) + 1.0
 				
 	return -1.0
+
+
+## Symmetrical Voxel Occupancy Solver: Pure, thread-safe memory lookup replacing 
+## expensive and non-thread-safe C++ physics direct space state queries.
+func _is_voxel_spawn_space_free(world_state: WorldState, spawn_pos: Vector3) -> bool:
+	var base_coord := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
+	
+	var feet_block := world_state.get_block(base_coord)
+	var chest_block := world_state.get_block(base_coord + Vector3i(0, 1, 0))
+	
+	# The coordinate is legally free if both feet and chest spaces are non-solid
+	return not BlockType.is_solid(feet_block) and not BlockType.is_solid(chest_block)
 
 
 func _detect_chunk_biome_id(chunk_pos: Vector3i, world_node: Node) -> int:
@@ -219,19 +213,3 @@ func _is_village_chunk(chunk_pos: Vector3i, world_node: Node) -> bool:
 			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
 			return profile.landmark_id == 3
 	return false
-
-
-func _is_physics_spawn_space_free(world_node: Node, spawn_pos: Vector3) -> bool:
-	if not world_node.is_inside_tree(): return true
-	var space_state := world_node.get_viewport().find_world_3d().direct_space_state
-	if space_state == null: return true
-		
-	var query := PhysicsShapeQueryParameters3D.new()
-	var sphere := SphereShape3D.new()
-	sphere.radius = 0.35 
-	query.shape = sphere
-	query.transform = Transform3D(Basis(), spawn_pos + Vector3(0.0, 0.4, 0.0))
-	query.collision_mask = 1 
-	
-	var results := space_state.intersect_shape(query, 1)
-	return results.is_empty()

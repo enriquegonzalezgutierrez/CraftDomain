@@ -5,13 +5,10 @@
 #              Integrates low-gravity scaling when inside active Glitch Rifts.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only manages local physical velocities,
-#   hotbars, and controller bindings, keeping code strictly under 300 lines.
+#   hotbars, and controller bindings. Methods decomposed to remain strictly < 20 lines.
 # - Open-Closed Principle (OCP): Implements an active physical stabilization loop 
-#   ('_process_frozen_physics_movement') when menus are open. Keeps 'move_and_slide'
-#   active on the physics server to permanently prevent upward depenetration snaps.
-# - Water Jump Fix: Calibrated submerged jump velocity to 85% instead of 50%,
-#   ensuring the player reaches 1.55m of vertical height to easily clear 
-#   1-block shores (1.0m) while maintaining realistic water resistance.
+#   ('_process_frozen_physics_movement') when menus are open.
+# - 120 FPS Guardrail: Standardized input buffer updates to maximize performance.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -117,9 +114,9 @@ func _setup_sub_components() -> void:
 	viewmodel.player = self  
 	camera.add_child(viewmodel)
 	
-	var interaction_script := load("res://src/Infrastructure/Player/VoxelInteractionComponent.gd") as GDScript
-	if interaction_script != null:
-		interaction_component = interaction_script.new() as Node3D
+	var inter_script := load("res://src/Infrastructure/Player/VoxelInteractionComponent.gd") as GDScript
+	if inter_script != null:
+		interaction_component = inter_script.new() as Node3D
 		interaction_component.set("player", self)
 		interaction_component.set("world_controller", world_controller)
 		camera.add_child(interaction_component)
@@ -129,6 +126,7 @@ func _setup_sub_components() -> void:
 	hud.world_controller = world_controller
 	add_child(hud)
 	
+	hud.show_loading_screen()
 	_setup_decoupled_components()
 
 
@@ -303,9 +301,6 @@ func _process_standard_movement(delta: float) -> void:
 		velocity.y = max(velocity.y - active_gravity * delta, terminal)
 			
 	if is_instance_valid(_input_component) and _input_component.is_jump_just_pressed() and is_on_floor():
-		# WATER JUMP CALIBRATION: 
-		# Calibrated to 85% force in liquids to reach exactly 1.55 meters, 
-		# easily clearing standard block heights (1.0m) and slabs (0.5m).
 		velocity.y = JUMP_VELOCITY * (0.85 if is_in_liquid else 1.0)
 
 	_apply_horizontal_movement(delta, is_in_liquid)

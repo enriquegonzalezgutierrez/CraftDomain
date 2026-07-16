@@ -6,11 +6,9 @@
 # SOLID COMPLIANCE:
 # - Don't Repeat Yourself (DRY): Purged duplicate adjacent-chunk redraw logic. 
 #   Block mutations are now correctly delegated to ChunkLifecycleService.
-# - Dependency Inversion Principle (DIP): Bootstraps and connects isolated 
-#   domain services (Agriculture, Fluids, Structural Integrity) on ready.
-# - Single Responsibility Principle (SRP): Decomposed target structural props 
-#   into elastic falling-bounces supporting both StaticBody3D and Node3D vegetation
-#   through 100% strong static typing and grid-cell snapping.
+# - Dependency Inversion Principle (DIP): Injects isolated domain services.
+# - Thread-Safe Physics: Shifted dynamic world updates to _physics_process to 
+#   guarantee safe direct space state queries under multi-threaded physics.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -137,15 +135,19 @@ func _process(delta: float) -> void:
 		
 	if is_instance_valid(_agriculture_service): _agriculture_service.process_agriculture_ticks(delta)
 	if is_instance_valid(_fluid_service): _fluid_service.process_fluid_simulation(delta)
+		
+	if is_instance_valid(chunk_lifecycle):
+		chunk_lifecycle.process_frame_queues(delta)
+
+
+func _physics_process(delta: float) -> void:
+	if not is_instance_valid(player): return
 	
 	_update_timer += delta
 	if _update_timer >= UPDATE_INTERVAL:
 		_update_timer = 0.0
-		_process_dynamic_world()
+		_process_dynamic_world() # Safely executed inside synchronized physics frames!
 		_process_day_night_lighting()
-		
-	if is_instance_valid(chunk_lifecycle):
-		chunk_lifecycle.process_frame_queues(delta)
 
 
 func _exit_tree() -> void:
@@ -193,13 +195,10 @@ func _apply_procedural_gravity_on_block_broken(global_pos: Vector3i, type: Block
 
 func _check_and_resolve_floating_props(mined_pos: Vector3i) -> void:
 	for child: Node in get_children():
-		# 100% Typesafe Class check: Validates C++ class inheritance directly
 		if child is Node3D and _is_unsupported_prop_type(child):
 			var prop_node := child as Node3D 
 			var c_pos: Vector3 = prop_node.global_position
 			
-			# GRID-CELL SNAP LOGIC: 
-			# Evaluates if the dynamic float horizontal coordinates fall within the 1x1 boundaries of the mined block.
 			var match_x: bool = floori(c_pos.x) == mined_pos.x
 			var match_z: bool = floori(c_pos.z) == mined_pos.z
 			var match_y: bool = absf(c_pos.y - (float(mined_pos.y) + 1.0)) <= 0.4
@@ -240,10 +239,8 @@ func _play_prop_impact_sound(prop: Node3D) -> void:
 		return
 		
 	if prop is VegetationProp:
-		# Soft vegetation rustle sound effect for wild flora
 		AudioService.play_sfx_static("footstep_grass", prop.global_position)
 	else:
-		# Solid stone impact sound effect for heavy structural props
 		AudioService.play_sfx_static("footstep_stone", prop.global_position)
 
 

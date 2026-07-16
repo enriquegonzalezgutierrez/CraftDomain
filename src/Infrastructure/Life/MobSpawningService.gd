@@ -2,9 +2,11 @@
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service responsible for calculating and spawning
 #              NPC, Fauna, and hostile dynamic classes inside loaded chunks.
-# SOLID COMPLIANCE: Class limits set < 150 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 20 lines.
-#              Corrected: Purged all spawning print logs for extreme performance.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly dynamic entity spawning.
+# - Thread-Safe Physics (DDD Inversion): Removed direct physics server space queries 
+#   (which caused thread locks during idle frames) in favor of pure, 
+#   high-performance, and thread-safe WorldState voxel occupancy checks.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -68,7 +70,7 @@ func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState
 		
 		if MobRegistry.has_mob(mob_id):
 			var spawn_pos := exact_pos
-			if _is_physics_spawn_space_free(world_node, spawn_pos):
+			if _is_voxel_spawn_space_free(world_state, spawn_pos):
 				var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
 				if BlockType.is_solid(block_at_pos):
 					spawn_pos.y = world_state.get_highest_solid_y(floori(spawn_pos.x), floori(spawn_pos.z))
@@ -90,7 +92,7 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	if gy < 0.0: return 
 		
 	var pos := Vector3(offset.x + lx, gy, offset.z + lz)
-	if _is_physics_spawn_space_free(world_node, pos):
+	if _is_voxel_spawn_space_free(world_state, pos):
 		var mob := MobRegistry.create_mob(spawn_id, pos)
 		if mob != null:
 			world_node.add_child(mob)
@@ -170,20 +172,16 @@ func _get_water_surface_y(world_state: WorldState, global_x: int, global_z: int)
 	return -1.0
 
 
-func _is_physics_spawn_space_free(world_node: Node, spawn_pos: Vector3) -> bool:
-	if not world_node.is_inside_tree(): return true
-	var space_state := world_node.get_viewport().find_world_3d().direct_space_state
-	if space_state == null: return true
-		
-	var query := PhysicsShapeQueryParameters3D.new()
-	var sphere := SphereShape3D.new()
-	sphere.radius = 0.35 
-	query.shape = sphere
-	query.transform = Transform3D(Basis(), spawn_pos + Vector3(0.0, 0.4, 0.0))
-	query.collision_mask = 1 
+## Symmetrical Voxel Occupancy Solver: Pure, thread-safe memory lookup replacing 
+## expensive and non-thread-safe C++ physics direct space state queries.
+func _is_voxel_spawn_space_free(world_state: WorldState, spawn_pos: Vector3) -> bool:
+	var base_coord := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
 	
-	var results := space_state.intersect_shape(query, 1)
-	return results.is_empty()
+	var feet_block := world_state.get_block(base_coord)
+	var chest_block := world_state.get_block(base_coord + Vector3i(0, 1, 0))
+	
+	# The coordinate is legally free if both feet and chest spaces are non-solid
+	return not BlockType.is_solid(feet_block) and not BlockType.is_solid(chest_block)
 
 
 func _detect_chunk_biome_id(chunk_pos: Vector3i, world_node: Node) -> int:
