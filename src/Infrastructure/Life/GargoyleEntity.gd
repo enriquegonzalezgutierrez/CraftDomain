@@ -190,7 +190,7 @@ func _process(delta: float) -> void:
 			_model_node.position.y = 2.5 + hover_bob
 			
 			if is_moving:
-				_model_node.rotation.z = sin(_animation_time * 14.0) * 0.18
+				_model_node.rotation.z = sin(_animation_time * 16.0) * 0.18
 				_model_node.rotation.x = deg_to_rad(12.0)
 			else:
 				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
@@ -229,7 +229,7 @@ func _process_petrified_state(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 	else:
-		# Solución física corregida: Aplicación del snap a las físicas de la gárgola
+		# Corrected physical solution: Apply the downward snap to the gargoyle physics
 		velocity.y = -1.2
 
 

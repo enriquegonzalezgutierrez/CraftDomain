@@ -382,9 +382,9 @@ func _apply_grounded_snap(delta: float) -> void:
 	if _get_habitat() == 2:
 		velocity.y -= gravity * delta
 	else:
-		# Solución física: Incrementamos el snap descendente para forzar al
-		# motor de físicas de Godot a revaluar colisiones en cada fotograma,
-		# superando el safe_margin (0.015) y evitando que queden suspendidos.
+		# Physical solution: Increase downward snap velocity to force Godot's
+		# physics solver to re-evaluate floor collisions on every frame,
+		# exceeding the safe_margin (0.015) and preventing entities from hovering.
 		velocity.y = -1.2
 
 

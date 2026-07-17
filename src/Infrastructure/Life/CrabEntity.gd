@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/CrabEntity.gd
 # Description: Physical character controller for the Amphibious Beach Crab.
-#              Sustains strict shore and water limits polimorphically (OCP/LSP).
+#              Sustains strict shore and water limits polymorphically (OCP/LSP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -36,12 +36,14 @@ func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2)
 
 
-## Polymorphic Override (OCP/LSP Compliant): Restricts the crab to shore and ocean blocks
+## Polymorphic Override (OCP/LSP Compliant): Restricts habitat to shores/oceans.
+## Includes AIR as a habitable transition block to allow gravity drops.
 func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
 	return (
 		block_type == BlockType.Type.WATER or 
 		block_type == BlockType.Type.SAND or 
-		block_type == BlockType.Type.MUD
+		block_type == BlockType.Type.MUD or
+		block_type == BlockType.Type.AIR
 	)
 
 

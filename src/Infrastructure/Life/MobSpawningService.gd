@@ -1,12 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
-# Description: Infrastructure Service responsible for calculating and spawning
-#              NPC, Fauna, and hostile dynamic classes inside loaded chunks.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly dynamic entity spawning.
-# - Thread-Safe Physics (DDD Inversion): Removed direct physics server space queries 
-#   (which caused thread locks during idle frames) in favor of pure, 
-#   high-performance, and thread-safe WorldState voxel occupancy checks.
+# Description: Infrastructure Service responsible for managing dynamic herd
+#              spawning, local chunk populating, and threat patrols (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -50,16 +45,27 @@ func _spawn_village_mobs(chunk_offset: Vector3, world_state: WorldState, world_n
 
 func _spawn_wilderness_wildlife(chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
 	var roll := randf()
-	var spawn_chance := 0.12
+	var spawn_chance := 0.28 # Increased base spawn chance from 0.12 to 0.28
 	if is_instance_valid(biome) and biome.has_method("get_spawn_chance"):
 		spawn_chance = biome.call("get_spawn_chance") as float
 		
 	if roll < spawn_chance and is_instance_valid(biome):
 		var wildlife_ids := biome.get_wilderness_wildlife_ids()
 		if wildlife_ids.size() > 0:
-			var rand_idx := randi() % wildlife_ids.size()
-			var target_animal_id := int(wildlife_ids[rand_idx])
-			_spawn_and_register_entity(target_animal_id, chunk_offset, 8.5, 8.5, world_state, world_node, spawned_nodes)
+			_spawn_wildlife_group(wildlife_ids, chunk_offset, world_state, world_node, spawned_nodes)
+
+
+func _spawn_wildlife_group(wildlife_ids: Array[int], chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
+	var rand_idx := randi() % wildlife_ids.size()
+	var spawn_id := int(wildlife_ids[rand_idx])
+	
+	# Symmetrical Herd Spawning: Spawn a group of 2 to 4 animals together
+	var group_size := randi_range(2, 4)
+	for i: int in range(group_size):
+		# Scatter herd members randomly inside the 16x16 chunk grid
+		var rx := randf_range(2.0, 14.0)
+		var rz := randf_range(2.0, 14.0)
+		_spawn_and_register_entity(spawn_id, chunk_offset, rx, rz, world_state, world_node, spawned_nodes)
 
 
 func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
@@ -172,15 +178,12 @@ func _get_water_surface_y(world_state: WorldState, global_x: int, global_z: int)
 	return -1.0
 
 
-## Symmetrical Voxel Occupancy Solver: Pure, thread-safe memory lookup replacing 
-## expensive and non-thread-safe C++ physics direct space state queries.
 func _is_voxel_spawn_space_free(world_state: WorldState, spawn_pos: Vector3) -> bool:
 	var base_coord := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
 	
 	var feet_block := world_state.get_block(base_coord)
 	var chest_block := world_state.get_block(base_coord + Vector3i(0, 1, 0))
 	
-	# The coordinate is legally free if both feet and chest spaces are non-solid
 	return not BlockType.is_solid(feet_block) and not BlockType.is_solid(chest_block)
 
 

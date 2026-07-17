@@ -99,15 +99,9 @@ func _update_moon_rotation() -> void:
 		
 	var angle_rad := -((_current_time * TAU) - (PI / 2.0)) + PI
 	moon_light.rotation.x = angle_rad
-	moon_light.rotation.y = deg_to_rad(-145)
-	
-	var is_night := _current_time < 0.24 or _current_time > 0.76
-	if not is_night:
-		moon_light.light_energy = 0.0
-		moon_light.shadow_enabled = false
-	else:
-		moon_light.light_energy = _calculate_moon_light_intensity()
-		moon_light.shadow_enabled = moon_light.light_energy > 0.01
+	# Corrección del plano orbital: Comparte la misma rotación en Y que el Sol (35 grados)
+	# para que el desfase en X de 180 grados los coloque en horizontes opuestos.
+	moon_light.rotation.y = deg_to_rad(35)
 
 
 func _calculate_moon_light_intensity() -> float:

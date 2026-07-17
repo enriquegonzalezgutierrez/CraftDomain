@@ -1,13 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Core/Bootstrap/EntityPreloaderRegistry.gd
-# Description: Static Registry centralizing all scene preloads, mob registrations,
-#              and prop factories, completely freeing Bootstrap from carrying
-#              100+ lines of raw asset paths (SRP / OCP).
-# SOLID COMPLIANCE: Class limits set under 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 20 lines.
-# - Open-Closed Principle (OCP): Registers Act I, III, and IV Boss scenes dynamically (IDs 50, 51 & 52).
-# - Thread Safety: Replaced static compile-time initialization (_static_init)
-#   with lazy, on-demand runtime loading to prevent editor deadlocks on startup.
+# Description: Static Registry centralizing preloads of scenes, skeletal meshes,
+#              and animations to eliminate runtime disk I/O blocks (SRP / OCP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -17,25 +11,37 @@ extends RefCounted
 static var _mobs_scenes: Dictionary = {}  
 static var _props_scenes: Dictionary = {} 
 
+# Caché de RAM para modelos y animaciones esqueléticas para evitar I/O en caliente
+static var _skeletal_models: Dictionary = {}
+static var _skeletal_anims: Dictionary = {}
+
 
 static func get_mob_scene(mob_id: int) -> PackedScene:
 	_ensure_initialized()
-	if _mobs_scenes.has(mob_id):
-		return _mobs_scenes[mob_id] as PackedScene
-	return null
+	return _mobs_scenes.get(mob_id) as PackedScene
 
 
 static func get_prop_scene(prop_id: int) -> Variant:
 	_ensure_initialized()
-	if _props_scenes.has(prop_id):
-		return _props_scenes[prop_id]
-	return null
+	return _props_scenes.get(prop_id)
+
+
+static func get_skeletal_model(path: String) -> PackedScene:
+	_ensure_initialized()
+	return _skeletal_models.get(path) as PackedScene
+
+
+static func get_skeletal_animation(path: String) -> PackedScene:
+	_ensure_initialized()
+	return _skeletal_anims.get(path) as PackedScene
 
 
 static func _ensure_initialized() -> void:
 	if _mobs_scenes.is_empty() and _props_scenes.is_empty():
 		_preload_mobs()
 		_preload_props()
+		_preload_skeletal_meshes_cache()
+		_preload_skeletal_animations_cache()
 
 
 static func _preload_mobs() -> void:
@@ -67,8 +73,6 @@ static func _preload_hostile_husks() -> void:
 	_mobs_scenes[11] = preload("res://src/Infrastructure/Life/shark_entity.tscn")
 	_mobs_scenes[12] = preload("res://src/Infrastructure/Life/gargoyle_entity.tscn")
 	_mobs_scenes[13] = preload("res://src/Infrastructure/Life/goblin_entity.tscn")
-	
-	# Act I, III, and IV Boss Preloads
 	_mobs_scenes[50] = preload("res://src/Infrastructure/Life/lithic_lurker_entity.tscn")
 	_mobs_scenes[51] = preload("res://src/Infrastructure/Life/obsidian_colossus_entity.tscn")
 	_mobs_scenes[52] = preload("res://src/Infrastructure/Life/weaver_malakor_entity.tscn")
@@ -115,3 +119,88 @@ static func _preload_vegetation_props() -> void:
 	_props_scenes[233] = preload("res://src/Infrastructure/World/tulip_white_prop.tscn")
 	_props_scenes[234] = preload("res://src/Infrastructure/World/cornflower_prop.tscn")
 	_props_scenes[235] = preload("res://src/Infrastructure/World/daisy_prop.tscn")
+
+
+static func _preload_skeletal_meshes_cache() -> void:
+	_skeletal_models["res://assets/models/mobs/cyber/cyber_base.fbx"] = preload("res://assets/models/mobs/cyber/cyber_base.fbx")
+	_skeletal_models["res://assets/models/mobs/druid/druid_base.fbx"] = preload("res://assets/models/mobs/druid/druid_base.fbx")
+	_skeletal_models["res://assets/models/mobs/farmer/farmer_base.fbx"] = preload("res://assets/models/mobs/farmer/farmer_base.fbx")
+	_skeletal_models["res://assets/models/mobs/guard/guard_base.fbx"] = preload("res://assets/models/mobs/guard/guard_base.fbx")
+	_skeletal_models["res://assets/models/mobs/merchant/merchant_base.fbx"] = preload("res://assets/models/mobs/merchant/merchant_base.fbx")
+	_skeletal_models["res://assets/models/mobs/miner/miner_base.fbx"] = preload("res://assets/models/mobs/miner/miner_base.fbx")
+	_skeletal_models["res://assets/models/mobs/villager/villager_base.fbx"] = preload("res://assets/models/mobs/villager/villager_base.fbx")
+	_skeletal_models["res://assets/models/mobs/zombie/zombie_base.fbx"] = preload("res://assets/models/mobs/zombie/zombie_base.fbx")
+
+
+static func _preload_skeletal_animations_cache() -> void:
+	_preload_cyber_anims()
+	_preload_druid_anims()
+	_preload_farmer_anims()
+	_preload_guard_anims()
+	_preload_merchant_anims()
+	_preload_miner_anims()
+	_preload_villager_anims()
+	_preload_zombie_anims()
+
+
+static func _preload_cyber_anims() -> void:
+	var prefix := "res://assets/models/mobs/cyber/cyber_"
+	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/cyber/cyber_idle.fbx")
+	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/cyber/cyber_walk.fbx")
+	_skeletal_anims[prefix + "panic.fbx"] = preload("res://assets/models/mobs/cyber/cyber_panic.fbx")
+	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/cyber/cyber_jump.fbx")
+
+
+static func _preload_druid_anims() -> void:
+	var prefix := "res://assets/models/mobs/druid/druid_"
+	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/druid/druid_idle.fbx")
+	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/druid/druid_walk.fbx")
+	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/druid/druid_jump.fbx")
+
+
+static func _preload_farmer_anims() -> void:
+	var prefix := "res://assets/models/mobs/farmer/farmer_"
+	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/farmer/farmer_idle.fbx")
+	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/farmer/farmer_walk.fbx")
+	_skeletal_anims[prefix + "harvest.fbx"] = preload("res://assets/models/mobs/farmer/farmer_harvest.fbx")
+	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/farmer/farmer_jump.fbx")
+
+
+static func _preload_guard_anims() -> void:
+	var prefix := "res://assets/models/mobs/guard/guard_"
+	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/guard/guard_idle.fbx")
+	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/guard/guard_walk.fbx")
+	_skeletal_anims[prefix + "attack.fbx"] = preload("res://assets/models/mobs/guard/guard_attack.fbx")
+	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/guard/guard_jump.fbx")
+
+
+static func _preload_merchant_anims() -> void:
+	var prefix := "res://assets/models/mobs/merchant/merchant_"
+	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/merchant/merchant_idle.fbx")
+	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/merchant/merchant_walk.fbx")
+	_skeletal_anims[prefix + "panic.fbx"] = preload("res://assets/models/mobs/merchant/merchant_panic.fbx")
+	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/merchant/merchant_jump.fbx")
+
+
+static func _preload_miner_anims() -> void:
+	var prefix := "res://assets/models/mobs/miner/miner_"
+	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/miner/miner_idle.fbx")
+	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/miner/miner_walk.fbx")
+	_skeletal_anims[prefix + "attack.fbx"] = preload("res://assets/models/mobs/miner/miner_attack.fbx")
+	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/miner/miner_jump.fbx")
+
+
+static func _preload_villager_anims() -> void:
+	var prefix := "res://assets/models/mobs/villager/villager_"
+	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/villager/villager_idle.fbx")
+	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/villager/villager_walk.fbx")
+	_skeletal_anims[prefix + "panic.fbx"] = preload("res://assets/models/mobs/villager/villager_panic.fbx")
+	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/villager/villager_jump.fbx")
+
+
+static func _preload_zombie_anims() -> void:
+	var prefix := "res://assets/models/mobs/zombie/zombie_"
+	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/zombie/zombie_idle.fbx")
+	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/zombie/zombie_walk.fbx")
+	_skeletal_anims[prefix + "attack.fbx"] = preload("res://assets/models/mobs/zombie/zombie_attack.fbx")
+	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/zombie/zombie_jump.fbx")

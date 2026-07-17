@@ -96,10 +96,12 @@ static func _setup_low_end_profile(environment: Environment) -> void:
 	
 	environment.fog_enabled = true
 	environment.fog_light_color = Color(0.15, 0.18, 0.22)
-	# Calibración: Niebla visible a partir de ~45 metros para ocultar el límite de renderizado móvil
-	environment.fog_density = 0.022 
-	# Mezcla un 80% de la niebla en el horizonte para una transición esférica suave
-	environment.fog_sky_affect = 0.80 
+	
+	# Linear Depth Fog configuration for low-end devices
+	environment.fog_mode = Environment.FOG_MODE_DEPTH
+	environment.fog_depth_begin = 35.0 # Sharp clarity from 0m to 35m
+	environment.fog_depth_end = 75.0   # 100% opaque at 75m to hide mobile chunk loading
+	environment.fog_sky_affect = 0.45 
 
 
 static func _setup_high_end_profile(environment: Environment) -> void:
@@ -122,10 +124,12 @@ static func _setup_high_end_profile(environment: Environment) -> void:
 	
 	environment.fog_enabled = true
 	environment.fog_light_color = Color(0.12, 0.15, 0.22)
-	# Calibración: Niebla con presencia gradual a partir de ~60 metros (visible en la línea de árboles)
-	environment.fog_density = 0.016 
-	# Mezcla un 72% de la niebla con el domo celeste para difuminar la silueta nítida del horizonte
-	environment.fog_sky_affect = 0.72 
+	
+	# Linear Depth Fog configuration for high-end PCs (decoupled from close range)
+	environment.fog_mode = Environment.FOG_MODE_DEPTH
+	environment.fog_depth_begin = 60.0 # Absolute 100% clarity from 0m to 60m
+	environment.fog_depth_end = 110.0  # 100% opaque at 110m (perfectly hides draw-distance boundaries)
+	environment.fog_sky_affect = 0.15  # Negligible sky interference, stars/moon are fully visible
 	
 	environment.adjustment_enabled = true
 	environment.adjustment_contrast = 1.08 
