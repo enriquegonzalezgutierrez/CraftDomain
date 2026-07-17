@@ -1,13 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical base class representing NPCs and Wildlife.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly physical passive 
-#   movement, gravity slides, and hit boxes, delegating UI overlays to EntityUIComponent.
-# - Liskov Substitution Principle (LSP): Subclasses inherit these contracts 
-#   seamlessly, implementing custom habitat and naming definitions.
-# - Flight Physics Bypass: Bypasses standard environmental gravity when the entity 
-#   can fly, enabling smooth, continuous flight simulations.
+#              Coordinates physical movements, gravity slides, and hit boxes.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -359,8 +353,6 @@ func _update_sleeping_state() -> void:
 func _apply_environmental_physics(delta: float) -> void:
 	var is_in_liquid := _check_in_liquid_state()
 	
-	# Flight Physics Bypass: If the entity can fly and is actively soaring/gliding,
-	# we bypass standard heavy gravity to let the specialized flight vectors execute.
 	if _can_fly() and not is_in_liquid:
 		var flight_state := 0
 		if has_meta("avian_flight_state"):
@@ -371,18 +363,29 @@ func _apply_environmental_physics(delta: float) -> void:
 	if (not is_on_floor() or is_in_liquid) and _get_habitat() != 2 and not is_in_liquid:
 		velocity.y -= gravity * delta
 	elif is_in_liquid:
-		var habitat := _get_habitat()
-		if habitat == 2: # AQUATIC
-			velocity.y = move_toward(velocity.y, 0.0, gravity * 0.5 * delta)
-		elif habitat == 1: # AMPHIBIOUS
-			velocity.y = move_toward(velocity.y, -0.2, gravity * 0.5 * delta)
-		else: # TERRESTRIAL
-			velocity.y = move_toward(velocity.y, -1.8, gravity * 0.5 * delta)
+		_apply_liquid_buoyancy(delta)
 	else:
-		if _get_habitat() == 2 and not is_in_liquid:
-			velocity.y -= gravity * delta
-		else:
-			velocity.y = -0.1
+		_apply_grounded_snap(delta)
+
+
+func _apply_liquid_buoyancy(delta: float) -> void:
+	var habitat := _get_habitat()
+	if habitat == 2: 
+		velocity.y = move_toward(velocity.y, 0.0, gravity * 0.5 * delta)
+	elif habitat == 1: 
+		velocity.y = move_toward(velocity.y, -0.2, gravity * 0.5 * delta)
+	else: 
+		velocity.y = move_toward(velocity.y, -1.8, gravity * 0.5 * delta)
+
+
+func _apply_grounded_snap(delta: float) -> void:
+	if _get_habitat() == 2:
+		velocity.y -= gravity * delta
+	else:
+		# Solución física: Incrementamos el snap descendente para forzar al
+		# motor de físicas de Godot a revaluar colisiones en cada fotograma,
+		# superando el safe_margin (0.015) y evitando que queden suspendidos.
+		velocity.y = -1.2
 
 
 func _check_in_liquid_state() -> bool:

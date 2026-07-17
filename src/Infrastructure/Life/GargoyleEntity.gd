@@ -1,13 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/GargoyleEntity.gd
 # Description: Physical character controller for the hostile nocturnal Gargoyle.
-#              Manages day/night petrification state transitions, flight physics, 
-#              unshaded basalt dust particles, and combat tracking.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
-#   sound triggers, and particle emissions, delegating state decisions to GargoyleAIBehavior.
-# - 120 FPS Guardrail: Computes procedural material transitions, flight sways, and 
-#   basalt wing beats at 120Hz inside the physics thread to guarantee ultra-smooth movements.
+#              Manages day/night petrification state transitions and flight physics.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -27,12 +21,11 @@ var _model_base_rot: Vector3 = Vector3.ZERO
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 12)
-	entity_habitat = 0 # Terrestrial
+	entity_habitat = 0 
 	name = "Entity_GARGOYLE"
 
 
 func _ready() -> void:
-	# Group migration for O(1) hostile targeting sweeps
 	add_to_group("hostiles")
 	if is_in_group("passives"):
 		remove_from_group("passives")
@@ -57,18 +50,18 @@ func _get_entity_name_key() -> String:
 
 
 func _get_nameplate_color() -> Color:
-	return Color(0.95, 0.15, 0.15) # Hostile Red
+	return Color(0.95, 0.15, 0.15) 
 
 
 func _is_avian() -> bool:
-	return true # Treats visual animations with wing sways
+	return true 
 
 
 func _can_fly() -> bool:
 	var state := 0
 	if has_meta(GargoyleAIBehavior.META_STATE):
 		state = get_meta(GargoyleAIBehavior.META_STATE) as int
-	return state == 1 # Can fly only when awakened during the night
+	return state == 1 
 
 
 func _locate_player() -> void:
@@ -122,9 +115,9 @@ func _physics_tick(delta: float) -> void:
 	if has_meta(GargoyleAIBehavior.META_STATE):
 		state = get_meta(GargoyleAIBehavior.META_STATE) as int
 		
-	if state == 1: # STATE_AWAKE (Nocturnal Flight)
+	if state == 1: 
 		_process_gargoyle_flight_physics(delta)
-	else: # STATE_STONE (Daytime Petrification)
+	else: 
 		velocity.x = 0.0
 		velocity.z = 0.0
 
@@ -134,12 +127,10 @@ func _process_gargoyle_flight_physics(delta: float) -> void:
 	var flat_velocity := Vector2(velocity.x, velocity.z)
 	var is_moving := flat_velocity.length_squared() > 0.1
 	
-	# Smoothly hover at +2.5m altitude using sinusoidal waves
 	var target_y := 2.5 + sin(_animation_time * 4.0) * 0.22
 	velocity.y = lerp(velocity.y, (target_y - _model_node.position.y) * 5.0, delta * 6.0)
 	
 	if is_moving:
-		# Periodic basalt wing-beats: spawn grey dust particles under wings
 		if Engine.get_physics_frames() % 12 == 0:
 			_spawn_basalt_dust_particles()
 			AudioService.play_sfx_static("footstep_stone", global_position)
@@ -152,7 +143,6 @@ func _spawn_basalt_dust_particles() -> void:
 	particles.explosiveness = 0.9
 	particles.lifetime = 0.45
 	
-	# Spawn symmetrically under the heavy wings
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	particles.emission_box_extents = Vector3(0.6, 0.1, 0.4)
 	particles.direction = Vector3.DOWN
@@ -164,7 +154,7 @@ func _spawn_basalt_dust_particles() -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.08, 0.08, 0.08)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.35, 0.35, 0.38, 0.7) # Basalt grey dust
+	mat.albedo_color = Color(0.35, 0.35, 0.38, 0.7) 
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh.material = mat
@@ -226,21 +216,31 @@ func _physics_process(delta: float) -> void:
 		state = get_meta(GargoyleAIBehavior.META_STATE) as int
 
 	if state == 0: 
-		if not is_on_floor():
-			velocity.y -= gravity * delta
-		else:
-			velocity.y = -0.1
+		_process_petrified_state(delta)
 	else: 
-		velocity.y = move_toward(velocity.y, 0.0, SPEED * delta)
+		_process_awakened_state(delta)
 
+	_apply_absolute_boundary_forcefield(delta)
+	_process_timers_and_gaze(delta)
+	move_and_slide()
+
+
+func _process_petrified_state(delta: float) -> void:
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+	else:
+		# Solución física corregida: Aplicación del snap a las físicas de la gárgola
+		velocity.y = -1.2
+
+
+func _process_awakened_state(delta: float) -> void:
+	velocity.y = move_toward(velocity.y, 0.0, SPEED * delta)
 	if is_instance_valid(ai_component):
 		ai_component.process_ai(delta)
 
-	_apply_absolute_boundary_forcefield(delta)
-	
+
+func _process_timers_and_gaze(delta: float) -> void:
 	quest_check_timer -= delta
 	if quest_check_timer <= 0.0:
 		quest_check_timer = 0.5
 		_update_quest_bubble_state()
-		
-	move_and_slide()

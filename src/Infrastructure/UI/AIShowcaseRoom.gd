@@ -3,14 +3,6 @@
 # Description: Self-contained AI and Entity 3D Sandbox Laboratory. Generates mock 
 #              surroundings, A* navigation nodes, and provides decoupled spawner
 #              interfaces for diagnostic testing.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively the 3D physics 
-#   environment, light/camera rigs, and spawning, completely free of 2D UI panels.
-# - Open-Closed Principle (OCP): Integrates the decoupled AIShowcaseDashboard 
-#   dynamically under the scene tree during boot.
-# - Zero Magic Numbers (Section 5.3): All physical offsets, dimensions, and IDs 
-#   extracted to typed constants.
-# - Zero Hardcoded Strings (Section 5.2): Contains no user-facing UI labels.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -20,7 +12,6 @@ extends Node3D
 signal subject_spawned(node: CharacterBody3D)
 signal subject_despawned
 
-# --- GEOMETRIC AND PERFORMANCE CONSTANTS (Section 5.3) ---
 const PLATFORM_SIZE: int = 16
 const PLATFORM_Y: int = 11
 const CAMPFIRE_PROP_ID: int = 203
@@ -34,18 +25,17 @@ const LIGHT_ROT := Vector3(-45.0, 35.0, 0.0)
 const MOCK_CAMPFIRE_POS := Vector3(4.5, 12.0, 4.5)
 const MOCK_PLAYER_POS := Vector3(-4.5, 12.0, -4.5)
 
-# --- COLOR PALETTE CONSTANTS ---
 const COLOR_EVEN_TILE := Color(0.18, 0.18, 0.22)
 const COLOR_ODD_TILE := Color(0.12, 0.12, 0.15)
 const COLOR_DUMMY_PLAYER := Color(1.0, 0.15, 0.15)
 
-# --- MOCK DDD WORLD REQUIREMENTS ---
+const DASHBOARD_SCENE_PATH: String = "res://src/Infrastructure/UI/ai_showcase_dashboard.tscn"
+
 var world_state: WorldState
 var navigation_service: VoxelNavigationService
 var generator: WorldGenerator
 var player: CharacterBody3D
 
-# Environmental Node References
 var _active_test_subject: CharacterBody3D = null
 var _simulated_campfire: StaticBody3D = null
 var _mock_weather_service: Node = null
@@ -77,7 +67,6 @@ func _flush_active_test_subject() -> void:
 		_active_test_subject = null
 		subject_despawned.emit()
 		
-	# Clean up any auxiliary/code-spawned entities safely
 	for child in get_children():
 		if child is CharacterBody3D and child != player and child != _active_test_subject:
 			child.queue_free()
@@ -236,5 +225,8 @@ func _setup_containment_walls(checker_root: Node) -> void:
 
 
 func _instantiate_decoupled_dashboard() -> void:
-	var dashboard := AIShowcaseDashboard.new()
-	add_child(dashboard)
+	if ResourceLoader.exists(DASHBOARD_SCENE_PATH):
+		var scene := load(DASHBOARD_SCENE_PATH) as PackedScene
+		if is_instance_valid(scene):
+			var dashboard := scene.instantiate() as CanvasLayer
+			add_child(dashboard)
