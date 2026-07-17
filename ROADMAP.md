@@ -72,13 +72,19 @@ This document details the completed development phases and outlines the future m
 *   **Silicon Terminal Hacking:** Developed `HackingTerminalOverlay`, a modular node-alignment minigame required to bypass Neon Ruins barriers.
 *   **Multi-Phase Bosses:** Successfully integrated the Lithic Lurker (Act I), Obsidian Colossus (Act III), and the reality-mutating Weaver Malakor (Act IV) complete with gravity inversions and arena fracturing mechanics.
 
+### Milestone 14: Dynamic Atmospheric & Astronomical Synthesis
+*   **Day/Night Transits:** Synchronized real-time celestial clock rotations with high-contrast, non-blurry Rayleigh sky gradients.
+*   **Procedural Moon Phases:** Sculpted a mathematical moon dome in tangent space, casting dynamic shadows on craters according to the 28-day lunar calendar.
+*   **Unified Fog-Sky Shading:** Integrated a CPU-to-GPU fog color alignment pipeline that automatically matches fog light tints with the horizon, softening hard sky lines.
+*   **Nocturnal Twinkling Stars:** programmatically mapped high-frequency sparkling star noise, fading out during the day or during overcast storms.
+
 ---
 
 ## 🔮 FUTURE HORIZONS (POST-1.0 BACKLOG)
 
 With the core architecture fully stabilized and the 120 FPS performance budget secured, future development will focus on engine expansions and community tools:
 
-*   **Virtual Reality (OpenXR) Integration:** Abstract the `PlayerController` and `PlayerViewModel` to support 6DOF hand tracking, physical block grabbing, and immersive bow-and-arrow archery physics.
+*   **Virtual Reality (OpenXR) Integration:** Abstract the `PlayerController` and `PlayerViewModel` to support 6DOF hand tracking, physical block grabbing, and immersive eye-and-arrow archery physics.
 *   **Headless Dedicated Server App:** Compile a lightweight, GUI-stripped Linux build of CraftDomain designed to run 24/7 on VPS instances, supporting up to 64 concurrent players with persistent server-side economies.
 *   **Dynamic Seasons & Thermodynamics:** Expand `CelestialService` and `WeatherService` to track yearly macro-seasons (Winter, Summer), dynamically freezing lakes or drying crops based on localized biome thermodynamics.
 *   **Vehicles & Mounts:** Implement raycast-suspended collision vehicles (Minecarts on rails, Saddled Horses, Galleon steering) adhering to the existing `VoxelNavigationService` topological grid.

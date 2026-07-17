@@ -1,0 +1,167 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/UI/AIShowcaseDashboard.gd" id="1_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_glass"]
+bg_color = Color(0.06, 0.06, 0.08, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.85, 1, 0.4)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="LabelSettings" id="LabelSettings_h1"]
+font_size = 15
+font_color = Color(0.2, 0.85, 0.85, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_h2"]
+font_size = 14
+font_color = Color(1, 0.85, 0.2, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_sub"]
+font_size = 11
+font_color = Color(0.7, 0.7, 0.75, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_telemetry"]
+font_size = 11
+font_color = Color(0.85, 0.92, 1, 1)
+line_spacing = 4.0
+
+[node name="AIShowcaseDashboard" type="CanvasLayer"]
+script = ExtResource("1_script")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="LeftCard" type="PanelContainer" parent="MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(260, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_glass")
+
+[node name="LeftMargin" type="MarginContainer" parent="MarginContainer/HBoxContainer/LeftCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="LeftVBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer/LeftCard/LeftMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CatalogTitle" type="Label" parent="MarginContainer/HBoxContainer/LeftCard/LeftMargin/LeftVBox"]
+layout_mode = 2
+text = "MODEL SHOWCASE"
+label_settings = SubResource("LabelSettings_h1")
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/HBoxContainer/LeftCard/LeftMargin/LeftVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="SpawnCatalogVBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer/LeftCard/LeftMargin/LeftVBox/ScrollContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="CenterSpacer" type="Control" parent="MarginContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RightCard" type="PanelContainer" parent="MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(290, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_glass")
+
+[node name="RightMargin" type="MarginContainer" parent="MarginContainer/HBoxContainer/RightCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="RightVBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer/RightCard/RightMargin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ControlsHeader" type="Label" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+layout_mode = 2
+text = "TESTBOARD CONTROLS"
+label_settings = SubResource("LabelSettings_h2")
+
+[node name="ChickenCheckbox" type="CheckButton" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Equip Fried Chicken"
+
+[node name="StormCheckbox" type="CheckButton" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Trigger Overcast Storm"
+
+[node name="OverrideButton" type="Button" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+text = "🤖 AUTONOMOUS AI"
+
+[node name="SpawnZombieButton" type="Button" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+text = "☠️ SPAWN THREAT"
+
+[node name="SlowmoLabel" type="Label" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+layout_mode = 2
+text = "SIMULATION SPEED SCALE"
+label_settings = SubResource("LabelSettings_sub")
+
+[node name="SlowmoSlider" type="HSlider" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 0.1
+max_value = 1.0
+step = 0.1
+value = 1.0
+
+[node name="Separator" type="HSeparator" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+layout_mode = 2
+
+[node name="TelemetryHeader" type="Label" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+layout_mode = 2
+text = "LIVE TELEMETRY PANEL"
+label_settings = SubResource("LabelSettings_sub")
+
+[node name="TelemetryLabel" type="Label" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "No active subject selected."
+label_settings = SubResource("LabelSettings_telemetry")
+autowrap_mode = 2
+
+[node name="BottomSpacer" type="Control" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ExitButton" type="Button" parent="MarginContainer/HBoxContainer/RightCard/RightMargin/RightVBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+text = "◀ RETURN TO MAIN MENU"

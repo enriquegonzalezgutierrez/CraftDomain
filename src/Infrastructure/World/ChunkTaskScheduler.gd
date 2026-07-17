@@ -3,11 +3,10 @@
 # Description: Infrastructure scheduler managing background thread worker pools,
 #              active task queues, and asynchronous chunk compiling.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Decouples 100% of WorkerThreadPool 
-#   interactions and queue prioritization. All methods kept strictly < 20 lines.
-# - Open-Closed Principle (OCP): Integrates dual-timeline in-memory and disk 
-#   cache merging during background generations to prevent block-reappearing rollbacks.
-# - 120 FPS Guardrail: Inverts thread budgeting dynamically during game sessions.
+#              - Single Responsibility Principle (SRP): Coordinates strictly 
+#                WorkerThreadPool allocations and task priorities.
+#              - Order of Operations Fix: Purged out-of-order MegaStructures 
+#                re-applications that overwrote player block modifications.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -60,7 +59,8 @@ func queue_prioritized_loads(chunk_positions: Array[Vector3i], versions: Diction
 
 ## Enqueues a chunk rebuild request dynamically when voxel edits occur
 func request_chunk_rebuild(pos: Vector3i, version: int) -> void:
-	if not lifecycle.is_chunk_rendered(pos): return
+	if not lifecycle.is_chunk_rendered(pos): 
+		return
 		
 	_queue_mutex.lock()
 	if _in_flight_tasks.has(pos):
@@ -140,10 +140,9 @@ func _dispatch_task(request: Dictionary) -> void:
 
 func _background_generate_task(chunk_pos: Vector3i, version: int) -> void:
 	var chunk := Chunk.new(chunk_pos)
-	_apply_generator(chunk)
+	_apply_generator(chunk) # Generates terrain and applies MegaStructures (Castle)
 	
-	var saved_edits := _apply_saved_modifications(chunk)
-	MegaStructureService.apply_mega_structures(chunk)
+	var saved_edits := _apply_saved_modifications(chunk) # Overlays player dynamic modifications
 	
 	_compile_and_submit_task(chunk, version, false, saved_edits)
 	_finish_task_execution()
@@ -159,7 +158,6 @@ func _background_rebuild_task(chunk_pos: Vector3i, version: int) -> void:
 		_finish_task_execution()
 		return
 		
-	MegaStructureService.apply_mega_structures(chunk)
 	_compile_and_submit_task(chunk, version, true, {})
 	_finish_task_execution()
 

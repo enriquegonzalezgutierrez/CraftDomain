@@ -1,8 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/CraftingOverlay.gd
 # Description: Glassmorphic dual-pane Blueprint Workshop overlay.
-#              SOLID COMPLIANCE: Class limits set < 100 lines (SRP). Monolithic
-#              loops decomposed. Procedural StyleBoxFlat instantiation purged.
+#              SOLID COMPLIANCE: 
+#              - Rule 7.1 (Declarative UI): Procedural StyleBox and Node instantiations 
+#                purged. Delegates visual construction to decoupled .tscn widgets.
+#              - Single Responsibility Principle (SRP): Acts exclusively as a 
+#                state mediator between the Domain CraftingService and UI widgets.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -11,10 +14,8 @@ extends Panel
 
 signal closed
 
-# Declarative StyleBox theme resources preloaded to fulfill Rule 7.1
-const STYLE_NORMAL := preload("res://assets/themes/style_recipe_normal.tres")
-const STYLE_HOVER := preload("res://assets/themes/style_recipe_hover.tres")
-const STYLE_ROW := preload("res://assets/themes/style_recipe_row.tres")
+const RECIPE_BTN_SCENE := preload("res://src/Infrastructure/UI/Widgets/recipe_button_widget.tscn")
+const REQ_ROW_SCENE := preload("res://src/Infrastructure/UI/Widgets/requirement_row_widget.tscn")
 
 @export var player: CharacterBody3D
 
@@ -34,26 +35,17 @@ func _ready() -> void:
 
 
 func _populate_recipes_list() -> void:
-	for recipe: Recipe in RecipeRegistry.get_all_recipes():
-		var btn := Button.new()
-		btn.text = "  " + recipe.recipe_name
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.custom_minimum_size = Vector2(0, 42)
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var all_recipes := RecipeRegistry.get_all_recipes()
+	for recipe: Recipe in all_recipes:
+		var btn := RECIPE_BTN_SCENE.instantiate()
 		
-		# Symmetrical OCP Border Color highlights
-		var style_n := STYLE_NORMAL.duplicate() as StyleBoxFlat
-		var def := BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
-		if def != null and def.type != BlockType.Type.AIR:
-			style_n.border_color = def.color_top
+		# Duck-typing check to ensure safe initialization
+		if btn.has_method("initialize_recipe"):
+			btn.call("initialize_recipe", recipe)
 			
-		btn.add_theme_stylebox_override("normal", style_n)
-		btn.add_theme_stylebox_override("hover", STYLE_HOVER)
-		btn.add_theme_stylebox_override("pressed", style_n)
-		btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-		btn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.95))
-		
-		btn.pressed.connect(func() -> void: _on_recipe_selected(recipe))
+		if btn.has_signal("recipe_clicked"):
+			btn.connect("recipe_clicked", _on_recipe_selected)
+			
 		_recipes_list.add_child(btn)
 
 
@@ -66,7 +58,7 @@ func _show_empty_details() -> void:
 
 func _on_recipe_selected(recipe: Recipe) -> void:
 	_selected_recipe = recipe
-	_detail_title.text = recipe.recipe_name.to_upper() + " (x" + str(recipe.output_quantity) + ")"
+	_detail_title.text = tr(recipe.recipe_name).to_upper() + " (x" + str(recipe.output_quantity) + ")"
 	
 	var def := BlockLibrary.get_definition(recipe.output_item_index as BlockType.Type) as BlockDefinition
 	_detail_icon.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.15, 0.15, 0.18)
@@ -79,7 +71,8 @@ func _on_recipe_selected(recipe: Recipe) -> void:
 
 
 func _refresh_checklist() -> void:
-	if _selected_recipe == null or not is_instance_valid(player): return
+	if _selected_recipe == null or not is_instance_valid(player): 
+		return
 		
 	_clear_requirements_box()
 	
@@ -91,7 +84,7 @@ func _refresh_checklist() -> void:
 
 
 func _clear_requirements_box() -> void:
-	for child in _detail_requirements_box.get_children():
+	for child: Node in _detail_requirements_box.get_children():
 		child.queue_free()
 
 
@@ -101,31 +94,11 @@ func _populate_requirements(inventory: IInventory) -> void:
 		var current_qty := inventory.get_item_total_quantity(item_id) as int
 		var item_name := InventoryComponent.get_item_name_by_id(item_id)
 		
-		_create_requirement_row(item_name, current_qty, required_qty)
-
-
-func _create_requirement_row(item_name: String, current: int, required: int) -> void:
-	var row := Panel.new()
-	row.custom_minimum_size = Vector2(0, 36)
-	row.add_theme_stylebox_override("panel", STYLE_ROW)
-	_detail_requirements_box.add_child(row)
-	
-	var label := Label.new()
-	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_style_requirement_label(label, item_name, current, required)
-	row.add_child(label)
-
-
-func _style_requirement_label(label: Label, item_name: String, current: int, required: int) -> void:
-	var is_satisfied := current >= required
-	var glyph := "   ✔  " if is_satisfied else "   ✘  "
-	label.text = glyph + "%d / %d  %s" % [current, required, item_name.to_upper()]
-	
-	var ls := LabelSettings.new()
-	ls.font_size = 13
-	ls.font_color = Color(0.25, 0.85, 0.35) if is_satisfied else Color(0.92, 0.15, 0.15)
-	label.label_settings = ls
+		var row := REQ_ROW_SCENE.instantiate()
+		if row.has_method("initialize_requirement"):
+			row.call("initialize_requirement", item_name, current_qty, required_qty)
+			
+		_detail_requirements_box.add_child(row)
 
 
 func _update_craft_button_state(can_craft: bool) -> void:
@@ -134,21 +107,27 @@ func _update_craft_button_state(can_craft: bool) -> void:
 
 
 func _on_craft_pressed() -> void:
-	if _selected_recipe == null or not is_instance_valid(player): return
+	if _selected_recipe == null or not is_instance_valid(player): 
+		return
 		
 	var inventory := player.get("inventory") as IInventory
 	if CraftingService.craft(inventory, _selected_recipe):
-		var viewmodel := player.get("viewmodel") as PlayerViewModel
-		if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
-			viewmodel.call("play_swing_animation")
-			
-		AudioService.play_sfx_static("craft_clink")
-			
-		var hud := player.get("hud") as PlayerHUD
-		if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-			hud.call("show_quest_notification", "NOTIFICATION_CRAFTING_SUCCESS_HEADER", tr("NOTIFICATION_CRAFTING_SUCCESS_DESC") + ": " + _selected_recipe.recipe_name + "!")
-			
+		_trigger_success_feedback()
 		_refresh_checklist()
+
+
+func _trigger_success_feedback() -> void:
+	var viewmodel := player.get("viewmodel") as PlayerViewModel
+	if is_instance_valid(viewmodel) and viewmodel.has_method("play_swing_animation"):
+		viewmodel.call("play_swing_animation")
+		
+	AudioService.play_sfx_static("craft_clink")
+		
+	var hud := player.get("hud") as PlayerHUD
+	if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
+		var loc_header := tr("NOTIFICATION_CRAFTING_SUCCESS_HEADER")
+		var loc_desc := tr("NOTIFICATION_CRAFTING_SUCCESS_DESC") + ": " + tr(_selected_recipe.recipe_name)
+		hud.call("show_quest_notification", loc_header, loc_desc)
 
 
 func _input(event: InputEvent) -> void:

@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Celestial/CelestialService.gd
 # Description: Infrastructure Celestial Service managing global game time-of-day,
-#              dynamic SunLight and MoonLight rotation, and procedural sky transitions.
-#              Decomposed into short methods (SRP).
+#              dynamic Sun/Moon rotations, dynamic fog light color syncing,
+#              and sky material shader parameter syncing.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -138,15 +138,44 @@ func _update_sky_atmosphere() -> void:
 	if sky == null or not (sky.sky_material is ShaderMaterial): return
 	
 	var sky_mat := sky.sky_material as ShaderMaterial
+	var day_weight := _sync_sun_shader_parameters(sky_mat)
+	_sync_moon_shader_parameters(sky_mat)
+	sky_mat.set_shader_parameter("storm_weight", _current_storm_weight)
+	
+	_sync_fog_light_color(world_environment.environment, day_weight)
+
+
+func _sync_sun_shader_parameters(sky_mat: ShaderMaterial) -> float:
+	var day_weight := 0.0
 	if is_instance_valid(sun_light):
 		var sun_dir := sun_light.global_transform.basis.z.normalized()
+		var sun_sky_vector := sun_dir.y
+		day_weight = clampf(sun_sky_vector * 4.0, 0.0, 1.0)
+		
+		sky_mat.set_shader_parameter("day_weight", day_weight)
 		sky_mat.set_shader_parameter("sun_direction", sun_dir)
-		sky_mat.set_shader_parameter("day_weight", clampf(sun_dir.y * 4.0 + 0.2, 0.0, 1.0))
-		
+	return day_weight
+
+
+func _sync_moon_shader_parameters(sky_mat: ShaderMaterial) -> void:
 	if is_instance_valid(moon_light):
-		sky_mat.set_shader_parameter("moon_direction", moon_light.global_transform.basis.z.normalized())
+		var moon_dir := moon_light.global_transform.basis.z.normalized()
+		var moon_phase_val := float(_calendar_days) / 28.0
 		
-	sky_mat.set_shader_parameter("storm_weight", _current_storm_weight)
+		sky_mat.set_shader_parameter("moon_direction", moon_dir)
+		sky_mat.set_shader_parameter("moon_phase", moon_phase_val)
+
+
+func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
+	if not env.fog_enabled:
+		return
+		
+	var day_fog_color := Color(0.42, 0.65, 0.88)
+	var night_fog_color := Color(0.015, 0.02, 0.04)
+	var storm_fog_color := Color(0.12, 0.13, 0.15)
+	
+	var base_fog_color := night_fog_color.lerp(day_fog_color, day_weight)
+	env.fog_light_color = base_fog_color.lerp(storm_fog_color, _current_storm_weight * 0.72)
 
 
 func is_night_time() -> bool:

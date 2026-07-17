@@ -1,16 +1,15 @@
 # ==============================================================================
 # Pathfile: res://src/Core/Bootstrap/Bootstrap.gd
 # Description: Central composition root of the application. Orchestrates the 
-#              initialization of global systems, applies user configuration settings,
-#              injects decoupled dependencies, and manages network services.
+#              asynchronous initialization of global systems, applies user 
+#              settings, injects dependencies, and prevents black-screen boot freezes.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Only manages initial system startups, 
-#   registries compilation, and viewport transitions. High-frequency registration 
-#   loops decomposed into sub-helpers of less than 20 lines each.
-# - Open-Closed Principle (OCP): Integrates DynamicResolutionService automatically
-#   on boot to maintain rock-solid 120 FPS via FSR 2.2 temporal scaling.
-# - UX Optimization: Instantiates the Loading Screen inside a high-priority CanvasLayer,
-#   yielding frames during background disk I/O to maintain smooth 120 FPS animations.
+#   registries compilation, and viewport transitions.
+# - Open-Closed Principle (OCP): Asynchronously yields frames on boot, keeping the
+#   rendering thread active to animate the splash screen smoothly at 120 FPS.
+# - Initialization Order Fix: Loads settings and translations BEFORE instantiating 
+#   any UI nodes, ensuring perfect localization on startup.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -39,31 +38,71 @@ var world_environment: WorldEnvironment
 
 
 func _ready() -> void:
-	_initialize_application()
+	_initialize_application_async()
 
 
-func _initialize_application() -> void:
-	print("[Bootstrap] Initializing CraftDomain application composing root...")
-	_init_telemetry_and_settings()
-	_init_registries()
+func _initialize_application_async() -> void:
+	print("[Bootstrap] Launching asynchronous application bootstrapper...")
+	
+	# 1. Load user settings FIRST to read the saved locale and username
+	_init_basic_telemetry_and_settings()
+	
+	# 2. Initialize and register translation packs in RAM
+	TranslationRegistry.initialize_translations()
+	
+	# 3. Now that the saved locale is set and translations are loaded, we can 
+	#    safely instantiate the splash screen to guarantee perfect localization!
+	var splash := _instantiate_startup_splash()
+	
+	# Yield two frames to guarantee Godot renders the beautiful translated splash spinner
+	await get_tree().process_frame
+	await get_tree().process_frame
+	
+	# 4. Asynchronously initialize heaviest file registries (Texture pre-caching)
+	TextureRegistry.initialize_textures()
+	await get_tree().process_frame
+	
+	_init_registries_async()
+	await get_tree().process_frame
+	
+	# 5. Build environment and audio
 	_setup_persistence_and_env()
-	_init_audio_and_menu()
+	_setup_celestial()
+	_setup_audio_and_network()
+	await get_tree().process_frame
+	
+	# 6. Smoothly fade out the splash and transition to Main Menu!
+	_transition_to_main_menu(splash)
 
 
-func _init_telemetry_and_settings() -> void:
+func _instantiate_startup_splash() -> CanvasLayer:
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.name = "StartupSplashCanvas"
+	canvas_layer.layer = 100
+	add_child(canvas_layer)
+	
+	var splash := LOADING_SCREEN_SCENE.instantiate() as LoadingScreen
+	splash.name = "StartupSplash"
+	canvas_layer.add_child(splash)
+	
+	var status := splash.get_node_or_null("CenterContainer/VBoxContainer/Status") as Label
+	if is_instance_valid(status):
+		status.text = tr("LOADING_STATUS").to_upper()
+		
+	return canvas_layer
+
+
+func _init_basic_telemetry_and_settings() -> void:
 	ai_telemetry_service = AITelemetryService.new()
 	glitch_rift_service = GlitchRiftService.new()
 	
-	# Instantiate and add the Dynamic Resolution Scaling service to monitor 120 FPS budgets
 	dynamic_resolution_service = DynamicResolutionService.new()
 	add_child(dynamic_resolution_service)
 	
 	_load_and_apply_user_settings()
-	TranslationRegistry.initialize_translations()
-	TextureRegistry.initialize_textures()
 
 
-func _init_registries() -> void:
+func _init_registries_async() -> void:
 	_register_biomes()
 	StructureLibrary.initialize_structures()
 	MegaStructureService.initialize_megastructures()
@@ -73,10 +112,7 @@ func _init_registries() -> void:
 	DialogueRegistry.initialize_dialogue_database()
 	RecipeRegistry.initialize_recipes()
 	
-	# Apply customized gamepad hardware rebindings on startup
 	GamepadBindingsRepository.load_and_apply_bindings()
-	
-	# Activating Modding API: Scan and compile community mods on boot
 	ModLoaderService.scan_and_load_mods()
 
 
@@ -94,11 +130,6 @@ func _register_biomes() -> void:
 
 
 func _setup_mob_registry() -> void:
-	print("[Bootstrap] Injecting preloaded entity scenes into MobRegistry...")
-	_register_preloaded_mobs()
-
-
-func _register_preloaded_mobs() -> void:
 	var h_land := MobRegistry.Habitat.TERRESTRIAL
 	var h_both := MobRegistry.Habitat.AMPHIBIOUS
 	var h_water := MobRegistry.Habitat.AQUATIC
@@ -111,15 +142,10 @@ func _register_preloaded_mobs() -> void:
 
 func _register_passive_wildlife(h_land: int, h_both: int, h_water: int) -> void:
 	var ai_fauna := FaunaAIBehavior.new()
-	var ai_pig := PigAIBehavior.new() 
-	var ai_chicken := ChickenAIBehavior.new() 
-	var ai_sheep := SheepAIBehavior.new() 
-	var ai_cow := CowAIBehavior.new() 
-	
-	_register_scene_mob(0, PigEntity, h_land, ai_pig) 
-	_register_scene_mob(1, ChickenEntity, h_land, ai_chicken) 
-	_register_scene_mob(2, SheepEntity, h_land, ai_sheep) 
-	_register_scene_mob(3, CowEntity, h_land, ai_cow) 
+	_register_scene_mob(0, PigEntity, h_land, PigAIBehavior.new()) 
+	_register_scene_mob(1, ChickenEntity, h_land, ChickenAIBehavior.new()) 
+	_register_scene_mob(2, SheepEntity, h_land, SheepAIBehavior.new()) 
+	_register_scene_mob(3, CowEntity, h_land, CowAIBehavior.new()) 
 	_register_scene_mob(201, TurtleEntity, h_both, ai_fauna)
 	_register_scene_mob(204, FoxEntity, h_land, ai_fauna)
 	_register_scene_mob(206, CatEntity, h_land, ai_fauna)
@@ -173,7 +199,6 @@ func _register_scene_mob(spawn_id: int, fallback_class: Variant, habitat: int, d
 
 
 func _setup_prop_registry() -> void:
-	print("[Bootstrap] Injecting prop factories into PropRegistry...")
 	_register_prop(200, ChestEntity)
 	_register_prop(202, StreetlightEntity)
 	_register_prop(203, CampfireEntity)
@@ -190,12 +215,9 @@ func _register_prop(prop_id: int, _prop_class: Variant) -> void:
 		if is_instance_valid(scene):
 			var inst := scene.instantiate() as Node3D
 			inst.position = pos
-			
 			if prop_id >= 220 and prop_id <= 235:
 				inst.set_script(VEGETATION_PROP_SCRIPT)
-				
 			return inst
-		assert(false, "[Bootstrap ERROR] Preloaded prop scene is invalid for ID: " + str(prop_id))
 		return null
 	)
 
@@ -262,10 +284,17 @@ func _setup_celestial() -> void:
 	add_child(weather_service)
 
 
-func _setup_audio() -> void:
+func _setup_audio_and_network() -> void:
 	audio_service = AudioService.new()
 	add_child(audio_service)
-	audio_service.play_menu_music()
+	
+	network_service = NetworkService.new()
+	network_service.name = "NetworkService"
+	add_child(network_service)
+	
+	p2p_network_adapter = P2PNetworkAdapter.new()
+	p2p_network_adapter.name = "P2PNetworkAdapter"
+	network_service.add_child(p2p_network_adapter)
 
 
 func _load_main_menu() -> void:
@@ -276,52 +305,46 @@ func _load_main_menu() -> void:
 	add_child(main_menu)
 
 
-func _init_audio_and_menu() -> void:
-	_setup_celestial()
-	_setup_audio()
-	
-	network_service = NetworkService.new()
-	network_service.name = "NetworkService"
-	add_child(network_service)
-	
-	p2p_network_adapter = P2PNetworkAdapter.new()
-	p2p_network_adapter.name = "P2PNetworkAdapter"
-	network_service.add_child(p2p_network_adapter)
-	
+func _transition_to_main_menu(splash_canvas: CanvasLayer) -> void:
 	_load_main_menu()
+	
+	if is_instance_valid(audio_service):
+		audio_service.play_menu_music()
+		
+	if is_instance_valid(splash_canvas):
+		var splash_panel := splash_canvas.get_node_or_null("StartupSplash") as Panel
+		if is_instance_valid(splash_panel):
+			splash_panel.set_process(false)
+			
+			var fade_tween := create_tween()
+			fade_tween.tween_property(splash_panel, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE)
+			fade_tween.chain().tween_callback(splash_canvas.queue_free)
 
 
 func _on_start_game_requested(should_clear_save: bool = false) -> void:
-	# 1. Create a top-level CanvasLayer to ensure the loading screen renders on top of all HUD/3D elements
 	var canvas_layer := CanvasLayer.new()
 	canvas_layer.name = "LoadingScreenCanvas"
 	canvas_layer.layer = 100
 	add_child(canvas_layer)
 	
-	# 2. Instantiate and attach the loading screen overlay to the CanvasLayer
 	var loading_screen := LOADING_SCREEN_SCENE.instantiate() as LoadingScreen
 	loading_screen.name = "LoadingScreenOverlay"
 	canvas_layer.add_child(loading_screen)
 	
+	await get_tree().process_frame
+	
+	if should_clear_save:
+		var task_id := WorkerThreadPool.add_task(DiskWorldRepository.delete_save_game_files)
+		while not WorkerThreadPool.is_task_completed(task_id):
+			await get_tree().process_frame
+			
 	if is_instance_valid(main_menu):
 		main_menu.queue_free()
 		main_menu = null
-		
-	# 3. Yield control to the engine for one frame to force render the loading screen
-	await get_tree().process_frame
-	
-	# 4. Perform the heavy disk deletion safely in a background thread to prevent UI freezing
-	if should_clear_save:
-		var task_id := WorkerThreadPool.add_task(DiskWorldRepository.delete_save_game_files)
-		
-		# Yield control every frame while the background task compiles to keep the spinner animated
-		while not WorkerThreadPool.is_task_completed(task_id):
-			await get_tree().process_frame
 	
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_world()
 		
-	# 5. Initialize heavy controllers once the disk has been cleared safely
 	world_controller = WorldController.new()
 	player_controller = PlayerController.new()
 	_inject_dependencies()
@@ -329,7 +352,6 @@ func _on_start_game_requested(should_clear_save: bool = false) -> void:
 	add_child(world_controller)
 	add_child(player_controller)
 	
-	# Bind the loading screen to the player for synchronous fading
 	loading_screen.player = player_controller
 
 

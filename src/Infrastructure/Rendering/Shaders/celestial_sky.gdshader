@@ -1,31 +1,49 @@
 // ==============================================================================
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader
-// Description: Advanced PBR-approximate sky shader managing atmospheric gradients,
-//              high-intensity sun bloom, crescent moon with Earthshine,
-//              twinkling stars, and dynamic solar-lit cloud layers.
-// SOLID COMPLIANCE: Dedicated exclusively to high-fidelity sky dome rendering.
+// Description: Clean and robust sky shader managing dynamic gradients, 
+//              twinkling stars, procedurally shaded moon phases, and storm overcast.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
 shader_type sky;
+render_mode use_half_res_pass;
 
-uniform vec3 sun_direction;
-uniform vec3 moon_direction;
-uniform float day_weight : hint_range(0.0, 1.0) = 0.5;
-uniform float storm_weight : hint_range(0.0, 1.0) = 0.0;
-
-// Sourced globally from wind uniform register (synchronized with WeatherService.gd)
+// Sourced globally from project.godot settings
 global uniform vec2 wind_vector;
 global uniform float wind_strength;
+global uniform float storm_weight;
 
+// Injected dynamically by CelestialService.gd (DIP Compliant)
+uniform float day_weight : hint_range(0.0, 1.0) = 0.5;
+uniform vec3 sun_direction = vec3(0.0, 1.0, 0.0);
+uniform vec3 moon_direction = vec3(0.0, -1.0, 0.0);
+uniform float moon_phase : hint_range(0.0, 1.0) = 0.5;
+
+// Sky Parameters
+uniform float power = 0.5;
+uniform float scale = 0.25;
+uniform float speed = 0.04;
+uniform float density : hint_range(0.0, 1.0) = 0.42;
+
+// Day & Night Gradients
+uniform vec3 sky_color_top : source_color = vec3(0.12, 0.42, 0.85);    // Zenith Day Blue
+uniform vec3 sky_color_bottom : source_color = vec3(0.42, 0.65, 0.88); // Horizon Day Blue
+
+uniform vec3 sky_night_top : source_color = vec3(0.005, 0.005, 0.015);  // Zenith Night Navy
+uniform vec3 sky_night_bottom : source_color = vec3(0.015, 0.02, 0.04); // Horizon Night Navy
+
+uniform vec3 ground_color_top : source_color = vec3(0.2, 0.169, 0.133);
+uniform vec3 ground_color_bottom : source_color = vec3(0.1, 0.08, 0.06);
 
 // Pseudo-random hash function for deterministic noise generation
-float hash(vec3 p) {
-	vec3 p3 = fract(p * vec3(443.897, 441.423, 437.195));
-	p3 += dot(p3, p3.yzx + 19.19);
-	return fract((p3.x + p3.y) * p3.z);
+float hash(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
 
+// 3D hash for star positions
+float hash3d(vec3 p) {
+	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
+}
 
 // Value noise generator
 float noise(vec2 uv) {
@@ -33,14 +51,13 @@ float noise(vec2 uv) {
 	vec2 f = fract(uv);
 	vec2 u = f * f * (3.0 - 2.0 * f);
 	
-	float a = hash(vec3(i, 0.0));
-	float b = hash(vec3(i + vec2(1.0, 0.0), 0.0));
-	float c = hash(vec3(i + vec2(0.0, 1.0), 0.0));
-	float d = hash(vec3(i + vec2(1.0, 1.0), 0.0));
+	float a = hash(i);
+	float b = hash(i + vec2(1.0, 0.0));
+	float c = hash(i + vec2(0.0, 1.0));
+	float d = hash(i + vec2(1.0, 1.0));
 	
 	return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
-
 
 // 3-Octave Fractional Brownian Motion for detailed, organic cloud volumes
 float fbm(vec2 uv) {
@@ -56,151 +73,83 @@ float fbm(vec2 uv) {
 	return value;
 }
 
-
-// Calculates beautiful atmospheric Rayleigh-scattering horizon gradients
-vec3 get_sky_gradient(vec3 dir, vec3 s_dir) {
-	float horizon = 1.0 - max(0.0, dir.y);
-	
-	// Dynamic day/night zenith and horizon colors interpolation
-	vec3 zenith = mix(vec3(0.01, 0.02, 0.06), vec3(0.12, 0.42, 0.85), day_weight);
-	vec3 horizon_color = mix(vec3(0.02, 0.03, 0.05), vec3(0.42, 0.65, 0.88), day_weight);
-	
-	vec3 base_gradient = mix(horizon_color, zenith, max(0.0, dir.y));
-	
-	// Warm Golden Sunset Belt (occurs when the sun crosses the horizon line)
-	float sunset_factor = clamp(1.0 - abs(s_dir.y * 3.5), 0.0, 1.0) * day_weight;
-	vec3 sunset_glow = vec3(0.98, 0.38, 0.12) * pow(horizon, 5.0) * sunset_factor;
-	
-	return base_gradient + sunset_glow;
+vec3 calculate_sky_base(vec3 eye) {
+	vec3 grad_day = mix(sky_color_bottom, sky_color_top, eye.y);
+	vec3 grad_night = mix(sky_night_bottom, sky_night_top, eye.y);
+	return mix(grad_night, grad_day, day_weight);
 }
-
-
-// Renders an intense golden-white sun disk capable of piercing high exposure
-vec3 get_sun_layer(vec3 dir, vec3 s_dir) {
-	float sun_dot = dot(dir, s_dir);
-	
-	// High-energy emission values to trigger beautiful glow bloom in Vulkan
-	float sun_disk = smoothstep(0.994, 0.996, sun_dot) * 18.0;
-	float sun_halo = smoothstep(0.94, 0.994, sun_dot) * 2.2;
-	
-	vec3 core_color = vec3(1.0, 0.98, 0.92) * sun_disk;
-	vec3 halo_color = vec3(0.98, 0.65, 0.18) * sun_halo;
-	
-	// Dim solar visibility during overcast weather storms
-	float visibility = 1.0 - storm_weight * 0.90;
-	return (core_color + halo_color) * visibility;
-}
-
-
-// Renders a crescent moon accompanied by faint blue Earthshine
-vec3 get_moon_layer(vec3 dir, vec3 m_dir) {
-	float moon_dot = dot(dir, m_dir);
-	float moon_disk = smoothstep(0.994, 0.996, moon_dot);
-	
-	// Symmetrical crescent shadow offset
-	vec3 shadow_offset_dir = normalize(m_dir + vec3(0.012, 0.0, 0.012));
-	float shadow_dot = dot(dir, shadow_offset_dir);
-	float moon_shadow = smoothstep(0.994, 0.996, shadow_dot);
-	
-	float crescent = clamp(moon_disk - moon_shadow, 0.0, 1.0);
-	
-	// Earthshine: Faintly illuminate the dark side of the moon for cosmic realism
-	float earthshine = clamp(moon_disk * moon_shadow, 0.0, 1.0) * 0.08;
-	
-	vec3 body_color = vec3(0.90, 0.92, 0.98) * crescent + vec3(0.18, 0.22, 0.32) * earthshine;
-	float moon_halo = smoothstep(0.95, 0.996, moon_dot) * 0.55;
-	
-	// Completely hide moon rendering during the day
-	float visibility = (1.0 - day_weight) * (1.0 - storm_weight * 0.95);
-	return (body_color + vec3(0.65, 0.78, 1.0) * moon_halo) * visibility;
-}
-
-
-// Renders a high-frequency, twinkling night starfield
-vec3 get_star_layer(vec3 dir, float time) {
-	if (day_weight > 0.92 || storm_weight > 0.85) {
-		return vec3(0.0);
-	}
-	
-	// Slow, circular star rotation to simulate planetary orbit
-	float rot_speed = time * 0.005;
-	mat3 rot_matrix = mat3(
-		vec3(cos(rot_speed), 0.0, sin(rot_speed)),
-		vec3(0.0, 1.0, 0.0),
-		vec3(-sin(rot_speed), 0.0, cos(rot_speed))
-	);
-	vec3 rotated_dir = rot_matrix * dir;
-	
-	float star_hash = hash(floor(rotated_dir * 160.0));
-	vec3 stars = vec3(0.0);
-	
-	if (star_hash > 0.994 && rotated_dir.y > 0.02) {
-		float twinkle = sin(time * 6.5 + star_hash * 120.0) * 0.45 + 0.55;
-		stars = vec3(0.92, 0.95, 1.0) * twinkle * (1.0 - day_weight) * (1.0 - storm_weight);
-	}
-	return stars;
-}
-
-
-// Generates dynamic, wind-blown clouds lit physically by the sun direction
-vec4 get_cloud_layer(vec3 dir, vec3 s_dir, float time) {
-	if (dir.y < 0.01) {
-		return vec4(0.0);
-	}
-	
-	// Project coordinates onto a virtual flat high-altitude sky plane (Optimized 0.45 scale)
-	vec2 uv = dir.xz / (dir.y + 0.15) * 0.45;
-	
-	// Translate UV coordinates continuously along the global wind vector
-	vec2 wind_offset = wind_vector * (time * 0.05 * (1.0 + wind_strength));
-	vec2 cloud_uv = uv - wind_offset;
-	
-	float density_fbm = fbm(cloud_uv);
-	
-	// Dynamic, highly visible thresholds for standard weather conditions
-	float thickness_threshold = mix(0.28, 0.05, storm_weight);
-	float alpha = smoothstep(thickness_threshold, thickness_threshold + 0.22, density_fbm) * dir.y;
-	
-	if (alpha <= 0.01) {
-		return vec4(0.0);
-	}
-	
-	// PBR Rim Lighting: Golden-orange edges facing the sun during sunsets
-	float sun_lit_dot = max(0.0, dot(dir, s_dir));
-	vec3 sunset_edge_glow = vec3(0.98, 0.45, 0.12) * pow(sun_lit_dot, 6.0) * day_weight;
-	
-	// Adaptive cloud color blending based on active day/night/storm timelines
-	vec3 day_tint = mix(vec3(0.98), vec3(0.35, 0.38, 0.42), 1.0 - sun_lit_dot);
-	vec3 storm_tint = vec3(0.18, 0.19, 0.22);
-	vec3 night_tint = vec3(0.05, 0.06, 0.10);
-	
-	vec3 base_color = mix(night_tint, day_tint, day_weight);
-	base_color = mix(base_color, storm_tint, storm_weight);
-	
-	return vec4(base_color + sunset_edge_glow, alpha * 0.90);
-}
-
 
 void sky() {
-	vec3 dir = EYEDIR;
-	vec3 s_dir = normalize(sun_direction);
-	vec3 m_dir = normalize(moon_direction);
+	float fade = pow(abs(EYEDIR.y), power);
+	vec3 sky_back = vec3(0.0);
 	
-	// 1. Compile baseline atmospheric gradient
-	vec3 sky_color = get_sky_gradient(dir, s_dir);
+	if (EYEDIR.y > 0.0) {
+		// 1. DAY/NIGHT SKY GRADIENT
+		sky_back = calculate_sky_base(EYEDIR);
+		
+		// 2. TWINKLING STARS (ONLY AT NIGHT)
+		if (day_weight < 0.95) {
+			vec3 star_grid = EYEDIR * 220.0;
+			float star_noise = hash3d(floor(star_grid));
+			if (star_noise > 0.994) {
+				float twinkle = sin(TIME * 3.5 + star_noise * 120.0) * 0.5 + 0.5;
+				float star_vis = (1.0 - day_weight) * twinkle * smoothstep(0.02, 0.22, EYEDIR.y);
+				sky_back += vec3(star_vis) * (1.0 - storm_weight * 0.85);
+			}
+		}
+		
+		// 3. SUN DISK
+		vec3 norm_sun_dir = normalize(sun_direction);
+		float sun_dot = dot(EYEDIR, norm_sun_dir);
+		if (sun_dot > 0.992) {
+			float sun_disk = smoothstep(0.993, 0.995, sun_dot);
+			vec3 sun_color = vec3(1.0, 0.98, 0.90) * 1.5;
+			sky_back = mix(sky_back, sun_color, sun_disk * day_weight);
+		}
+		
+		// 4. MOON DISK WITH PROCEDURAL SHADED PHASES (NaN Protected)
+		vec3 norm_moon_dir = normalize(moon_direction);
+		float moon_dot = dot(EYEDIR, norm_moon_dir);
+		
+		if (moon_dot > 0.994 && day_weight < 0.95) {
+			vec3 up_vec = abs(norm_moon_dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+			vec3 tangent_u = normalize(cross(norm_moon_dir, up_vec));
+			vec3 tangent_v = cross(tangent_u, norm_moon_dir);
+			
+			vec2 moon_uv = vec2(dot(EYEDIR, tangent_u), dot(EYEDIR, tangent_v)) * (1.0 / 0.077);
+			float dist_sq = dot(moon_uv, moon_uv);
+			
+			if (dist_sq <= 1.0) {
+				vec3 moon_normal = vec3(moon_uv, sqrt(max(0.0, 1.0 - dist_sq)));
+				float phase_angle = (moon_phase - 0.5) * 3.14159265 * 2.0;
+				vec3 phase_light_dir = normalize(vec3(sin(phase_angle), 0.0, cos(phase_angle)));
+				
+				float phase_shade = dot(moon_normal, phase_light_dir);
+				float moon_alpha = smoothstep(-0.06, 0.06, phase_shade);
+				
+				float craters = noise(moon_uv * 4.0) * 0.15 + 0.85;
+				vec3 moon_color = vec3(0.92, 0.94, 0.98) * craters * (1.0 - day_weight);
+				
+				sky_back = mix(sky_back, moon_color, moon_alpha * smoothstep(1.0, 0.96, dist_sq));
+			}
+		}
+		
+		// 5. MOVING CLOUDS (WIND AFFECTED)
+		vec2 sky_uv = EYEDIR.xz / EYEDIR.y;
+		vec2 wind_offset = wind_vector * (TIME * speed * (1.0 + wind_strength));
+		float clouds_noise = fbm(sky_uv * scale - wind_offset) * fade;
+		
+		float dens = smoothstep(density, 1.0, clouds_noise);
+		vec3 cloud_color = mix(vec3(0.72, 0.75, 0.82), vec3(0.98, 0.98, 0.98), dens) * (0.2 + day_weight * 0.8);
+		cloud_color = mix(cloud_color, vec3(0.15, 0.16, 0.18), storm_weight * 0.5);
+		sky_back = mix(sky_back, cloud_color, dens * (1.0 - storm_weight * 0.35));
+	} else {
+		sky_back = mix(ground_color_top, ground_color_bottom, -EYEDIR.y);
+	}
 	
-	// 2. Blend celestial orbits layers
-	vec3 sun_bloom = get_sun_layer(dir, s_dir);
-	vec3 moon_layer = get_moon_layer(dir, m_dir);
-	vec3 star_layer = get_star_layer(dir, TIME);
+	COLOR = sky_back;
 	
-	vec3 celestial_dome = sky_color + sun_bloom + moon_layer + star_layer;
-	
-	// 3. Compile and alpha-blend the dynamic cloud volumes
-	vec4 clouds = get_cloud_layer(dir, s_dir, TIME);
-	vec3 final_output = mix(celestial_dome, clouds.rgb, clouds.a);
-	
-	// Symmetrical Storm wash: Fade total sky contrast during heavy rainstorms
+	// 6. STORM OVERCAST WASH
 	vec3 overcast_color = vec3(0.12, 0.13, 0.15);
-	COLOR = mix(final_output, overcast_color, storm_weight * 0.65);
+	COLOR = mix(COLOR, overcast_color, storm_weight * 0.72);
 }

@@ -49,3 +49,18 @@ shadows/directional_shadow/soft_shadow_filter_quality=3
 shadows/positional_shadow/soft_shadow_filter_quality=3
 shadows/shadow_atlas/positional_shadow_atlas_16_bits=true
 shader_compiler/shader_cache/use_z_prepass=true
+
+[shader_globals]
+
+wind_vector={
+"type": "vec2",
+"value": Vector2(0.3, 0.1)
+}
+wind_strength={
+"type": "float",
+"value": 0.4
+}
+storm_weight={
+"type": "float",
+"value": 0.0
+}

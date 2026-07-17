@@ -2,7 +2,7 @@
 
 ![MainMenu Background](src/Infrastructure/UI/Assets/menu_background.png)
 
-A high-performance, infinite procedural voxel sandbox game engine built in **Godot 4.6.3**. 
+A high-performance, infinite procedural voxel sandbox game engine built in **Godot 4.6.3 / 4.7**. 
 
 CraftDomain is engineered strictly under **Domain-Driven Design (DDD)** and **SOLID** software engineering principles. It serves as a masterclass in highly decoupled, modular, and extensible system architecture capable of maintaining a rock-solid **120 FPS** frame rate with smooth frame pacing in massive, thread-populated 3D environments.
 
@@ -152,7 +152,43 @@ graph LR
 
 ---
 
-## 🛡️ 5. SOLID Compliance Checklist
+## 🌌 5. Atmospheric & Celestial Synthesis
+
+The engine features a fully synchronized, dynamic sky and fog shading system integrated directly with the calendar time loops and weather services.
+
+```mermaid
+graph TD
+	subgraph Time_Loop [CelestialService.gd]
+		Time[Time-of-day clock 0.0..1.0]
+		Days[Lunar Calendar days 1..28]
+	end
+
+	subgraph Shader_Params [celestial_sky.gdshader]
+		Sun[Sun Direction vector]
+		Moon[Moon Direction & Phase]
+		Stars[Twinkling Star noise]
+		Clouds[Wind-blown FBM Clouds]
+	end
+
+	subgraph Fog_Sync [Environment]
+		ColorSync[Horizon Color Matching]
+	end
+
+	Time -->|Computes Basis.z| Sun
+	Time -->|Calculates day_weight| Fog_Sync
+	Days -->|Calculates moon_phase| Moon
+	Time -->|Interpolates| ColorSync
+	
+	style Shader_Params fill:#1e293b,stroke:#00f3f3,stroke-width:2px
+```
+
+*   **Day/Night Gradation:** Transition curves interpolate dynamically between diurnally scattering Rayleigh gradients and deep nighttime cosmic backdrops based on the calculated altitude of the sun.
+*   **Procedural Moon Phases:** The moon is constructed dynamically in tangent space on the sky sphere. A procedural shadow mask is mapped onto the moon's surface normal vectors based on the calendar day, replicating the 28-day lunar cycle.
+*   **Dynamic Fog Light Syncing:** To prevent visual horizon splitting, the fog's light color is continuously interpolated on the CPU to match the current color of the sky's horizon.
+
+---
+
+## 🛡️ 6. SOLID Compliance Checklist
 
 *   **[S] Single Responsibility:** Controllers like `WorldController` only coordinate; they do not calculate geometry. `DiskWorldRepository` only streams files; it does not pack JSON data.
 *   **[O] Open-Closed:** `BlockLibrary`, `MobRegistry`, and `StructureLibrary` dynamically load plugins/mods from `user://mods/` without modifying core engine scripts.
@@ -162,7 +198,7 @@ graph LR
 
 ---
 
-## ⌨️ 6. Controls Reference
+## ⌨️ 7. Controls Reference
 
 | Action | PC (KBM) | Gamepad | Description |
 | :--- | :---: | :---: | :--- |

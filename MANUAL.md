@@ -174,3 +174,17 @@ CraftDomain features a silent, zero-stutter background **Delta-Save** process. Y
 1.  Pressing **Escape** pauses the game, opens the sleek Pause Menu, and triggers the save sequence.
 2.  The engine instantly gathers your current `(X, Y, Z)` position, camera look angles, world seed, celestial calendar day (persisting moon phases), active quest states, and full 24-slot backpack item quantities, writing them to `user://world_save/global_save.json`.
 3.  Simultaneously, any blocks you broke or placed are gathered as localized modification deltas and saved directly to chunk files on disk (e.g., `chunk_-21_1_10.json`).
+
+---
+
+## 🌌 9. Celestial Calendar & Symmetrical Fog Synthesis
+
+The environment incorporates a procedurally simulated sky and a cohesive fogging model tied directly to the day/night progression.
+
+### Symmetrical Horizon Softening
+When distant terrain renders, the sharp polygonal edges of the voxel chunks are blended with the sky using depth-based Exponential Fog. To prevent jarring dark lines against bright horizons, the fog's light color (`fog_light_color`) is dynamically adjusted in real-time on the CPU. It shifts from a bright sky-blue during the day (`Color(0.42, 0.65, 0.88)`) to a deep cosmic navy-black at night (`Color(0.015, 0.02, 0.04)`), ensuring a smooth gradient transition at the horizon.
+
+### The 28-Day Lunar Cycle
+At night, the celestial shader projects a procedural moon on the sky dome. The moon's current phase is calculated in real-time from the global calendar:
+*   **Waxing/Waning Phases:** The engine constructs a 3D tangent coordinate system over the moon disk, projecting a curved mathematical shadow according to the active calendar day (from New Moon to Full Moon).
+*   **Atmospheric Stars:** Twinkling stars are rendered using high-frequency pseudo-random noise (`hash3d`), which fades out dynamically during daylight or under cloudy storm conditions (`storm_weight`).

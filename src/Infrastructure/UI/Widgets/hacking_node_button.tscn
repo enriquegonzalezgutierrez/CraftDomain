@@ -1,0 +1,24 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/UI/Widgets/HackingNodeButton.gd" id="1_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_normal"]
+bg_color = Color(0.95, 0, 0.95, 0.85)
+border_width_bottom = 4
+border_color = Color(0.57, 0, 0.57, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_focus"]
+
+[node name="HackingNodeButton" type="Button"]
+custom_minimum_size = Vector2(60, 60)
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_styles/normal = SubResource("StyleBoxFlat_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_normal")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+script = ExtResource("1_script")

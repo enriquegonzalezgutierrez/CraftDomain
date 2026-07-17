@@ -1,8 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/InventoryOverlay.gd
 # Description: Glassmorphic 24-slot inventory and backpack inspector.
-#              Corrected: Replaced unstable dynamic anchor solvers with 
-#              deterministic manual margin offsets to guarantee centered icons.
+#              SOLID COMPLIANCE:
+#              - Rule 7.1: Purged all procedural UI generation (ColorRect.new, 
+#                TextureRect.new, Label.new). Delegates directly to InventorySlotWidget.
+#              - Single Responsibility Principle (SRP): Focuses strictly on layout 
+#                coordination, logic routing, and drag-and-drop orchestration.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -11,11 +14,7 @@ extends Panel
 
 signal closed
 
-# Declarative StyleBox theme resources preloaded to fulfill Rule 7.1
-const STYLE_SLOT_NORMAL := preload("res://assets/themes/style_slot_normal.tres")
-const STYLE_SLOT_SELECTED := preload("res://assets/themes/style_slot_selected.tres")
-const STYLE_SLOT_ACTIVE := preload("res://assets/themes/style_slot_active.tres")
-const STYLE_SLOT_HOVER := preload("res://assets/themes/style_slot_hover.tres")
+const SLOT_WIDGET_SCENE := preload("res://src/Infrastructure/UI/Widgets/inventory_slot_widget.tscn")
 
 @export var player: PlayerController
 
@@ -39,7 +38,6 @@ func _ready() -> void:
 	_action_button.pressed.connect(_on_equip_pressed)
 	_use_button.pressed.connect(_on_use_pressed)
 	
-	# Localize Sort button dynamically to guarantee language Pack compatibility
 	_sort_btn.text = " ⚡ " + tr("INVENTORY_SORT").to_upper()
 	
 	_refresh_backpack_grids()
@@ -47,116 +45,36 @@ func _ready() -> void:
 
 
 func _refresh_backpack_grids() -> void:
-	if not is_instance_valid(player): return
+	if not is_instance_valid(player): 
+		return
 		
-	for child: Node in _backpack_grid_container.get_children(): child.queue_free()
-	for child: Node in _hotbar_grid_container.get_children(): child.queue_free()
+	_clear_container(_backpack_grid_container)
+	_clear_container(_hotbar_grid_container)
 		
-	var inventory := player.inventory as InventoryComponent
 	for i: int in range(8, 24):
-		_backpack_grid_container.add_child(_create_grid_slot_button(i, inventory, 68))
+		_backpack_grid_container.add_child(_create_grid_slot_widget(i, 68))
 	for i: int in range(8):
-		_hotbar_grid_container.add_child(_create_grid_slot_button(i, inventory, 38))
+		_hotbar_grid_container.add_child(_create_grid_slot_widget(i, 38))
 
 
-func _create_grid_slot_button(slot_index: int, inventory: InventoryComponent, size_pixels: int) -> Button:
-	var btn := InventorySlotWidget.new()
-	btn.slot_index = slot_index
-	btn.overlay = self
-	btn.custom_minimum_size = Vector2(size_pixels, size_pixels)
+func _clear_container(container: Control) -> void:
+	for child: Node in container.get_children():
+		child.queue_free()
+
+
+func _create_grid_slot_widget(slot_index: int, size_pixels: int) -> InventorySlotWidget:
+	var widget := SLOT_WIDGET_SCENE.instantiate() as InventorySlotWidget
+	widget.custom_minimum_size = Vector2(size_pixels, size_pixels)
 	
-	_apply_slot_styles(btn, slot_index)
+	var is_selected := (slot_index == _first_selected_slot_index)
+	var is_active := (slot_index == player.active_slot_index)
 	
-	var slot := inventory.get_slot_data(slot_index)
-	if slot.item_id != -1 and slot.quantity != 0:
-		_build_slot_contents(btn, slot, size_pixels)
+	# Duck-typing call to decouple specific logic requirements
+	if widget.has_method("initialize_slot"):
+		widget.call("initialize_slot", slot_index, self, is_selected, is_active)
 		
-	btn.pressed.connect(_on_slot_clicked.bind(slot_index))
-	return btn
-
-
-func _apply_slot_styles(btn: Button, slot_index: int) -> void:
-	var style := STYLE_SLOT_NORMAL
-	if slot_index == _first_selected_slot_index:
-		style = STYLE_SLOT_SELECTED
-	elif slot_index == player.active_slot_index:
-		style = STYLE_SLOT_ACTIVE
-		
-	btn.add_theme_stylebox_override("normal", style)
-	btn.add_theme_stylebox_override("hover", STYLE_SLOT_HOVER)
-	btn.add_theme_stylebox_override("pressed", style)
-	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-
-
-func _build_slot_contents(btn: Button, slot: InventoryComponent.SlotData, size_pixels: int) -> void:
-	var icon_container := _create_icon_container(size_pixels)
-	btn.add_child(icon_container)
-	
-	_setup_item_icon(icon_container, slot)
-	_setup_quantity_label(btn, slot.quantity, size_pixels)
-
-
-func _create_icon_container(size_pixels: int) -> Control:
-	var container := Control.new()
-	container.name = "ItemIconContainer"
-	
-	# ALIGNMENT FIXED: Use TOP_LEFT anchor and enforce precise manual margins 
-	# to bypass any SceneTree timing or layout-solver scaling bugs.
-	container.anchors_preset = Control.PRESET_TOP_LEFT
-	
-	var margin := 6 if size_pixels > 45 else 4
-	container.position = Vector2(margin, margin)
-	container.size = Vector2(size_pixels - margin * 2, size_pixels - margin * 2)
-	
-	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return container
-
-
-func _setup_item_icon(container: Control, slot: InventoryComponent.SlotData) -> void:
-	var fallback := ColorRect.new()
-	fallback.name = "FallbackColor"
-	fallback.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	container.add_child(fallback)
-	
-	var tex_display := TextureRect.new()
-	tex_display.name = "TextureDisplay"
-	tex_display.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	tex_display.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tex_display.stretch_mode = TextureRect.STRETCH_SCALE
-	tex_display.texture_filter = TextureRect.TEXTURE_FILTER_NEAREST
-	tex_display.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	container.add_child(tex_display)
-	
-	var helper := InventorySlotWidget.new()
-	var tex := helper._get_item_texture(slot.item_id)
-	
-	if tex != null:
-		tex_display.texture = tex
-		tex_display.visible = true
-		fallback.visible = false
-	else:
-		var def := BlockLibrary.get_definition(slot.item_id as BlockType.Type)
-		fallback.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
-		fallback.visible = true
-		helper._apply_special_fallback_decoration(fallback, slot.item_id)
-	helper.queue_free()
-
-
-func _setup_quantity_label(btn: Button, quantity: int, size_pixels: int) -> void:
-	var qty_label := Label.new()
-	qty_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	qty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	qty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	
-	var ls := LabelSettings.new()
-	ls.font_size = 11 if size_pixels < 45 else 13
-	ls.outline_size = 3
-	ls.outline_color = Color.BLACK
-	qty_label.label_settings = ls
-	
-	qty_label.text = tr("INVENTORY_INFINITE_SHORT") if quantity == -1 else str(quantity)
-	btn.add_child(qty_label)
+	widget.pressed.connect(func() -> void: _on_slot_clicked(slot_index))
+	return widget
 
 
 func _on_slot_clicked(slot_index: int) -> void:
@@ -195,34 +113,24 @@ func _populate_slot_details(inventory: InventoryComponent, slot: InventoryCompon
 	var item_name := inventory.get_slot_item_name(slot_index)
 	_detail_title.text = item_name.to_upper()
 	
-	var def := BlockLibrary.get_definition(slot.item_id as BlockType.Type)
-	_detail_icon.color = def.color_top if (def != null and def.type != BlockType.Type.AIR) else Color(0.12, 0.12, 0.15)
 	_detail_icon.visible = true
+	_detail_icon.color = Color(0, 0, 0, 0)
+	_clear_container(_detail_icon)
 	
-	for child in _detail_icon.get_children(): child.queue_free()
-	_apply_details_icon_preview(slot)
+	# Reuse the slot widget as a pure visual display for the detail panel (DRY/OCP)
+	var preview_widget := SLOT_WIDGET_SCENE.instantiate() as InventorySlotWidget
+	preview_widget.custom_minimum_size = _detail_icon.size
+	preview_widget.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_detail_icon.add_child(preview_widget)
+	
+	if preview_widget.has_method("initialize_display_only"):
+		preview_widget.call("initialize_display_only", slot.item_id, slot.quantity)
 	
 	_detail_desc.text = tr("ITEM_" + str(slot.item_id) + "_DESC")
 	_detail_instruction.text = tr("ITEM_USAGE_PREFIX") + ": " + tr("ITEM_" + str(slot.item_id) + "_USE")
-	_detail_qty.text = tr("ITEM_STOCKED_PREFIX") + ": " + (tr("INVENTORY_INFINITE") if slot.quantity == -1 else str(slot.quantity) + " " + tr("ITEM_STOCKED_UNITS"))
-
-
-func _apply_details_icon_preview(slot: InventoryComponent.SlotData) -> void:
-	var helper := InventorySlotWidget.new()
-	var tex := helper._get_item_texture(slot.item_id)
 	
-	if tex != null:
-		var preview_tex := TextureRect.new()
-		preview_tex.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		preview_tex.texture = tex
-		preview_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		preview_tex.stretch_mode = TextureRect.STRETCH_SCALE
-		preview_tex.texture_filter = TextureRect.TEXTURE_FILTER_NEAREST
-		_detail_icon.add_child(preview_tex)
-		_detail_icon.color = Color(0, 0, 0, 0)
-	else:
-		helper._apply_special_fallback_decoration(_detail_icon, slot.item_id)
-	helper.queue_free()
+	var qty_str := tr("INVENTORY_INFINITE") if slot.quantity == -1 else str(slot.quantity) + " " + tr("ITEM_STOCKED_UNITS")
+	_detail_qty.text = tr("ITEM_STOCKED_PREFIX") + ": " + qty_str
 
 
 func _update_slot_action_buttons(slot: InventoryComponent.SlotData) -> void:
@@ -244,6 +152,7 @@ func _on_equip_pressed() -> void:
 	player.call("_apply_hotbar_selection", _focused_slot_index)
 	var inventory := player.inventory as InventoryComponent
 	var item_name := inventory.get_slot_item_name(_focused_slot_index)
+	
 	var hud := player.hud as PlayerHUD
 	if is_instance_valid(hud):
 		hud.show_quest_notification("NOTIFICATION_EQUIP_SUCCESS_HEADER", tr("NOTIFICATION_EQUIP_SUCCESS_DESC") + ": " + item_name.to_upper())
@@ -286,7 +195,7 @@ func _on_sort_pressed() -> void:
 func _show_empty_details() -> void:
 	_detail_title.text = tr("INVENTORY_EMPTY_TITLE")
 	_detail_icon.visible = false
-	for child: Node in _detail_icon.get_children(): child.queue_free()
+	_clear_container(_detail_icon)
 	_detail_desc.text = tr("INVENTORY_EMPTY_DESC")
 	_detail_instruction.text = ""
 	_detail_qty.text = ""

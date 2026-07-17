@@ -1,13 +1,15 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Infrastructure/Celestial/WeatherService.gd
 # Description: Infrastructure Weather Service managing dynamic meteorological cycles.
 #              SOLID COMPLIANCE: 
 #              - Single Responsibility Principle (SRP): Isolates particle setups 
 #                and climate routines. All methods kept strictly < 20 lines.
 #              - Dependency Inversion Principle (DIP): Receives player and world 
-#                references explicitly via dependency injection instead of SceneTree lookups.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/Celestial/WeatherService.gd
+#                references explicitly via dependency injection.
+#              - Project Settings Integration: Relies on project.godot for global 
+#                parameter declarations, avoiding duplicate C++ add errors.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name WeatherService
 extends Node
@@ -52,7 +54,7 @@ func _physics_process(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 		
-	# Follow player head exactly (floats 12 meters above) to maintain extreme performance
+	# Follow player head exactly (floats 12 meters above) to maintain performance
 	if is_instance_valid(_particles) and _particles.emitting:
 		_particles.global_position = player.global_position + Vector3(0.0, 12.0, 0.0)
 		
@@ -64,15 +66,17 @@ func _physics_process(delta: float) -> void:
 		_cycle_weather()
 
 
-## Safe programmatic registration of Shader Globals.
-## Uses a static flag to guarantee execution exactly once per game lifecycle.
+## Safe initialization of Shader Globals.
+## All declarations are statically defined inside 'project.godot' (shader_globals)
+## to prevent C++ rendering server conflicts during editor/runtime compilation.
 func _setup_global_wind_parameters() -> void:
 	if _globals_initialized:
 		return
 	_globals_initialized = true
 	
-	RenderingServer.global_shader_parameter_add("wind_vector", RenderingServer.GLOBAL_VAR_TYPE_VEC2, Vector2(0.3, 0.1))
-	RenderingServer.global_shader_parameter_add("wind_strength", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.4)
+	# Set default starting values directly (no longer adding them as they are declared in project.godot)
+	RenderingServer.global_shader_parameter_set("wind_vector", Vector2(0.3, 0.1))
+	RenderingServer.global_shader_parameter_set("wind_strength", 0.4)
 
 
 ## Dynamic Wind Simulator: Simulates a slow rotating breeze during sunny days, 
@@ -94,7 +98,7 @@ func _process_dynamic_wind_simulation(delta: float) -> void:
 			target_vector = Vector2(-0.8, -0.8).normalized()
 			target_strength = 1.2
 			
-	# Interpolate state LOCALLY on the CPU (infinite times faster than querying GPU memory)
+	# Interpolate state LOCALLY on the CPU
 	_current_wind_strength = lerp(_current_wind_strength, target_strength, delta * 0.4)
 	_current_wind_vector = _current_wind_vector.lerp(target_vector * _current_wind_strength, delta * 0.4)
 	

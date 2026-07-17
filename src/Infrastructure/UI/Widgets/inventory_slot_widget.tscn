@@ -1,0 +1,63 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/Infrastructure/UI/Widgets/InventorySlotWidget.gd" id="1_script"]
+[ext_resource type="StyleBox" path="res://assets/themes/style_slot_normal.tres" id="2_style"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_qty"]
+font_size = 13
+outline_size = 3
+outline_color = Color(0, 0, 0, 1)
+
+[node name="InventorySlotWidget" type="Button"]
+custom_minimum_size = Vector2(68, 68)
+offset_right = 68.0
+offset_bottom = 68.0
+pivot_offset = Vector2(34, 34)
+theme_override_styles/normal = ExtResource("2_style")
+script = ExtResource("1_script")
+
+[node name="ItemIconContainer" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = 62.0
+offset_bottom = 62.0
+mouse_filter = 2
+
+[node name="FallbackColor" type="ColorRect" parent="ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TextureDisplay" type="TextureRect" parent="ItemIconContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="QtyLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -23.0
+offset_right = -4.0
+grow_horizontal = 0
+grow_vertical = 0
+label_settings = SubResource("LabelSettings_qty")
+horizontal_alignment = 2
+vertical_alignment = 2

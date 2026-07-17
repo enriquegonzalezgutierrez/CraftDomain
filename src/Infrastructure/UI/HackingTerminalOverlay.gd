@@ -1,8 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/HackingTerminalOverlay.gd
 # Description: Infrastructure UI Coordinator managing the Cyber Hacking minigame.
-#              Players must toggle a grid of nodes to pure Cyan to bypass the firewall.
-#              Corrected: Silenced the explicit INTEGER_DIVISION compiler warning.
+#              SOLID COMPLIANCE:
+#              - Rule 7.1 (Declarative UI): Purged procedural Button and StyleBoxFlat 
+#                generation. Now loads a decoupled .tscn for grid nodes.
+#              - Rule 5.2 (Zero Hardcoded Strings): All UI text replaced with tr() keys.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -15,16 +17,18 @@ signal closed
 const GRID_SIZE: int = 4
 const TIME_LIMIT_SEC: float = 60.0
 
-const COLOR_CYAN := Color(0.0, 0.95, 0.95, 0.85)
-const COLOR_MAGENTA := Color(0.95, 0.0, 0.95, 0.85)
-const COLOR_DIM := Color(0.12, 0.12, 0.15, 0.8)
+# Declarative UI node injection to prevent procedural rendering overhead
+const NODE_BTN_SCENE := preload("res://src/Infrastructure/UI/Widgets/hacking_node_button.tscn")
+
+const COLOR_LOCKED := Color(0.95, 0.15, 0.15)
+const COLOR_SUCCESS := Color(0.2, 0.95, 0.35)
+const COLOR_NORMAL := Color(1.0, 1.0, 1.0)
 
 @onready var _grid_container: GridContainer = $TerminalCard/MarginContainer/VBoxContainer/PuzzleGrid
 @onready var _timer_label: Label = $TerminalCard/MarginContainer/VBoxContainer/HeaderHBox/TimerLabel
 @onready var _status_label: Label = $TerminalCard/MarginContainer/VBoxContainer/StatusLabel
 @onready var _close_btn: Button = $TerminalCard/MarginContainer/VBoxContainer/CloseButton
 
-# Array representing the 2D grid: true = Cyan (Aligned), false = Magenta (Corrupted)
 var _grid_state: Array[bool] = []
 var _time_remaining: float = TIME_LIMIT_SEC
 var _is_active: bool = false
@@ -37,8 +41,8 @@ func _ready() -> void:
 	_scramble_grid()
 	
 	_is_active = true
-	_status_label.text = "SYSTEM LOCKED: ALIGN ALL CONDUITS TO CYAN"
-	_status_label.modulate = Color(0.95, 0.15, 0.15)
+	_status_label.text = tr("HACKING_STATUS_LOCKED")
+	_status_label.modulate = COLOR_LOCKED
 
 
 func _process(delta: float) -> void:
@@ -56,23 +60,8 @@ func _initialize_puzzle_grid() -> void:
 	_grid_state.resize(GRID_SIZE * GRID_SIZE)
 	_grid_container.columns = GRID_SIZE
 	
-	var normal_style := StyleBoxFlat.new()
-	normal_style.set_corner_radius_all(4)
-	normal_style.border_width_bottom = 4
-	
 	for i in range(GRID_SIZE * GRID_SIZE):
-		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(60, 60)
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		
-		# Clone style dynamically to allow individual color overrides
-		var unique_style := normal_style.duplicate() as StyleBoxFlat
-		btn.add_theme_stylebox_override("normal", unique_style)
-		btn.add_theme_stylebox_override("hover", unique_style)
-		btn.add_theme_stylebox_override("pressed", unique_style)
-		btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-		
+		var btn := NODE_BTN_SCENE.instantiate() as Button
 		btn.pressed.connect(_on_node_clicked.bind(i))
 		_grid_container.add_child(btn)
 		_buttons.append(btn)
@@ -80,7 +69,7 @@ func _initialize_puzzle_grid() -> void:
 
 func _scramble_grid() -> void:
 	for i in range(_grid_state.size()):
-		_grid_state[i] = true # Start all cyan
+		_grid_state[i] = true 
 		
 	var simulation_clicks := randi_range(8, 15)
 	for i in range(simulation_clicks):
@@ -102,8 +91,6 @@ func _on_node_clicked(index: int) -> void:
 
 func _toggle_node_and_neighbors(index: int) -> void:
 	var x := index % GRID_SIZE
-	
-	# WARNING FIXED: Explicitly cast divisions to prevent narrowing conversions
 	var y := floori(float(index) / float(GRID_SIZE))
 	
 	_toggle_cell(x, y)
@@ -124,20 +111,19 @@ func _refresh_grid_visuals() -> void:
 		var btn: Button = _buttons[i]
 		var is_cyan: bool = _grid_state[i]
 		
-		var style: StyleBoxFlat = btn.get_theme_stylebox("normal") as StyleBoxFlat
-		if style != null:
-			style.bg_color = COLOR_CYAN if is_cyan else COLOR_MAGENTA
-			style.border_color = style.bg_color.darkened(0.4)
+		# Delegate style manipulation to the child UI component safely
+		if btn.has_method("set_node_state"):
+			btn.call("set_node_state", is_cyan)
 
 
 func _update_timer_display() -> void:
 	var seconds := max(0, int(ceil(_time_remaining)))
-	_timer_label.text = "T-MINUS: %02d SEC" % seconds
+	_timer_label.text = tr("HACKING_TIMER_FORMAT") % seconds
 	
 	if seconds <= 10:
-		_timer_label.label_settings.font_color = Color(0.95, 0.15, 0.15)
+		_timer_label.label_settings.font_color = COLOR_LOCKED
 	else:
-		_timer_label.label_settings.font_color = Color(1.0, 1.0, 1.0)
+		_timer_label.label_settings.font_color = COLOR_NORMAL
 
 
 func _check_win_condition() -> void:
@@ -153,8 +139,8 @@ func _check_win_condition() -> void:
 
 func _execute_hack_success() -> void:
 	_is_active = false
-	_status_label.text = "FIREWALL BYPASSED. ACCESS GRANTED."
-	_status_label.modulate = Color(0.2, 0.95, 0.35)
+	_status_label.text = tr("HACKING_STATUS_SUCCESS")
+	_status_label.modulate = COLOR_SUCCESS
 	AudioService.play_sfx_static("chest_open")
 	
 	var tw := create_tween()
@@ -167,14 +153,12 @@ func _execute_hack_success() -> void:
 
 func _execute_hack_failure() -> void:
 	_is_active = false
-	_status_label.text = "INTRUSION DETECTED. LOCKDOWN INITIATED."
-	_status_label.modulate = Color(0.95, 0.15, 0.15)
+	_status_label.text = tr("HACKING_STATUS_FAILURE")
+	_status_label.modulate = COLOR_LOCKED
 	
 	for btn: Button in _buttons:
-		var style: StyleBoxFlat = btn.get_theme_stylebox("normal") as StyleBoxFlat
-		if style != null:
-			style.bg_color = COLOR_DIM
-			style.border_color = Color.BLACK
+		if btn.has_method("set_locked_state"):
+			btn.call("set_locked_state")
 			
 	var tw := create_tween()
 	tw.tween_interval(1.5)

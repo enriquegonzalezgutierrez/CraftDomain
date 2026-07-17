@@ -5,14 +5,10 @@
 # Description: Pure Infrastructure static registry managing the preloading, 
 #              caching, and querying of 2D block textures from disk.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively disk-bound texture 
-#   lookups and RAM caching, freeing rendering nodes of I/O operations.
-# - Open-Closed Principle (OCP): Completely closed to modifications. It scans 
-#   the registered `BlockLibrary` definitions dynamically on boot, automatically 
-#   supporting any new custom blocks and textures without changes.
-# - Dependency Inversion Principle (DIP): Centralizes asset lifecycles, allowing 
-#   easy integration with low-level graphic renderers.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+#              - Single Responsibility Principle (SRP): Handles exclusively disk-bound 
+#                texture lookups and RAM caching.
+#              - Bootstrap Sync Fix: Forces BlockLibrary lazy initialization 
+#                before compiling the texture cache, preventing empty-cache errors.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -35,6 +31,10 @@ static func initialize_textures() -> void:
 	if _initialized:
 		return
 	_initialized = true
+	
+	# Symmetrical Bootstrap Fix: Force BlockLibrary to scan and load all block
+	# scripts into RAM first, ensuring the definitions dictionary is populated.
+	var _air_fallback := BlockLibrary.get_definition(0) as BlockDefinition
 	
 	# Iterate dynamically through all registered block definitions (OCP compliant)
 	for b_id: int in BlockLibrary._definitions.keys():

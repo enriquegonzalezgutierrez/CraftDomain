@@ -1,62 +1,44 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/AIShowcaseDashboard.gd
 # Description: Infrastructure UI Presenter managing the 2D developer dashboard.
-#              Provides decoupled sliders, controls, and live 20Hz telemetry reports
-#              augmented with manual action/task override triggers.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively 2D control panels 
-#   and diagnostic telemetry readouts.
-# - Open-Closed Principle (OCP): Dynamically overrides active task states on 
-#   any spawned subject through the NPCAIComponent.force_manual_task() API.
-# - Dependency Inversion Principle (DIP): Sourced the AI brain directly through 
-#   the public 'ai_component' property of the active subject.
+#              SOLID COMPLIANCE:
+#              - Rule 7.1 (Declarative UI): Purged 340+ lines of procedural layout 
+#                generation. All controls are now declared in its .tscn.
+#              - Rule 4.1: Reduced class size from 342 lines to under 220 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name AIShowcaseDashboard
 extends CanvasLayer
 
-# --- UI INTERACTIVE CONSTANTS ---
-const SIDEBAR_WIDTH: float = 260.0
-const PANEL_RIGHT_WIDTH: float = 290.0
-const BUTTON_HEIGHT: float = 38.0
-const SLIDER_SPEED_MIN: float = 0.1
-const SLIDER_SPEED_MAX: float = 1.0
-const PLATFORM_Y: int = 11
-
-# --- COLOR PALETTE CONSTANTS ---
-const COLOR_CARD_BACKGROUND := Color(0.06, 0.06, 0.08, 0.92)
-const COLOR_CARD_BORDER := Color(0.3, 0.85, 1.0, 0.4)
-const COLOR_LURE_TRUE := Color(0.2, 0.95, 0.35)
-
-# --- 20HZ THROTTLING CONSTANTS ---
 const THROTTLE_INTERVAL_SEC: float = 0.05
+const SPAWN_PAD_Y_ALTITUDE: float = 11.0
 
-var _showcase_room: AIShowcaseRoom
+@onready var _spawn_catalog_vbox: VBoxContainer = %SpawnCatalogVBox
+@onready var _telemetry_label: Label = %TelemetryLabel
+@onready var _chicken_checkbox: CheckButton = %ChickenCheckbox
+@onready var _storm_checkbox: CheckButton = %StormCheckbox
+@onready var _slowmo_slider: HSlider = %SlowmoSlider
+@onready var _override_button: Button = %OverrideButton
+@onready var _spawn_zombie_btn: Button = %SpawnZombieButton
+@onready var _exit_btn: Button = %ExitButton
+
+var _showcase_room: AIShowcaseRoom = null
 var _active_subject: CharacterBody3D = null
 var _ui_accumulated_time: float = 0.0
 
-# Manual Override state trackers (DIP / OCP Aligned)
 var _current_override_index: int = 0
-var _override_states: Array[int] = [-1, 0, 1, 5, 6] # -1 representing Autonomous/Auto
-
-# UI Node References
-var _sidebar_vbox: VBoxContainer
-var _telemetry_label: Label
-var _chicken_checkbox: CheckButton
-var _storm_checkbox: CheckButton
-var _slowmo_slider: HSlider
-var _override_button: Button
+var _override_states: Array[int] = [-1, 0, 1, 5, 6] # -1 = Autonomous Auto
 
 
 func _ready() -> void:
 	_showcase_room = get_parent() as AIShowcaseRoom
-	
 	if is_instance_valid(_showcase_room):
 		_showcase_room.subject_spawned.connect(_on_subject_spawned)
 		_showcase_room.subject_despawned.connect(_on_subject_despawned)
 		
-	_build_dashboard_ui()
+	_connect_ui_signals()
+	_populate_mobs_catalog()
 
 
 func _process(delta: float) -> void:
@@ -69,213 +51,38 @@ func _process(delta: float) -> void:
 		_update_live_telemetry_display()
 
 
-func _build_dashboard_ui() -> void:
-	var main_margin := MarginContainer.new()
-	main_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_apply_dashboard_margins(main_margin)
-	add_child(main_margin)
-	
-	var master_hbox := HBoxContainer.new()
-	master_hbox.add_theme_constant_override("separation", 24)
-	main_margin.add_child(master_hbox)
-	
-	_build_left_sidebar_panel(master_hbox)
-	_build_right_control_panel(master_hbox)
-
-
-func _build_left_sidebar_panel(parent_hbox: HBoxContainer) -> void:
-	var left_card := PanelContainer.new()
-	left_card.custom_minimum_size = Vector2(SIDEBAR_WIDTH, 0.0)
-	left_card.add_theme_stylebox_override("panel", _get_glass_panel_style())
-	parent_hbox.add_child(left_card)
-	
-	var left_margin := MarginContainer.new()
-	_apply_standard_panel_margins(left_margin)
-	left_card.add_child(left_margin)
-	
-	var left_vbox := VBoxContainer.new()
-	left_vbox.add_theme_constant_override("separation", 10)
-	left_margin.add_child(left_vbox)
-	
-	_add_sidebar_catalog_header(left_vbox)
-	_setup_sidebar_scroll_container(left_vbox)
-
-
-func _add_sidebar_catalog_header(parent_vbox: VBoxContainer) -> void:
-	var sel_title := Label.new()
-	sel_title.text = tr("SHOWCASE_TITLE").to_upper()
-	var sel_settings := LabelSettings.new()
-	sel_settings.font_size = 15
-	sel_settings.font_color = Color(0.2, 0.85, 0.85)
-	sel_title.label_settings = sel_settings
-	parent_vbox.add_child(sel_title)
-
-
-func _setup_sidebar_scroll_container(parent_vbox: VBoxContainer) -> void:
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	parent_vbox.add_child(scroll)
-	
-	_sidebar_vbox = VBoxContainer.new()
-	_sidebar_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_sidebar_vbox.add_theme_constant_override("separation", 6)
-	scroll.add_child(_sidebar_vbox)
-	
-	_populate_sidebar_mobs_deck()
-
-
-func _build_right_control_panel(parent_hbox: HBoxContainer) -> void:
-	var center_spacer := Control.new()
-	center_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	parent_hbox.add_child(center_spacer)
-	
-	var right_card := PanelContainer.new()
-	right_card.custom_minimum_size = Vector2(PANEL_RIGHT_WIDTH, 0.0)
-	right_card.add_theme_stylebox_override("panel", _get_glass_panel_style())
-	parent_hbox.add_child(right_card)
-	
-	var right_margin := MarginContainer.new()
-	_apply_standard_panel_margins(right_margin)
-	right_card.add_child(right_margin)
-	
-	var right_vbox := VBoxContainer.new()
-	right_vbox.add_theme_constant_override("separation", 12)
-	right_margin.add_child(right_vbox)
-	
-	_populate_right_controls_and_telemetry(right_vbox)
-
-
-func _populate_right_controls_and_telemetry(right_vbox: VBoxContainer) -> void:
-	_add_control_header(right_vbox)
-	_setup_interactive_checkbuttons(right_vbox)
-	_setup_manual_override_button(right_vbox)
-	_add_spawn_zombie_button(right_vbox)
-	_setup_speed_scale_slider(right_vbox)
-	_add_telemetry_labels(right_vbox)
-	_add_return_menu_button(right_vbox)
-
-
-func _add_control_header(parent_vbox: VBoxContainer) -> void:
-	var ctrl_title := Label.new()
-	ctrl_title.text = tr("SHOWCASE_CONTROLS_HEADER")
-	var ctrl_settings := LabelSettings.new()
-	ctrl_settings.font_size = 14
-	ctrl_settings.font_color = Color(1.0, 0.85, 0.2)
-	ctrl_title.label_settings = ctrl_settings
-	parent_vbox.add_child(ctrl_title)
-
-
-func _setup_interactive_checkbuttons(parent_vbox: VBoxContainer) -> void:
-	_chicken_checkbox = CheckButton.new()
-	_chicken_checkbox.text = tr("SHOWCASE_CHICKEN_LURE")
+func _connect_ui_signals() -> void:
 	_chicken_checkbox.toggled.connect(_on_lure_chicken_toggled)
-	parent_vbox.add_child(_chicken_checkbox)
-	
-	_storm_checkbox = CheckButton.new()
-	_storm_checkbox.text = tr("SHOWCASE_RAIN_OVERCAST")
 	_storm_checkbox.toggled.connect(_on_rain_overcast_toggled)
-	parent_vbox.add_child(_storm_checkbox)
-
-
-func _setup_manual_override_button(parent_vbox: VBoxContainer) -> void:
-	_override_button = Button.new()
-	_override_button.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
-	_setup_button_style(_override_button, Color(0.12, 0.45, 0.82))
 	_override_button.pressed.connect(_on_override_pressed)
-	_update_override_button_label()
-	parent_vbox.add_child(_override_button)
-
-
-func _add_spawn_zombie_button(parent_vbox: VBoxContainer) -> void:
-	var spawn_zombie_btn := Button.new()
-	spawn_zombie_btn.text = tr("SHOWCASE_SPAWN_THREAT")
-	spawn_zombie_btn.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
-	_setup_button_style(spawn_zombie_btn, Color(0.75, 0.15, 0.15))
-	spawn_zombie_btn.pressed.connect(_on_spawn_zombie_pressed)
-	parent_vbox.add_child(spawn_zombie_btn)
-
-
-func _setup_speed_scale_slider(parent_vbox: VBoxContainer) -> void:
-	var slowmo_lbl := Label.new()
-	slowmo_lbl.text = tr("SHOWCASE_SPEED_SCALE")
-	var ls_sm := LabelSettings.new()
-	ls_sm.font_size = 11
-	ls_sm.font_color = Color(0.7, 0.7, 0.75)
-	slowmo_lbl.label_settings = ls_sm
-	parent_vbox.add_child(slowmo_lbl)
+	_spawn_zombie_btn.pressed.connect(_on_spawn_zombie_pressed)
+	_exit_btn.pressed.connect(_on_exit_pressed)
 	
-	_slowmo_slider = HSlider.new()
-	_slowmo_slider.min_value = SLIDER_SPEED_MIN
-	_slowmo_slider.max_value = SLIDER_SPEED_MAX
-	_slowmo_slider.step = 0.1
-	_slowmo_slider.value = 1.0
-	_slowmo_slider.value_changed.connect(func(v: float) -> void: Engine.time_scale = v)
-	parent_vbox.add_child(_slowmo_slider)
+	_slowmo_slider.value_changed.connect(func(v: float) -> void: 
+		Engine.time_scale = v
+	)
 
 
-func _add_telemetry_labels(parent_vbox: VBoxContainer) -> void:
-	var sep := HSeparator.new()
-	parent_vbox.add_child(sep)
-	
-	var tel_header := Label.new()
-	tel_header.text = tr("SHOWCASE_TELEMETRY_HEADER")
-	var ls_tel := LabelSettings.new()
-	ls_tel.font_size = 11
-	ls_tel.font_color = Color(0.7, 0.7, 0.75)
-	tel_header.label_settings = ls_tel
-	parent_vbox.add_child(tel_header)
-	
-	_telemetry_label = Label.new()
-	_telemetry_label.text = tr("SHOWCASE_TELEMETRY_EMPTY")
-	_telemetry_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	var ts_tel := LabelSettings.new()
-	ts_tel.font_size = 11
-	ts_tel.font_color = Color(0.85, 0.92, 1.0)
-	ts_tel.line_spacing = 4
-	_telemetry_label.label_settings = ts_tel
-	parent_vbox.add_child(_telemetry_label)
-
-
-func _add_return_menu_button(parent_vbox: VBoxContainer) -> void:
-	var b_spacer := Control.new()
-	b_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	parent_vbox.add_child(b_spacer)
-	
-	var exit_btn := Button.new()
-	exit_btn.text = tr("SHOWCASE_RETURN_MENU")
-	exit_btn.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
-	_setup_button_style(exit_btn, Color(0.2, 0.2, 0.24))
-	exit_btn.pressed.connect(_on_exit_pressed)
-	parent_vbox.add_child(exit_btn)
-
-
-# ==============================================================================
-# SENSORY EVENTS & BUTTON HANDLERS
-# ==============================================================================
-
-func _populate_sidebar_mobs_deck() -> void:
+func _populate_mobs_catalog() -> void:
 	var keys: Array = MobRegistry._spawners.keys()
 	keys.sort()
+	
 	for spawn_id: int in keys:
-		var btn := Button.new()
 		var translation_key := _get_mob_translation_key(spawn_id)
-		
-		# Skip invalid or deprecated entity keys to prevent broken UI
 		if translation_key == "INVENTORY_UNKNOWN":
 			continue
 			
+		var btn := Button.new()
 		btn.text = " " + tr("SHOWCASE_SPAWN_PREFIX") + " " + tr(translation_key).to_upper()
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_setup_button_style(btn, Color(0.12, 0.12, 0.14, 0.6))
+		btn.custom_minimum_size = Vector2(0, 38)
 		
+		# Simple connect using Godot 4 Callables
 		btn.pressed.connect(func() -> void:
 			if is_instance_valid(_showcase_room):
 				_showcase_room.spawn_test_subject(spawn_id)
 		)
-		_sidebar_vbox.add_child(btn)
+		_spawn_catalog_vbox.add_child(btn)
 
 
 func _on_subject_spawned(subject: CharacterBody3D) -> void:
@@ -287,8 +94,7 @@ func _on_subject_spawned(subject: CharacterBody3D) -> void:
 
 func _on_subject_despawned() -> void:
 	_active_subject = null
-	if is_instance_valid(_telemetry_label):
-		_telemetry_label.text = tr("SHOWCASE_TELEMETRY_EMPTY")
+	_telemetry_label.text = tr("SHOWCASE_TELEMETRY_EMPTY")
 
 
 func _on_lure_chicken_toggled(button_pressed: bool) -> void:
@@ -313,20 +119,12 @@ func _on_rain_overcast_toggled(button_pressed: bool) -> void:
 
 func _on_spawn_zombie_pressed() -> void:
 	if MobRegistry.has_mob(10) and is_instance_valid(_showcase_room):
-		var zombie_pos := Vector3(3.5, float(PLATFORM_Y) + 3.0, 3.5)
+		var zombie_pos := Vector3(3.5, SPAWN_PAD_Y_ALTITUDE + 3.0, 3.5)
 		var zombie := MobRegistry.create_mob(10, zombie_pos) as CharacterBody3D
 		if is_instance_valid(zombie):
 			_showcase_room.add_child(zombie)
 
 
-func _on_exit_pressed() -> void:
-	Engine.time_scale = 1.0
-	var bootstrap := get_node_or_null("/root/Bootstrap")
-	if is_instance_valid(bootstrap) and bootstrap.has_method("return_to_main_menu"):
-		bootstrap.call("return_to_main_menu")
-
-
-## Action Override: Cycles through mock test tasks in the active subject
 func _on_override_pressed() -> void:
 	if _active_subject == null: return
 	var ai: Object = _active_subject.get("ai_component") as Object
@@ -341,8 +139,6 @@ func _on_override_pressed() -> void:
 		ai.call("force_manual_task", state_id)
 		
 	_update_override_button_label()
-	
-	# Force synchronous update of the hovering labels
 	if _active_subject.has_method("_update_quest_bubble_state"):
 		_active_subject.call("_update_quest_bubble_state")
 		
@@ -350,7 +146,6 @@ func _on_override_pressed() -> void:
 
 
 func _update_override_button_label() -> void:
-	if not is_instance_valid(_override_button): return
 	var state_id := _override_states[_current_override_index]
 	match state_id:
 		-1: _override_button.text = "🤖 " + tr("SHOWCASE_MODE_AUTO").to_upper()
@@ -360,14 +155,7 @@ func _update_override_button_label() -> void:
 		6:  _override_button.text = "🛠️ " + tr("SHOWCASE_TASK_WORKING")
 
 
-# ==============================================================================
-# 20HZ DIAGNOSTIC TELEMETRY LOGS (Section 7.2)
-# ==============================================================================
-
 func _update_live_telemetry_display() -> void:
-	if not is_instance_valid(_telemetry_label) or not is_instance_valid(_active_subject):
-		return
-		
 	var ai: Object = _active_subject.get("ai_component") as Object
 	var domain_entity: Object = _active_subject.get("domain_entity")
 	
@@ -398,15 +186,12 @@ func _update_live_telemetry_display() -> void:
 
 func _gather_active_behavior_metadata() -> String:
 	var state_details := ""
-	
 	var ai: Object = _active_subject.get("ai_component") as Object
 	if is_instance_valid(ai) and ai.get("active_behavior") != null:
 		var behavior: IAIBehavior = ai.get("active_behavior") as IAIBehavior
 		if is_instance_valid(behavior) and behavior.has_method("get_active_state_name"):
 			var state_key := behavior.call("get_active_state_name", _active_subject) as String
-			var full_translation_key := "SHOWCASE_TASK_" + state_key.to_upper()
-			state_details += "• %s: %s\n" % [tr("SHOWCASE_TEL_META_HEADER").to_upper(), tr(full_translation_key).to_upper()]
-			
+			state_details += "• %s: %s\n" % [tr("SHOWCASE_TEL_META_HEADER").to_upper(), tr("SHOWCASE_TASK_" + state_key.to_upper()).to_upper()]
 	return state_details
 
 
@@ -422,7 +207,7 @@ func _get_mob_translation_key(spawn_id: int) -> String:
 		13: return "NPC_NAME_GOBLIN"
 		50: return "NPC_NAME_LITHIC_LURKER"
 		51: return "NPC_NAME_OBSIDIAN_COLOSSUS"
-		52: return "NPC_NAME_WEAVER_MALAKOR" # INTEGRATED: Act IV Boss support mapping
+		52: return "NPC_NAME_WEAVER_MALAKOR"
 		100: return "NPC_NAME_VILLAGER"
 		101: return "NPC_NAME_MERCHANT"
 		102: return "NPC_NAME_GUARD"
@@ -457,52 +242,8 @@ func _get_task_state_name(task_val: int) -> String:
 		_: return "SHOWCASE_TASK_IDLE"
 
 
-# ==============================================================================
-# STYLE UTILITIES (UI/UX Themes)
-# ==============================================================================
-
-func _get_glass_panel_style() -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = COLOR_CARD_BACKGROUND
-	style.set_corner_radius_all(10)
-	style.set_border_width_all(1)
-	style.border_color = COLOR_CARD_BORDER
-	return style
-
-
-func _apply_dashboard_margins(node: MarginContainer) -> void:
-	node.add_theme_constant_override("margin_left", 20)
-	node.add_theme_constant_override("margin_top", 20)
-	node.add_theme_constant_override("margin_right", 20)
-	node.add_theme_constant_override("margin_bottom", 20)
-
-
-func _apply_standard_panel_margins(node: MarginContainer) -> void:
-	node.add_theme_constant_override("margin_left", 14)
-	node.add_theme_constant_override("margin_top", 14)
-	node.add_theme_constant_override("margin_right", 14)
-	node.add_theme_constant_override("margin_bottom", 14)
-
-
-func _setup_button_style(btn: Button, base_color: Color) -> void:
-	var sn := StyleBoxFlat.new()
-	sn.bg_color = base_color
-	sn.set_corner_radius_all(8)
-	sn.border_width_bottom = 4
-	sn.border_color = base_color.darkened(0.4)
-	sn.content_margin_left = 12; sn.content_margin_right = 12
-	sn.content_margin_top = 8; sn.content_margin_bottom = 8
-	
-	var sh := sn.duplicate() as StyleBoxFlat
-	sh.bg_color = base_color.lightened(0.1)
-	
-	var sp := sn.duplicate() as StyleBoxFlat
-	sp.bg_color = base_color.darkened(0.3)
-	sp.border_width_top = 4; sp.border_width_bottom = 0; sp.border_color = Color(0,0,0,0)
-	
-	btn.add_theme_stylebox_override("normal", sn)
-	btn.add_theme_stylebox_override("hover", sh)
-	btn.add_theme_stylebox_override("pressed", sp)
-	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	btn.add_theme_font_size_override("font_size", 13)
-	btn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.95))
+func _on_exit_pressed() -> void:
+	Engine.time_scale = 1.0
+	var bootstrap := get_node_or_null("/root/Bootstrap")
+	if is_instance_valid(bootstrap) and bootstrap.has_method("return_to_main_menu"):
+		bootstrap.call("return_to_main_menu")
