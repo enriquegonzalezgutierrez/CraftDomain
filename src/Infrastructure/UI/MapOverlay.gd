@@ -3,6 +3,13 @@
 # Description: Infrastructure Coordinator strictly managing Tactical World Map
 #              projections, click-and-drag panning, and fast-travel teleportation.
 #              Layout and structural offsets are strictly defined in .tscn.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively UI mouse dragging,
+#   pins placements, and teleportation coordination.
+# - Open-Closed Principle (OCP): Closed for modifications. Reads structural positions 
+#   polymorphically from IMegaStructure instances.
+# - UX Optimization: Instantiates the loading screen instantly on teleport request,
+#   yielding a frame to ensure the overlay renders before chunk calculations begin.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -332,6 +339,19 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 	if not is_instance_valid(world_controller_ref):
 		return
 		
+	# 1. Instantiate and display the loading screen immediately
+	var hud_node := p_ctrl.hud
+	if is_instance_valid(hud_node):
+		hud_node.show_loading_screen()
+		
+	# 2. Temporarily disable the player to prevent physics processing during teleportation
+	p_ctrl.is_active = false
+	p_ctrl.velocity = Vector3.ZERO
+	
+	# 3. Yield control to the engine for one frame to force render the loading screen
+	await get_tree().process_frame
+	
+	# 4. Perform the physical teleportation safely while the loading screen is visible
 	var target_x := float(landmark.global_center.x) + 0.5
 	var target_z := float(landmark.global_center.y) + 0.5
 	
@@ -341,7 +361,6 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 		target_x = -290.5
 		target_z = -290.5
 	elif landmark is GrandCastleMegaStructure: 
-		# Fast-travel safe bridge landing alignment (Y-Void Fall Fix)
 		target_x = 200.5
 		target_z = 227.5
 	elif landmark is HarborCityMegaStructure: 
@@ -349,13 +368,6 @@ func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
 		target_z = 3.5
 		
 	p_ctrl.global_position = Vector3(target_x, 35.0, target_z) 
-	p_ctrl.velocity = Vector3.ZERO
-	p_ctrl.is_active = false
-	
-	var hud_node := p_ctrl.hud
-	if is_instance_valid(hud_node):
-		hud_node.show_loading_screen()
-	
 	world_controller_ref.is_teleport_spawn = true
 	
 	if is_instance_valid(world_controller_ref.world_state):

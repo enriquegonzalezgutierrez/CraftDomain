@@ -5,6 +5,8 @@
 # SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
 #              loops decomposed. Every method strictly remains below 20 lines.
 #              Corrected: Purged all print logs for silent and fast initialization.
+#              Thread Safety: Replaced static compile-time initialization (_static_init)
+#              with lazy, on-demand runtime loading to prevent editor deadlocks.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,9 +18,25 @@ const BLOCKS_DIR := "res://src/Domain/World/Blocks/"
 static var _definitions: Dictionary = {}
 
 
-static func _static_init() -> void:
-	_definitions.clear()
-	_scan_and_compile_blocks_directory()
+static func get_definition(type: int) -> BlockDefinition:
+	_ensure_initialized()
+	if _definitions.has(type):
+		return _definitions[type] as BlockDefinition
+		
+	if _definitions.has(0):
+		return _definitions[0] as BlockDefinition
+		
+	return null
+
+
+static func register_definition(definition: BlockDefinition) -> void:
+	if definition != null:
+		_definitions[definition.type] = definition
+
+
+static func _ensure_initialized() -> void:
+	if _definitions.is_empty():
+		_scan_and_compile_blocks_directory()
 
 
 static func _scan_and_compile_blocks_directory() -> void:
@@ -60,21 +78,6 @@ static func _load_and_register_block(full_path: String) -> void:
 				register_definition(block_instance)
 
 
-static func register_definition(definition: BlockDefinition) -> void:
-	if definition != null:
-		_definitions[definition.type] = definition
-
-
-static func get_definition(type: int) -> BlockDefinition:
-	if _definitions.has(type):
-		return _definitions[type] as BlockDefinition
-		
-	if _definitions.has(0):
-		return _definitions[0] as BlockDefinition
-		
-	return null
-
-
 static func _register_air_fallback() -> void:
 	var air := BlockDefinition.new()
 	air.type = 0 
@@ -84,4 +87,4 @@ static func _register_air_fallback() -> void:
 	air.color_top = Color(0, 0, 0, 0)
 	air.color_side = Color(0, 0, 0, 0)
 	air.color_bottom = Color(0, 0, 0, 0)
-	register_definition(air)
+	_definitions[0] = air

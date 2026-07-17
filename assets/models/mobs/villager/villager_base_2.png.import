@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b66wm2hcicda0"
-path.s3tc="res://.godot/imported/villager_base_2.png-1e747004281bed16fbd3f6f3f7be03ff.s3tc.ctex"
+path="res://.godot/imported/villager_base_2.png-1e747004281bed16fbd3f6f3f7be03ff.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "96b75251ac7d628693555bd3dd6549ad"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/villager/villager_base_2.png"
-dest_files=["res://.godot/imported/villager_base_2.png-1e747004281bed16fbd3f6f3f7be03ff.s3tc.ctex"]
+dest_files=["res://.godot/imported/villager_base_2.png-1e747004281bed16fbd3f6f3f7be03ff.ctex"]
 
 [params]
 

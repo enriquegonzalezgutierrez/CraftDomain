@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://gpkg80t1d81"
-path.s3tc="res://.godot/imported/cracks_0.png-5943f97dc08473733fa6b6730b73101b.s3tc.ctex"
+uid="uid://uxhoq6x4px58"
+path="res://.godot/imported/cracks_0.png-5943f97dc08473733fa6b6730b73101b.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/cracks_0.png"
-dest_files=["res://.godot/imported/cracks_0.png-5943f97dc08473733fa6b6730b73101b.s3tc.ctex"]
+dest_files=["res://.godot/imported/cracks_0.png-5943f97dc08473733fa6b6730b73101b.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -3,7 +3,7 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://crwbfknqnqrnw"
+uid="uid://bt73p20pdcrie"
 path="res://.godot/imported/guard_attack.fbx-4fff84a5120ce720523aad72494c2098.scn"
 
 [deps]
@@ -16,6 +16,8 @@ dest_files=["res://.godot/imported/guard_attack.fbx-4fff84a5120ce720523aad72494c
 nodes/root_type=""
 nodes/root_name=""
 nodes/root_script=null
+mesh_library/use_node_names_as_mesh_names=false
+array_mesh/deduplicate_surfaces=true
 nodes/apply_root_scale=true
 nodes/root_scale=1.0
 nodes/import_as_skeleton_bones=false

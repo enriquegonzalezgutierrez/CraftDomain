@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b3raklnkte5hc"
-path.s3tc="res://.godot/imported/sugar_cane.png-c2ea55374f72e27e9dbc819a6fef88f7.s3tc.ctex"
+uid="uid://jdhqo48x3d0y"
+path="res://.godot/imported/sugar_cane.png-c2ea55374f72e27e9dbc819a6fef88f7.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/sugar_cane.png"
-dest_files=["res://.godot/imported/sugar_cane.png-c2ea55374f72e27e9dbc819a6fef88f7.s3tc.ctex"]
+dest_files=["res://.godot/imported/sugar_cane.png-c2ea55374f72e27e9dbc819a6fef88f7.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

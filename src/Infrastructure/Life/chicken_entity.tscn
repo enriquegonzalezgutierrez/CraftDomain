@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://bvamhr0du2q7b" path="res://src/Infrastructure/Life/ChickenEntity.gd" id="1_chicken"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://b7ir5q7y1mdy6" path="res://assets/models/mobs/chicken.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://de3vq5c6r0fvv" path="res://assets/models/mobs/chicken.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_chicken"]
-height = 0.35780275
 radius = 0.18408203
+height = 0.36816406
 
 [node name="ChickenEntity" type="CharacterBody3D" unique_id=804207531]
 script = ExtResource("1_chicken")

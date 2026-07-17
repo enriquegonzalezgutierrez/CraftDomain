@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ri8xjc4sy3xh"
-path.s3tc="res://.godot/imported/spruce_log.png-229d6b450c66e8027a81e40285e81792.s3tc.ctex"
+uid="uid://bpqf18l2f5le4"
+path="res://.godot/imported/spruce_log.png-229d6b450c66e8027a81e40285e81792.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/spruce_log.png"
-dest_files=["res://.godot/imported/spruce_log.png-229d6b450c66e8027a81e40285e81792.s3tc.ctex"]
+dest_files=["res://.godot/imported/spruce_log.png-229d6b450c66e8027a81e40285e81792.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cjba5ruvmcd6q"
-path.s3tc="res://.godot/imported/dead_bush.png-116b359b1f978923009bb972dbc0ed08.s3tc.ctex"
+uid="uid://bnyvcdbk2s5oy"
+path="res://.godot/imported/dead_bush.png-116b359b1f978923009bb972dbc0ed08.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/dead_bush.png"
-dest_files=["res://.godot/imported/dead_bush.png-116b359b1f978923009bb972dbc0ed08.s3tc.ctex"]
+dest_files=["res://.godot/imported/dead_bush.png-116b359b1f978923009bb972dbc0ed08.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bdek1vnj6uh"
+uid="uid://doq3guryakfy5"
 path.s3tc="res://.godot/imported/sword_ScratchesLight001_NRM_4K.jpg-38cc73bfe38b6a711a58746b4cc50efe.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "1a1875f5ce636cf5d34d6c1a10eee62f"
 }
 
 [deps]
@@ -30,7 +27,7 @@ compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=1
-roughness/src_normal="res://assets/models/decorations/sword_ScratchesLight001_NRM_4K.jpg"
+roughness/src_normal="res://assets/models/weapons/sword_ScratchesLight001_NRM_4K.jpg"
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

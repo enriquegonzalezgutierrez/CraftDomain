@@ -3,7 +3,7 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://cecu6p8q5c7j1"
+uid="uid://ds022nv8wq7ov"
 path="res://.godot/imported/zombie_walk.fbx-2afbcf6efb28709b424f8b52dc9d4916.scn"
 
 [deps]
@@ -16,6 +16,8 @@ dest_files=["res://.godot/imported/zombie_walk.fbx-2afbcf6efb28709b424f8b52dc9d4
 nodes/root_type=""
 nodes/root_name=""
 nodes/root_script=null
+mesh_library/use_node_names_as_mesh_names=false
+array_mesh/deduplicate_surfaces=true
 nodes/apply_root_scale=true
 nodes/root_scale=1.0
 nodes/import_as_skeleton_bones=false

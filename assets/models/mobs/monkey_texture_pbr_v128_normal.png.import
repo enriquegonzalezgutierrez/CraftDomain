@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://q7w1x8kh0twt"
-path.s3tc="res://.godot/imported/monkey_texture_pbr_v128_normal.png-2af0163e0a047b9ae7a1f552b859417f.s3tc.ctex"
+path="res://.godot/imported/monkey_texture_pbr_v128_normal.png-2af0163e0a047b9ae7a1f552b859417f.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "8425b5d74584d7ff38c152a04ea9b65f"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/monkey_texture_pbr_v128_normal.png"
-dest_files=["res://.godot/imported/monkey_texture_pbr_v128_normal.png-2af0163e0a047b9ae7a1f552b859417f.s3tc.ctex"]
+dest_files=["res://.godot/imported/monkey_texture_pbr_v128_normal.png-2af0163e0a047b9ae7a1f552b859417f.ctex"]
 
 [params]
 

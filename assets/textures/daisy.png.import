@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dlyjwqktmp1t3"
-path.s3tc="res://.godot/imported/daisy.png-e9828b61a3f5c99e3ec332c9bb5b9b8d.s3tc.ctex"
+uid="uid://bas3up6aurfj1"
+path="res://.godot/imported/daisy.png-e9828b61a3f5c99e3ec332c9bb5b9b8d.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/daisy.png"
-dest_files=["res://.godot/imported/daisy.png-e9828b61a3f5c99e3ec332c9bb5b9b8d.s3tc.ctex"]
+dest_files=["res://.godot/imported/daisy.png-e9828b61a3f5c99e3ec332c9bb5b9b8d.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bgtedh5f6w8xb"
-path.s3tc="res://.godot/imported/elephant_0.jpg-236895273c3d472c89427c8bcb37cd2e.s3tc.ctex"
+path="res://.godot/imported/elephant_0.jpg-236895273c3d472c89427c8bcb37cd2e.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "480171625cdeed67467c4d6d1325fd34"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/elephant_0.jpg"
-dest_files=["res://.godot/imported/elephant_0.jpg-236895273c3d472c89427c8bcb37cd2e.s3tc.ctex"]
+dest_files=["res://.godot/imported/elephant_0.jpg-236895273c3d472c89427c8bcb37cd2e.ctex"]
 
 [params]
 

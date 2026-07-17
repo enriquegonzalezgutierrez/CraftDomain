@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://t5oephunuytq" path="res://src/Infrastructure/Life/MinerEntity.gd" id="1_miner"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://muyvonc4poj3" path="res://assets/models/mobs/miner/miner_base.fbx" id="4_fbx"]
+[ext_resource type="PackedScene" uid="uid://fqd8vnxq0ku6" path="res://assets/models/mobs/miner/miner_base.fbx" id="4_fbx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_miner"]
-height = 1.7993653
 radius = 0.33691406
+height = 1.7993653
 
 [node name="MinerEntity" type="CharacterBody3D" unique_id=1567317944]
 script = ExtResource("1_miner")

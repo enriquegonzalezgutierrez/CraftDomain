@@ -7,9 +7,6 @@ path="res://.godot/imported/zombie_base_3.png-ac008a2923cede0d6203283b711dcdeb.c
 metadata={
 "vram_texture": false
 }
-generator_parameters={
-"md5": "75334ab64e07fc3702856195ae7eb02d"
-}
 
 [deps]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

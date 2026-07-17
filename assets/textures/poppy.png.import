@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://djbv40t8t2cey"
-path.s3tc="res://.godot/imported/poppy.png-2d7e809243095f28c31e7710fec07e87.s3tc.ctex"
+uid="uid://txpm8xium06x"
+path="res://.godot/imported/poppy.png-2d7e809243095f28c31e7710fec07e87.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/poppy.png"
-dest_files=["res://.godot/imported/poppy.png-2d7e809243095f28c31e7710fec07e87.s3tc.ctex"]
+dest_files=["res://.godot/imported/poppy.png-2d7e809243095f28c31e7710fec07e87.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

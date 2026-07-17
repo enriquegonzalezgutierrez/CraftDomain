@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://cflb4l3wmu1kq" path="res://src/Infrastructure/Life/PigEntity.gd" id="1_pig"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://tijk5hikb3mb" path="res://assets/models/mobs/pig.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://cnm3uflhds0ij" path="res://assets/models/mobs/pig.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_pig"]
-height = 0.8100586
 radius = 0.3642578
+height = 0.8100586
 
 [node name="PigEntity" type="CharacterBody3D" unique_id=1503595207]
 script = ExtResource("1_pig")

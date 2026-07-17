@@ -3,7 +3,7 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://c3d7yoh37j2lk"
+uid="uid://c3rwgjach5hmu"
 path="res://.godot/imported/cyber_jump.fbx-ef36f8b311b02977197b1b722eb2a3cb.scn"
 
 [deps]
@@ -16,6 +16,8 @@ dest_files=["res://.godot/imported/cyber_jump.fbx-ef36f8b311b02977197b1b722eb2a3
 nodes/root_type=""
 nodes/root_name=""
 nodes/root_script=null
+mesh_library/use_node_names_as_mesh_names=false
+array_mesh/deduplicate_surfaces=true
 nodes/apply_root_scale=true
 nodes/root_scale=1.0
 nodes/import_as_skeleton_bones=false

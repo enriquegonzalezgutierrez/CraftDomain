@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://p3ym6lks7clb" path="res://src/Infrastructure/Life/CowEntity.gd" id="1_cow"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://ce28revjk3ko5" path="res://assets/models/mobs/cow/scene.gltf" id="4_gltf"]
+[ext_resource type="PackedScene" uid="uid://d165d0f0vw8sq" path="res://assets/models/mobs/cow/scene.gltf" id="4_gltf"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_cow"]
-height = 2.6692169
 radius = 0.7294922
+height = 2.6692169
 
 [node name="CowEntity" type="CharacterBody3D" unique_id=1737124295]
 script = ExtResource("1_cow")

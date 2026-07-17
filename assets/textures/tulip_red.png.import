@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://drv3eu0of0dp1"
-path.s3tc="res://.godot/imported/tulip_red.png-ffefea6b37ffe916c6afa6f8de56e76c.s3tc.ctex"
+uid="uid://dbxammnv08ug7"
+path="res://.godot/imported/tulip_red.png-ffefea6b37ffe916c6afa6f8de56e76c.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/tulip_red.png"
-dest_files=["res://.godot/imported/tulip_red.png-ffefea6b37ffe916c6afa6f8de56e76c.s3tc.ctex"]
+dest_files=["res://.godot/imported/tulip_red.png-ffefea6b37ffe916c6afa6f8de56e76c.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

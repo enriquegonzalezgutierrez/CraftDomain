@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dpp800rjd4jxk"
-path.s3tc="res://.godot/imported/raccoon_main_texture.png-c6d0c2810964dd3e5944e741a423385a.s3tc.ctex"
+path="res://.godot/imported/raccoon_main_texture.png-c6d0c2810964dd3e5944e741a423385a.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "f56eec6c7120a5bba30d64c69e0e0597"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/raccoon_main_texture.png"
-dest_files=["res://.godot/imported/raccoon_main_texture.png-c6d0c2810964dd3e5944e741a423385a.s3tc.ctex"]
+dest_files=["res://.godot/imported/raccoon_main_texture.png-c6d0c2810964dd3e5944e741a423385a.ctex"]
 
 [params]
 

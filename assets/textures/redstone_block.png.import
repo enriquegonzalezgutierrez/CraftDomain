@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cs8bvswb3m043"
-path.s3tc="res://.godot/imported/redstone_block.png-d6e264c137d0dd538abd2325a0f3175c.s3tc.ctex"
+uid="uid://qdari0rdgvg7"
+path="res://.godot/imported/redstone_block.png-d6e264c137d0dd538abd2325a0f3175c.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/redstone_block.png"
-dest_files=["res://.godot/imported/redstone_block.png-d6e264c137d0dd538abd2325a0f3175c.s3tc.ctex"]
+dest_files=["res://.godot/imported/redstone_block.png-d6e264c137d0dd538abd2325a0f3175c.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

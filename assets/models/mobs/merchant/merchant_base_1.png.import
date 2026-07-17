@@ -7,9 +7,6 @@ path="res://.godot/imported/merchant_base_1.png-f993b89b14f99135b0718f3b8acfd671
 metadata={
 "vram_texture": false
 }
-generator_parameters={
-"md5": "9ba68306e9a7d5146dffe8a35569a0a2"
-}
 
 [deps]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

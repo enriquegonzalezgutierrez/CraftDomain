@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b0jmchc0moicx"
-path.s3tc="res://.godot/imported/octopus_Image_0.jpg-646fcd6e2ba77342aa14262a91a14efd.s3tc.ctex"
+path="res://.godot/imported/octopus_Image_0.jpg-646fcd6e2ba77342aa14262a91a14efd.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "665a1c2b8e711a85f15e49233376d5fe"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/octopus_Image_0.jpg"
-dest_files=["res://.godot/imported/octopus_Image_0.jpg-646fcd6e2ba77342aa14262a91a14efd.s3tc.ctex"]
+dest_files=["res://.godot/imported/octopus_Image_0.jpg-646fcd6e2ba77342aa14262a91a14efd.ctex"]
 
 [params]
 

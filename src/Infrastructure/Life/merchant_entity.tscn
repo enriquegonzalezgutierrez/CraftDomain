@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://cc7ixwduwkj8b" path="res://src/Infrastructure/Life/MerchantEntity.gd" id="1_merchant"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://bh7wt3nvr3q3d" path="res://assets/models/mobs/merchant/merchant_base.fbx" id="4_fbx"]
+[ext_resource type="PackedScene" uid="uid://b4y4xpfys1n26" path="res://assets/models/mobs/merchant/merchant_base.fbx" id="4_fbx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_merchant"]
-height = 1.5484375
 radius = 0.3334961
+height = 1.5484375
 
 [node name="MerchantEntity" type="CharacterBody3D" unique_id=1508689217]
 script = ExtResource("1_merchant")

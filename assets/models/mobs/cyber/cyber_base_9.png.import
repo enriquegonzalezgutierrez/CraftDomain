@@ -7,9 +7,6 @@ path="res://.godot/imported/cyber_base_9.png-d35e782b19eb40d00c3b4c2808205c59.ct
 metadata={
 "vram_texture": false
 }
-generator_parameters={
-"md5": "e5e7fc2921ce1dd43b6141a9e1c466e0"
-}
 
 [deps]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

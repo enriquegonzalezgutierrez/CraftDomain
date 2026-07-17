@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cwenpbr2e25yh"
-path.s3tc="res://.godot/imported/red_wool.png-b257686a8c050c3dd6bce326087a9336.s3tc.ctex"
+uid="uid://cgs1fxxg81la4"
+path="res://.godot/imported/red_wool.png-b257686a8c050c3dd6bce326087a9336.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/red_wool.png"
-dest_files=["res://.godot/imported/red_wool.png-b257686a8c050c3dd6bce326087a9336.s3tc.ctex"]
+dest_files=["res://.godot/imported/red_wool.png-b257686a8c050c3dd6bce326087a9336.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://cl8exwos1iv74" path="res://src/Infrastructure/Life/VillagerEntity.gd" id="1_villager"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://b6ph7o17seehi" path="res://assets/models/mobs/villager/villager_base.fbx" id="4_fbx"]
+[ext_resource type="PackedScene" uid="uid://dgpqnmbday33x" path="res://assets/models/mobs/villager/villager_base.fbx" id="4_fbx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_villager"]
 radius = 0.4897461

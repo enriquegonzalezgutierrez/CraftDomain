@@ -9,6 +9,8 @@
 #   spins, dot animations, and fading transitions. All methods kept strictly < 20 lines.
 # - 120 FPS Guardrail: Physics processes are safely deactivated on fade-out to 
 #   avoid redundant draw calls.
+# - UX Optimization: Checked parent container type during fadeout to safely free 
+#   the top-level CanvasLayer container once the panel opacity has faded.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -61,6 +63,16 @@ func _check_dismiss_condition() -> void:
 
 
 func _fade_out_and_free() -> void:
+	var parent_node := get_parent()
 	var fade_tween := create_tween()
-	fade_tween.tween_property(self, "modulate:a", 0.0, 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	fade_tween.tween_callback(queue_free)
+	
+	# Always fade out this LoadingScreen Panel itself (Control node guarantees 'modulate:a' validity)
+	fade_tween.tween_property(self, "modulate:a", 0.0, 0.25)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_OUT)
+		
+	# Determine what needs to be freed at the end of the fade animation
+	if is_instance_valid(parent_node) and parent_node is CanvasLayer and parent_node.name == "LoadingScreenCanvas":
+		fade_tween.tween_callback(parent_node.queue_free)
+	else:
+		fade_tween.tween_callback(queue_free)

@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ch6vk6i7c5i4r"
-path.s3tc="res://.godot/imported/mossy_stone_bricks.png-a95fbc3492ee9bd267771b9e3ba8c332.s3tc.ctex"
+uid="uid://c04isv5x7m1pf"
+path="res://.godot/imported/mossy_stone_bricks.png-a95fbc3492ee9bd267771b9e3ba8c332.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/mossy_stone_bricks.png"
-dest_files=["res://.godot/imported/mossy_stone_bricks.png-a95fbc3492ee9bd267771b9e3ba8c332.s3tc.ctex"]
+dest_files=["res://.godot/imported/mossy_stone_bricks.png-a95fbc3492ee9bd267771b9e3ba8c332.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

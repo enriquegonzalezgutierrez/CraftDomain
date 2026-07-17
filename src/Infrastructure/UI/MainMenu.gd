@@ -2,15 +2,22 @@
 # Pathfile: res://src/Infrastructure/UI/MainMenu.gd
 # Description: Tactile Glassmorphic Main Menu controller. Handles game boots,
 #              settings modal instantiations, and multiplayer network lobbies.
-#              Corrected: Restored missing "play_pressed" class signal.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates exclusively main menu 
+#   navigation, animation triggers, and confirmation overlays.
+# - Open-Closed Principle (OCP): Decoupled from settings persistence. Delegates 
+#   actions to SettingsMenu and MultiplayerLobby widgets dynamically.
+# - UX Optimization: Defers heavy save file deletion I/O to the Bootstrap layer
+#   to prevent visual freezing when clicking New Game.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MainMenu
 extends Control
 
-## Signal emitted when the play world or new game sequence is requested (DIP).
-signal play_pressed
+## Signal emitted when the play world or new game sequence is requested.
+## If [param should_clear_save] is true, the bootstrap will wipe active files.
+signal play_pressed(should_clear_save: bool)
 
 const SETTINGS_MENU_SCENE := preload("res://src/Infrastructure/UI/settings_menu.tscn")
 const LOBBY_MENU_SCENE := preload("res://src/Infrastructure/UI/Widgets/multiplayer_lobby_widget.tscn")
@@ -109,7 +116,8 @@ func _play_entry_animation() -> void:
 
 
 func _on_play_pressed() -> void:
-	play_pressed.emit()
+	# If continuing a save, should_clear_save is false. If first-time play, it is true.
+	play_pressed.emit(not _has_save_game)
 
 
 func _on_multiplayer_pressed() -> void:
@@ -137,8 +145,8 @@ func _on_new_game_clicked_with_save() -> void:
 func _on_overwrite_confirmed() -> void:
 	_confirm_modal.visible = false
 	_has_save_game = false
-	DiskWorldRepository.delete_save_game_files()
-	play_pressed.emit()
+	# Emit signal requesting sychronous save wiping behind the loading screen
+	play_pressed.emit(true)
 
 
 func _on_overwrite_cancelled() -> void:

@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://daab640cbgt2b"
-path.s3tc="res://.godot/imported/red_mushroom.png-df7401b00a57a999c635b0c4b1374c1d.s3tc.ctex"
+uid="uid://cuivdnylpybbw"
+path="res://.godot/imported/red_mushroom.png-df7401b00a57a999c635b0c4b1374c1d.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/red_mushroom.png"
-dest_files=["res://.godot/imported/red_mushroom.png-df7401b00a57a999c635b0c4b1374c1d.s3tc.ctex"]
+dest_files=["res://.godot/imported/red_mushroom.png-df7401b00a57a999c635b0c4b1374c1d.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

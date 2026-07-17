@@ -12,7 +12,7 @@ config_version=5
 
 config/name="CraftDomain"
 run/main_scene="res://src/Core/Bootstrap/bootstrap.tscn"
-config/features=PackedStringArray("4.6", "Forward Plus")
+config/features=PackedStringArray("4.7", "Forward Plus")
 run/max_fps=120
 boot_splash/bg_color=Color(0.04, 0.04, 0.06, 1)
 boot_splash/show_image=false
@@ -34,22 +34,18 @@ window/vsync/vsync_mode=0
 
 [physics]
 
-3d/physics_engine="GodotPhysics3D"
 3d/run_on_separate_thread=true
+3d/physics_engine="GodotPhysics3D"
 
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0
+textures/vram_compression/import_s3tc_bptc=true
+scaling_3d/mode=2
+scaling_3d/scale=0.85
 environment/defaults/default_clear_color=Color(0.04, 0.04, 0.06, 1)
 textures/default_filters/texture_filter_3d=2
 shadows/directional_shadow/soft_shadow_filter_quality=3
 shadows/positional_shadow/soft_shadow_filter_quality=3
 shadows/shadow_atlas/positional_shadow_atlas_16_bits=true
-anti_aliasing/quality/msaa_3d=0
-anti_aliasing/quality/use_taa=false
-scaling_3d/mode=2
-scaling_3d/scale=0.85
-shader_compiler/shader_cache/enabled=true
 shader_compiler/shader_cache/use_z_prepass=true
-textures/vram_compression/import_etc2_astc=true
-textures/vram_compression/import_s3tc_bptc=true

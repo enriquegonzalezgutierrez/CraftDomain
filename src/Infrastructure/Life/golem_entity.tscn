@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://byy621b8vwf30" path="res://src/Infrastructure/Life/GolemEntity.gd" id="1_golem"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://d75qu4hhrwmh" path="res://assets/models/mobs/golem.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://l6swaufujfss" path="res://assets/models/mobs/golem.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_golem"]
-height = 6.065918
 radius = 1.7431641
+height = 6.065918
 
 [node name="GolemEntity" type="CharacterBody3D" unique_id=1050850655]
 script = ExtResource("1_golem")

@@ -2,20 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://db7eps8hpc56b"
-path.s3tc="res://.godot/imported/guard_base_0.png-bd3df4586b5b454f064151d68807fbdc.s3tc.ctex"
+uid="uid://chbo2xhtbf4dm"
+path="res://.godot/imported/guard_base_0.png-bd3df4586b5b454f064151d68807fbdc.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "a1dc5c32f83d0182b6af19d596014cce"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/guard/guard_base_0.png"
-dest_files=["res://.godot/imported/guard_base_0.png-bd3df4586b5b454f064151d68807fbdc.s3tc.ctex"]
+dest_files=["res://.godot/imported/guard_base_0.png-bd3df4586b5b454f064151d68807fbdc.ctex"]
 
 [params]
 

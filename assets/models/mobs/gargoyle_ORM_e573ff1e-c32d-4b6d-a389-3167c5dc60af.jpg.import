@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://basfto3e5ijvy"
-path.s3tc="res://.godot/imported/gargoyle_ORM_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg-774beb99e3ddfaf58cda3c3fd86c0d2c.s3tc.ctex"
+path="res://.godot/imported/gargoyle_ORM_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg-774beb99e3ddfaf58cda3c3fd86c0d2c.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "ee495f7d32ab392b42171ee72675e89c"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/gargoyle_ORM_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg"
-dest_files=["res://.godot/imported/gargoyle_ORM_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg-774beb99e3ddfaf58cda3c3fd86c0d2c.s3tc.ctex"]
+dest_files=["res://.godot/imported/gargoyle_ORM_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg-774beb99e3ddfaf58cda3c3fd86c0d2c.ctex"]
 
 [params]
 

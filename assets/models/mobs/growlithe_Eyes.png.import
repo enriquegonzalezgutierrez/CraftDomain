@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://fm3rw0r11hfg"
-path.s3tc="res://.godot/imported/growlithe_Eyes.png-7fa571f5ae5c61e399859e5594dbbb40.s3tc.ctex"
+path="res://.godot/imported/growlithe_Eyes.png-7fa571f5ae5c61e399859e5594dbbb40.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "3a7731931a3b695151af0e51ea417bf3"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/growlithe_Eyes.png"
-dest_files=["res://.godot/imported/growlithe_Eyes.png-7fa571f5ae5c61e399859e5594dbbb40.s3tc.ctex"]
+dest_files=["res://.godot/imported/growlithe_Eyes.png-7fa571f5ae5c61e399859e5594dbbb40.ctex"]
 
 [params]
 

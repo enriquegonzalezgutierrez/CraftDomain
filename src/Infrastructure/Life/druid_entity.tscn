@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://cilfg2krvgunn" path="res://src/Infrastructure/Life/DruidEntity.gd" id="1_druid"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://qhy4227bxowm" path="res://assets/models/mobs/druid/druid_base.fbx" id="4_fbx"]
+[ext_resource type="PackedScene" uid="uid://cvxdcg3v67vuw" path="res://assets/models/mobs/druid/druid_base.fbx" id="4_fbx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_druid"]
-height = 2.140039
 radius = 0.3569336
+height = 2.140039
 
 [node name="DruidEntity" type="CharacterBody3D" unique_id=242465138]
 script = ExtResource("1_druid")

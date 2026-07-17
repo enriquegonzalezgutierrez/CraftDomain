@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://sg1ybjut45t" path="res://src/Infrastructure/Life/ElephantEntity.gd" id="1_elephant"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://cdervnm5qlibm" path="res://assets/models/mobs/elephant.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://d160ht25mk2ng" path="res://assets/models/mobs/elephant.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_elephant"]
-height = 5.184143
 radius = 2.4921875
+height = 5.184143
 
 [node name="ElephantEntity" type="CharacterBody3D" unique_id=71936086]
 script = ExtResource("1_elephant")

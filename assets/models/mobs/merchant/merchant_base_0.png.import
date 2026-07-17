@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bb86javlyn5qk"
-path.s3tc="res://.godot/imported/merchant_base_0.png-36103e241960b6e01b641bc3239bc474.s3tc.ctex"
+path="res://.godot/imported/merchant_base_0.png-36103e241960b6e01b641bc3239bc474.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "b8fc1fb80ff67875ff94037f72b2ce54"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/merchant/merchant_base_0.png"
-dest_files=["res://.godot/imported/merchant_base_0.png-36103e241960b6e01b641bc3239bc474.s3tc.ctex"]
+dest_files=["res://.godot/imported/merchant_base_0.png-36103e241960b6e01b641bc3239bc474.ctex"]
 
 [params]
 

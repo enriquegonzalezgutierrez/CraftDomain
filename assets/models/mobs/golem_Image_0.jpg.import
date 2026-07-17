@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cqmhauldqyu4u"
-path.s3tc="res://.godot/imported/golem_Image_0.jpg-1a581a8204ca40cdb23681a9fac230bb.s3tc.ctex"
+path="res://.godot/imported/golem_Image_0.jpg-1a581a8204ca40cdb23681a9fac230bb.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "30666de4c5ae8b7b656b147301f6ecb4"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/golem_Image_0.jpg"
-dest_files=["res://.godot/imported/golem_Image_0.jpg-1a581a8204ca40cdb23681a9fac230bb.s3tc.ctex"]
+dest_files=["res://.godot/imported/golem_Image_0.jpg-1a581a8204ca40cdb23681a9fac230bb.ctex"]
 
 [params]
 

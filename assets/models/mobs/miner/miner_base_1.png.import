@@ -7,9 +7,6 @@ path="res://.godot/imported/miner_base_1.png-46e9629da96786462bbe52bb7e5f7821.ct
 metadata={
 "vram_texture": false
 }
-generator_parameters={
-"md5": "96c9459710750e2660fce6daead9d02b"
-}
 
 [deps]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

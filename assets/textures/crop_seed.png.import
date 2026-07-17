@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://15yakltxdwe7"
-path.s3tc="res://.godot/imported/crop_seed.png-2e6eb7de348aa0d76568986fb85a503d.s3tc.ctex"
+uid="uid://4mxhwq26oi4t"
+path="res://.godot/imported/crop_seed.png-2e6eb7de348aa0d76568986fb85a503d.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/crop_seed.png"
-dest_files=["res://.godot/imported/crop_seed.png-2e6eb7de348aa0d76568986fb85a503d.s3tc.ctex"]
+dest_files=["res://.godot/imported/crop_seed.png-2e6eb7de348aa0d76568986fb85a503d.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

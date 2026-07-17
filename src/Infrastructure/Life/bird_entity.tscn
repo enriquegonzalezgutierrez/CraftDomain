@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://b2k4as1rpndrn" path="res://src/Infrastructure/Life/BirdEntity.gd" id="1_bird"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://lhvivyop82ip" path="res://assets/models/mobs/yellow_bird.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://dn35duc3qblab" path="res://assets/models/mobs/yellow_bird.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_bird"]
 radius = 0.95947266

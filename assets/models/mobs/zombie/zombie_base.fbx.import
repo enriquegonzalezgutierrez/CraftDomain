@@ -3,7 +3,7 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://3wkbpeeebjaq"
+uid="uid://n2u5ji0w8e5w"
 path="res://.godot/imported/zombie_base.fbx-096bc45a1f22f2e4d6b9f4d087ab7609.scn"
 
 [deps]
@@ -16,6 +16,8 @@ dest_files=["res://.godot/imported/zombie_base.fbx-096bc45a1f22f2e4d6b9f4d087ab7
 nodes/root_type=""
 nodes/root_name=""
 nodes/root_script=null
+mesh_library/use_node_names_as_mesh_names=false
+array_mesh/deduplicate_surfaces=true
 nodes/apply_root_scale=true
 nodes/root_scale=1.0
 nodes/import_as_skeleton_bones=false

@@ -2,20 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://buagwf5ie6sdc"
-path.s3tc="res://.godot/imported/cyber_base_0.png-5026a500bc04c7e8a9bce733e6f0cc24.s3tc.ctex"
+uid="uid://b4nstill1xsgg"
+path="res://.godot/imported/cyber_base_0.png-5026a500bc04c7e8a9bce733e6f0cc24.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "575af1a0e19d261c674020121ab88d71"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/cyber/cyber_base_0.png"
-dest_files=["res://.godot/imported/cyber_base_0.png-5026a500bc04c7e8a9bce733e6f0cc24.s3tc.ctex"]
+dest_files=["res://.godot/imported/cyber_base_0.png-5026a500bc04c7e8a9bce733e6f0cc24.ctex"]
 
 [params]
 

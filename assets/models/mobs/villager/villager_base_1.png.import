@@ -7,9 +7,6 @@ path="res://.godot/imported/villager_base_1.png-8597e95b63f580214f2d7a8161a8fe3a
 metadata={
 "vram_texture": false
 }
-generator_parameters={
-"md5": "02710c0ae990b4919e78c68f4fe03504"
-}
 
 [deps]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

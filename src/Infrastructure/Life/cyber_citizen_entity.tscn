@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://bp4mrbhf6ctlm" path="res://src/Infrastructure/Life/CyberCitizenEntity.gd" id="1_cyber"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://b0oh45rlyjwi" path="res://assets/models/mobs/cyber/cyber_base.fbx" id="4_fbx"]
+[ext_resource type="PackedScene" uid="uid://c41v78thasfg2" path="res://assets/models/mobs/cyber/cyber_base.fbx" id="4_fbx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_cyber"]
-height = 1.8427246
 radius = 0.24951172
+height = 1.8427246
 
 [node name="CyberCitizenEntity" type="CharacterBody3D" unique_id=1160171945]
 script = ExtResource("1_cyber")

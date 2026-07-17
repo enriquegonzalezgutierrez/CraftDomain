@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ctktw1nids0ax"
-path.s3tc="res://.godot/imported/fox_Fox_Metallic.png-Fox_Roughness.png-1af086fa0c93cb232085dcde31cc2482.s3tc.ctex"
+path="res://.godot/imported/fox_Fox_Metallic.png-Fox_Roughness.png-1af086fa0c93cb232085dcde31cc2482.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "7a157e71d7ae5dc5c38c732da5323edd"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/fox_Fox_Metallic.png-Fox_Roughness.png"
-dest_files=["res://.godot/imported/fox_Fox_Metallic.png-Fox_Roughness.png-1af086fa0c93cb232085dcde31cc2482.s3tc.ctex"]
+dest_files=["res://.godot/imported/fox_Fox_Metallic.png-Fox_Roughness.png-1af086fa0c93cb232085dcde31cc2482.ctex"]
 
 [params]
 

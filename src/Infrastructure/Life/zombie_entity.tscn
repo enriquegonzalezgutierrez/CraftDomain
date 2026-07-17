@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://doqsyhm3blpmf" path="res://src/Infrastructure/Life/HostileEntity.gd" id="1_zombie"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://3wkbpeeebjaq" path="res://assets/models/mobs/zombie/zombie_base.fbx" id="4_fbx"]
+[ext_resource type="PackedScene" uid="uid://n2u5ji0w8e5w" path="res://assets/models/mobs/zombie/zombie_base.fbx" id="4_fbx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_zombie"]
 radius = 0.77441406

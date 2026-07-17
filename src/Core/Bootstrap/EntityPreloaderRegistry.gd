@@ -6,6 +6,8 @@
 # SOLID COMPLIANCE: Class limits set under 100 lines (SRP). All monolithic
 #              loops decomposed. Every method strictly remains below 20 lines.
 # - Open-Closed Principle (OCP): Registers Act I, III, and IV Boss scenes dynamically (IDs 50, 51 & 52).
+# - Thread Safety: Replaced static compile-time initialization (_static_init)
+#   with lazy, on-demand runtime loading to prevent editor deadlocks on startup.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,21 +18,24 @@ static var _mobs_scenes: Dictionary = {}
 static var _props_scenes: Dictionary = {} 
 
 
-static func _static_init() -> void:
-	_preload_mobs()
-	_preload_props()
-
-
 static func get_mob_scene(mob_id: int) -> PackedScene:
+	_ensure_initialized()
 	if _mobs_scenes.has(mob_id):
 		return _mobs_scenes[mob_id] as PackedScene
 	return null
 
 
 static func get_prop_scene(prop_id: int) -> Variant:
+	_ensure_initialized()
 	if _props_scenes.has(prop_id):
 		return _props_scenes[prop_id]
 	return null
+
+
+static func _ensure_initialized() -> void:
+	if _mobs_scenes.is_empty() and _props_scenes.is_empty():
+		_preload_mobs()
+		_preload_props()
 
 
 static func _preload_mobs() -> void:

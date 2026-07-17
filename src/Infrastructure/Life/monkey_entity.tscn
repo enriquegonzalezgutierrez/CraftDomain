@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://b6r5mykxs8qc2" path="res://src/Infrastructure/Life/MonkeyEntity.gd" id="1_monkey"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://dxdalekn5witt" path="res://assets/models/mobs/monkey.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://dgjmjcpqphw8j" path="res://assets/models/mobs/monkey.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_monkey"]
-height = 1.0947266
 radius = 0.37841797
+height = 1.0947266
 
 [node name="MonkeyEntity" type="CharacterBody3D" unique_id=778887141]
 script = ExtResource("1_monkey")

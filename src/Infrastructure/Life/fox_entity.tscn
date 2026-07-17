@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://dvwebxg7rj1m" path="res://src/Infrastructure/Life/FoxEntity.gd" id="1_fox"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://urgv0h4ywbho" path="res://assets/models/mobs/fox.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://c4nu4en8bpngo" path="res://assets/models/mobs/fox.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fox"]
 radius = 0.31103516

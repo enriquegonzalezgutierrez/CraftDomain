@@ -3,7 +3,7 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://muyvonc4poj3"
+uid="uid://fqd8vnxq0ku6"
 path="res://.godot/imported/miner_base.fbx-e50feb5310bc789972f7d539c68c386e.scn"
 
 [deps]
@@ -16,6 +16,8 @@ dest_files=["res://.godot/imported/miner_base.fbx-e50feb5310bc789972f7d539c68c38
 nodes/root_type=""
 nodes/root_name=""
 nodes/root_script=null
+mesh_library/use_node_names_as_mesh_names=false
+array_mesh/deduplicate_surfaces=true
 nodes/apply_root_scale=true
 nodes/root_scale=1.0
 nodes/import_as_skeleton_bones=false

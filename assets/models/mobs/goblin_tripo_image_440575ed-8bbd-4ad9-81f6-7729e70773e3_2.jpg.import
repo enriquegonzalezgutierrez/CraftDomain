@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b4tcwtemqxkbj"
-path.s3tc="res://.godot/imported/goblin_tripo_image_440575ed-8bbd-4ad9-81f6-7729e70773e3_2.jpg-4dd37bcac55d496b05c64e1e7b12f1fb.s3tc.ctex"
+path="res://.godot/imported/goblin_tripo_image_440575ed-8bbd-4ad9-81f6-7729e70773e3_2.jpg-4dd37bcac55d496b05c64e1e7b12f1fb.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "eebba7ab5a132ae11d85499b04c33ea4"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/goblin_tripo_image_440575ed-8bbd-4ad9-81f6-7729e70773e3_2.jpg"
-dest_files=["res://.godot/imported/goblin_tripo_image_440575ed-8bbd-4ad9-81f6-7729e70773e3_2.jpg-4dd37bcac55d496b05c64e1e7b12f1fb.s3tc.ctex"]
+dest_files=["res://.godot/imported/goblin_tripo_image_440575ed-8bbd-4ad9-81f6-7729e70773e3_2.jpg-4dd37bcac55d496b05c64e1e7b12f1fb.ctex"]
 
 [params]
 

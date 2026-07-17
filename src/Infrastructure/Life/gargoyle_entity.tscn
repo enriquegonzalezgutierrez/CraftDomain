@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://c6kremh1nhrw0" path="res://src/Infrastructure/Life/GargoyleEntity.gd" id="1_gargoyle"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://cu8spmmpsrbdd" path="res://assets/models/mobs/gargoyle.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://dnj84duhrmxvg" path="res://assets/models/mobs/gargoyle.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_gargoyle"]
 radius = 0.43017578

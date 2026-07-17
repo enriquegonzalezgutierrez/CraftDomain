@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dcu8gcqycel4f"
-path.s3tc="res://.godot/imported/chiseled_quartz.png-92b5fee2bbf4b044603d6342235e584f.s3tc.ctex"
+uid="uid://bj3lipcq7bpts"
+path="res://.godot/imported/chiseled_quartz.png-92b5fee2bbf4b044603d6342235e584f.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/chiseled_quartz.png"
-dest_files=["res://.godot/imported/chiseled_quartz.png-92b5fee2bbf4b044603d6342235e584f.s3tc.ctex"]
+dest_files=["res://.godot/imported/chiseled_quartz.png-92b5fee2bbf4b044603d6342235e584f.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://cevb1h3w51uv8" path="res://src/Infrastructure/Life/ParrotEntity.gd" id="1_parrot"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://mpl17ec8va0j" path="res://assets/models/mobs/parrot.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://5gdq81arvrlo" path="res://assets/models/mobs/parrot.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_parrot"]
-height = 1.6491992
 radius = 1.0014648
+height = 2.0029297
 
 [node name="ParrotEntity" type="CharacterBody3D" unique_id=1846676830]
 script = ExtResource("1_parrot")

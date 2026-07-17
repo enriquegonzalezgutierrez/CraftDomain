@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d0yp3dn6nsu2v"
-path.s3tc="res://.godot/imported/parrot_tripo_image_070539fa-5d2d-411d-9a4c-89dc88fe7bf6_1.jpg-12dd9bce058416fc6874b9015e58c60c.s3tc.ctex"
+path="res://.godot/imported/parrot_tripo_image_070539fa-5d2d-411d-9a4c-89dc88fe7bf6_1.jpg-12dd9bce058416fc6874b9015e58c60c.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "842dee4af6b53b9691c32051c28ab4c7"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/parrot_tripo_image_070539fa-5d2d-411d-9a4c-89dc88fe7bf6_1.jpg"
-dest_files=["res://.godot/imported/parrot_tripo_image_070539fa-5d2d-411d-9a4c-89dc88fe7bf6_1.jpg-12dd9bce058416fc6874b9015e58c60c.s3tc.ctex"]
+dest_files=["res://.godot/imported/parrot_tripo_image_070539fa-5d2d-411d-9a4c-89dc88fe7bf6_1.jpg-12dd9bce058416fc6874b9015e58c60c.ctex"]
 
 [params]
 

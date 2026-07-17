@@ -3,23 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://di5hmkn8r0e4l"
-path.s3tc="res://.godot/imported/turtle_56064188-turtle-s-back-background-texture.jpg-917e43b89678d025a093e1f0ff9b2894.s3tc.ctex"
+path="res://.godot/imported/turtle_56064188-turtle-s-back-background-texture.jpg-917e43b89678d025a093e1f0ff9b2894.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "3e0b6108456d8d349b69286ff2bed094"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/turtle_56064188-turtle-s-back-background-texture.jpg"
-dest_files=["res://.godot/imported/turtle_56064188-turtle-s-back-background-texture.jpg-917e43b89678d025a093e1f0ff9b2894.s3tc.ctex"]
+dest_files=["res://.godot/imported/turtle_56064188-turtle-s-back-background-texture.jpg-917e43b89678d025a093e1f0ff9b2894.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -27,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
@@ -41,4 +37,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

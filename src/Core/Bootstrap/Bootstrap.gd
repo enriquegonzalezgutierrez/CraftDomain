@@ -9,6 +9,8 @@
 #   loops decomposed into sub-helpers of less than 20 lines each.
 # - Open-Closed Principle (OCP): Integrates DynamicResolutionService automatically
 #   on boot to maintain rock-solid 120 FPS via FSR 2.2 temporal scaling.
+# - UX Optimization: Instantiates the Loading Screen inside a high-priority CanvasLayer,
+#   yielding frames during background disk I/O to maintain smooth 120 FPS animations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,6 +18,7 @@ class_name Bootstrap
 extends Node
 
 const MAIN_MENU_SCENE := preload("res://src/Infrastructure/UI/main_menu.tscn")
+const LOADING_SCREEN_SCENE := preload("res://src/Infrastructure/UI/loading_screen.tscn")
 const VEGETATION_PROP_SCRIPT := preload("res://src/Infrastructure/World/VegetationProp.gd")
 
 var main_menu: MainMenu
@@ -288,17 +291,46 @@ func _init_audio_and_menu() -> void:
 	_load_main_menu()
 
 
-func _on_start_game_requested() -> void:
+func _on_start_game_requested(should_clear_save: bool = false) -> void:
+	# 1. Create a top-level CanvasLayer to ensure the loading screen renders on top of all HUD/3D elements
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.name = "LoadingScreenCanvas"
+	canvas_layer.layer = 100
+	add_child(canvas_layer)
+	
+	# 2. Instantiate and attach the loading screen overlay to the CanvasLayer
+	var loading_screen := LOADING_SCREEN_SCENE.instantiate() as LoadingScreen
+	loading_screen.name = "LoadingScreenOverlay"
+	canvas_layer.add_child(loading_screen)
+	
 	if is_instance_valid(main_menu):
 		main_menu.queue_free()
 		main_menu = null
+		
+	# 3. Yield control to the engine for one frame to force render the loading screen
+	await get_tree().process_frame
+	
+	# 4. Perform the heavy disk deletion safely in a background thread to prevent UI freezing
+	if should_clear_save:
+		var task_id := WorkerThreadPool.add_task(DiskWorldRepository.delete_save_game_files)
+		
+		# Yield control every frame while the background task compiles to keep the spinner animated
+		while not WorkerThreadPool.is_task_completed(task_id):
+			await get_tree().process_frame
+	
 	if is_instance_valid(audio_service):
 		audio_service.crossfade_to_world()
+		
+	# 5. Initialize heavy controllers once the disk has been cleared safely
 	world_controller = WorldController.new()
 	player_controller = PlayerController.new()
 	_inject_dependencies()
+	
 	add_child(world_controller)
 	add_child(player_controller)
+	
+	# Bind the loading screen to the player for synchronous fading
+	loading_screen.player = player_controller
 
 
 func _inject_dependencies() -> void:

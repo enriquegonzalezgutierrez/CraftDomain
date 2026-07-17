@@ -9,6 +9,8 @@
 # - Open-Closed Principle (OCP): Implements an active physical stabilization loop 
 #   ('_process_frozen_physics_movement') when menus are open.
 # - 120 FPS Guardrail: Standardized input buffer updates to maximize performance.
+# - UX Optimization: Checked parent nodes for existing high-priority LoadingScreenCanvas 
+#   during setup to prevent visual duplication and interface mixing on game start.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -126,7 +128,11 @@ func _setup_sub_components() -> void:
 	hud.world_controller = world_controller
 	add_child(hud)
 	
-	hud.show_loading_screen()
+	# Check if the parent node already has a high-priority LoadingScreenCanvas to prevent duplicates
+	var parent_node := get_parent()
+	if is_instance_valid(parent_node) and not parent_node.has_node("LoadingScreenCanvas/LoadingScreenOverlay"):
+		hud.show_loading_screen()
+		
 	_setup_decoupled_components()
 
 

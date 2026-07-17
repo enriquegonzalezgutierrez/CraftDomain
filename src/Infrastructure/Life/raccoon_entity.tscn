@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://2jm0qkuqqby6" path="res://src/Infrastructure/Life/RaccoonEntity.gd" id="1_raccoon"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://c5gnfrcaehu36" path="res://assets/models/mobs/raccoon.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://n16fo3d5vmug" path="res://assets/models/mobs/raccoon.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_raccoon"]
-height = 0.49334472
 radius = 0.15429688
+height = 0.49334472
 
 [node name="RaccoonEntity" type="CharacterBody3D" unique_id=597389135]
 script = ExtResource("1_raccoon")

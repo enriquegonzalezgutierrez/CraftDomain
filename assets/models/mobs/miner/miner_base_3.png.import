@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c78x1bracvtgj"
-path.s3tc="res://.godot/imported/miner_base_3.png-66112df68d3bc2a6542ebb35ac8b5a62.s3tc.ctex"
+path="res://.godot/imported/miner_base_3.png-66112df68d3bc2a6542ebb35ac8b5a62.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "78108341b6f0325ba3b61ace93b84dd3"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/miner/miner_base_3.png"
-dest_files=["res://.godot/imported/miner_base_3.png-66112df68d3bc2a6542ebb35ac8b5a62.s3tc.ctex"]
+dest_files=["res://.godot/imported/miner_base_3.png-66112df68d3bc2a6542ebb35ac8b5a62.ctex"]
 
 [params]
 

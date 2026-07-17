@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://8l0owmmdppc0"
-path.s3tc="res://.godot/imported/chiseled_stone_bricks.png-50807ce26014f764c9580884371e653b.s3tc.ctex"
+uid="uid://dckyx4j2jxry8"
+path="res://.godot/imported/chiseled_stone_bricks.png-50807ce26014f764c9580884371e653b.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/chiseled_stone_bricks.png"
-dest_files=["res://.godot/imported/chiseled_stone_bricks.png-50807ce26014f764c9580884371e653b.s3tc.ctex"]
+dest_files=["res://.godot/imported/chiseled_stone_bricks.png-50807ce26014f764c9580884371e653b.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://b2k8buhmof83" path="res://src/Infrastructure/Life/CatEntity.gd" id="1_cat"]
 [ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://cxh8jqgtqe1vb" path="res://assets/models/mobs/cat.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://t4s7roit6dup" path="res://assets/models/mobs/cat.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_cat"]
-height = 0.745918
 radius = 0.14697266
+height = 0.745918
 
 [node name="CatEntity" type="CharacterBody3D" unique_id=1774184488]
 script = ExtResource("1_cat")

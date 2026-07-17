@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bquf8jmjcf0jb"
-path.s3tc="res://.godot/imported/iron_ore.png-497772162f062cbafef38dfa1370ca8f.s3tc.ctex"
+uid="uid://csc80jj5y384x"
+path="res://.godot/imported/iron_ore.png-497772162f062cbafef38dfa1370ca8f.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/iron_ore.png"
-dest_files=["res://.godot/imported/iron_ore.png-497772162f062cbafef38dfa1370ca8f.s3tc.ctex"]
+dest_files=["res://.godot/imported/iron_ore.png-497772162f062cbafef38dfa1370ca8f.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

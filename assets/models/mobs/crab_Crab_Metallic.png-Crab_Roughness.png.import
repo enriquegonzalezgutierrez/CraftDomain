@@ -3,19 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dn6uo0vp1hbak"
-path.s3tc="res://.godot/imported/crab_Crab_Metallic.png-Crab_Roughness.png-7ef5e16e80acbf0721649e5c6a829b27.s3tc.ctex"
+path="res://.godot/imported/crab_Crab_Metallic.png-Crab_Roughness.png-7ef5e16e80acbf0721649e5c6a829b27.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
-}
-generator_parameters={
-"md5": "1ff4d97620594f0d6775178f2de7c3b7"
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/crab_Crab_Metallic.png-Crab_Roughness.png"
-dest_files=["res://.godot/imported/crab_Crab_Metallic.png-Crab_Roughness.png-7ef5e16e80acbf0721649e5c6a829b27.s3tc.ctex"]
+dest_files=["res://.godot/imported/crab_Crab_Metallic.png-Crab_Roughness.png-7ef5e16e80acbf0721649e5c6a829b27.ctex"]
 
 [params]
 

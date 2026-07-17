@@ -7,9 +7,6 @@ path="res://.godot/imported/druid_base_2.png-57532bd35e4987f070566c1bddb30b1f.ct
 metadata={
 "vram_texture": false
 }
-generator_parameters={
-"md5": "99462efa1a471f1d0bdc4d0381010897"
-}
 
 [deps]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

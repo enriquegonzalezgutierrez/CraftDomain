@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cogm66knrkgob"
-path.s3tc="res://.godot/imported/brown_mushroom.png-3b42e6ec46f84d78237a476c99b102c8.s3tc.ctex"
+uid="uid://50t5sq2r0vq1"
+path="res://.godot/imported/brown_mushroom.png-3b42e6ec46f84d78237a476c99b102c8.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://assets/textures/brown_mushroom.png"
-dest_files=["res://.godot/imported/brown_mushroom.png-3b42e6ec46f84d78237a476c99b102c8.s3tc.ctex"]
+dest_files=["res://.godot/imported/brown_mushroom.png-3b42e6ec46f84d78237a476c99b102c8.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
