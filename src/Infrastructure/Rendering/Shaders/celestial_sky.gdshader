@@ -1,7 +1,7 @@
 // ==============================================================================
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader
-// Description: Clean and robust sky shader managing dynamic gradients, 
-//              twinkling stars, procedurally shaded moon phases, and storm overcast.
+// Description: Advanced sky shader with dynamic gradients, twinkling stars,
+//              shaded moon phases, and pseudo-3D self-shaded volumetric clouds.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -134,15 +134,40 @@ void sky() {
 			}
 		}
 		
-		// 5. MOVING CLOUDS (WIND AFFECTED)
+		// 5. MOVING CLOUDS (WIND AFFECTED & 3D PROCEDURAL SHADING)
 		vec2 sky_uv = EYEDIR.xz / EYEDIR.y;
 		vec2 wind_offset = wind_vector * (TIME * speed * (1.0 + wind_strength));
-		float clouds_noise = fbm(sky_uv * scale - wind_offset) * fade;
+		vec2 cloud_coord = sky_uv * scale - wind_offset;
 		
+		float clouds_noise = fbm(cloud_coord) * fade;
 		float dens = smoothstep(density, 1.0, clouds_noise);
-		vec3 cloud_color = mix(vec3(0.72, 0.75, 0.82), vec3(0.98, 0.98, 0.98), dens) * (0.2 + day_weight * 0.8);
-		cloud_color = mix(cloud_color, vec3(0.15, 0.16, 0.18), storm_weight * 0.5);
-		sky_back = mix(sky_back, cloud_color, dens * (1.0 - storm_weight * 0.35));
+		
+		if (dens > 0.0) {
+			// Volumetric self-shading: sample density slightly offset towards the active light source
+			vec3 active_light_dir = mix(normalize(moon_direction), normalize(sun_direction), day_weight);
+			vec2 light_offset = normalize(active_light_dir.xz) * 0.035;
+			
+			float clouds_noise_light = fbm(cloud_coord + light_offset) * fade;
+			
+			// Highlight silver-lining edge: bright glow on faces pointing towards the light source
+			float edge_glow = smoothstep(0.02, 0.22, clouds_noise - clouds_noise_light);
+			
+			// Color Gradients: warm sunlit white/gold vs dark blue-grey storm/shadow undersides
+			vec3 lit_color = mix(vec3(0.95, 0.95, 0.98), vec3(1.0, 0.95, 0.85), day_weight);
+			vec3 shadow_color = mix(vec3(0.06, 0.08, 0.12), vec3(0.35, 0.38, 0.45), day_weight);
+			
+			// Mix shadows and highlights based on density gradient
+			vec3 cloud_shading = mix(shadow_color, lit_color, smoothstep(-0.05, 0.15, clouds_noise - clouds_noise_light));
+			
+			// Add brilliant silver-lining rim light on cloud edges
+			cloud_shading = mix(cloud_shading, vec3(1.1, 1.05, 0.95), edge_glow * 0.35 * day_weight);
+			
+			// Darken the entire cloud layer during storms
+			cloud_shading = mix(cloud_shading, vec3(0.08, 0.09, 0.11), storm_weight * 0.72);
+			
+			// Apply soft depth-blend with the background sky
+			sky_back = mix(sky_back, cloud_shading, dens * (1.0 - storm_weight * 0.35));
+		}
 	} else {
 		sky_back = mix(ground_color_top, ground_color_bottom, -EYEDIR.y);
 	}
