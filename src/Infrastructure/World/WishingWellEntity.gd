@@ -1,20 +1,23 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/WishingWellEntity.gd
 # Description: Infrastructure Static Entity representing an interactive Wishing Well.
-#              Manages collision setups and interactive coin toss transactions.
+#              Manages collision setups and interactive coin-stone toss transactions.
+#              SOLID CLEANUP: Purged all procedural mesh generation from code (Section 7.6).
+#              All visual nodes are declared in .tscn. Decomposed into cohesive sub-methods.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name WishingWellEntity
 extends StaticBody3D
 
-const MODEL_PATH: String = "res://assets/models/decorations/wishing_well_odyssey.glb"
+const COIN_STONE_ITEM_ID: int = 1
 
 
 func _ready() -> void:
 	name = "Prop_WISHING_WELL"
 
 
+## Interaction Router: Manages inventory checks and routes to sub-methods (SRP)
 func interact(player_node: CharacterBody3D) -> void:
 	if not is_instance_valid(player_node):
 		return
@@ -24,55 +27,48 @@ func interact(player_node: CharacterBody3D) -> void:
 	
 	if is_instance_valid(inventory):
 		# Stone Block (ID 1) acts as our copper coin token proxy
-		var cost_item_id := 1
-		var cost_qty := 1
-		
-		if inventory.get_item_total_quantity(cost_item_id) >= cost_qty:
-			# 1. Deduct the cost
-			inventory.consume_item(cost_item_id, cost_qty)
-			
-			# 2. Play coin clink and water splash spatial SFX (Service Locator)
-			AudioService.play_sfx_static("loot_pickup", global_position)
-			AudioService.play_sfx_static("block_break", global_position)
-			
-			# 3. Roll a random wish reward (Diamond Ore, Glowstone, or Fried Chicken!)
-			var rewards_pool: Array[int] = [16, 28, 30] # Chicken (16), Diamond (28), Glowstone (30)
-			var rolled_item_id := rewards_pool[randi() % rewards_pool.size()]
-			inventory.add_item(rolled_item_id, 1)
-			
-			# Symmetrically fetch localized name binding
-			var reward_name := ""
-			if rolled_item_id == 16: reward_name = tr("ITEM_FRIED_CHICKEN")
-			elif rolled_item_id == 28: reward_name = tr("BLOCK_DIAMOND_ORE")
-			else: reward_name = tr("BLOCK_GLOWSTONE")
-			
-			# 4. Display a gold toast notification on the player's HUD
-			if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-				hud.call(
-					"show_quest_notification", 
-					tr("NOTIFICATION_WISH_GRANTED_HEADER"), 
-					tr("NOTIFICATION_RECEIVED_PREFIX") + " 1x " + reward_name.to_upper()
-				)
+		if inventory.get_item_total_quantity(COIN_STONE_ITEM_ID) >= 1:
+			_execute_wish_transaction(inventory, hud)
 		else:
-			# If the player has no stone coin, flash a localized helpful tip
-			if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
-				hud.call(
-					"show_quest_notification", 
-					tr("NOTIFICATION_WISHING_WELL_HEADER"), 
-					tr("NOTIFICATION_WISHING_WELL_DESC")
-				)
-				AudioService.play_sfx_static("npc_chat", global_position)
+			_display_well_instructions(hud)
 
 
-func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> void:
-	var mesh_instance := MeshInstance3D.new()
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = size
-	mesh_instance.mesh = box_mesh
-	mesh_instance.position = box_pos
+func _execute_wish_transaction(inventory: IInventory, hud: PlayerHUD) -> void:
+	inventory.consume_item(COIN_STONE_ITEM_ID, 1)
 	
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.roughness = 0.95
-	mesh_instance.material_override = mat
-	parent.add_child(mesh_instance)
+	AudioService.play_sfx_static("loot_pickup", global_position)
+	AudioService.play_sfx_static("block_break", global_position)
+	
+	# Roll random reward: Chicken (16), Diamond Ore (28), or Glowstone (30)
+	var rewards_pool: Array[int] = [16, 28, 30] 
+	var rolled_item_id := rewards_pool[randi() % rewards_pool.size()]
+	inventory.add_item(rolled_item_id, 1)
+	
+	_update_active_gathering_quest_progress(rolled_item_id)
+	_display_wish_success_toast(hud, rolled_item_id)
+
+
+func _update_active_gathering_quest_progress(rolled_item_id: int) -> void:
+	var active_q := QuestService.get_active_quest() as Quest
+	if active_q != null and active_q.required_item_index == rolled_item_id:
+		active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + 1)
+
+
+func _display_wish_success_toast(hud: PlayerHUD, rolled_item_id: int) -> void:
+	if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
+		var reward_name := InventoryComponent.get_item_name_by_id(rolled_item_id)
+		hud.call(
+			"show_quest_notification", 
+			tr("NOTIFICATION_WISH_GRANTED_HEADER"), 
+			tr("NOTIFICATION_RECEIVED_PREFIX") + " 1x " + reward_name.to_upper()
+		)
+
+
+func _display_well_instructions(hud: PlayerHUD) -> void:
+	if is_instance_valid(hud) and hud.has_method("show_quest_notification"):
+		hud.call(
+			"show_quest_notification", 
+			tr("NOTIFICATION_WISHING_WELL_HEADER"), 
+			tr("NOTIFICATION_WISHING_WELL_DESC")
+		)
+		AudioService.play_sfx_static("npc_chat", global_position)

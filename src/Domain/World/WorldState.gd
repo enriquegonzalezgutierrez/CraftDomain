@@ -3,13 +3,9 @@
 # Description: Domain Aggregate Root representing the global voxel world, managing
 #              chunk storage, coordinate systems, and a double-buffered timeline 
 #              system to support seamless Present/Past chronological shifting.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates block states,
-#   grid conversions, and active timeline buffers.
-# - Open-Closed Principle (OCP): Provides a dual-timeline unpacking fallback 
-#   inside the state mutator.
-# - Domain-Layer Bedrock Shield: Mutator method rejects changes at Y <= 0,
-#   mathematically securing the floor from void breaches.
+# SOLID COMPLIANCE: Exclusively coordinates block states and active timeline buffers.
+#              MISSION UPGRADE: Added a typesafe global target subscription anchor
+#              to guarantee exactly one unique entity holds the active quest star.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -19,7 +15,7 @@ extends RefCounted
 ## Domain Event emitted whenever the world's active timeline is swapped
 signal timeline_swapped(new_timeline: Timeline)
 
-## Structural timeline states (Present Era vs Ancient Golden Age)
+## Structural timeline states
 enum Timeline {
 	PRESENT,
 	PAST
@@ -36,6 +32,11 @@ var _timeline_modifications: Dictionary = {
 	Timeline.PRESENT: {},
 	Timeline.PAST: {}
 }
+
+# --- SOLID MISSION REGISTRY ANCHOR (ISP / LSP Compliant) ---
+## The single, unique, and compiled CharacterBody3D node designated as the quest target.
+## Prevents multiple entities from claiming the gold star indicator simultaneously.
+var active_quest_target_node: CharacterBody3D = null
 
 
 func _init() -> void:
@@ -64,17 +65,16 @@ func global_to_local_pos(global_pos: Vector3i) -> Vector3i:
 	)
 
 
-## Swaps the active timeline, swapping the modifications buffer and clearing 
-## physical chunks in memory to force a clean, seamless redraw.
+## Swaps the active timeline, swapping the modifications buffer and clearing physical chunks
 func swap_timeline(new_timeline: Timeline) -> void:
 	if active_timeline == new_timeline:
 		return
 		
 	active_timeline = new_timeline
-	
-	# Clear the active physical chunks. The asynchronous lifecycle service 
-	# will automatically detect this and request background redraws.
 	_chunks.clear()
+	
+	# Clear the unique quest target reference as the world shifts epoch
+	active_quest_target_node = null
 	
 	timeline_swapped.emit(active_timeline)
 
@@ -114,13 +114,11 @@ func apply_chunk_modifications(chunk_pos: Vector3i, modifications: Dictionary) -
 		present_mods = modifications.get("present", {}) as Dictionary
 		past_mods = modifications.get("past", {}) as Dictionary
 	else:
-		# Backward-compatibility fallback: old flat files map to current active timeline
 		if active_timeline == Timeline.PRESENT:
 			present_mods = modifications
 		else:
 			past_mods = modifications
 			
-	# Cache both timelines to prevent data loss on subsequent overwrites
 	_timeline_modifications[Timeline.PRESENT][chunk_pos] = present_mods
 	_timeline_modifications[Timeline.PAST][chunk_pos] = past_mods
 	
@@ -149,8 +147,6 @@ func get_block(global_pos: Vector3i) -> BlockType.Type:
 
 ## Sets a block in global world space coordinates and logs the modification.
 func set_block(global_pos: Vector3i, type: BlockType.Type) -> void:
-	# BEDROCK SHIELD: The floor of the world at Y <= 0 is indestructible and permanent.
-	# Any attempts to clear or modify this layer are safely ignored at the Domain level.
 	if global_pos.y <= 0:
 		return
 		
@@ -175,7 +171,6 @@ func set_block(global_pos: Vector3i, type: BlockType.Type) -> void:
 # ==============================================================================
 
 ## Domain Rule: Performs a vertical downward scan from max altitude (Y=31)
-## to locate the coordinates of the highest solid ground surface block.
 func get_highest_solid_y(global_x: int, global_z: int) -> float:
 	for y in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)

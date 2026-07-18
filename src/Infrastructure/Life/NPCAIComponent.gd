@@ -4,6 +4,9 @@
 #              social gossip, and organic curved pathfinding.
 #              SOLID CLEANUP: Separated vector calculations from velocity writing 
 #              to allow steering to dynamically slide NPCs along wall colliders.
+#              STABILIZATION UPGRADE: Implemented a typesafe 1.2s Stuck Resolver 
+#              to automatically re-route NPCs when colliding with walls/corners,
+#              and throttled pathfinding to prevent steering overwrite jitters.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -75,7 +78,7 @@ func process_ai(delta: float) -> void:
 		_steering_component.process_steering(delta)
 		
 	# 3. PHASE C: Apply the final, safe steered vector to the physical velocity
-	_apply_movement_vectors()
+	_apply_movement_vectors(delta)
 
 
 func _calculate_base_desired_direction(delta: float) -> void:
@@ -86,12 +89,15 @@ func _calculate_base_desired_direction(delta: float) -> void:
 	if _ai_timer_accum >= _ai_tick_rate:
 		_ai_timer_accum = 0.0
 		_execute_throttled_ai_tick()
-	else:
-		_process_path_calculations_unthrottled()
 
 
 func _execute_throttled_ai_tick() -> void:
 	_locate_navigation_service_if_missing()
+	
+	# 120 FPS GUARDRAIL: We calculate the path destination only on throttled ticks (4Hz)
+	# to allow steering tangents to slide the NPC on intermediate frames without jitters.
+	if current_task == TaskState.WANDERING and _active_path.size() > 0:
+		_navigate_along_active_path_no_velocity()
 	
 	var has_override: bool = _evaluate_active_behavior()
 	if not has_override:
@@ -99,10 +105,8 @@ func _execute_throttled_ai_tick() -> void:
 
 
 func _process_path_calculations_unthrottled() -> void:
-	var has_override: bool = active_behavior != null and active_behavior.get("overrides_wandering") == true
-	if not has_override:
-		if current_task == TaskState.WANDERING and _active_path.size() > 0:
-			_navigate_along_active_path_no_velocity()
+	# Cleaned: Pathfinder calculations are now strictly bound to throttled ticks.
+	pass
 
 
 func _evaluate_active_behavior() -> bool:
@@ -199,7 +203,7 @@ func _transition_to_task(task: TaskState, look_dir: Vector3) -> void:
 	social_cooldown = SOCIAL_COOLDOWN_INTERVAL
 
 
-func _apply_movement_vectors() -> void:
+func _apply_movement_vectors(delta: float) -> void:
 	var base_speed: float = 1.3
 	if "BASE_SPEED" in _host: base_speed = _host.get("BASE_SPEED")
 		
@@ -215,14 +219,46 @@ func _apply_movement_vectors() -> void:
 		TaskState.WANDERING, TaskState.PANIC:
 			# Symmetrical Yaw Sway: Apply continuous slight sways for natural walking
 			var elapsed := float(Time.get_ticks_msec()) / 1000.0
-			var seed_val := float(_host.get("npc_seed") if "npc_seed" in _host else 0) * 0.12
+			var seed_val := float(_host.npc_seed) * 0.12
 			var sway_angle := sin(elapsed * 1.5 + seed_val) * 0.22 
 			var final_dir := wander_direction.rotated(Vector3.UP, sway_angle).normalized()
 			
 			var speed_mult: float = 2.8 if current_task == TaskState.PANIC else 1.0
 			_host.velocity.x = final_dir.x * base_speed * speed_mult
 			_host.velocity.z = final_dir.z * base_speed * speed_mult
+			
+			_evaluate_stuck_state(delta)
 			_keep_gaze_within_tether()
+
+
+func _evaluate_stuck_state(delta: float) -> void:
+	var is_trying_to_move := wander_direction.length_squared() > 0.05
+	var is_physically_stopped := _host.velocity.length_squared() < 0.04
+	
+	if is_trying_to_move and is_physically_stopped and _host.is_on_floor():
+		stuck_timer += delta
+		if stuck_timer >= 1.2: # If trapped against a corner for more than 1.2 seconds
+			_resolve_stuck_state()
+	else:
+		stuck_timer = 0.0
+
+
+func _resolve_stuck_state() -> void:
+	_active_path.clear()
+	_current_path_index = 0
+	
+	# Project reverse vector with random deflection angle
+	var reverse_dir := -wander_direction.normalized()
+	reverse_dir = reverse_dir.rotated(Vector3.UP, randf_range(-0.8, 0.8)).normalized()
+	
+	wander_direction = reverse_dir
+	current_task = TaskState.WANDERING
+	task_timer = randf_range(1.5, 3.5)
+	stuck_timer = 0.0
+	
+	# Agile hop to clear any tiny visual brick lips/crevices
+	_host.velocity.y = 4.0
+	print("[NPCAI] Resolved stuck state on %s. Clearing path and re-routing." % _host.name)
 
 
 ## Decoupled: Pathfinder ONLY calculates direction, never writes directly to velocity

@@ -55,7 +55,6 @@ var _interactive_props: Array[Node3D] = []
 func _ready() -> void:
 	assert(repository != null, "[WorldController] Fatal: WorldRepository missing!")
 	
-	# Observer pattern to maintain O(1) prop caching
 	child_entered_tree.connect(_on_child_entered_tree)
 	child_exiting_tree.connect(_on_child_exiting_tree)
 	

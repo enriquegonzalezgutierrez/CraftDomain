@@ -1,9 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
 # Description: Builder responsible for constructing the world lighting, sky,
-#              and post-processing. 
-#              PERFORMANCE & VISUAL UPGRADE: Forced fog_sky_affect to 0.0 for 
-#              crystal clear skies, and injected dedicated cloud FBM textures.
+#              and post-processing.
+#              GRAPHICAL UPGRADE: Enabled dynamic GPU-based Eye Adaptation 
+#              (Auto Exposure) and calibrated AgX tonemapping for cinematic 
+#              exposure transitions between dark interiors and bright plains.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -127,8 +128,13 @@ static func _setup_high_end_profile(environment: Environment) -> void:
 	environment.ssao_detail = 0.65
 	
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
-	environment.tonemap_exposure = 1.15 
-	environment.tonemap_white = 1.05
+	environment.tonemap_exposure = 1.05 # Symmetrically balanced with eye adaptation
+	environment.tonemap_white = 1.00
+	
+	# GRAPHICAL UPGRADE: Dynamic GPU-based Eye Adaptation (Pupil Simulation)
+	environment.auto_exposure_enabled = true
+	environment.auto_exposure_scale = 0.35 # Exposure sensitivity balance
+	environment.auto_exposure_speed = 1.2  # Fluid transition speed (seconds)
 	
 	environment.glow_enabled = true
 	environment.glow_normalized = true

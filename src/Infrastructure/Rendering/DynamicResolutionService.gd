@@ -1,14 +1,17 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/DynamicResolutionService.gd
 # Description: Infrastructure Service managing dynamic resolution scaling (DRS)
-#              with CPU-side scale caching and optimized FSR 2.2 quality bounds (DIP).
+#              with CPU-side scale caching and optimized FSR 2.2 quality bounds.
+#              PERFORMANCE & VISUAL UPGRADE: Replaced forced 120Hz calculations 
+#              with actual monitor refresh rate sweeps to prevent aggressive 
+#              downscaling and blurry graphics on 60Hz screens.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name DynamicResolutionService
 extends Node
 
-const MIN_RESOLUTION_SCALE: float = 0.65 # Restored to 0.65 for crisp, high-fidelity FSR 2.2 upscaling
+const MIN_RESOLUTION_SCALE: float = 0.65 
 const MAX_RESOLUTION_SCALE: float = 1.00
 
 const SCALE_DOWN_STEP: float = 0.15      
@@ -65,15 +68,15 @@ func _initialize_viewport_rendering_properties() -> void:
 func _calculate_dynamic_performance_thresholds() -> void:
 	var screen_hz := DisplayServer.screen_get_refresh_rate()
 	if screen_hz <= 0.0:
-		screen_hz = 120.0
+		screen_hz = 60.0 # Default safe fallback
 		
-	var target_hz := maxf(120.0, screen_hz)
-	_target_frame_time_sec = 1.0 / (target_hz - 10.0)
-	_safe_frame_time_sec = 1.0 / (target_hz - 2.0)
+	# SENSITIVITY FIX: Target the actual hardware monitor refresh rate (screen_hz)
+	# instead of forcing 120Hz, preventing aggressive blurry downscaling on 60Hz screens.
+	_target_frame_time_sec = 1.0 / maxf(10.0, screen_hz - 10.0)
+	_safe_frame_time_sec = 1.0 / maxf(10.0, screen_hz - 2.0)
 	
-	print("[DRS] Screen: %dHz | Target HZ: %dHz. Target: %.2fms, Recovery: %.2fms" % [
+	print("[DRS] Screen: %dHz | Scaled target at: %.2fms, Recovery: %.2fms" % [
 		int(screen_hz), 
-		int(target_hz),
 		_target_frame_time_sec * 1000.0, 
 		_safe_frame_time_sec * 1000.0
 	])
@@ -95,19 +98,19 @@ func _evaluate_performance_metrics() -> void:
 	var average_frame_time := 1.0 / float(fps)
 	
 	if average_frame_time > _target_frame_time_sec:
-		_decrease_resolution(_current_scale, average_frame_time)
+		_decrease_resolution(_current_scale)
 	elif average_frame_time < _safe_frame_time_sec:
-		_increase_resolution(_current_scale, average_frame_time)
+		_increase_resolution(_current_scale)
 
 
-func _decrease_resolution(current_scale: float, _frame_time: float) -> void:
+func _decrease_resolution(current_scale: float) -> void:
 	var target_scale := clampf(current_scale - SCALE_DOWN_STEP, MIN_RESOLUTION_SCALE, MAX_RESOLUTION_SCALE)
 	if absf(target_scale - current_scale) > 0.001:
 		_current_scale = target_scale
 		_viewport.scaling_3d_scale = target_scale
 
 
-func _increase_resolution(current_scale: float, _frame_time: float) -> void:
+func _increase_resolution(current_scale: float) -> void:
 	var target_scale := clampf(current_scale + SCALE_UP_STEP, MIN_RESOLUTION_SCALE, MAX_RESOLUTION_SCALE)
 	if absf(target_scale - current_scale) > 0.001:
 		_current_scale = target_scale

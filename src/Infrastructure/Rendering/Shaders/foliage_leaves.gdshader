@@ -1,10 +1,9 @@
 // ==============================================================================
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader
 // Description: Advanced organic foliage shader for tree leaves, bushes, and grass.
-//              Features dual-frequency wind-sway (low frequency branch sways
-//              combined with high frequency leaf flutters) and a PBR backlight
-//              translucency (Subsurface Scattering) approximation.
-// SOLID COMPLIANCE: Dedicated exclusively to foliage pixel shading and vertex swaying.
+#              Features dual-frequency wind-sway and a PBR backlight translucency.
+//              GRAPHICAL UPGRADE: Implemented high-performance, GPU-based 
+//              proximity bending (Player-Grass Turbulence) using global uniforms.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -13,6 +12,9 @@ render_mode blend_mix, depth_draw_opaque, cull_disabled, diffuse_burley, specula
 
 global uniform vec2 wind_vector;
 global uniform float wind_strength;
+
+// Sourced globally from project.godot (Zero-allocation GPU translation)
+global uniform vec3 player_position;
 
 uniform sampler2D albedo_texture : source_color, filter_nearest_mipmap;
 uniform vec4 block_color : source_color = vec4(1.0);
@@ -33,18 +35,27 @@ void vertex() {
 	// 3. High-frequency leaf flutter (representing leaf rustling)
 	float time_high = TIME * (12.0 + wind_strength * 15.0);
 	float flutter_wave = sin(world_pos.y * 10.0 + time_high) * cos(world_pos.x * 10.0 - time_high);
-	// Top-facing leaf faces sway more in block, vertical hanging leaves flutter more
 	vec2 flutter = wind_dir * flutter_wave * (0.01 + wind_strength * 0.012) * (1.0 - NORMAL.y);
 	
+	// Apply default wind and flutter sways
 	VERTEX.xz += sway + flutter;
+	
+	// 4. Proximity Bending (Player Turbulence on XZ flat plane)
+	vec3 to_player = world_pos - player_position;
+	float dist_to_player = length(to_player);
+	float root_mask = clamp(VERTEX.y, 0.0, 1.0); // Keeps roots locked to the ground
+	
+	if (dist_to_player < 1.8) {
+		float push_strength = (1.8 - dist_to_player) * 0.55;
+		vec2 push_dir = normalize(to_player.xz);
+		VERTEX.xz += push_dir * push_strength * root_mask;
+	}
 }
 
 
 void fragment() {
-	// Fetch albedo color from the static preloaded texture cache
 	vec4 tex_color = texture(albedo_texture, UV);
 	
-	// Alpha Scissor Winding: Sharp pixel-art leaf transparency cutout
 	if (tex_color.a < 0.5) {
 		discard;
 	}
@@ -56,12 +67,9 @@ void fragment() {
 
 
 void light() {
-	// 1. Standard lambertian diffuse shading
 	float dot_nl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
 	DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR * dot_nl * ATTENUATION;
 	
-	// 2. Symmetrical Subsurface Scattering (Backlight Translucency)
-	// Light penetrates the leaves, glowing emerald green when backlit by the sun
 	float dot_vl = clamp(dot(VIEW, -LIGHT), 0.0, 1.0);
 	float sss = pow(dot_vl, 6.0) * translucency_energy;
 	DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR * sss * ATTENUATION;

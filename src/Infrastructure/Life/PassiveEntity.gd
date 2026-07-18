@@ -2,8 +2,9 @@
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical base class representing NPCs and Wildlife.
 #              Coordinates physical movements, gravity slides, and fluid states.
-#              SOLID CLEANUP: Completely removed passive distance-based quest
-#              auto-claiming to prevent duplicate targets and multiple arrows.
+#              SOLID COMPLIANCE: Solved the duplicate target arrow bug.
+#              Implemented typesafe, exclusive proximity quest-target claiming
+#              anchored to the WorldState domain.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -39,7 +40,6 @@ var _talking_partner: CharacterBody3D = null
 var _last_attacker: Node = null
 var _is_physically_sleeping: bool = false
 
-# Set exclusively and explicitly by the Spawning Service (SOLID Compliant)
 var quest_target_id: String = ""
 var _is_lifecycle_initialized: bool = false
 var _ui_component: EntityUIComponent
@@ -77,7 +77,6 @@ func _execute_lifecycle_initialization() -> void:
 	
 	_setup_nameplate_height()
 	_setup_ui_component()
-	# SOLID CLEANUP: Removed the auto-claim quest routine to guarantee target uniqueness
 
 
 func _setup_nameplate_height() -> void:
@@ -404,12 +403,42 @@ func _process_ai_and_boundaries(delta: float) -> void:
 		_update_quest_bubble_state()
 
 
+## Unique Subscription Selector: Guarantees exactly one unique entity is gold and tracks GPS
 func _update_quest_bubble_state() -> void:
-	if is_instance_valid(_ui_component):
-		var active_quest := QuestService.get_active_quest()
-		if active_quest != null and quest_target_id == active_quest.quest_id:
-			active_quest.target_position = global_position
-		_ui_component.update_ui_state(active_quest, quest_target_id)
+	if not is_instance_valid(_ui_component):
+		return
+		
+	var active_quest := QuestService.get_active_quest() as Quest
+	var world_controller_ref := get_parent()
+	var ws: WorldState = world_controller_ref.world_state if is_instance_valid(world_controller_ref) and "world_state" in world_controller_ref else null
+	
+	if active_quest == null or ws == null:
+		quest_target_id = ""
+		_ui_component.update_ui_state(null, "")
+		return
+		
+	# If we are already the unique target, lock our GPS focus and keep the gold star
+	if ws.active_quest_target_node == self:
+		active_quest.target_position = global_position
+		_ui_component.update_ui_state(active_quest, active_quest.quest_id)
+		return
+		
+	# If another valid entity is already the active target, we CANNOT claim it (Eliminates double arrows)
+	if is_instance_valid(ws.active_quest_target_node) and not ws.active_quest_target_node.domain_entity.is_dead:
+		quest_target_id = ""
+		_ui_component.update_ui_state(active_quest, "")
+		return
+		
+	# Symmetrical Proximity Claiming: If we are close and eligible, we claim the mission exclusively!
+	var dist := global_position.distance_to(active_quest.target_position)
+	if dist <= 25.0 and _is_eligible_for_quest(active_quest.quest_id):
+		quest_target_id = active_quest.quest_id
+		ws.active_quest_target_node = self
+		active_quest.target_position = global_position # Anchor GPS to our position
+		_ui_component.update_ui_state(active_quest, active_quest.quest_id)
+	else:
+		quest_target_id = ""
+		_ui_component.update_ui_state(active_quest, "")
 
 
 func _apply_absolute_boundary_forcefield(delta: float) -> void:

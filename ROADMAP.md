@@ -42,7 +42,7 @@ This document details the completed development phases and outlines the future m
 
 ### Milestone 8: Observer Audio & Physics Gravity Engine
 *   **Spatial 3D Positional Audio:** Implemented dynamic OGG sound triggers for footsteps and block breaking via the `AudioService` locator.
-*   **Coordinated Alarm Networks:** Struck civilians broadcast an alarm through `AlertNetworkService`. Nearby guards and golems within 30m break patrols to intercept hostiles.
+*   **Coordinated Alarm Networks:** Struck civilians broadcast an alarm through `AlertNetworkService`. Nearby guards and golems within 30m group patrols to intercept hostiles.
 *   **Voxel-Support Block Gravity:** Broken blocks supporting interactable props (barrels, chests, campfires) now trigger physical drops, shattering destructibles or sliding heavy props elastically to the new floor level.
 
 ### Milestone 9: Multiplayer Network Synchronization
@@ -75,16 +75,44 @@ This document details the completed development phases and outlines the future m
 ### Milestone 14: Dynamic Atmospheric & Astronomical Synthesis
 *   **Day/Night Transits:** Synchronized real-time celestial clock rotations with high-contrast, non-blurry Rayleigh sky gradients.
 *   **Procedural Moon Phases:** Sculpted a mathematical moon dome in tangent space, casting dynamic shadows on craters according to the 28-day lunar calendar.
-*   **Unified Fog-Sky Shading:** Integrated a CPU-to-GPU fog color alignment pipeline that automatically matches fog light tints with the horizon, softening hard sky lines.
-*   **Nocturnal Twinkling Stars:** programmatically mapped high-frequency sparkling star noise, fading out during the day or during overcast storms.
+*   **Unified Fog-Sky Shading:** Integrated a CPU-to-GPU fog color alignment pipeline that automatically matches fog light tints with the horizon.
+*   **Nocturnal Twinkling Stars:** Programmatically mapped high-frequency sparkling star noise, fading out during the day or during overcast storms.
+
+### Milestone 15: SOLID Mob Spawning & Unique Target Allocation
+*   **Typesafe Spawning Mapping:** Integrated a typesafe, OCP-compliant quest-objective spawner inside `MobSpawningService` mapped to concrete entity identifiers.
+*   **Exclusive Proximity Claiming:** Removed dynamic auto-claiming from `PassiveEntity`, routing target locking strictly through the `WorldState` registry. This guarantees that exactly one unique entity holds the gold star and aligns GPS coordinates in real-time, completely preventing duplicate arrows.
+*   **Dynamic Target Injection:** The loaded chunk automatically evaluates the active mission context on spawn. If no eligible target exists, it instantiates a unique quest mob, aligning its spawning Y coordinate cleanly to the highest solid ground.
+
+### Milestone 16: Non-Clumsy AI Movement & Aerodynamics
+*   **Throttled Pathfinding Updates:** Modified `NPCAIComponent` to restrict A* pathfinder waypoint evaluations strictly to low-frequency ticks (4Hz). This prevents the pathfinder from overwriting `NPCObstacleSteering`'s slide tangents on intermediate frames, allowing entities to slide fluidly.
+*   **Unstuck Re-Router (Stuck Resolver):** Implemented an automated unsticking routine. If an NPC's movement speed remains below `0.04` for more than 1.2s, the AI clears its active path, executes an agile backstep hop, and re-routes its path away from the corner.
+*   **Typesafe Conversational Gaze:** Refactored `NPCVisualComponent` to support body-rotation slerps towards targets during talking, greeting, and gossiping states, even at zero movement velocity.
+*   **Gravity Bypass Correction:** Audited and corrected `_is_avian()` flags in `TurtleEntity` and `OctopusEntity` from `true` to `false`. This restores standard physical gravity snapping, preventing aquatic and amphibious fauna from floating up into the sky.
 
 ---
 
 ## 🔮 FUTURE HORIZONS (POST-1.0 BACKLOG)
 
-With the core architecture fully stabilized and the 120 FPS performance budget secured, future development will focus on engine expansions and community tools:
-
-*   **Virtual Reality (OpenXR) Integration:** Abstract the `PlayerController` and `PlayerViewModel` to support 6DOF hand tracking, physical block grabbing, and immersive eye-and-arrow archery physics.
+### Milestone 17: Virtual Reality (OpenXR) Integration
+*   **6DOF Hand Tracking:** Abstract the `PlayerController` and `PlayerViewModel` to support 6DOF hand tracking, physical block grabbing, and immersive eye-and-arrow archery physics.
 *   **Headless Dedicated Server App:** Compile a lightweight, GUI-stripped Linux build of CraftDomain designed to run 24/7 on VPS instances, supporting up to 64 concurrent players with persistent server-side economies.
 *   **Dynamic Seasons & Thermodynamics:** Expand `CelestialService` and `WeatherService` to track yearly macro-seasons (Winter, Summer), dynamically freezing lakes or drying crops based on localized biome thermodynamics.
 *   **Vehicles & Mounts:** Implement raycast-suspended collision vehicles (Minecarts on rails, Saddled Horses, Galleon steering) adhering to the existing `VoxelNavigationService` topological grid.
+
+### Milestone 18: Atmospheric & Environmental Shading (Backlog)
+*   **Height-Based Fog (Low-Lying Mists):** Implement a linear fog shader that calculates density based on absolute altitude (Y) rather than distance. This creates low-lying morning mist that hugs valleys, canals, and swamps while keeping high altitudes and sky domes 100% clear.
+*   **Dynamic Eye Adaptation:** Simulate human pupil adjustment. The camera will dynamically transition exposure levels when moving between bright plains and dark interiors (such as basalt caves, castle corridors, and nether rifts), creating a highly cinematic transition of scale.
+
+### Milestone 19: High-Fidelity Geometry & Materials (Backlog)
+*   **Foliage Proximity Bend (Player-Grass Turbulence):** Modify `foliage_leaves.gdshader` to dynamically bend grass and wild flowers away from the player or fast-moving mobs. This provides instant physical feedback when running through the wilderness, making the environment feel responsive.
+*   **Procedural Block Beveling (Specular Edge Highlights):** Implement a mathematical edge-normal bevel calculation in the triplanar shader. This will catch solar specular highlights on the edges of block bricks, logs, and metals, softening sharp 90-degree polygon seams and making voxels look premium and physically constructed.
+
+### Milestone 20: Procedural Slope Alignment (Backlog)
+*   **Slope Body Incline (Procedural Tilt):** Develop a lightweight CPU-based matrix alignment system for quadrupeds (cows, pigs, foxes, wolves). This will dynamically tilt their vertical body orientation according to the incline of the terrain slope or stairs they are traversing, preventing robotic capsule clipping.
+
+---
+
+### ⚡ 120 FPS Technical Feasibility Guardrail
+All upcoming visual enhancements in the backlog are designed with strict performance budgets:
+*   **CPU Operations:** Animal slope inclines and eye adaptation are resolved using simple local matrix calculations once per frame, bypassing heavy physics server queries.
+*   **GPU Operations:** Foliage bending and edge beveling are processed directly on the GPU within single-pass shaders, avoiding vertex restructuring or extra draw calls.

@@ -1,7 +1,9 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/PlayerController.gd
 # Description: First-person player physics controller managing movements,
-#              hotbar bindings, and stable gravity-free startup phases (SRP).
+#              hotbar bindings, and stable gravity-free startup phases.
+#              GRAPHICAL UPGRADE: Integrated real-time player position uploading 
+#              to the RenderingServer for interactive foliage bending.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -209,11 +211,12 @@ func _process_local_player(delta: float) -> void:
 
 	move_and_slide()
 	_apply_physics_effects(delta)
+	
+	# PUSH COORDINATES TO GPU (120Hz Guardrail for Player-Grass Turbulence)
+	RenderingServer.global_shader_parameter_set("player_position", global_position)
 
 
 func _process_frozen_physics_movement(_delta: float) -> void:
-	# Symmetrical Gravity Suspension: Nullify physical velocities during loading
-	# screens to prevent falling into the void before terrain collision is built.
 	velocity = Vector3.ZERO
 
 
@@ -345,7 +348,12 @@ func _apply_hotbar_selection(slot: int) -> void:
 	var tool_type: PlayerViewModel.ToolType = PlayerViewModel.get_tool_type_for_item(item_id)
 	_set_viewmodel_tool(tool_type)
 	
-	var block_def := BlockLibrary.get_definition(item_id as BlockType.Type)
+	var block_def := BlockDefinition.new() # Default fallback
+	if is_instance_valid(BlockLibrary):
+		var fetched_def := BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
+		if fetched_def != null:
+			block_def = fetched_def
+			
 	is_item_selected = (block_def != null and block_def.type != 0)
 	active_build_type = (item_id as BlockType.Type) if is_item_selected else BlockType.Type.AIR
 

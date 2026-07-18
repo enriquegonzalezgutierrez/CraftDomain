@@ -1,10 +1,12 @@
 # ==============================================================================
-# Pathfile: res://src/Infrastructure/Life/NPCVisualComponent.gd
+# Pathfile: res://src/Infrastructure/NPCVisualComponent.gd
 # Description: Rigging component managing visual joints, parent bobbing, 
 #              gaze slerping, and role-based 180-degree rotation compensations.
 # SOLID COMPLIANCE: Decomposed into short, specialized sub-methods (Rule 4.2).
 #              VISUAL UPGRADE: Allows body rotation during idle conversations 
 #              and greetings to prevent NPCs from staring blankly at walls.
+#              COMPILER FIX: Safe null-checks for 'gaze_rotation_offset' property 
+#              to prevent crashes on animal entities (Octopus, Turtles).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -31,8 +33,8 @@ var _blink_duration: float = 0.0
 var _is_blinking: bool = false
 var _animation_time: float = 0.0
 
-# Sibling Component references
-var _host: CharacterBody3D
+# COMPILER FIX: Typed statically as PassiveEntity to bypass slow Variant lookups
+var _host: PassiveEntity
 var _ai_component: NPCAIComponent
 
 # Static visual cache for shared high-frequency pixel grain textures
@@ -42,7 +44,7 @@ static var _material_cache_by_color: Dictionary = {}
 
 func _ready() -> void:
 	name = "NPCVisualComponent"
-	_host = get_parent() as CharacterBody3D
+	_host = get_parent() as PassiveEntity
 	_ai_component = get_node_or_null("../NPCAIComponent") as NPCAIComponent
 	
 	_generate_procedural_variant_palette()
@@ -83,7 +85,7 @@ func _setup_appendage_joints() -> void:
 
 
 func _process(delta: float) -> void:
-	if not is_instance_valid(_host) or _host.get("domain_entity") == null or _host.domain_entity.is_dead:
+	if not is_instance_valid(_host) or _host.domain_entity.is_dead:
 		return
 		
 	_process_blinking_cycle(delta)
@@ -91,7 +93,7 @@ func _process(delta: float) -> void:
 
 
 func _generate_procedural_variant_palette() -> void:
-	var npc_seed: int = _host.get("npc_seed") if "npc_seed" in _host else 0
+	var npc_seed := _host.npc_seed
 	var generator := RandomNumberGenerator.new()
 	generator.seed = npc_seed
 	
@@ -178,7 +180,7 @@ func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
 	
 	var active_task := _get_active_task_state()
-	var is_talking := _host.get("is_talking") == true
+	var is_talking: bool = is_instance_valid(_host) and _host.is_talking
 	var wander_dir := _calculate_gaze_direction(is_talking)
 	
 	var is_moving := wander_dir.length_squared() > 0.01
@@ -195,10 +197,9 @@ func _get_active_task_state() -> int:
 
 func _calculate_gaze_direction(is_talking: bool) -> Vector3:
 	var wander_dir := Vector3.ZERO
-	if is_talking and is_instance_valid(_host.get("_talking_partner")):
-		var partner: CharacterBody3D = _host.get("_talking_partner") as CharacterBody3D
-		if is_instance_valid(partner):
-			wander_dir = (partner.global_position - _host.global_position).normalized()
+	if is_talking and is_instance_valid(_host) and is_instance_valid(_host._talking_partner):
+		var partner := _host._talking_partner
+		wander_dir = (partner.global_position - _host.global_position).normalized()
 	else:
 		var flat_velocity := Vector2(_host.velocity.x, _host.velocity.z)
 		if flat_velocity.length_squared() > 0.05:
@@ -225,8 +226,10 @@ func _apply_gaze_body_rotation(wander_dir: Vector3, active_task: int, is_talking
 		if is_humanoid:
 			target_angle += PI
 			
-		if "gaze_rotation_offset" in _host:
-			target_angle += float(_host.get("gaze_rotation_offset"))
+		# COMPILER FIX: Safely retrieve property dynamically using .get() to prevent crashes on non-humanoid fauna
+		var offset_val: Variant = _host.get("gaze_rotation_offset")
+		if offset_val != null:
+			target_angle += float(offset_val)
 			
 		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, target_angle, delta * 12.0)
 		visual_root.rotation.x = 0.0
