@@ -5,8 +5,8 @@
 #              and sky material shader parameter syncing.
 #              WEATHER UPGRADE: Added real-time atmospheric dimming, dynamic
 #              fog density scale syncing, and procedural double-flash lightning.
-#              COMPILER FIX: Aligned weather type references with the new pure
-#              domain enum 'IClimateProfile.ClimateType' to resolve compile errors.
+#              GRAPHICAL UPGRADE: Implemented CPU-calculated Height-Based Fog 
+#              to pull fog close in valleys and push it away at mountain peaks.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name CelestialService
@@ -92,7 +92,6 @@ func _update_orbital_timers(delta: float) -> void:
 
 ## Procedural Lightning engine: Coordinates double-flash lightning in storms
 func _process_lightning_strikes(delta: float) -> void:
-	# COMPILER FIX: Refactored type check to use typesafe domain enums
 	if _weather_service == null or _weather_service.current_weather != IClimateProfile.ClimateType.RAINY:
 		_is_flashing = false
 		_lightning_energy_boost = 0.0
@@ -121,7 +120,6 @@ func _trigger_new_lightning() -> void:
 	
 	get_tree().create_timer(sound_delay).timeout.connect(func() -> void:
 		if is_instance_valid(instance) and is_instance_valid(instance._weather_service):
-			# COMPILER FIX: Refactored type check to use typesafe domain enums
 			if instance._weather_service.current_weather == IClimateProfile.ClimateType.RAINY:
 				AudioService.play_sfx_static("thunder_strike", Vector3.ZERO)
 	)
@@ -166,7 +164,6 @@ func _calculate_sun_light_intensity() -> float:
 	elif _current_time > 0.68: 
 		intensity = remap(_current_time, 0.68, 0.76, 1.2, 0.0)
 		
-	# COMPILER FIX: Explicit static typing float to force safe arithmetic
 	var storm_dim: float = lerp(1.0, 0.22, _current_storm_weight)
 	var final_intensity: float = intensity * storm_dim
 	
@@ -194,7 +191,6 @@ func _calculate_moon_light_intensity() -> float:
 	elif _current_time < 0.24 and _current_time > 0.16: 
 		intensity = remap(_current_time, 0.16, 0.24, max_intensity, 0.0)
 		
-	# COMPILER FIX: Explicit static typing float to force safe arithmetic
 	var storm_dim: float = lerp(1.0, 0.3, _current_storm_weight)
 	return clampf(intensity * storm_dim, 0.0, 0.06)
 
@@ -202,7 +198,6 @@ func _calculate_moon_light_intensity() -> float:
 func _process_weather_transitions(delta: float) -> void:
 	var target_storm: float = 0.0
 	if is_instance_valid(_weather_service):
-		# COMPILER FIX: Swapped typesafe domain enums to resolve compile errors
 		var w_type: IClimateProfile.ClimateType = _weather_service.current_weather
 		if w_type != IClimateProfile.ClimateType.SUNNY and w_type != IClimateProfile.ClimateType.FOGGY:
 			target_storm = 1.0
@@ -263,6 +258,7 @@ func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
 		env.fog_light_color = target_fog
 
 
+## Height-Fog Coordinator: Pulls fog close in valleys and pushes it out in high altitudes (SRP)
 func _sync_fog_density_multiplier(env: Environment) -> void:
 	if not env.fog_enabled:
 		return
@@ -271,16 +267,36 @@ func _sync_fog_density_multiplier(env: Environment) -> void:
 	if is_instance_valid(_weather_service):
 		fog_mult = _weather_service.active_fog_multiplier
 		
+	var player_y := _get_player_altitude()
+	
+	# Remap Y altitude [5.0 to 22.0] to a fog scale modifier [3.0 (dense) to 0.15 (thin)]
+	var height_factor := remap(clampf(player_y, 5.0, 22.0), 5.0, 22.0, 3.0, 0.15)
+	var final_multiplier := fog_mult * height_factor
+	
+	_apply_environment_fog_limits(env, final_multiplier)
+
+
+func _get_player_altitude() -> float:
+	var player_y: float = 12.0 # Default safe valley altitude
+	var bootstrap := get_node_or_null("/root/Bootstrap")
+	if is_instance_valid(bootstrap):
+		var player_node := bootstrap.get("player_controller") as CharacterBody3D
+		if is_instance_valid(player_node):
+			player_y = player_node.global_position.y
+	return player_y
+
+
+func _apply_environment_fog_limits(env: Environment, final_multiplier: float) -> void:
 	var adapter_type: int = RenderingServer.get_video_adapter_type()
 	var is_low_end: bool = (adapter_type == 1 or adapter_type == 4)
 	
-	# Fallback bounds from EnvironmentBuilder
-	var base_begin: float = 40.0 if is_low_end else 65.0
-	var base_end: float = 80.0 if is_low_end else 120.0
+	var base_begin := 40.0 if is_low_end else 65.0
+	var base_end := 80.0 if is_low_end else 120.0
 	
-	# Symmetrical scaling: pull fog closer as density multiplier rises
-	env.fog_depth_begin = clampf(base_begin / fog_mult, 8.0, base_begin)
-	env.fog_depth_end = clampf(base_end / fog_mult, 20.0, base_end)
+	# Symmetrical scaling: Pull fog close as final multiplier rises.
+	# When climbing high, fog is pushed out to up to 600m for crystal clear views.
+	env.fog_depth_begin = clampf(base_begin / final_multiplier, 8.0, base_begin * 5.0)
+	env.fog_depth_end = clampf(base_end / final_multiplier, 20.0, base_end * 5.0)
 
 
 func is_night_time() -> bool:

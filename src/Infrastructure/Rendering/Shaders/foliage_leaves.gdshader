@@ -1,7 +1,7 @@
 // ==============================================================================
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader
 // Description: Advanced organic foliage shader for tree leaves, bushes, and grass.
-#              Features dual-frequency wind-sway and a PBR backlight translucency.
+//              Features dual-frequency wind-sway and a PBR backlight translucency.
 //              GRAPHICAL UPGRADE: Implemented high-performance, GPU-based 
 //              proximity bending (Player-Grass Turbulence) using global uniforms.
 // Author: Enrique González Gutiérrez

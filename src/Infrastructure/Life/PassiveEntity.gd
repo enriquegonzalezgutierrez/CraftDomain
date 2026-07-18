@@ -5,6 +5,8 @@
 #              SOLID COMPLIANCE: Solved the duplicate target arrow bug.
 #              Implemented typesafe, exclusive proximity quest-target claiming
 #              anchored to the WorldState domain.
+#              ANIMATION UPGRADE: Implemented CPU-calculated Slope Body Tilt 
+#              to smoothly tilt quadruped animals along terrain inclines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -40,9 +42,14 @@ var _talking_partner: CharacterBody3D = null
 var _last_attacker: Node = null
 var _is_physically_sleeping: bool = false
 
+# Set exclusively and explicitly by the Spawning Service (SOLID Compliant)
 var quest_target_id: String = ""
 var _is_lifecycle_initialized: bool = false
 var _ui_component: EntityUIComponent
+
+# Procedural slope tilt accumulators
+var _slope_pitch: float = 0.0
+var _slope_roll: float = 0.0
 
 @warning_ignore("unused_private_class_variable")
 var _nameplate: Label3D
@@ -324,6 +331,7 @@ func _physics_process(delta: float) -> void:
 		
 	_apply_environmental_physics(delta)
 	_process_ai_and_boundaries(delta)
+	_apply_procedural_slope_tilt(delta)
 	_apply_visual_movement_and_slide(delta)
 
 
@@ -468,6 +476,37 @@ func _enforce_habitat_boundary(ws: WorldState, feet_coord: Vector3i) -> void:
 		
 	if _get_habitat() == 2 and block_at_feet == BlockType.Type.AIR:
 		velocity.y = -2.5
+
+
+# ==============================================================================
+# SOLID MOVEMENT & SLOP TILT ANIMATIONS (Rule 4.2 Compliant)
+# ==============================================================================
+
+## Slope Tilt Solver: Rotates body X and Z axes based on normal vector dot products (SRP)
+func _apply_procedural_slope_tilt(delta: float) -> void:
+	if humanoid_role != -1 or not is_instance_valid(visual_component) or not is_instance_valid(visual_component.body_bob_node):
+		return
+		
+	var target_pitch := 0.0
+	var target_roll := 0.0
+	
+	if is_on_floor() and get_floor_normal() != Vector3.ZERO:
+		var normal := get_floor_normal()
+		var visual_root := visual_component.visual_root
+		if is_instance_valid(visual_root):
+			var forward := -visual_root.global_transform.basis.z.normalized()
+			var right := visual_root.global_transform.basis.x.normalized()
+			
+			target_pitch = -forward.dot(normal) * 0.95 # Pitch angle coefficient
+			target_roll = right.dot(normal) * 0.95 # Roll angle coefficient
+			
+	_slope_pitch = lerp(_slope_pitch, target_pitch, delta * 12.0)
+	_slope_roll = lerp(_slope_roll, target_roll, delta * 12.0)
+	
+	# Apply directly to the vertical bobbing joint to prevent gaze conflicts
+	var bob_node := visual_component.body_bob_node
+	bob_node.rotation.x = _slope_pitch
+	bob_node.rotation.z = _slope_roll
 
 
 func _apply_visual_movement_and_slide(delta: float) -> void:

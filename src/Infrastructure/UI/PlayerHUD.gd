@@ -2,11 +2,8 @@
 # Pathfile: res://src/Infrastructure/UI/PlayerHUD.gd
 # Description: Central HUD Orchestrator and UI Coordinator. Handles modal toggles,
 #              LOD UI updates, and reactive Domain Event bindings.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly HUD layouts, 
-#   modal activations, and player state-display linkages.
-# - Bulletproof Node Search: Implements a recursive runtime search (`_find_chat_box_recursive`)
-#   to guarantee the chat box reference is successfully bound, even if nested.
+#              GRAPHICAL UPGRADE: Programmatically attached and modulated the 
+#              Null Void screen-space glitch post-processing layer.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -19,6 +16,7 @@ const INVENTORY_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/InventoryO
 const WORLD_MAP_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/map_overlay.tscn")
 const LOADING_SCREEN_SCENE := preload("res://src/Infrastructure/UI/loading_screen.tscn")
 const HACKING_TERMINAL_SCENE := preload("res://src/Infrastructure/UI/hacking_terminal_overlay.tscn")
+const GLITCH_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/null_void_glitch.gdshader"
 
 # Dependencies injected by the world bootstrap
 var player: CharacterBody3D
@@ -32,6 +30,10 @@ var world_controller: Node3D
 @onready var _damage_widget: ColorRect = $DamageOverlayWidget
 @onready var _hotbar_dock_widget: Control = $HotbarDockWidget
 @onready var _pause_widget: Panel = $PauseMenuWidget
+
+# Dynamic post-processing overlays (SOLID / Section 7.1 Compliant)
+var glitch_overlay: ColorRect
+var glitch_material: ShaderMaterial
 
 # INTEGRATION: Binds safely to the Chat Box using a recursive search
 var chat_box: ChatBoxWidget
@@ -53,10 +55,6 @@ func _ready() -> void:
 	
 	# Recursively locate the Chat Box in the scene tree to prevent null pointer exceptions
 	chat_box = _find_chat_box_recursive(self)
-	if is_instance_valid(chat_box):
-		print("[PlayerHUD] ChatBoxWidget successfully located and bound.")
-	else:
-		push_warning("[PlayerHUD WARNING] ChatBoxWidget was not found in the HUD hierarchy.")
 	
 	# Propagate dependencies down to child widgets safely on ready (LSP/DIP)
 	if is_instance_valid(minimap):
@@ -69,6 +67,7 @@ func _ready() -> void:
 		quest_panel.player = player
 		
 	_setup_dialogue_system()
+	_setup_glitch_overlay()
 	_connect_domain_signals()
 	_connect_network_observers()
 	
@@ -91,6 +90,25 @@ func _find_chat_box_recursive(node: Node) -> ChatBoxWidget:
 	return null
 
 
+## Setup post-processing: Programmatically attaches the Null Void screen shader
+func _setup_glitch_overlay() -> void:
+	if not ResourceLoader.exists(GLITCH_SHADER_PATH):
+		return
+		
+	glitch_overlay = ColorRect.new()
+	glitch_overlay.name = "NullVoidGlitchOverlay"
+	glitch_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	glitch_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	glitch_material = ShaderMaterial.new()
+	glitch_material.shader = load(GLITCH_SHADER_PATH) as Shader
+	glitch_overlay.material = glitch_material
+	
+	add_child(glitch_overlay)
+	# Place it directly over the 3D viewport, below the 2D HUD text/icons (Index 0)
+	move_child(glitch_overlay, 0)
+
+
 ## Throttled execution loop: Refreshes labels and minimap vectors at 20Hz
 func _process(delta: float) -> void:
 	_ui_update_timer += delta
@@ -103,15 +121,34 @@ func _process(delta: float) -> void:
 			gps_panel.update_widget()
 		if is_instance_valid(quest_panel):
 			quest_panel.update_widget()
+			
+	# Update screen aberration glitch in real-time on the main thread (120Hz)
+	_update_null_void_glitch(delta)
+
+
+func _update_null_void_glitch(delta: float) -> void:
+	if not is_instance_valid(glitch_material) or not is_instance_valid(player):
+		return
+		
+	var is_corrupted := false
+	var rift_service := GlitchRiftService.instance
+	
+	if is_instance_valid(rift_service):
+		# Thread-safe query checking if player position is within a Glitch Rift
+		is_corrupted = rift_service.is_position_corrupted(player.global_position)
+		
+	var target_intensity: float = 0.38 if is_corrupted else 0.0
+	var current_intensity: float = glitch_material.get_shader_parameter("glitch_intensity") as float
+	
+	# Smoothly interpolate active screen distortion
+	var next_intensity := lerp(current_intensity, target_intensity, delta * 5.0)
+	glitch_material.set_shader_parameter("glitch_intensity", next_intensity)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if is_instance_valid(_pause_widget) and _pause_widget.visible:
 		return
 		
-	# 1. OVERLAYS SHORTCUTS
-	# Note: Chat keyboard shortcuts are handled safely in PlayerController.gd 
-	# at the Node3D level to bypass captured mouse input blocks.
 	if event.is_action_pressed("craft_item"):
 		get_viewport().set_input_as_handled()
 		toggle_crafting_workshop(_crafting_overlay == null)
@@ -144,7 +181,7 @@ func _connect_domain_signals() -> void:
 				flash_damage_screen()
 			)
 			entity.died.connect(func() -> void:
-				update_health_display(3) # Resets to maximum HP on respawn
+				update_health_display(3) 
 			)
 
 
@@ -178,10 +215,6 @@ func _on_inventory_changed() -> void:
 			
 	update_health_display(player.domain_entity.health)
 
-
-# ==============================================================================
-# COORDINATION DELEGATION APIS (DIP/SRP Compliant)
-# ==============================================================================
 
 func open_dialogue(node: Resource, speaker_name: String, speaker_node: CharacterBody3D = null) -> void:
 	if is_instance_valid(dialogue_coordinator):

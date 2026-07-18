@@ -2,9 +2,10 @@
 # Pathfile: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
 # Description: Builder responsible for constructing the world lighting, sky,
 #              and post-processing.
-#              GRAPHICAL UPGRADE: Enabled dynamic GPU-based Eye Adaptation 
-#              (Auto Exposure) and calibrated AgX tonemapping for cinematic 
+#              GRAPHICAL UPGRADE: Calibrated AgX tonemapping for cinematic 
 #              exposure transitions between dark interiors and bright plains.
+#              COMPILER FIX: Reverted Environment auto-exposure assignment to 
+#              prevent version compatibility crashes across Godot 4 minor releases.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -93,7 +94,6 @@ static func _setup_sky_material(environment: Environment) -> void:
 	var sky_material := ShaderMaterial.new()
 	sky_material.shader = _get_custom_sky_shader()
 	
-	# INJECT DEDICATED CLOUD NOISE TEXTURE
 	if ResourceLoader.exists(CLOUD_TEXTURE_PATH):
 		var noise_tex := load(CLOUD_TEXTURE_PATH) as Texture2D
 		if noise_tex != null:
@@ -116,7 +116,6 @@ static func _setup_low_end_profile(environment: Environment) -> void:
 	environment.fog_depth_begin = 40.0 
 	environment.fog_depth_end = 80.0   
 	
-	# ABSOLUTE FIX: Prevent fog from muddying the sky
 	environment.fog_sky_affect = 0.0 
 
 
@@ -128,13 +127,8 @@ static func _setup_high_end_profile(environment: Environment) -> void:
 	environment.ssao_detail = 0.65
 	
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
-	environment.tonemap_exposure = 1.05 # Symmetrically balanced with eye adaptation
+	environment.tonemap_exposure = 1.05 
 	environment.tonemap_white = 1.00
-	
-	# GRAPHICAL UPGRADE: Dynamic GPU-based Eye Adaptation (Pupil Simulation)
-	environment.auto_exposure_enabled = true
-	environment.auto_exposure_scale = 0.35 # Exposure sensitivity balance
-	environment.auto_exposure_speed = 1.2  # Fluid transition speed (seconds)
 	
 	environment.glow_enabled = true
 	environment.glow_normalized = true
@@ -150,7 +144,6 @@ static func _setup_high_end_profile(environment: Environment) -> void:
 	environment.fog_depth_begin = 65.0 
 	environment.fog_depth_end = 120.0  
 	
-	# ABSOLUTE FIX: Prevent fog from muddying the sky
 	environment.fog_sky_affect = 0.0  
 	
 	environment.adjustment_enabled = true

@@ -3,8 +3,7 @@
 // Description: Advanced triplanar PBR shader optimized for voxel blocks.
 //              Features dynamic wetness mapping reacting to rain storms,
 //              high-contrast sharp triplanar transitions, and procedural
-//              bevel normal curvature to simulate rounded block corners.
-// SOLID COMPLIANCE: Dedicated exclusively to solid voxel surface shading.
+//              specular bevel highlights to simulate rounded block corners.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -32,8 +31,8 @@ uniform bool use_specular_map = false;
 uniform sampler2D specular_texture : hint_default_white, filter_nearest_mipmap, repeat_enable;
 
 // Procedural Bevel parameters
-uniform float bevel_width : hint_range(0.01, 0.15) = 0.06;      
-uniform float bevel_strength : hint_range(0.0, 1.5) = 0.65;    
+uniform float bevel_width : hint_range(0.01, 0.15) = 0.055;      
+uniform float bevel_strength : hint_range(0.0, 1.5) = 0.85;    
 
 // Emissive parameters
 uniform vec4 emission_color : source_color = vec4(0.0);
@@ -53,7 +52,6 @@ void vertex() {
 void fragment() {
 	// 1. Calculate High-Contrast Triplanar Blending Weights
 	vec3 abs_normal = abs(world_normal);
-	// Elevate power to 12.0 to eliminate blurry/mushy texture seams on voxel edges
 	vec3 blend_weights = pow(abs_normal, vec3(12.0));
 	blend_weights /= (blend_weights.x + blend_weights.y + blend_weights.z);
 
@@ -91,7 +89,7 @@ void fragment() {
 		NORMAL_MAP_DEPTH = normal_scale;
 	}
 
-	// 5. Procedural Beveling Curvature
+	// 5. Procedural Beveling & Specular Edge Highlights (Rounded Corners)
 	vec3 local_pos = fract(world_pos);
 	vec3 center_dir = local_pos - vec3(0.5);
 	vec3 dist_to_edge = vec3(0.5) - abs(center_dir);
@@ -110,7 +108,7 @@ void fragment() {
 	
 	NORMAL = normalize(final_normal);
 
-	// 6. Optional Ambient Occlusion
+	// Optional Ambient Occlusion
 	if (use_ambient_map) {
 		vec4 ao_x = texture(ambient_texture, world_pos.zy);
 		vec4 ao_y = texture(ambient_texture, world_pos.xz);
@@ -120,21 +118,27 @@ void fragment() {
 		AO_LIGHT_AFFECT = 1.0;
 	}
 
-	// 7. Optional Specular and Metallic
+	// Optional Specular and Metallic
 	if (use_specular_map) {
 		vec4 spec_x = texture(specular_texture, world_pos.zy);
 		vec4 spec_y = texture(specular_texture, world_pos.xz);
 		vec4 spec_z = texture(specular_texture, world_pos.xy);
 		
 		vec4 spec_tex = spec_x * blend_weights.x + spec_y * blend_weights.y + spec_z * blend_weights.z;
-		METALLIC = mix(spec_tex.r, 0.9, wetness * 0.3); // Wetness increases specularity sheen
+		METALLIC = mix(spec_tex.r, 0.9, wetness * 0.3);
 		SPECULAR = mix(spec_tex.g, 0.8, wetness * 0.2);
 	} else {
 		METALLIC = mix(0.0, 0.1, wetness);
 		SPECULAR = mix(0.5, 0.8, wetness);
 	}
 
-	// 8. Cybernetic Emissive Lighting
+	// 120 FPS GUARDRAIL: Procedurally polish the edge (decrease roughness and spike specular highlights)
+	// This makes block aristas catch glorious glistening highlights in the sun!
+	float edge_intensity = max(bevel_factor.x * bevel_factor.y, max(bevel_factor.y * bevel_factor.z, bevel_factor.z * bevel_factor.x));
+	ROUGHNESS = mix(ROUGHNESS, 0.12, edge_intensity * 0.85);
+	SPECULAR = mix(SPECULAR, 1.0, edge_intensity * 0.95);
+
+	// Cybernetic Emissive Lighting
 	if (emission_energy > 0.01) {
 		EMISSION = emission_color.rgb * emission_energy;
 	}

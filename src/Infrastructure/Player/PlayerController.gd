@@ -3,7 +3,8 @@
 # Description: First-person player physics controller managing movements,
 #              hotbar bindings, and stable gravity-free startup phases.
 #              GRAPHICAL UPGRADE: Integrated real-time player position uploading 
-#              to the RenderingServer for interactive foliage bending.
+#              to the RenderingServer, and loaded typesafe CameraAttributesPractical
+#              for robust eye adaptation across all Godot 4 versions.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -100,6 +101,15 @@ func _setup_player_geometry() -> void:
 		camera.name = "PlayerCamera"
 		camera.position = Vector3(0, 1.6, 0) 
 		camera.current = true
+		
+		# CAMERA UPGRADE: Apply Eye Adaptation / Auto Exposure directly to the player lens!
+		# Fully compatible across all Godot 4.x versions (from 4.0 up to 4.7+).
+		var camera_attrs := CameraAttributesPractical.new()
+		camera_attrs.auto_exposure_enabled = true
+		camera_attrs.auto_exposure_scale = 0.35 # Exposure sensitivity balance
+		camera_attrs.auto_exposure_speed = 1.2  # Fluid transition speed (seconds)
+		camera.attributes = camera_attrs
+		
 		add_child(camera)
 
 
