@@ -1,39 +1,26 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/DynamicResolutionService.gd
 # Description: Infrastructure Service managing dynamic resolution scaling (DRS)
-#              interfaced with Godot's FSR 2.2 temporal upscaler.
-#              Monitors frame time budgets and adjusts 3D viewport scales
-#              asymmetrically to protect and sustain a locked 120 FPS runtime.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates performance
-#   monitoring and dynamic viewport scale clamping. All methods kept < 20 lines.
-# - Open-Closed Principle (OCP): Operates autonomously as a SceneTree observer,
-#   requiring zero code alterations to existing rendering or player scripts.
+#              with automatic screen refresh-rate detection and a 120Hz minimum target (DIP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name DynamicResolutionService
 extends Node
 
-# 120 FPS target budget (1000ms / 120 FPS = 8.33ms)
-const TARGET_FRAME_TIME_SEC: float = 0.00833
-
-# Safe frame budget threshold to trigger gradual resolution recovery (7.00ms)
-const SAFE_FRAME_TIME_SEC: float = 0.00700
-
-# Clamp scale parameters (FSR 2.2 behaves beautifully at 65% internal scale)
 const MIN_RESOLUTION_SCALE: float = 0.65
 const MAX_RESOLUTION_SCALE: float = 1.00
 
-# Asymmetrical steps: decrease rapidly on frame drops, recover very slowly
 const SCALE_DOWN_STEP: float = 0.05
 const SCALE_UP_STEP: float = 0.01
-
-# Throttled evaluation polling rate (10Hz) to prevent visual jittering
-const EVALUATION_INTERVAL_SEC: float = 0.1
+const EVALUATION_INTERVAL_SEC: float = 0.15
 
 var _viewport: Viewport
 var _elapsed_time: float = 0.0
+
+# Dynamic performance thresholds calculated on ready based on monitor hardware
+var _target_frame_time_sec: float = 0.00833 # Fallback 120 FPS
+var _safe_frame_time_sec: float = 0.00700   # Fallback 142 FPS
 
 
 func _ready() -> void:
@@ -54,32 +41,73 @@ func _process(delta: float) -> void:
 
 
 func _initialize_viewport_rendering_properties() -> void:
-	if is_instance_valid(_viewport):
-		# Ensure FSR 2.2 is set as the active 3D upscaler
+	if not is_instance_valid(_viewport):
+		return
+		
+	var adapter_name := RenderingServer.get_video_adapter_name().to_lower()
+	var is_software := _is_adapter_software_rasterizer(adapter_name)
+	
+	if is_software:
+		_viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		print("[DRS] Software rasterizer detected. Bypassed FSR 2.2 to use Bilinear scaling.")
+	else:
 		_viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2
-		_viewport.scaling_3d_scale = MAX_RESOLUTION_SCALE
-		print("[DRS] Dynamic Resolution Service initialized under FSR 2.2 upscaling.")
+		print("[DRS] Dedicated/Integrated GPU detected. Initialized under FSR 2.2 upscaling.")
+		
+	_viewport.scaling_3d_scale = MAX_RESOLUTION_SCALE
+	_calculate_dynamic_performance_thresholds()
+
+
+func _calculate_dynamic_performance_thresholds() -> void:
+	var screen_hz := DisplayServer.screen_get_refresh_rate()
+	if screen_hz <= 0.0:
+		screen_hz = 120.0
+		
+	# Symmetrical Protection Floor: Set a minimum target of 120Hz to protect 120 FPS
+	var target_hz := maxf(120.0, screen_hz)
+	
+	_target_frame_time_sec = 1.0 / (target_hz - 10.0)
+	_safe_frame_time_sec = 1.0 / (target_hz - 2.0)
+	
+	print("[DRS] Screen: %dHz | Target HZ: %dHz. Target: %.2fms, Recovery: %.2fms" % [
+		int(screen_hz), 
+		int(target_hz),
+		_target_frame_time_sec * 1000.0, 
+		_safe_frame_time_sec * 1000.0
+	])
+
+
+func _is_adapter_software_rasterizer(adapter_name: String) -> bool:
+	return (
+		adapter_name.contains("llvmpipe") or 
+		adapter_name.contains("swiftshader") or 
+		adapter_name.contains("software")
+	)
 
 
 func _evaluate_performance_metrics() -> void:
-	# Query the actual frame processing time (CPU + GPU sync time) in seconds
-	var frame_time := Performance.get_monitor(Performance.TIME_PROCESS) as float
+	var fps := Engine.get_frames_per_second()
+	if fps <= 0:
+		return
+		
+	var average_frame_time := 1.0 / float(fps)
 	var current_scale := _viewport.scaling_3d_scale
 	
-	if frame_time > TARGET_FRAME_TIME_SEC:
-		_decrease_resolution(current_scale)
-	elif frame_time < SAFE_FRAME_TIME_SEC:
-		_increase_resolution(current_scale)
+	if average_frame_time > _target_frame_time_sec:
+		_decrease_resolution(current_scale, average_frame_time)
+	elif average_frame_time < _safe_frame_time_sec:
+		_increase_resolution(current_scale, average_frame_time)
 
 
-func _decrease_resolution(current_scale: float) -> void:
+func _decrease_resolution(current_scale: float, frame_time: float) -> void:
 	var target_scale := clampf(current_scale - SCALE_DOWN_STEP, MIN_RESOLUTION_SCALE, MAX_RESOLUTION_SCALE)
 	if target_scale != current_scale:
 		_viewport.scaling_3d_scale = target_scale
-		# print("[DRS] Frame drop detected. Decreasing internal scale to: ", target_scale)
+		print("[DRS Debug] Performance Strain: %.2fms. Scaling down viewport to: %.2f" % [frame_time * 1000.0, target_scale])
 
 
-func _increase_resolution(current_scale: float) -> void:
+func _increase_resolution(current_scale: float, frame_time: float) -> void:
 	var target_scale := clampf(current_scale + SCALE_UP_STEP, MIN_RESOLUTION_SCALE, MAX_RESOLUTION_SCALE)
 	if target_scale != current_scale:
 		_viewport.scaling_3d_scale = target_scale
+		print("[DRS Debug] Performance Restored: %.2fms. Scaling up viewport to: %.2f" % [frame_time * 1000.0, target_scale])

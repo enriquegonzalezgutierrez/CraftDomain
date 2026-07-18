@@ -1,16 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/PlayerController.gd
-# Description: First-person player physics controller managing local movements,
-#              aerodynamics, hotbar bindings, and network authority replication.
-#              Integrates low-gravity scaling when inside active Glitch Rifts.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Only manages local physical velocities,
-#   hotbars, and controller bindings. Methods decomposed to remain strictly < 20 lines.
-# - Open-Closed Principle (OCP): Implements an active physical stabilization loop 
-#   ('_process_frozen_physics_movement') when menus are open.
-# - 120 FPS Guardrail: Standardized input buffer updates to maximize performance.
-# - UX Optimization: Checked parent nodes for existing high-priority LoadingScreenCanvas 
-#   during setup to prevent visual duplication and interface mixing on game start.
+# Description: First-person player physics controller managing movements,
+#              hotbar bindings, and stable gravity-free startup phases (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -128,7 +119,6 @@ func _setup_sub_components() -> void:
 	hud.world_controller = world_controller
 	add_child(hud)
 	
-	# Check if the parent node already has a high-priority LoadingScreenCanvas to prevent duplicates
 	var parent_node := get_parent()
 	if is_instance_valid(parent_node) and not parent_node.has_node("LoadingScreenCanvas/LoadingScreenOverlay"):
 		hud.show_loading_screen()
@@ -221,22 +211,10 @@ func _process_local_player(delta: float) -> void:
 	_apply_physics_effects(delta)
 
 
-func _process_frozen_physics_movement(delta: float) -> void:
-	if not is_on_floor():
-		var active_gravity := _get_active_gravity()
-		var is_in_liquid := _check_in_liquid_state()
-		var terminal := -8.0 if is_in_liquid else TERMINAL_VELOCITY
-		velocity.y = max(velocity.y - active_gravity * delta, terminal)
-	else:
-		velocity.y = -0.1 
-
-	velocity.x = 0.0
-	velocity.z = 0.0
-	
-	move_and_slide()
-	
-	if is_instance_valid(_camera_effects): _camera_effects.process_camera_effects(delta)
-	if is_instance_valid(visual_component): visual_component.animate_movement(Vector2.ZERO, is_on_floor(), delta)
+func _process_frozen_physics_movement(_delta: float) -> void:
+	# Symmetrical Gravity Suspension: Nullify physical velocities during loading
+	# screens to prevent falling into the void before terrain collision is built.
+	velocity = Vector3.ZERO
 
 
 func _update_interactions_and_gamepad(delta: float) -> void:

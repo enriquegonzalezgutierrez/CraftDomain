@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical base class representing NPCs and Wildlife.
-#              Coordinates physical movements, gravity slides, and hit boxes.
+#              Coordinates physical movements, gravity slides, and fluid states.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -351,18 +351,18 @@ func _update_sleeping_state() -> void:
 
 
 func _apply_environmental_physics(delta: float) -> void:
-	var is_in_liquid := _check_in_liquid_state()
+	var is_submerged := _check_in_liquid_state()
 	
-	if _can_fly() and not is_in_liquid:
+	if _can_fly() and not is_submerged:
 		var flight_state := 0
 		if has_meta("avian_flight_state"):
 			flight_state = get_meta("avian_flight_state") as int
 		if flight_state != 2:
 			return
 			
-	if (not is_on_floor() or is_in_liquid) and _get_habitat() != 2 and not is_in_liquid:
+	if (not is_on_floor() or is_submerged) and _get_habitat() != 2 and not is_submerged:
 		velocity.y -= gravity * delta
-	elif is_in_liquid:
+	elif is_submerged:
 		_apply_liquid_buoyancy(delta)
 	else:
 		_apply_grounded_snap(delta)
@@ -380,12 +380,16 @@ func _apply_liquid_buoyancy(delta: float) -> void:
 
 func _apply_grounded_snap(delta: float) -> void:
 	if _get_habitat() == 2:
+		# Symmetrical Gravity: Aquatic entities in empty air fall due to gravity
 		velocity.y -= gravity * delta
 	else:
-		# Physical solution: Increase downward snap velocity to force Godot's
-		# physics solver to re-evaluate floor collisions on every frame,
-		# exceeding the safe_margin (0.015) and preventing entities from hovering.
 		velocity.y = -1.2
+
+
+## Public API: Exposes if the host is currently submerged in water or lava volumes.
+## Allows active AI behaviors to bypass swimming balance sways when in empty air.
+func is_in_liquid() -> bool:
+	return _check_in_liquid_state()
 
 
 func _check_in_liquid_state() -> bool:

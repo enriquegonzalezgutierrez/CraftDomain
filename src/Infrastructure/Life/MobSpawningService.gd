@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service responsible for managing dynamic herd
-#              spawning, local chunk populating, and threat patrols (SRP).
+#              spawning, local chunk populating, and hybrid village strays (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -31,6 +31,7 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 
 	if is_real_village:
 		_spawn_village_mobs(chunk_offset, world_state, world_node, spawned_nodes)
+		_spawn_village_stray_animals(chunk_offset, world_state, world_node, spawned_nodes)
 	else:
 		_spawn_wilderness_wildlife(chunk_offset, world_state, world_node, biome, spawned_nodes)
 
@@ -44,6 +45,14 @@ func _spawn_village_mobs(chunk_offset: Vector3, world_state: WorldState, world_n
 	_spawn_and_register_entity(107, chunk_offset, 8.5, 5.5, world_state, world_node, spawned_nodes, true)
 
 
+func _spawn_village_stray_animals(chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
+	# Symmetrical Stray Spawning: 25% chance to spawn a peaceful domestic stray near village crops
+	if randf() < 0.25:
+		var stray_ids: Array[int] = [0, 1, 2, 3] # Pig, Chicken, Sheep, Cow
+		var spawn_id: int = stray_ids[randi() % stray_ids.size()]
+		_spawn_and_register_entity(spawn_id, chunk_offset, 11.5, 11.5, world_state, world_node, spawned_nodes, false)
+
+
 func _spawn_wilderness_wildlife(chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
 	var roll := randf()
 	var spawn_chance := 0.28 
@@ -51,9 +60,24 @@ func _spawn_wilderness_wildlife(chunk_offset: Vector3, world_state: WorldState, 
 		spawn_chance = biome.call("get_spawn_chance") as float
 		
 	if roll < spawn_chance and is_instance_valid(biome):
-		var wildlife_ids := biome.get_wilderness_wildlife_ids()
+		var wildlife_ids := _get_dynamic_wildlife_table(biome, chunk_offset, world_state)
 		if wildlife_ids.size() > 0:
 			_spawn_wildlife_group(wildlife_ids, chunk_offset, world_state, world_node, spawned_nodes)
+
+
+func _get_dynamic_wildlife_table(biome: IBiome, chunk_offset: Vector3, world_state: WorldState) -> Array[int]:
+	var list := biome.get_wilderness_wildlife_ids()
+	
+	var sample_pos := chunk_offset + Vector3(8.0, 0.0, 8.0)
+	var hit_y := _get_water_surface_y(world_state, floori(sample_pos.x), floori(sample_pos.z))
+	
+	if hit_y > 0.0:
+		var marine_life: Array[int] = [11, 201, 210] # Shark, Turtle, Octopus
+		for id: int in marine_life:
+			if not list.has(id):
+				list.append(id)
+				
+	return list
 
 
 func _spawn_wildlife_group(wildlife_ids: Array[int], chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
@@ -176,7 +200,8 @@ func _get_water_surface_y(world_state: WorldState, global_x: int, global_z: int)
 	if surface_block == BlockType.Type.WATER:
 		var space_above_1 := world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
 		if not BlockType.is_solid(space_above_1):
-			return float(hit_y) - 1.2
+			# Symmetrical flotation height: Spawn 0.35m under the surface to float cleanly
+			return float(hit_y) - 0.35
 			
 	return -1.0
 

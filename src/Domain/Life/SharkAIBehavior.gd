@@ -1,14 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/SharkAIBehavior.gd
 # Description: Pure Domain AI behavior strategy implementing hunting and 
-#              hydrodynamic patrolling for the hostile Great White Shark.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly shark state 
-#   transitions, scent tracking, and attack triggers.
-# - Open-Closed Principle (OCP): Extends IAIBehavior, closing existing 
-#   movement systems to modification.
-# - Volume-Based Navigation: Evaluates fluid/air volume transitability, 
-#   completely eliminating floor-bound boundary check bugs for aquatic entities.
+#              hydrodynamic, gravity-safe swimming for the hostile Shark (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -29,13 +22,11 @@ const RANGE_SIGHT_SQ: float = 400.0
 const RANGE_ATTACK_SQ: float = 4.0   
 const COOLDOWN_ATTACK_SEC: float = 1.5
 
-# Decoupled task enums
 const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-# Decoupled metadata keys
 const META_WANDER_TIMER := "shark_wander_timer"
 const META_WANDER_DIR := "shark_wander_dir"
 const META_COOLDOWN := "shark_attack_cooldown"
@@ -46,7 +37,6 @@ func _init() -> void:
 	overrides_wandering = true
 
 
-## Concrete Contract: Drives the active aquatic hunting and patrolling logic
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
@@ -78,7 +68,6 @@ func _process_player_hunting(host: Object, player_node: Object, delta: float) ->
 	var player_pos: Vector3 = player_node.get("global_position")
 	var dist_sq: float = host_pos.distance_squared_to(player_pos)
 	
-	# Predatory constraint: Only hunt if player is swimming/submerged
 	var is_player_swimming: bool = player_pos.y <= 10.5
 	if dist_sq >= RANGE_SIGHT_SQ or not is_player_swimming:
 		return false
@@ -111,7 +100,6 @@ func _execute_shark_bite(host: Object, ai: Object, player_node: Object, to_playe
 		if host.has_method("_bite_player"):
 			host.call("_bite_player")
 			
-		# Propel vertically if player is floating on water surface
 		var player_pos: Vector3 = player_node.get("global_position")
 		if player_pos.y - host.global_position.y > 0.5:
 			velocity.y = 4.5
@@ -140,7 +128,6 @@ func _process_aquatic_patrol(host: Object, delta: float) -> void:
 		var angle := randf() * TAU
 		var candidate_dir := Vector3(cos(angle), 0.0, sin(angle))
 		
-		# Proactively verify transitability of the target coordinate
 		wander_dir = candidate_dir if _is_direction_safe_shark(host, candidate_dir, parent) else Vector3.ZERO
 		host.set_meta(META_WANDER_DIR, wander_dir)
 		host.set_meta(META_WANDER_TIMER, wander_timer)
@@ -151,16 +138,19 @@ func _process_aquatic_patrol(host: Object, delta: float) -> void:
 func _apply_computed_movement_vectors(host: Object, ai: Object, wander_dir: Vector3, speed: float, delta: float) -> void:
 	var velocity: Vector3 = host.get("velocity") as Vector3
 	var time_sec: float = float(Time.get_ticks_msec()) / 1000.0
+	var in_liquid: bool = host.call("is_in_liquid") as bool if host.has_method("is_in_liquid") else true
 	
 	if wander_dir != Vector3.ZERO:
 		velocity.x = wander_dir.x * speed
 		velocity.z = wander_dir.z * speed
-		velocity.y = lerp(velocity.y, sin(time_sec * 2.0) * 0.12, delta * 3.0)
+		if in_liquid:
+			velocity.y = lerp(velocity.y, sin(time_sec * 2.0) * 0.12, delta * 3.0)
 		ai.set("wander_direction", wander_dir)
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, SPEED_SWIM)
 		velocity.z = move_toward(velocity.z, 0.0, SPEED_SWIM)
-		velocity.y = lerp(velocity.y, sin(time_sec * 1.5) * 0.05, delta * 3.0)
+		if in_liquid:
+			velocity.y = lerp(velocity.y, sin(time_sec * 1.5) * 0.05, delta * 3.0)
 		ai.set("wander_direction", Vector3.ZERO)
 		
 	host.set("velocity", velocity)
@@ -181,7 +171,6 @@ func _get_player_node(host: Object) -> Object:
 	return null
 
 
-## Fluid Volume Scanner: Validates if the target coordinate is safely transitable (Water, Lava, or Air during leaps)
 func _is_direction_safe_shark(host: Object, dir: Vector3, world_node: Node) -> bool:
 	if not is_instance_valid(world_node) or not "world_state" in world_node: 
 		return true
@@ -192,11 +181,8 @@ func _is_direction_safe_shark(host: Object, dir: Vector3, world_node: Node) -> b
 	var host_pos: Vector3 = host.get("global_position")
 	var check_pos := host_pos + dir * 2.0
 	
-	# Map the 3D coordinate the shark wishes to swim into
 	var target_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
 	var target_block := ws.get_block(target_coord)
-	
-	# Safe to swim if target is fluid (Water 6, Lava 15) or Air (0, for leaps)
 	var is_fluid_or_air: bool = (target_block == 6 or target_block == 15 or target_block == 0)
 	
 	return is_fluid_or_air and not BlockType.is_solid(target_block)

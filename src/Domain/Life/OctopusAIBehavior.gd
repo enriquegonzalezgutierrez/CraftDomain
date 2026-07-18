@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/OctopusAIBehavior.gd
-# Description: Specialized AI behavior strategy implementing rhythmic jet-propulsion
-#              swimming loops for the Deep-Water Octopus. Decomposed into short methods (SRP).
+# Description: Pure Domain AI behavior strategy implementing pulsing jet propulsion
+#              and gravity-safe swimming for the deep-water Octopus (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -15,12 +15,10 @@ const SPEED_PANIC_JET: float = 4.2
 const COOLDOWN_INK_SEC: float = 5.0
 const JET_CYCLE_DURATION_SEC: float = 2.0
 
-# Decoupled task enums
 const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_PANIC = 5
 
-# Decoupled metadata keys
 const META_JET_TIMER := "octopus_jet_timer"
 const META_WANDER_DIR := "octopus_wander_dir"
 const META_INK_COOLDOWN := "octopus_ink_cooldown"
@@ -31,7 +29,6 @@ func _init() -> void:
 	overrides_wandering = true
 
 
-## Concrete Contract: Drives pulsing jet propulsion and tactical ink evasion cycles
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
@@ -103,12 +100,18 @@ func _process_panic_escape_pulsion(host: Object, delta: float) -> void:
 		host.set_meta(META_WANDER_DIR, wander_dir)
 		
 	host.set_meta(META_JET_TIMER, jet_timer)
-	
+	_apply_panic_escape_physics(host, ai, wander_dir)
+
+
+func _apply_panic_escape_physics(host: Object, ai: Object, wander_dir: Vector3) -> void:
 	var velocity: Vector3 = host.get("velocity") as Vector3
+	var in_liquid: bool = host.call("is_in_liquid") as bool if host.has_method("is_in_liquid") else true
+	
 	if wander_dir != Vector3.ZERO:
 		velocity.x = wander_dir.x * SPEED_PANIC_JET
 		velocity.z = wander_dir.z * SPEED_PANIC_JET
-		velocity.y = randf_range(-0.5, 0.5) 
+		if in_liquid:
+			velocity.y = randf_range(-0.5, 0.5) 
 		host.set("velocity", velocity)
 		ai.set("wander_direction", wander_dir)
 
@@ -139,6 +142,8 @@ func _apply_pulsing_swim_physics(host: Object, ai: Object, wander_dir: Vector3, 
 	var velocity: Vector3 = host.get("velocity") as Vector3
 	var speed_coef := SPEED_DRIFT
 	var time_elapsed := JET_CYCLE_DURATION_SEC - jet_timer
+	var time_sec := float(Time.get_ticks_msec()) / 1000.0
+	var in_liquid: bool = host.call("is_in_liquid") as bool if host.has_method("is_in_liquid") else true
 	
 	if time_elapsed <= 0.6:
 		var t := time_elapsed / 0.6
@@ -147,12 +152,14 @@ func _apply_pulsing_swim_physics(host: Object, ai: Object, wander_dir: Vector3, 
 	if wander_dir != Vector3.ZERO:
 		velocity.x = wander_dir.x * speed_coef
 		velocity.z = wander_dir.z * speed_coef
-		velocity.y = sin(float(Time.get_ticks_msec()) / 1000.0 * 1.5) * 0.08
+		if in_liquid:
+			velocity.y = sin(time_sec * 1.5) * 0.08
 		ai.set("wander_direction", wander_dir)
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, SPEED_DRIFT)
 		velocity.z = move_toward(velocity.z, 0.0, SPEED_DRIFT)
-		velocity.y = sin(float(Time.get_ticks_msec()) / 1000.0 * 1.0) * 0.04
+		if in_liquid:
+			velocity.y = sin(time_sec * 1.0) * 0.04
 		ai.set("wander_direction", Vector3.ZERO)
 		
 	host.set("velocity", velocity)
@@ -185,5 +192,4 @@ func _is_direction_safe_octopus(host: Object, dir: Vector3, world_node: Node) ->
 	var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
 	var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
 	
-	# Allowed block: Water (ID 6)
 	return ws.get_block(block_below_coord) == 6 or ws.get_block(block_at_coord) == 6

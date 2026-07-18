@@ -13,7 +13,6 @@ config_version=5
 config/name="CraftDomain"
 run/main_scene="res://src/Core/Bootstrap/bootstrap.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
-run/max_fps=120
 boot_splash/bg_color=Color(0.04, 0.04, 0.06, 1)
 boot_splash/show_image=false
 config/icon="res://icon.svg"
@@ -28,7 +27,7 @@ gdscript/warnings/inference_on_variant=0
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/subwindows/embed_subwindows=false
-window/stretch/mode="canvas_items"
+window/stretch/mode="viewport"
 window/stretch/aspect="expand"
 window/vsync/vsync_mode=0
 

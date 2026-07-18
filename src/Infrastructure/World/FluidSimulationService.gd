@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/FluidSimulationService.gd
 # Description: Infrastructure Service responsible for simulating high-performance
-#              cellular automata fluid dynamics with asynchronous rendering calls (SRP).
+#              cellular automata fluid dynamics (Water & Lava flow/fusion) (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -17,10 +17,7 @@ const MAX_UPDATES_PER_TICK: int = 64
 
 var world_controller: Node3D
 var world_state: WorldState
-
-# Unstable coordinate queue: Vector3i -> FluidState (metadata)
 var _active_fluids: Dictionary = {}
-
 
 class FluidState:
 	var type: BlockType.Type
@@ -56,7 +53,6 @@ func _on_block_modified(global_pos: Vector3i, type: BlockType.Type) -> void:
 		register_fluid_block(global_pos, type)
 	else:
 		unregister_fluid_block(global_pos)
-		
 		if type == BlockType.Type.AIR:
 			_reactivate_adjacent_fluids(global_pos)
 
@@ -86,65 +82,65 @@ func process_fluid_simulation(delta: float) -> void:
 		_simulate_cellular_tick()
 
 
+## Main cellular automata algorithm coordinator (SRP Decomposed)
 func _simulate_cellular_tick() -> void:
 	if _active_fluids.size() == 0 or world_state == null or not is_instance_valid(world_controller):
 		return
 		
 	var active_keys := _active_fluids.keys()
 	var processed_count := 0
-	
 	var next_tick_additions: Dictionary = {}
 	var current_tick_removals: Array[Vector3i] = []
 	
 	for pos: Vector3i in active_keys:
 		if processed_count >= MAX_UPDATES_PER_TICK:
 			break
-			
 		processed_count += 1
-		var state: FluidState = _active_fluids[pos] as FluidState
-		
-		var current_block := world_state.get_block(pos)
-		if current_block != state.type:
-			current_tick_removals.append(pos)
-			continue
+		_process_active_fluid_block(pos, next_tick_additions, current_tick_removals)
 			
-		var is_stable := _evaluate_fluid_gravity_flow(pos, state, next_tick_additions, current_tick_removals)
-		
-		if is_stable and state.remaining_spread > 0:
-			is_stable = _evaluate_fluid_lateral_spread(pos, state, next_tick_additions)
-			
-		if is_stable:
-			current_tick_removals.append(pos)
-			
-	_apply_cellular_state_mutations(current_tick_removals, next_tick_additions)
+	_apply_tick_mutations(next_tick_additions, current_tick_removals)
 
 
-func _evaluate_fluid_gravity_flow(pos: Vector3i, state: FluidState, next_tick_additions: Dictionary, current_tick_removals: Array) -> bool:
+func _process_active_fluid_block(pos: Vector3i, next_additions: Dictionary, current_removals: Array[Vector3i]) -> void:
+	var state: FluidState = _active_fluids[pos] as FluidState
+	if world_state.get_block(pos) != state.type:
+		current_removals.append(pos)
+		return
+		
+	var is_stable := _flow_downward(pos, state, next_additions, current_removals)
+	if is_stable and state.remaining_spread > 0:
+		is_stable = _spread_laterally(pos, state, next_additions)
+		
+	if is_stable:
+		current_removals.append(pos)
+
+
+func _flow_downward(pos: Vector3i, state: FluidState, next_additions: Dictionary, current_removals: Array[Vector3i]) -> bool:
 	var below_pos := pos + Vector3i(0, -1, 0)
 	if below_pos.y <= 0:
 		return true
 		
 	var below_block := world_state.get_block(below_pos)
 	if _check_and_apply_fusion(pos, state.type, below_pos, below_block):
-		current_tick_removals.append(pos)
+		current_removals.append(pos)
 		return false
 		
 	if below_block == BlockType.Type.AIR:
 		var default_spread := MAX_WATER_SPREAD if state.type == BlockType.Type.WATER else MAX_LAVA_SPREAD
-		# DIP Inversion: Calls the optimized asynchronous write pipeline
+		# Async redirection: Writes to WorldState but defers rendering to task pool
 		world_controller.call("set_block_globally_async", below_pos, state.type)
-		next_tick_additions[below_pos] = FluidState.new(state.type, default_spread)
+		next_additions[below_pos] = FluidState.new(state.type, default_spread)
 		return false
 		
 	return true
 
 
-func _evaluate_fluid_lateral_spread(pos: Vector3i, state: FluidState, next_tick_additions: Dictionary) -> bool:
+func _spread_laterally(pos: Vector3i, state: FluidState, next_additions: Dictionary) -> bool:
+	var is_stable := true
 	var directions: Array[Vector3i] = [
 		Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
 		Vector3i(0, 0, 1), Vector3i(0, 0, -1)
 	]
-	var is_stable := true
 	
 	for dir: Vector3i in directions:
 		var side_pos := pos + dir
@@ -154,20 +150,12 @@ func _evaluate_fluid_lateral_spread(pos: Vector3i, state: FluidState, next_tick_
 			continue
 			
 		if side_block == BlockType.Type.AIR:
-			# DIP Inversion: Calls the optimized asynchronous write pipeline
+			# Async redirection: Writes to WorldState but defers rendering to task pool
 			world_controller.call("set_block_globally_async", side_pos, state.type)
-			next_tick_additions[side_pos] = FluidState.new(state.type, state.remaining_spread - 1)
+			next_additions[side_pos] = FluidState.new(state.type, state.remaining_spread - 1)
 			is_stable = false
 			
 	return is_stable
-
-
-func _apply_cellular_state_mutations(removals: Array[Vector3i], additions: Dictionary) -> void:
-	for rm_pos: Vector3i in removals:
-		_active_fluids.erase(rm_pos)
-		
-	for add_pos: Vector3i in additions.keys():
-		_active_fluids[add_pos] = additions[add_pos]
 
 
 func _check_and_apply_fusion(source_pos: Vector3i, source_type: BlockType.Type, target_pos: Vector3i, target_type: BlockType.Type) -> bool:
@@ -177,11 +165,18 @@ func _check_and_apply_fusion(source_pos: Vector3i, source_type: BlockType.Type, 
 	)
 	
 	if is_water_lava_clash:
-		# DIP Inversion: Consumes the asynchronous write pipeline on magma fusion
+		# Async redirection for dynamic volcanic stone fusions
 		world_controller.call("set_block_globally_async", source_pos, BlockType.Type.STONE)
 		world_controller.call("set_block_globally_async", target_pos, BlockType.Type.STONE)
-		
 		AudioService.play_sfx_static("block_break", Vector3(target_pos))
 		return true
 		
 	return false
+
+
+func _apply_tick_mutations(next_additions: Dictionary, current_removals: Array[Vector3i]) -> void:
+	for rm_pos: Vector3i in current_removals:
+		_active_fluids.erase(rm_pos)
+		
+	for add_pos: Vector3i in next_additions.keys():
+		_active_fluids[add_pos] = next_additions[add_pos]
