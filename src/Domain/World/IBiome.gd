@@ -3,8 +3,8 @@
 # Description: Pure Domain Interface defining the strategic contract for any
 #              procedural biome. Decouples physical, visual, and landmark
 #              rules into independent, extensible classes.
-# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 12 lines.
+#              SOLID CLEANUP: Replaced climate inheritance methods with a single
+#              composition bridge returning the segregated 'IClimateProfile'.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name IBiome
@@ -82,3 +82,13 @@ func requires_terrain_smoothing() -> bool:
 
 func get_water_level() -> int:
 	return -1
+
+
+# ==============================================================================
+# SOLID COMPOSITION BRIDGE (OCP / ISP Compliant)
+# ==============================================================================
+
+## Returns the decoupled climatological profile associated with this biome.
+## Defaults to a blank, sunny climate profile.
+func get_climate_profile() -> IClimateProfile:
+	return IClimateProfile.new()

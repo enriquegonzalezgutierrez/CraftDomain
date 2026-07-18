@@ -2,10 +2,12 @@
 # Pathfile: res://src/Domain/World/BayOfSailsBiome.gd
 # Description: Concrete Biome Strategy implementing the geographic and visual 
 #              rules for the tropical starter bay (Bay of Sails).
-# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
+#              SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
 #              loops decomposed. Every method strictly remains below 12 lines.
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+#              WEATHER UPGRADE: Configured maritime coastal climate weights,
+#              steady sea breeze wind limits, and humid ocean fog.
+#              SYNTAX FIX: Replaced C++ comment slashes with GDScript '#' hashes.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name BayOfSailsBiome
 extends IBiome
@@ -64,3 +66,25 @@ func requires_terrain_smoothing() -> bool:
 
 func get_water_level() -> int:
 	return 5
+
+
+# ==============================================================================
+# CLIMATOLOGICAL OVERRIDES (OCP / SOLID Compliance)
+# ==============================================================================
+
+func get_climate_weights() -> Dictionary:
+	return {
+		"sunny": 0.5,
+		"rainy": 0.3,      # High probability of tropical ocean showers (Fixed comment syntax)
+		"snowy": 0.0,
+		"sandstorm": 0.0,
+		"foggy": 0.2       # Coastal morning sea mists (Fixed comment syntax)
+	}
+
+
+func get_max_wind_strength() -> float:
+	return 1.2 # Constant dynamic maritime sea breeze
+
+
+func get_fog_density_multiplier() -> float:
+	return 1.15 # Humid ocean horizon overlay

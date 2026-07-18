@@ -2,10 +2,9 @@
 # Pathfile: res://src/Domain/World/RedBadlandsBiome.gd
 # Description: Concrete Biome Strategy implementing the geographical, block-depth,
 #              and vegetation scatter rules for the Red Terracotta Canyons.
-# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 12 lines.
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+#              SOLID CLEANUP: Replaced climate inheritance methods with a single
+#              composition bridge returning the segregated 'DesertClimateProfile'.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name RedBadlandsBiome
 extends IBiome
@@ -78,3 +77,12 @@ func requires_terrain_smoothing() -> bool:
 
 func get_water_level() -> int:
 	return -1
+
+
+# ==============================================================================
+# SOLID COMPOSITION BRIDGE (OCP / ISP Compliant)
+# ==============================================================================
+
+## Returns the decoupled desert climatological profile.
+func get_climate_profile() -> IClimateProfile:
+	return DesertClimateProfile.new()

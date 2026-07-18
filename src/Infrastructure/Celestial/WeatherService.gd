@@ -1,45 +1,37 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Celestial/WeatherService.gd
-# Description: Infrastructure Weather Service managing dynamic meteorological cycles.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Isolates particle setups 
-#                and climate routines. All methods kept strictly < 20 lines.
-#              - Dependency Inversion Principle (DIP): Receives player and world 
-#                references explicitly via dependency injection.
-#              - Project Settings Integration: Relies on project.godot for global 
-#                parameter declarations, avoiding duplicate C++ add errors.
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+# Description: Infrastructure Weather Service managing dynamic regional meteorological cycles.
+#              SOLID COMPLIANCE: Fully integrated with the segregated 'IClimateProfile'
+#              domain interface. Purged local enums and string comparisons (LSP / DIP).
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name WeatherService
 extends Node
 
-enum WeatherType {
-	SUNNY,
-	RAINY,
-	SNOWY
-}
-
-var current_weather: WeatherType = WeatherType.SUNNY
+var current_weather: IClimateProfile.ClimateType = IClimateProfile.ClimateType.SUNNY
+var active_fog_multiplier: float = 1.0
 
 # --- INJECTED DEPENDENCIES (DIP COMPLIANT) ---
 var player: CharacterBody3D
 var world_controller: WorldController
 
-# Internal timer to cycle weather (every 90 seconds)
-var _weather_timer: float = 90.0
+# Internal timers
+var _weather_timer: float = 15.0 
+var _gust_timer: float = 8.0     
+var _gust_duration: float = 0.0
+var _gust_multiplier: float = 1.0
+var _is_gusting: bool = false
 
-# Dynamic GPU Particle System configured via code (SRP compliant)
+# Dynamic GPU Particle System
 var _particles: GPUParticles3D
 var _particles_material: ParticleProcessMaterial
 var _particles_mesh: BoxMesh
 var _mesh_material: ORMMaterial3D
 
-# CPU-SIDE STATE TRACKERS (Avoids expensive GPU-to-CPU readbacks completely)
+# CPU-Side State Trackers
 var _current_wind_strength: float = 0.4
 var _current_wind_vector: Vector2 = Vector2.ZERO
 
-# Persistent static flag (survives world reloads in memory)
 static var _globals_initialized: bool = false
 
 
@@ -54,60 +46,31 @@ func _physics_process(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 		
-	# Follow player head exactly (floats 12 meters above) to maintain performance
+	# Follow player head exactly (floats 12 meters above) to maintain fillrate budget
 	if is_instance_valid(_particles) and _particles.emitting:
 		_particles.global_position = player.global_position + Vector3(0.0, 12.0, 0.0)
 		
-	_process_dynamic_wind_simulation(delta)
+	_process_wind_gusts(delta)
 	
-	# Process climatological cycle timers
+	# Symmetrical Profile Fetching (OCP Compliant)
+	var biome_id := _detect_player_biome_id()
+	var profile := BiomeService.get_biome(biome_id).get_climate_profile()
+	_process_dynamic_wind_simulation(delta, profile)
+	
 	_weather_timer -= delta
 	if _weather_timer <= 0.0:
 		_cycle_weather()
 
 
-## Safe initialization of Shader Globals.
-## All declarations are statically defined inside 'project.godot' (shader_globals)
-## to prevent C++ rendering server conflicts during editor/runtime compilation.
 func _setup_global_wind_parameters() -> void:
 	if _globals_initialized:
 		return
 	_globals_initialized = true
 	
-	# Set default starting values directly (no longer adding them as they are declared in project.godot)
 	RenderingServer.global_shader_parameter_set("wind_vector", Vector2(0.3, 0.1))
 	RenderingServer.global_shader_parameter_set("wind_strength", 0.4)
 
 
-## Dynamic Wind Simulator: Simulates a slow rotating breeze during sunny days, 
-## and a hard-pushed directional gale-force wind during heavy storms.
-func _process_dynamic_wind_simulation(delta: float) -> void:
-	var elapsed := Time.get_ticks_msec() / 1000.0
-	
-	# Default Sunny Breeze: Slow circular rotation (X, Z coordinate pan)
-	var target_vector := Vector2(cos(elapsed * 0.04), sin(elapsed * 0.04)).normalized()
-	var target_strength := 0.35
-	
-	match current_weather:
-		WeatherType.RAINY:
-			# Hard stormy southwest gale-force winds
-			target_vector = Vector2(-1.0, -0.4).normalized()
-			target_strength = 1.6
-		WeatherType.SNOWY:
-			# Turbulent diagonal blizzard winds
-			target_vector = Vector2(-0.8, -0.8).normalized()
-			target_strength = 1.2
-			
-	# Interpolate state LOCALLY on the CPU
-	_current_wind_strength = lerp(_current_wind_strength, target_strength, delta * 0.4)
-	_current_wind_vector = _current_wind_vector.lerp(target_vector * _current_wind_strength, delta * 0.4)
-	
-	# Fast write-only pipeline to push vectors directly to shaders (zero overhead)
-	RenderingServer.global_shader_parameter_set("wind_strength", _current_wind_strength)
-	RenderingServer.global_shader_parameter_set("wind_vector", _current_wind_vector)
-
-
-## Programmatically builds and registers the GPUParticles3D emitter
 func _setup_particles_system() -> void:
 	_particles = GPUParticles3D.new()
 	_particles.name = "WeatherParticles"
@@ -115,10 +78,9 @@ func _setup_particles_system() -> void:
 	_particles.amount = 350
 	_particles.lifetime = 1.5
 	
-	# Particle movement material
 	_particles_material = ParticleProcessMaterial.new()
 	_particles_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	_particles_material.emission_box_extents = Vector3(18.0, 1.0, 18.0) # Spawn area around the player
+	_particles_material.emission_box_extents = Vector3(18.0, 1.0, 18.0) 
 	_particles_material.direction = Vector3(0.0, -1.0, 0.0)
 	_particles_material.spread = 4.0
 	_particles_material.initial_velocity_min = 12.0
@@ -126,7 +88,6 @@ func _setup_particles_system() -> void:
 	_particles_material.gravity = Vector3(0.0, -9.8, 0.0)
 	_particles.process_material = _particles_material
 	
-	# Block particle mesh
 	_particles_mesh = BoxMesh.new()
 	_mesh_material = ORMMaterial3D.new()
 	_mesh_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -136,45 +97,114 @@ func _setup_particles_system() -> void:
 	add_child(_particles)
 
 
-## Automates weather state shifts based on regional biomes
-func _cycle_weather() -> void:
-	_weather_timer = randf_range(60.0, 120.0) # Next shift in 1-2 minutes
-	var roll := randf()
+## Micro-Gusts Simulator: Periodic wind howling bursts that affect aerodynamics
+func _process_wind_gusts(delta: float) -> void:
+	if _is_gusting:
+		_gust_duration -= delta
+		if _gust_duration <= 0.0:
+			_is_gusting = false
+			_gust_multiplier = 1.0
+			_gust_timer = randf_range(10.0, 20.0)
+	else:
+		_gust_timer -= delta
+		if _gust_timer <= 0.0:
+			_is_gusting = true
+			_gust_duration = randf_range(2.0, 4.5)
+			_gust_multiplier = randf_range(1.8, 2.5) 
+			
+			if is_instance_valid(player):
+				AudioService.play_sfx_static("wind_howl", player.global_position, 40.0)
+
+
+func _process_dynamic_wind_simulation(delta: float, profile: IClimateProfile) -> void:
+	var elapsed := Time.get_ticks_msec() / 1000.0
+	var base_dir := Vector2(cos(elapsed * 0.03), sin(elapsed * 0.03)).normalized()
+	var target_strength := 0.35
 	
-	if roll < 0.45:
-		current_weather = WeatherType.SUNNY
-		_particles.emitting = false
-	else:
-		_trigger_stormy_overcast(_check_if_polar_region())
+	match current_weather:
+		IClimateProfile.ClimateType.RAINY:
+			base_dir = Vector2(-1.0, -0.4).normalized()
+			target_strength = 0.85
+		IClimateProfile.ClimateType.SNOWY:
+			base_dir = Vector2(-0.8, -0.8).normalized()
+			target_strength = 0.95
+		IClimateProfile.ClimateType.SANDSTORM:
+			base_dir = Vector2(-1.2, -0.2).normalized()
+			target_strength = 1.25
+			
+	# Limit target wind strength dynamically based on the active biome's profile limits
+	var max_allowed_wind := profile.get_max_wind_strength()
+	var final_target_strength := clampf(target_strength * _gust_multiplier, 0.1, max_allowed_wind * _gust_multiplier)
+	
+	_current_wind_strength = lerp(_current_wind_strength, final_target_strength, delta * 0.8)
+	_current_wind_vector = _current_wind_vector.lerp(base_dir * _current_wind_strength, delta * 0.8)
+	
+	RenderingServer.global_shader_parameter_set("wind_strength", _current_wind_strength)
+	RenderingServer.global_shader_parameter_set("wind_vector", _current_wind_vector)
 
 
-func _check_if_polar_region() -> bool:
+## Regional weather cycler: Queries active biome weights on the CPU and rolls the dice
+func _cycle_weather() -> void:
+	_weather_timer = randf_range(45.0, 90.0) 
+	
+	var biome_id := _detect_player_biome_id()
+	var profile := BiomeService.get_biome(biome_id).get_climate_profile()
+	
+	var weights := profile.get_climate_weights()
+	current_weather = _roll_climate_by_weights(weights)
+	
+	_update_active_fog_multiplier(profile)
+	_trigger_climatological_overcast()
+
+
+func _detect_player_biome_id() -> int:
 	if is_instance_valid(player) and is_instance_valid(world_controller):
-		var p_pos := player.global_position
-		var generator := world_controller.get("generator") as WorldGenerator
+		return BiomeService.get_biome_id_at_position(player.global_position, world_controller)
+	return 2
+
+
+func _roll_climate_by_weights(weights: Dictionary) -> IClimateProfile.ClimateType:
+	var total_weight := 0.0
+	for val: float in weights.values():
+		total_weight += val
 		
-		if is_instance_valid(generator) and generator.get("_terrain_noise") != null:
-			var noise := generator.get("_terrain_noise") as FastNoiseLite
-			var profile := BiomeService.evaluate_coordinate(int(round(p_pos.x)), int(round(p_pos.z)), noise) as BiomeService.BiomeProfile
-			return (profile.biome_id == 4 or profile.biome_id == 9)
-	return false
+	var roll := randf() * total_weight
+	var current_sum := 0.0
+	
+	for key: IClimateProfile.ClimateType in weights.keys():
+		current_sum += weights[key] as float
+		if roll <= current_sum:
+			return key
+			
+	return IClimateProfile.ClimateType.SUNNY
 
 
-func _trigger_stormy_overcast(is_polar: bool) -> void:
-	if is_polar:
-		current_weather = WeatherType.SNOWY
-		_apply_snow_parameters()
-		_particles.emitting = true
-	else:
-		current_weather = WeatherType.RAINY
-		_apply_rain_parameters()
-		_particles.emitting = true
+func _update_active_fog_multiplier(profile: IClimateProfile) -> void:
+	var biome_fog_mult := profile.get_fog_density_multiplier()
+	
+	# During storms, fog naturally becomes denser
+	var storm_boost := 1.75 if current_weather != IClimateProfile.ClimateType.SUNNY else 1.0
+	active_fog_multiplier = biome_fog_mult * storm_boost
 
 
-## Sets up thin, fast-falling translucent blue rain needles
+func _trigger_climatological_overcast() -> void:
+	if current_weather == IClimateProfile.ClimateType.SUNNY or current_weather == IClimateProfile.ClimateType.FOGGY:
+		_particles.emitting = false
+		return
+		
+	_particles.emitting = true
+	match current_weather:
+		IClimateProfile.ClimateType.RAINY:
+			_apply_rain_parameters()
+		IClimateProfile.ClimateType.SNOWY:
+			_apply_snow_parameters()
+		IClimateProfile.ClimateType.SANDSTORM:
+			_apply_sandstorm_parameters()
+
+
 func _apply_rain_parameters() -> void:
-	_particles_mesh.size = Vector3(0.02, 0.75, 0.02) # Elongated needles
-	_mesh_material.albedo_color = Color(0.5, 0.72, 1.0, 0.55) # Transparent water blue
+	_particles_mesh.size = Vector3(0.02, 0.75, 0.02)
+	_mesh_material.albedo_color = Color(0.5, 0.72, 1.0, 0.55)
 	_mesh_material.emission_enabled = false
 	
 	_particles_material.initial_velocity_min = 16.0
@@ -182,13 +212,21 @@ func _apply_rain_parameters() -> void:
 	_particles_material.gravity = Vector3(0.0, -12.0, 0.0)
 
 
-## Sets up fluffy, slowly drifting, wind-blown white snowflakes
 func _apply_snow_parameters() -> void:
-	_particles_mesh.size = Vector3(0.06, 0.06, 0.06) # Tiny white cubes
-	_mesh_material.albedo_color = Color(0.98, 0.98, 1.0, 0.85) # Opaque white
+	_particles_mesh.size = Vector3(0.06, 0.06, 0.06)
+	_mesh_material.albedo_color = Color(0.98, 0.98, 1.0, 0.85)
 	_mesh_material.emission_enabled = false
 	
 	_particles_material.initial_velocity_min = 2.0
 	_particles_material.initial_velocity_max = 3.5
-	# Add slight lateral wind drift (X and Z) so the snowflakes fall diagonally
 	_particles_material.gravity = Vector3(-1.2, -1.8, -0.6)
+
+
+func _apply_sandstorm_parameters() -> void:
+	_particles_mesh.size = Vector3(0.08, 0.08, 0.08)
+	_mesh_material.albedo_color = Color(0.85, 0.38, 0.22, 0.85)
+	_mesh_material.emission_enabled = false
+	
+	_particles_material.initial_velocity_min = 22.0
+	_particles_material.initial_velocity_max = 30.0 
+	_particles_material.gravity = Vector3(-20.0, -1.8, -8.0)

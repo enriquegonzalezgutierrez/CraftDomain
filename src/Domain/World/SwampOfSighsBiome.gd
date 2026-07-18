@@ -2,10 +2,9 @@
 # Pathfile: res://src/Domain/World/SwampOfSighsBiome.gd
 # Description: Concrete Biome Strategy implementing the geographical, block-depth,
 #              and vegetation scatter rules for the murky swamp region (Swamp of Sighs).
-# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 20 lines.
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+#              SOLID CLEANUP: Replaced climate inheritance methods with a single
+#              composition bridge returning the segregated 'SwampClimateProfile'.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name SwampOfSighsBiome
 extends IBiome
@@ -79,3 +78,12 @@ func decline_gargoyle_flight() -> bool:
 
 func get_water_level() -> int:
 	return 4
+
+
+# ==============================================================================
+# SOLID COMPOSITION BRIDGE (OCP / ISP Compliant)
+# ==============================================================================
+
+## Returns the decoupled swamp climatological profile.
+func get_climate_profile() -> IClimateProfile:
+	return SwampClimateProfile.new()

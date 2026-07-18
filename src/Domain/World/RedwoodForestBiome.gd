@@ -1,10 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/RedwoodForestBiome.gd
 # Description: Concrete Biome Strategy implementing rules for Whispering Redwood Forest.
-# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 12 lines.
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+#              WEATHER UPGRADE: Configured damp canopy climate weights, shielded wind
+#              limits, and moderately heavy forest fog density multipliers.
+#              SYNTAX FIX: Replaced C++ comment slashes with GDScript '#' hashes.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name RedwoodForestBiome
 extends IBiome
@@ -78,3 +78,25 @@ func requires_terrain_smoothing() -> bool:
 
 func get_water_level() -> int:
 	return -1
+
+
+# ==============================================================================
+# CLIMATOLOGICAL OVERRIDES (OCP / SOLID Compliance)
+# ==============================================================================
+
+func get_climate_weights() -> Dictionary:
+	return {
+		"sunny": 0.4,
+		"rainy": 0.3,      # Forest drizzles are common (Fixed comment syntax)
+		"snowy": 0.0,
+		"sandstorm": 0.0,
+		"foggy": 0.3       # Ground mist often creeps between giant redwoods (Fixed syntax)
+	}
+
+
+func get_max_wind_strength() -> float:
+	return 0.75 # Shielded by massive canopies, forest floors remain calm
+
+
+func get_fog_density_multiplier() -> float:
+	return 1.45 # Damp forest environment mist

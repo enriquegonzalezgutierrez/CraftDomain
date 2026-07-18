@@ -3,8 +3,11 @@
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              dynamic Sun/Moon rotations, dynamic fog light color syncing,
 #              and sky material shader parameter syncing.
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+#              WEATHER UPGRADE: Added real-time atmospheric dimming, dynamic
+#              fog density scale syncing, and procedural double-flash lightning.
+#              COMPILER FIX: Aligned weather type references with the new pure
+#              domain enum 'IClimateProfile.ClimateType' to resolve compile errors.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name CelestialService
 extends Node
@@ -20,6 +23,15 @@ var _current_time: float = 0.5
 var _last_time_value: float = 0.5
 var _calendar_days: int = 14 
 var _current_storm_weight: float = 0.0
+
+var _weather_service: WeatherService
+
+# Procedural Lightning states
+var _lightning_timer: float = 8.0
+var _lightning_flash_phase: int = 0 # 0 = Off, 1 = Flash A, 2 = Dark Interval, 3 = Flash B
+var _lightning_energy_boost: float = 0.0
+var _is_flashing: bool = false
+var _flash_duration: float = 0.0
 
 
 func _enter_tree() -> void:
@@ -37,7 +49,9 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_locate_weather_service_if_missing()
 	_update_orbital_timers(delta)
+	_process_lightning_strikes(delta)
 	_update_sun_rotation()
 	_update_moon_rotation()
 	_process_weather_transitions(delta)
@@ -56,6 +70,13 @@ func _setup_dynamic_moon_light() -> void:
 	add_child(moon_light)
 
 
+func _locate_weather_service_if_missing() -> void:
+	if _weather_service == null:
+		var parent_node := get_parent()
+		if is_instance_valid(parent_node):
+			_weather_service = parent_node.get_node_or_null("WeatherService") as WeatherService
+
+
 func _update_orbital_timers(delta: float) -> void:
 	_last_time_value = _current_time
 	_current_time += (delta * time_speed) / 86400.0
@@ -69,14 +90,67 @@ func _update_orbital_timers(delta: float) -> void:
 			_calendar_days = 1
 
 
+## Procedural Lightning engine: Coordinates double-flash lightning in storms
+func _process_lightning_strikes(delta: float) -> void:
+	# COMPILER FIX: Refactored type check to use typesafe domain enums
+	if _weather_service == null or _weather_service.current_weather != IClimateProfile.ClimateType.RAINY:
+		_is_flashing = false
+		_lightning_energy_boost = 0.0
+		return
+		
+	if _is_flashing:
+		_flash_duration -= delta
+		if _flash_duration <= 0.0:
+			_advance_lightning_phase()
+	else:
+		_lightning_timer -= delta
+		if _lightning_timer <= 0.0:
+			_trigger_new_lightning()
+
+
+func _trigger_new_lightning() -> void:
+	_is_flashing = true
+	_lightning_flash_phase = 1
+	_lightning_energy_boost = 6.5 # Direct overexposure energy
+	_flash_duration = 0.08 # First flash is extremely brief
+	
+	# Simulate physical distance in kilometers
+	var distance_km: float = randf_range(0.6, 4.5)
+	# Speed of sound is approx 343m/s (or 0.343 km/s)
+	var sound_delay: float = distance_km / 0.343
+	
+	get_tree().create_timer(sound_delay).timeout.connect(func() -> void:
+		if is_instance_valid(instance) and is_instance_valid(instance._weather_service):
+			# COMPILER FIX: Refactored type check to use typesafe domain enums
+			if instance._weather_service.current_weather == IClimateProfile.ClimateType.RAINY:
+				AudioService.play_sfx_static("thunder_strike", Vector3.ZERO)
+	)
+
+
+func _advance_lightning_phase() -> void:
+	match _lightning_flash_phase:
+		1:
+			_lightning_flash_phase = 2
+			_lightning_energy_boost = 0.0
+			_flash_duration = 0.12 # Brief dark interval
+		2:
+			_lightning_flash_phase = 3
+			_lightning_energy_boost = 4.0 # Second longer flash
+			_flash_duration = 0.22
+		3:
+			_is_flashing = false
+			_lightning_energy_boost = 0.0
+			_lightning_timer = randf_range(12.0, 28.0)
+
+
 func _update_sun_rotation() -> void:
 	if not is_instance_valid(sun_light): return
 		
-	var angle_rad := -((_current_time * TAU) - (PI / 2.0))
+	var angle_rad: float = -((_current_time * TAU) - (PI / 2.0))
 	sun_light.rotation.x = angle_rad
 	sun_light.rotation.y = deg_to_rad(35)
 	
-	var is_night := _current_time < 0.24 or _current_time > 0.76
+	var is_night: bool = _current_time < 0.24 or _current_time > 0.76
 	if is_night:
 		sun_light.light_energy = 0.0
 		sun_light.shadow_enabled = false
@@ -86,21 +160,27 @@ func _update_sun_rotation() -> void:
 
 
 func _calculate_sun_light_intensity() -> float:
-	var intensity := 1.2
+	var intensity: float = 1.2
 	if _current_time < 0.32: 
 		intensity = remap(_current_time, 0.24, 0.32, 0.0, 1.2)
 	elif _current_time > 0.68: 
 		intensity = remap(_current_time, 0.68, 0.76, 1.2, 0.0)
-	return clampf(intensity, 0.0, 1.2)
+		
+	# COMPILER FIX: Explicit static typing float to force safe arithmetic
+	var storm_dim: float = lerp(1.0, 0.22, _current_storm_weight)
+	var final_intensity: float = intensity * storm_dim
+	
+	if _is_flashing and _lightning_energy_boost > 0.1:
+		final_intensity += _lightning_energy_boost
+		
+	return clampf(final_intensity, 0.0, 10.0)
 
 
 func _update_moon_rotation() -> void:
 	if not is_instance_valid(moon_light): return
 		
-	var angle_rad := -((_current_time * TAU) - (PI / 2.0)) + PI
+	var angle_rad: float = -((_current_time * TAU) - (PI / 2.0)) + PI
 	moon_light.rotation.x = angle_rad
-	# Corrección del plano orbital: Comparte la misma rotación en Y que el Sol (35 grados)
-	# para que el desfase en X de 180 grados los coloque en horizontes opuestos.
 	moon_light.rotation.y = deg_to_rad(35)
 
 
@@ -113,37 +193,42 @@ func _calculate_moon_light_intensity() -> float:
 		intensity = remap(_current_time, 0.76, 0.84, 0.0, max_intensity)
 	elif _current_time < 0.24 and _current_time > 0.16: 
 		intensity = remap(_current_time, 0.16, 0.24, max_intensity, 0.0)
-	return clampf(intensity, 0.0, 0.06)
+		
+	# COMPILER FIX: Explicit static typing float to force safe arithmetic
+	var storm_dim: float = lerp(1.0, 0.3, _current_storm_weight)
+	return clampf(intensity * storm_dim, 0.0, 0.06)
 
 
 func _process_weather_transitions(delta: float) -> void:
-	var weather_node := get_parent().get_node_or_null("WeatherService") as Node
-	var target_storm := 0.0
-	if is_instance_valid(weather_node) and weather_node.get("current_weather") != null:
-		var w_type := int(weather_node.get("current_weather"))
-		if w_type != 0: target_storm = 1.0
+	var target_storm: float = 0.0
+	if is_instance_valid(_weather_service):
+		# COMPILER FIX: Swapped typesafe domain enums to resolve compile errors
+		var w_type: IClimateProfile.ClimateType = _weather_service.current_weather
+		if w_type != IClimateProfile.ClimateType.SUNNY and w_type != IClimateProfile.ClimateType.FOGGY:
+			target_storm = 1.0
 			
 	_current_storm_weight = lerp(_current_storm_weight, target_storm, delta * 0.4)
 
 
 func _update_sky_atmosphere() -> void:
 	if not is_instance_valid(world_environment) or not is_instance_valid(world_environment.environment): return
-	var sky := world_environment.environment.sky
+	var sky: Sky = world_environment.environment.sky
 	if sky == null or not (sky.sky_material is ShaderMaterial): return
 	
-	var sky_mat := sky.sky_material as ShaderMaterial
-	var day_weight := _sync_sun_shader_parameters(sky_mat)
+	var sky_mat: ShaderMaterial = sky.sky_material as ShaderMaterial
+	var day_weight: float = _sync_sun_shader_parameters(sky_mat)
 	_sync_moon_shader_parameters(sky_mat)
 	sky_mat.set_shader_parameter("storm_weight", _current_storm_weight)
 	
 	_sync_fog_light_color(world_environment.environment, day_weight)
+	_sync_fog_density_multiplier(world_environment.environment)
 
 
 func _sync_sun_shader_parameters(sky_mat: ShaderMaterial) -> float:
-	var day_weight := 0.0
+	var day_weight: float = 0.0
 	if is_instance_valid(sun_light):
-		var sun_dir := sun_light.global_transform.basis.z.normalized()
-		var sun_sky_vector := sun_dir.y
+		var sun_dir: Vector3 = sun_light.global_transform.basis.z.normalized()
+		var sun_sky_vector: float = sun_dir.y
 		day_weight = clampf(sun_sky_vector * 4.0, 0.0, 1.0)
 		
 		sky_mat.set_shader_parameter("day_weight", day_weight)
@@ -153,8 +238,8 @@ func _sync_sun_shader_parameters(sky_mat: ShaderMaterial) -> float:
 
 func _sync_moon_shader_parameters(sky_mat: ShaderMaterial) -> void:
 	if is_instance_valid(moon_light):
-		var moon_dir := moon_light.global_transform.basis.z.normalized()
-		var moon_phase_val := float(_calendar_days) / 28.0
+		var moon_dir: Vector3 = moon_light.global_transform.basis.z.normalized()
+		var moon_phase_val: float = float(_calendar_days) / 28.0
 		
 		sky_mat.set_shader_parameter("moon_direction", moon_dir)
 		sky_mat.set_shader_parameter("moon_phase", moon_phase_val)
@@ -164,12 +249,38 @@ func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
 	if not env.fog_enabled:
 		return
 		
-	var day_fog_color := Color(0.42, 0.65, 0.88)
-	var night_fog_color := Color(0.015, 0.02, 0.04)
-	var storm_fog_color := Color(0.12, 0.13, 0.15)
+	var day_fog_color: Color = Color(0.42, 0.65, 0.88)
+	var night_fog_color: Color = Color(0.015, 0.02, 0.04)
+	var storm_fog_color: Color = Color(0.12, 0.13, 0.15)
+	var lightning_color: Color = Color(0.85, 0.9, 1.0) # White-blue lightning flash
 	
-	var base_fog_color := night_fog_color.lerp(day_fog_color, day_weight)
-	env.fog_light_color = base_fog_color.lerp(storm_fog_color, _current_storm_weight * 0.72)
+	var base_fog_color: Color = night_fog_color.lerp(day_fog_color, day_weight)
+	var target_fog: Color = base_fog_color.lerp(storm_fog_color, _current_storm_weight * 0.72)
+	
+	if _is_flashing and _lightning_energy_boost > 0.0:
+		env.fog_light_color = lightning_color
+	else:
+		env.fog_light_color = target_fog
+
+
+func _sync_fog_density_multiplier(env: Environment) -> void:
+	if not env.fog_enabled:
+		return
+		
+	var fog_mult: float = 1.0
+	if is_instance_valid(_weather_service):
+		fog_mult = _weather_service.active_fog_multiplier
+		
+	var adapter_type: int = RenderingServer.get_video_adapter_type()
+	var is_low_end: bool = (adapter_type == 1 or adapter_type == 4)
+	
+	# Fallback bounds from EnvironmentBuilder
+	var base_begin: float = 40.0 if is_low_end else 65.0
+	var base_end: float = 80.0 if is_low_end else 120.0
+	
+	# Symmetrical scaling: pull fog closer as density multiplier rises
+	env.fog_depth_begin = clampf(base_begin / fog_mult, 8.0, base_begin)
+	env.fog_depth_end = clampf(base_end / fog_mult, 20.0, base_end)
 
 
 func is_night_time() -> bool:
@@ -187,7 +298,7 @@ func get_moon_phase_name() -> String:
 
 
 func get_formatted_time() -> String:
-	var total_minutes := int(floor(_current_time * 1440.0))
+	var total_minutes: int = int(floor(_current_time * 1440.0))
 	return "%02d:%02d" % [int(float(total_minutes) / 60.0), int(total_minutes % 60)]
 
 

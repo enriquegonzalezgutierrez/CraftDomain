@@ -2,10 +2,9 @@
 # Pathfile: res://src/Domain/World/GoldenBazaarBiome.gd
 # Description: Concrete Biome Strategy implementing the geographical, block-depth,
 #              and vegetation scatter rules for the Golden Bazaar plains.
-# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 20 lines.
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+#              SOLID CLEANUP: Replaced climate inheritance methods with a single
+#              composition bridge returning the segregated 'TemperateClimateProfile'.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name GoldenBazaarBiome
 extends IBiome
@@ -88,3 +87,12 @@ func requires_terrain_smoothing() -> bool:
 
 func get_water_level() -> int:
 	return -1
+
+
+# ==============================================================================
+# SOLID COMPOSITION BRIDGE (OCP / ISP Compliant)
+# ==============================================================================
+
+## Returns the decoupled temperate climatological profile.
+func get_climate_profile() -> IClimateProfile:
+	return TemperateClimateProfile.new()
