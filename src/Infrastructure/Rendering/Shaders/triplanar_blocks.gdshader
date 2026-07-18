@@ -4,16 +4,17 @@
 //              Features dynamic wetness mapping reacting to rain storms,
 //              high-contrast sharp triplanar transitions, procedural
 //              specular bevel highlights, and dynamic drifting cloud shadows.
+//              PHYSICS UPGRADE: Replaced dynamic wind multiplication by TIME 
+//              with a continuous, CPU-accumulated 'wind_offset' parameter.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, diffuse_burley, specular_schlick_ggx;
 
-// Sourced globally from project.godot (Zero-allocation GPU translations)
-global uniform vec2 wind_vector;
-global uniform float wind_strength;
+// Sourced globally from project.godot (Continuous physical offsets)
 global uniform float storm_weight;
+global uniform vec2 wind_offset;
 
 // Albedo parameters
 uniform sampler2D albedo_texture : source_color, filter_nearest_mipmap_anisotropic, repeat_enable;
@@ -75,7 +76,7 @@ void fragment() {
 
 	// 4. Symmetrical Cloud Shadows (OCP / LSP Compliant)
 	// Projects smooth, drifting shadows synchronized with sky winds (Scale 0.008 is approx 125m per cloud)
-	vec2 shadow_uv = world_pos.xz * 0.008 - wind_vector * (TIME * 0.015 * (1.0 + wind_strength));
+	vec2 shadow_uv = world_pos.xz * 0.008 - wind_offset * 0.015;
 	float s1 = sin(shadow_uv.x * 2.0 + cos(shadow_uv.y * 1.5)) * 0.5 + 0.5;
 	float s2 = cos(shadow_uv.y * 3.5 + sin(shadow_uv.x * 2.5)) * 0.5 + 0.5;
 	float shadow_noise = s1 * 0.65 + s2 * 0.35;

@@ -3,6 +3,9 @@
 # Description: Infrastructure Weather Service managing dynamic regional meteorological cycles.
 #              SOLID COMPLIANCE: Fully integrated with the segregated 'IClimateProfile'
 #              domain interface. Purged local enums and string comparisons (LSP / DIP).
+#              PHYSICS UPGRADE: Implemented CPU-side continuous integration of 
+#              wind offsets and wave timers to prevent dynamic time-multiplication 
+#              jitters in GPU vertex shaders.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name WeatherService
@@ -16,7 +19,7 @@ var player: CharacterBody3D
 var world_controller: WorldController
 
 # Internal timers
-var _weather_timer: float = 15.0 
+var _weather_timer: float = 90.0 
 var _gust_timer: float = 8.0     
 var _gust_duration: float = 0.0
 var _gust_multiplier: float = 1.0
@@ -31,6 +34,10 @@ var _mesh_material: ORMMaterial3D
 # CPU-Side State Trackers
 var _current_wind_strength: float = 0.4
 var _current_wind_vector: Vector2 = Vector2.ZERO
+
+# Symmetrical CPU Accumulators (Section 5.3 / 7.2)
+var _wind_accum_offset: Vector2 = Vector2.ZERO
+var _wind_wave_time: float = 0.0
 
 static var _globals_initialized: bool = false
 
@@ -136,11 +143,19 @@ func _process_dynamic_wind_simulation(delta: float, profile: IClimateProfile) ->
 	var max_allowed_wind := profile.get_max_wind_strength()
 	var final_target_strength := clampf(target_strength * _gust_multiplier, 0.1, max_allowed_wind * _gust_multiplier)
 	
-	_current_wind_strength = lerp(_current_wind_strength, final_target_strength, delta * 0.8)
-	_current_wind_vector = _current_wind_vector.lerp(base_dir * _current_wind_strength, delta * 0.8)
+	# Smoothly interpolate direction and strength to prevent sudden jumps
+	_current_wind_strength = lerp(_current_wind_strength, final_target_strength, delta * 0.4)
+	_current_wind_vector = _current_wind_vector.lerp(base_dir, delta * 0.3)
 	
+	# Accumulate continuous, non-jittering offsets on the CPU
+	_wind_accum_offset += _current_wind_vector * _current_wind_strength * delta
+	_wind_wave_time += (1.0 + _current_wind_strength * 0.8) * delta
+	
+	# Write-only push to Godot's Rendering Server
 	RenderingServer.global_shader_parameter_set("wind_strength", _current_wind_strength)
 	RenderingServer.global_shader_parameter_set("wind_vector", _current_wind_vector)
+	RenderingServer.global_shader_parameter_set("wind_offset", _wind_accum_offset)
+	RenderingServer.global_shader_parameter_set("wind_wave_time", _wind_wave_time)
 
 
 ## Regional weather cycler: Queries active biome weights on the CPU and rolls the dice
@@ -176,13 +191,12 @@ func _roll_climate_by_weights(weights: Dictionary) -> IClimateProfile.ClimateTyp
 		if roll <= current_sum:
 			return key
 			
+			
 	return IClimateProfile.ClimateType.SUNNY
 
 
 func _update_active_fog_multiplier(profile: IClimateProfile) -> void:
 	var biome_fog_mult := profile.get_fog_density_multiplier()
-	
-	# During storms, fog naturally becomes denser
 	var storm_boost := 1.75 if current_weather != IClimateProfile.ClimateType.SUNNY else 1.0
 	active_fog_multiplier = biome_fog_mult * storm_boost
 

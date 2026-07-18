@@ -67,3 +67,11 @@ player_position={
 "type": "vec3",
 "value": Vector3(0, 0, 0)
 }
+wind_offset={
+"type": "vec2",
+"value": Vector2(0, 0)
+}
+wind_wave_time={
+"type": "float",
+"value": 0.0
+}

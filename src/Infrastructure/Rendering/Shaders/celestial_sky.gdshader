@@ -2,18 +2,19 @@
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader
 // Description: Advanced sky shader utilizing pre-baked FBM noise textures for
 //              ultra-high performance parallax clouds and astronomical bodies.
-//              VISUAL UPGRADE: Fixed localized cloud-dome projection glitch.
-//              Clouds now span organically across the entire sky to the horizons.
+//              WEATHER UPGRADE: Configured high-altitude jet stream wind limits,
+//              eternal clear sun weights, and minimal stratospheric fog.
+//              PHYSICS UPGRADE: Replaced dynamic wind multiplication by TIME 
+//              with a continuous, CPU-accumulated 'wind_offset' parameter.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
 shader_type sky;
 render_mode use_half_res_pass;
 
-// Sourced globally from project.godot settings
-global uniform vec2 wind_vector;
-global uniform float wind_strength;
+// Sourced globally from project.godot (Continuous physical offsets)
 global uniform float storm_weight;
+global uniform vec2 wind_offset;
 
 // Injected dynamically by CelestialService.gd (DIP Compliant)
 uniform float day_weight : hint_range(0.0, 1.0) = 0.5;
@@ -52,7 +53,7 @@ vec3 calculate_sky_base(vec3 eye) {
 }
 
 void sky() {
-	// Symmetrical horizon softening: Prevents nubes clipping abruptly at the horizon
+	// Symmetrical horizon softening
 	float fade = smoothstep(0.01, 0.15, EYEDIR.y);
 	vec3 sky_back = vec3(0.0);
 	
@@ -109,50 +110,36 @@ void sky() {
 		
 		// 5. VOLUMETRIC PARALLAX CLOUDS (WIND AFFECTED)
 		vec2 sky_uv = EYEDIR.xz / max(EYEDIR.y, 0.01); // Prevent division by zero
-		vec2 wind_offset = wind_vector * (TIME * speed * (1.0 + wind_strength));
 		
-		// Layer A: Base Structure
-		vec2 coord_a = sky_uv * scale - wind_offset;
-		// Layer B: Detail Fluff (Faster drift, smaller scale)
-		vec2 coord_b = sky_uv * (scale * 2.2) - (wind_offset * 1.4) + vec2(TIME * 0.003, TIME * -0.002);
+		// Symmetrical Parallax: Calculates wind scroll using the continuous CPU-accumulated offset
+		vec2 wind_offset_final = wind_offset * speed;
+		
+		vec2 coord_a = sky_uv * scale - wind_offset_final;
+		vec2 coord_b = sky_uv * (scale * 2.2) - (wind_offset_final * 1.4) + vec2(TIME * 0.003, TIME * -0.002);
 		
 		float layer_a = texture(cloud_texture, coord_a).r;
 		float layer_b = texture(cloud_texture, coord_b).r;
 		
-		// 120 FPS GUARDRAIL: We calculate the raw density first without multiplying fade,
-		// preserving the clouds size and structure all across the sky dome.
 		float clouds_noise = (layer_a * 0.65 + layer_b * 0.35);
-		
-		// Hard density cutoff
 		float dens = smoothstep(density, density + 0.15, clouds_noise);
 		
 		if (dens > 0.0) {
-			// Volumetric self-shading: sample density slightly offset towards the active light source
 			vec3 active_light_dir = mix(normalize(moon_direction), normalize(sun_direction), day_weight);
-			vec2 light_offset = normalize(active_light_dir.xz) * 0.045; // Vector pushing into the light
+			vec2 light_offset = normalize(active_light_dir.xz) * 0.045;
 			
 			float layer_a_light = texture(cloud_texture, coord_a + light_offset).r;
 			float layer_b_light = texture(cloud_texture, coord_b + light_offset).r;
 			float clouds_noise_light = (layer_a_light * 0.65 + layer_b_light * 0.35);
 			
-			// If the shifted sample is less dense, it means this pixel is on the edge facing the light
 			float edge_glow = smoothstep(0.0, 0.15, clouds_noise - clouds_noise_light);
 			
-			// Define base cloud colors based on time of day
 			vec3 lit_color = mix(vec3(0.65, 0.68, 0.72), vec3(1.0, 0.98, 0.95), day_weight);
 			vec3 shadow_color = mix(vec3(0.04, 0.05, 0.08), vec3(0.45, 0.50, 0.60), day_weight);
 			
-			// Interpolate between shadow belly and lit tops
 			vec3 cloud_shading = mix(shadow_color, lit_color, smoothstep(-0.05, 0.15, clouds_noise - clouds_noise_light));
-			
-			// Add the burning bright edge glow rim
 			cloud_shading = mix(cloud_shading, vec3(1.15, 1.10, 1.0), edge_glow * 0.65 * day_weight);
-			
-			// Overwrite cloud colors during storms
 			cloud_shading = mix(cloud_shading, vec3(0.08, 0.09, 0.11), storm_weight * 0.85);
 			
-			// Symmetrical Fade: We apply the horizon fade strictly on the final alpha channel,
-			// causing distant clouds to dissolve into the fog beautifully.
 			sky_back = mix(sky_back, cloud_shading, dens * fade * (1.0 - storm_weight * 0.35));
 		}
 	} else {
@@ -161,7 +148,6 @@ void sky() {
 	
 	COLOR = sky_back;
 	
-	// 6. STORM OVERCAST WASH
 	vec3 overcast_color = vec3(0.12, 0.13, 0.15);
 	COLOR = mix(COLOR, overcast_color, storm_weight * 0.72);
 }

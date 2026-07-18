@@ -4,6 +4,8 @@
 //              Features dual-frequency wind-sway and a PBR backlight translucency.
 //              GRAPHICAL UPGRADE: Implemented high-performance, GPU-based 
 //              proximity bending (Player-Grass Turbulence) using global uniforms.
+//              PHYSICS UPGRADE: Replaced dynamic wind multiplication by TIME 
+//              with a continuous, CPU-accumulated 'wind_wave_time' parameter.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -13,8 +15,9 @@ render_mode blend_mix, depth_draw_opaque, cull_disabled, diffuse_burley, specula
 global uniform vec2 wind_vector;
 global uniform float wind_strength;
 
-// Sourced globally from project.godot (Zero-allocation GPU translation)
+// Sourced globally from project.godot (Continuous physical offsets)
 global uniform vec3 player_position;
+global uniform float wind_wave_time;
 
 uniform sampler2D albedo_texture : source_color, filter_nearest_mipmap;
 uniform vec4 block_color : source_color = vec4(1.0);
@@ -28,12 +31,13 @@ void vertex() {
 	vec2 wind_dir = normalize(wind_vector);
 	
 	// 2. Low-frequency ambient sway (representing branch movement)
-	float time_low = TIME * (1.0 + wind_strength * 0.8);
+	// Replaced dynamic multiplication of wind by TIME with continuous CPU wave time
+	float time_low = wind_wave_time;
 	float sway_wave = sin(dot(world_pos.xz, wind_dir) * 0.5 + time_low);
 	vec2 sway = wind_dir * sway_wave * (0.05 + wind_strength * 0.04);
 	
 	// 3. High-frequency leaf flutter (representing leaf rustling)
-	float time_high = TIME * (12.0 + wind_strength * 15.0);
+	float time_high = wind_wave_time * 12.0;
 	float flutter_wave = sin(world_pos.y * 10.0 + time_high) * cos(world_pos.x * 10.0 - time_high);
 	vec2 flutter = wind_dir * flutter_wave * (0.01 + wind_strength * 0.012) * (1.0 - NORMAL.y);
 	
