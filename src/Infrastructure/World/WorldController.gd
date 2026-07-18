@@ -2,6 +2,8 @@
 # Pathfile: res://src/Infrastructure/World/WorldController.gd
 # Description: Central World Controller and Redraw Orchestrator. Coordinates
 #              LOD updates, background simulation threads, and active timeline warps.
+#              PERFORMANCE UPGRADE: Eliminated O(N) get_children() loops on block 
+#              breaks by implementing a reactive _interactive_props cache.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -46,10 +48,28 @@ var _is_startup_phase: bool = true
 var is_teleport_spawn: bool = false
 var _loaded_inventory_data: Array = []
 
+# High-Performance Spatial Cache to avoid O(N) get_children() loops
+var _interactive_props: Array[Node3D] = []
+
 
 func _ready() -> void:
 	assert(repository != null, "[WorldController] Fatal: WorldRepository missing!")
+	
+	# Observer pattern to maintain O(1) prop caching
+	child_entered_tree.connect(_on_child_entered_tree)
+	child_exiting_tree.connect(_on_child_exiting_tree)
+	
 	_initialize_shadows_and_terrain_smoothing()
+
+
+func _on_child_entered_tree(node: Node) -> void:
+	if node is Node3D and _is_unsupported_prop_type(node):
+		_interactive_props.append(node)
+
+
+func _on_child_exiting_tree(node: Node) -> void:
+	if node is Node3D and _interactive_props.has(node):
+		_interactive_props.erase(node)
 
 
 func _initialize_shadows_and_terrain_smoothing() -> void:
@@ -182,7 +202,7 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	block_modified.emit(global_pos, type)
 
 
-## Asynchronous channel: Intended for high-performance automated systems (fluids, crops, physics)
+## Asynchronous channel: Intended for high-performance automated systems
 func set_block_globally_async(global_pos: Vector3i, type: BlockType.Type) -> void:
 	if is_instance_valid(chunk_lifecycle):
 		chunk_lifecycle.set_block_globally_async(global_pos, type)
@@ -196,18 +216,19 @@ func _apply_procedural_gravity_on_block_broken(global_pos: Vector3i, type: Block
 		_check_and_resolve_floating_props(global_pos)
 
 
+## Iterates ONLY over the filtered interactive props array, skipping thousands of chunk nodes.
 func _check_and_resolve_floating_props(mined_pos: Vector3i) -> void:
-	for child: Node in get_children():
-		if child is Node3D and _is_unsupported_prop_type(child):
-			var prop_node := child as Node3D 
-			var c_pos: Vector3 = prop_node.global_position
+	for prop_node: Node3D in _interactive_props:
+		if not is_instance_valid(prop_node): 
+			continue
 			
-			var match_x: bool = floori(c_pos.x) == mined_pos.x
-			var match_z: bool = floori(c_pos.z) == mined_pos.z
-			var match_y: bool = absf(c_pos.y - (float(mined_pos.y) + 1.0)) <= 0.4
-			
-			if match_x and match_z and match_y:
-				_resolve_unsupported_prop(prop_node)
+		var c_pos: Vector3 = prop_node.global_position
+		var match_x: bool = floori(c_pos.x) == mined_pos.x
+		var match_z: bool = floori(c_pos.z) == mined_pos.z
+		var match_y: bool = absf(c_pos.y - (float(mined_pos.y) + 1.0)) <= 0.4
+		
+		if match_x and match_z and match_y:
+			_resolve_unsupported_prop(prop_node)
 
 
 func _is_unsupported_prop_type(node: Node) -> bool:

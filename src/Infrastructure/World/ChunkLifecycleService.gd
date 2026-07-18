@@ -2,6 +2,10 @@
 # Pathfile: res://src/Infrastructure/World/ChunkLifecycleService.gd
 # Description: High-Performance Infrastructure Service responsible for managing 
 #              chunk instantiation, asynchronous/synchronous edits, and LODs (SRP).
+#              PERFORMANCE UPGRADE: Instant rebuilds no longer compile Concave
+#              Physics shapes synchronously. Neighbors are forced into async queues
+#              to protect the 120 FPS main-thread budget.
+#              COMPILER FIX: Prefixed unused '_is_distant' variable.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -102,7 +106,10 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	
 	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
 	_rebuild_chunk_instantly(chunk_pos)
-	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos, false)
+	
+	# 120 FPS GUARDRAIL: Adjacent neighbor chunks MUST always be rebuilt asynchronously 
+	# to prevent cascading main-thread freezes.
+	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos, true)
 
 
 ## Asynchronous channel: Intended for high-performance automated systems (fluids, crops, physics)
@@ -140,13 +147,16 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	if chunk == null: return
 	var task_result := _compile_instant_rebuild_task(chunk)
 	_render_single_completed_task(task_result)
-	_request_chunk_rebuild(chunk_pos)
+	_request_chunk_rebuild(chunk_pos) # Background physics compilation
 
 
 func _compile_instant_rebuild_task(chunk: Chunk) -> GeneratedChunkTask:
-	var is_distant := _calculate_is_chunk_distant(chunk.position)
-	var visual_data := ChunkVisualBuilder.extract_render_data(chunk, world_state, not is_distant)
-	var static_body := _build_physics_body_for_rebuild(visual_data, is_distant)
+	# WARNING FIX: Prefix with underscore to silence the UNUSED_VARIABLE compiler warning.
+	var _is_distant := _calculate_is_chunk_distant(chunk.position)
+	
+	# 120 FPS GUARDRAIL: We pass 'false' to build_collision so the ChunkVisualBuilder 
+	# skips topology extraction, eliminating the ConcavePolygonShape3D allocation overhead.
+	var visual_data := ChunkVisualBuilder.extract_render_data(chunk, world_state, false)
 	
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
@@ -154,7 +164,7 @@ func _compile_instant_rebuild_task(chunk: Chunk) -> GeneratedChunkTask:
 	task_result.is_rebuild = true
 	task_result.liquid_meshes = ChunkMesher.generate_special_meshes(chunk, world_state)
 	task_result.set_meta("version", _chunk_versions.get(chunk.position, 0))
-	if static_body != null: task_result.set_meta("static_body", static_body)
+	task_result.set_meta("preserve_physics", true) # Instruct ChunkNode not to free the active collider
 	task_result.set_meta("nav_nodes", [])
 	return task_result
 
@@ -162,25 +172,6 @@ func _compile_instant_rebuild_task(chunk: Chunk) -> GeneratedChunkTask:
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 	if not _chunk_nodes.has(chunk_pos): return
 	task_scheduler.request_chunk_rebuild(chunk_pos, _chunk_versions.get(chunk_pos, 0))
-
-
-func _build_physics_body_for_rebuild(visual_data: Dictionary, is_distant: bool) -> StaticBody3D:
-	if is_distant: return null
-	var solid_positions: PackedVector3Array = visual_data["collision_vertices"] as PackedVector3Array
-	if solid_positions.size() == 0: return null
-		
-	var static_body := StaticBody3D.new()
-	static_body.collision_layer = 1
-	static_body.collision_mask = 1
-	static_body.physics_material_override = _get_frictionless_material()
-	
-	var col := CollisionShape3D.new()
-	var shape := ConcavePolygonShape3D.new()
-	shape.set_faces(solid_positions)
-	shape.backface_collision = true
-	col.shape = shape
-	static_body.add_child(col)
-	return static_body
 
 
 func _render_completed_chunks_from_queue(player_active: bool) -> void:
@@ -229,9 +220,10 @@ func _is_task_version_obsolete(task: GeneratedChunkTask, chunk_pos: Vector3i) ->
 	var current_version: int = _chunk_versions.get(chunk_pos, 0)
 	
 	if task_version < current_version:
-		var orphaned_body: Node = task.get_meta("static_body") if task.has_meta("static_body") else null
-		if is_instance_valid(orphaned_body):
-			orphaned_body.queue_free()
+		if not task.get_meta("preserve_physics", false):
+			var orphaned_body: Node = task.get_meta("static_body") if task.has_meta("static_body") else null
+			if is_instance_valid(orphaned_body):
+				orphaned_body.queue_free()
 		return true
 	return false
 
@@ -282,7 +274,15 @@ func _apply_visuals_to_chunk_node(task: GeneratedChunkTask, chunk_pos: Vector3i)
 		_notify_controller_spawn(task.chunk)
 				
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
-	var static_body: StaticBody3D = task.get_meta("static_body") if task.has_meta("static_body") else null
+	var static_body: StaticBody3D = null
+	
+	if task.has_meta("preserve_physics") and task.get_meta("preserve_physics"):
+		# Hack: Unbinds existing collision body to hide it from `setup_chunk_visuals` queue_free() call
+		static_body = chunk_node.get("_collision_body") as StaticBody3D
+		chunk_node.set("_collision_body", null)
+	else:
+		static_body = task.get_meta("static_body") if task.has_meta("static_body") else null
+		
 	chunk_node.setup_chunk_visuals(task.multimesh_data, static_body, task.liquid_meshes, is_distant)
 
 
@@ -319,6 +319,11 @@ func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int =
 func _evaluate_entity_spawn_for_chunk(center: Vector3i, offset_x: int, offset_z: int) -> void:
 	var target_chunk_pos := Vector3i(center.x + offset_x, 0, center.z + offset_z)
 	if not _chunk_nodes.has(target_chunk_pos) or not _physics_bodies.has(target_chunk_pos):
+		return
+		
+	# Symmetrical Spawning Guardrail: Do not spawn mobile entities on distant chunks
+	# to completely prevent the floating entities visual glitch and save massive CPU.
+	if _calculate_is_chunk_distant(target_chunk_pos):
 		return
 		
 	var col_pos := Vector3i(target_chunk_pos.x, 0, target_chunk_pos.z)

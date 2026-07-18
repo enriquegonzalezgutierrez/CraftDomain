@@ -1,7 +1,9 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
 # Description: Builder responsible for constructing the world lighting, sky,
-#              and post-processing, optimized for desktop and mobile targets.
+#              and post-processing. 
+#              PERFORMANCE & VISUAL UPGRADE: Forced fog_sky_affect to 0.0 for 
+#              crystal clear skies, and injected dedicated cloud FBM textures.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -10,6 +12,8 @@ extends RefCounted
 
 const ADAPTER_TYPE_INTEGRATED := 1
 const ADAPTER_TYPE_CPU := 4
+const CLOUD_TEXTURE_PATH := "res://assets/textures/sky_clouds_fbm.png"
+
 
 ## Constructs and configures the High-Quality Directional Sun Light.
 static func build_sun() -> DirectionalLight3D:
@@ -62,12 +66,7 @@ static func build_environment() -> WorldEnvironment:
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_SKY
 	
-	var sky := Sky.new()
-	var sky_material := ShaderMaterial.new()
-	sky_material.shader = _get_custom_sky_shader()
-	
-	sky.sky_material = sky_material
-	environment.sky = sky
+	_setup_sky_material(environment)
 	
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color(0.38, 0.44, 0.55) 
@@ -88,6 +87,21 @@ static func build_environment() -> WorldEnvironment:
 	return world_environment
 
 
+static func _setup_sky_material(environment: Environment) -> void:
+	var sky := Sky.new()
+	var sky_material := ShaderMaterial.new()
+	sky_material.shader = _get_custom_sky_shader()
+	
+	# INJECT DEDICATED CLOUD NOISE TEXTURE
+	if ResourceLoader.exists(CLOUD_TEXTURE_PATH):
+		var noise_tex := load(CLOUD_TEXTURE_PATH) as Texture2D
+		if noise_tex != null:
+			sky_material.set_shader_parameter("cloud_texture", noise_tex)
+	
+	sky.sky_material = sky_material
+	environment.sky = sky
+
+
 static func _setup_low_end_profile(environment: Environment) -> void:
 	environment.ssao_enabled = false
 	environment.glow_enabled = false
@@ -97,11 +111,12 @@ static func _setup_low_end_profile(environment: Environment) -> void:
 	environment.fog_enabled = true
 	environment.fog_light_color = Color(0.15, 0.18, 0.22)
 	
-	# Linear Depth Fog configuration for low-end devices
 	environment.fog_mode = Environment.FOG_MODE_DEPTH
-	environment.fog_depth_begin = 35.0 # Sharp clarity from 0m to 35m
-	environment.fog_depth_end = 75.0   # 100% opaque at 75m to hide mobile chunk loading
-	environment.fog_sky_affect = 0.45 
+	environment.fog_depth_begin = 40.0 
+	environment.fog_depth_end = 80.0   
+	
+	# ABSOLUTE FIX: Prevent fog from muddying the sky
+	environment.fog_sky_affect = 0.0 
 
 
 static func _setup_high_end_profile(environment: Environment) -> void:
@@ -125,11 +140,12 @@ static func _setup_high_end_profile(environment: Environment) -> void:
 	environment.fog_enabled = true
 	environment.fog_light_color = Color(0.12, 0.15, 0.22)
 	
-	# Linear Depth Fog configuration for high-end PCs (decoupled from close range)
 	environment.fog_mode = Environment.FOG_MODE_DEPTH
-	environment.fog_depth_begin = 60.0 # Absolute 100% clarity from 0m to 60m
-	environment.fog_depth_end = 110.0  # 100% opaque at 110m (perfectly hides draw-distance boundaries)
-	environment.fog_sky_affect = 0.15  # Negligible sky interference, stars/moon are fully visible
+	environment.fog_depth_begin = 65.0 
+	environment.fog_depth_end = 120.0  
+	
+	# ABSOLUTE FIX: Prevent fog from muddying the sky
+	environment.fog_sky_affect = 0.0  
 	
 	environment.adjustment_enabled = true
 	environment.adjustment_contrast = 1.08 

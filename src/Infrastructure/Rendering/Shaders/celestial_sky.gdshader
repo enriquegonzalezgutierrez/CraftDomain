@@ -1,7 +1,9 @@
 // ==============================================================================
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader
-// Description: Advanced sky shader utilizing pre-baked noise textures for
+// Description: Advanced sky shader utilizing pre-baked FBM noise textures for
 //              ultra-high performance parallax clouds and astronomical bodies.
+//              VISUAL UPGRADE: Implemented simulated volumetric self-shading,
+//              edge glow, and horizon blending for majestic, fluffy clouds.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -19,14 +21,14 @@ uniform vec3 sun_direction = vec3(0.0, 1.0, 0.0);
 uniform vec3 moon_direction = vec3(0.0, -1.0, 0.0);
 uniform float moon_phase : hint_range(0.0, 1.0) = 0.5;
 
-// Pre-baked seamless cloud noise texture (Saves massive GPU instructions)
+// Pre-baked seamless cloud noise texture
 uniform sampler2D cloud_texture : filter_linear_mipmap, repeat_enable;
 
 // Sky Parameters
 uniform float power = 0.5;
-uniform float scale = 0.20;
-uniform float speed = 0.03;
-uniform float density : hint_range(0.0, 1.0) = 0.38;
+uniform float scale = 0.05;       // Decreased for massive, majestic cloud clumps
+uniform float speed = 0.015;      // Slower, more natural cloud drift
+uniform float density : hint_range(0.0, 1.0) = 0.42;
 
 // Day & Night Gradients
 uniform vec3 sky_color_top : source_color = vec3(0.12, 0.42, 0.85);    // Zenith Day Blue
@@ -44,13 +46,14 @@ float hash3d(vec3 p) {
 }
 
 vec3 calculate_sky_base(vec3 eye) {
-	vec3 grad_day = mix(sky_color_bottom, sky_color_top, eye.y);
-	vec3 grad_night = mix(sky_night_bottom, sky_night_top, eye.y);
+	vec3 grad_day = mix(sky_color_bottom, sky_color_top, clamp(eye.y, 0.0, 1.0));
+	vec3 grad_night = mix(sky_night_bottom, sky_night_top, clamp(eye.y, 0.0, 1.0));
 	return mix(grad_night, grad_day, day_weight);
 }
 
 void sky() {
-	float fade = pow(abs(EYEDIR.y), power);
+	// Smoother fade formula so clouds naturally vanish near the horizon line
+	float fade = pow(clamp(EYEDIR.y, 0.0, 1.0), 1.5);
 	vec3 sky_back = vec3(0.0);
 	
 	if (EYEDIR.y > 0.0) {
@@ -77,7 +80,7 @@ void sky() {
 			sky_back = mix(sky_back, sun_color, sun_disk * day_weight);
 		}
 		
-		// 4. MOON DISK WITH PROCEDURAL SHADED PHASES (NaN Protected)
+		// 4. MOON DISK WITH PROCEDURAL SHADED PHASES
 		vec3 norm_moon_dir = normalize(moon_direction);
 		float moon_dot = dot(EYEDIR, norm_moon_dir);
 		
@@ -97,7 +100,6 @@ void sky() {
 				float phase_shade = dot(moon_normal, phase_light_dir);
 				float moon_alpha = smoothstep(-0.06, 0.06, phase_shade);
 				
-				// Symmetrical Optimization: Reuses the preloaded cloud texture for moon craters
 				float craters = texture(cloud_texture, moon_uv * 0.25).r * 0.22 + 0.78;
 				vec3 moon_color = vec3(0.92, 0.94, 0.98) * craters * (1.0 - day_weight);
 				
@@ -105,38 +107,50 @@ void sky() {
 			}
 		}
 		
-		// 5. MOVING CLOUDS (WIND AFFECTED & 3D PARALLAX DECAL RENDERING)
+		// 5. VOLUMETRIC PARALLAX CLOUDS
 		vec2 sky_uv = EYEDIR.xz / EYEDIR.y;
 		vec2 wind_offset = wind_vector * (TIME * speed * (1.0 + wind_strength));
 		
+		// Layer A: Base Structure
 		vec2 coord_a = sky_uv * scale - wind_offset;
+		// Layer B: Detail Fluff (Faster drift, smaller scale)
 		vec2 coord_b = sky_uv * (scale * 2.2) - (wind_offset * 1.4) + vec2(TIME * 0.003, TIME * -0.002);
 		
-		// Blend two overlapping, scrolling texture layers to simulate deep atmospheric parallax
 		float layer_a = texture(cloud_texture, coord_a).r;
 		float layer_b = texture(cloud_texture, coord_b).r;
+		
+		// Base noise mask (fade applied to push clouds away from the horizon)
 		float clouds_noise = (layer_a * 0.65 + layer_b * 0.35) * fade;
 		
-		float dens = smoothstep(density, 1.0, clouds_noise);
+		// Hard density cutoff
+		float dens = smoothstep(density, density + 0.15, clouds_noise);
 		
 		if (dens > 0.0) {
 			// Volumetric self-shading: sample density slightly offset towards the active light source
 			vec3 active_light_dir = mix(normalize(moon_direction), normalize(sun_direction), day_weight);
-			vec2 light_offset = normalize(active_light_dir.xz) * 0.035;
+			vec2 light_offset = normalize(active_light_dir.xz) * 0.045; // Vector pushing into the light
 			
 			float layer_a_light = texture(cloud_texture, coord_a + light_offset).r;
 			float layer_b_light = texture(cloud_texture, coord_b + light_offset).r;
 			float clouds_noise_light = (layer_a_light * 0.65 + layer_b_light * 0.35) * fade;
 			
-			float edge_glow = smoothstep(0.02, 0.22, clouds_noise - clouds_noise_light);
+			// If the shifted sample is less dense, it means this pixel is on the edge facing the light
+			float edge_glow = smoothstep(0.0, 0.15, clouds_noise - clouds_noise_light);
 			
-			vec3 lit_color = mix(vec3(0.95, 0.95, 0.98), vec3(1.0, 0.95, 0.85), day_weight);
-			vec3 shadow_color = mix(vec3(0.06, 0.08, 0.12), vec3(0.35, 0.38, 0.45), day_weight);
+			// Define base cloud colors based on time of day
+			vec3 lit_color = mix(vec3(0.65, 0.68, 0.72), vec3(1.0, 0.98, 0.95), day_weight);
+			vec3 shadow_color = mix(vec3(0.04, 0.05, 0.08), vec3(0.45, 0.50, 0.60), day_weight);
 			
+			// Interpolate between shadow belly and lit tops
 			vec3 cloud_shading = mix(shadow_color, lit_color, smoothstep(-0.05, 0.15, clouds_noise - clouds_noise_light));
-			cloud_shading = mix(cloud_shading, vec3(1.1, 1.05, 0.95), edge_glow * 0.35 * day_weight);
-			cloud_shading = mix(cloud_shading, vec3(0.08, 0.09, 0.11), storm_weight * 0.72);
 			
+			// Add the burning bright edge glow rim
+			cloud_shading = mix(cloud_shading, vec3(1.15, 1.10, 1.0), edge_glow * 0.65 * day_weight);
+			
+			// Overwrite cloud colors during storms
+			cloud_shading = mix(cloud_shading, vec3(0.08, 0.09, 0.11), storm_weight * 0.85);
+			
+			// Blend the cloud over the sky background
 			sky_back = mix(sky_back, cloud_shading, dens * (1.0 - storm_weight * 0.35));
 		}
 	} else {

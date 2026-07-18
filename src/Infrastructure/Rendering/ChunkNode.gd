@@ -3,6 +3,8 @@
 # Description: Infrastructure Rendering Node representing a single 3D Chunk.
 #              Manages MultiMesh instances, custom geometry, and LOD transitions.
 #              Delegates material PBR compilation to VoxelMaterialFactory (SRP).
+#              STABILIZATION FIX: Prevents "already has a parent" C++ errors 
+#              by checking for identical collider instances before reassignment.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -121,8 +123,17 @@ func _ensure_mesh_instance(b_id: int, mesh: ArrayMesh, is_distant: bool) -> void
 
 
 func _update_collision(new_body: StaticBody3D) -> void:
+	# SCENE TREE FIX: If the new body is identically the same instance as the current one,
+	# skip the operation entirely to avoid "already has a parent" C++ errors.
+	if _collision_body == new_body:
+		return
+		
 	if is_instance_valid(_collision_body):
 		_collision_body.queue_free()
+		
 	_collision_body = new_body
+	
 	if is_instance_valid(_collision_body):
-		add_child(_collision_body)
+		# Additional safety guardrail just in case
+		if _collision_body.get_parent() == null:
+			add_child(_collision_body)

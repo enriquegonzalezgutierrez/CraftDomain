@@ -1,10 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/AITelemetryService.gd
 # Description: Infrastructure service responsible for gathering, buffering, 
-#              and writing high-resolution AI movement and pathfinding telemetry 
-#              directly to disk.
-# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 12 lines.
+#              and writing high-resolution AI movement and pathfinding telemetry.
+#              PERFORMANCE UPGRADE: Telemetry is now disabled by default for 
+#              production. When enabled, disk I/O is dispatched to a background
+#              thread to eliminate main-thread stalling (Zero-Block I/O).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -12,6 +12,12 @@ class_name AITelemetryService
 extends RefCounted
 
 static var instance: AITelemetryService = null
+
+# ==============================================================================
+# 120 FPS GUARDRAIL: Master kill-switch for AI Telemetry.
+# Set to 'false' for release builds to prevent massive string allocation overhead.
+# ==============================================================================
+const IS_TELEMETRY_ENABLED: bool = false
 
 const LOG_PATH := "user://world_save/ai_telemetry_diagnostics.log"
 const FLUSH_INTERVAL_SEC: float = 5.0
@@ -24,34 +30,24 @@ var _time_since_last_flush: float = 0.0
 func _init() -> void:
 	_lock = Mutex.new()
 	instance = self
-	_clear_previous_log_file()
+	if IS_TELEMETRY_ENABLED:
+		_clear_previous_log_file()
 
 
 static func log_movement(
-	entity_name: String, 
-	pos: Vector3, 
-	vel: Vector3, 
-	wander_dir: Vector3, 
-	task_name: String, 
-	on_wall: bool, 
-	on_floor: bool, 
-	waypoints_left: int
+	entity_name: String, pos: Vector3, vel: Vector3, wander_dir: Vector3, 
+	task_name: String, on_wall: bool, on_floor: bool, waypoints_left: int
 ) -> void:
+	if not IS_TELEMETRY_ENABLED: return
 	if is_instance_valid(instance):
 		instance.append_log_line(entity_name, pos, vel, wander_dir, task_name, on_wall, on_floor, waypoints_left)
 
 
 func append_log_line(
-	entity_name: String, 
-	pos: Vector3, 
-	vel: Vector3, 
-	wander_dir: Vector3, 
-	task_name: String, 
-	on_wall: bool, 
-	on_floor: bool, 
-	waypoints_left: int
+	entity_name: String, pos: Vector3, vel: Vector3, wander_dir: Vector3, 
+	task_name: String, on_wall: bool, on_floor: bool, waypoints_left: int
 ) -> void:
-	_lock.lock()
+	if not IS_TELEMETRY_ENABLED: return
 	
 	var timestamp: String = Time.get_time_string_from_system()
 	var is_stuck: bool = _is_entity_physically_stuck(vel, wander_dir, on_wall)
@@ -60,6 +56,7 @@ func append_log_line(
 		task_name, on_wall, on_floor, waypoints_left, is_stuck
 	)
 	
+	_lock.lock()
 	_log_buffer.append(log_line)
 	_lock.unlock()
 
@@ -71,16 +68,9 @@ func _is_entity_physically_stuck(vel: Vector3, wander_dir: Vector3, on_wall: boo
 
 
 func _format_telemetry_line(
-	timestamp: String, 
-	entity_name: String, 
-	pos: Vector3, 
-	vel: Vector3, 
-	wander_dir: Vector3, 
-	task_name: String, 
-	on_wall: bool, 
-	on_floor: bool, 
-	waypoints_left: int, 
-	is_stuck: bool
+	timestamp: String, entity_name: String, pos: Vector3, vel: Vector3, 
+	wander_dir: Vector3, task_name: String, on_wall: bool, on_floor: bool, 
+	waypoints_left: int, is_stuck: bool
 ) -> String:
 	var wall_str: String = "TRUE" if on_wall else "FALSE"
 	var floor_str: String = "TRUE" if on_floor else "FALSE"
@@ -93,32 +83,43 @@ func _format_telemetry_line(
 
 
 func process_telemetry_flush(delta: float) -> void:
+	if not IS_TELEMETRY_ENABLED: return
+	
 	_lock.lock()
 	_time_since_last_flush += delta
 	
 	if _time_since_last_flush >= FLUSH_INTERVAL_SEC:
 		_time_since_last_flush = 0.0
-		_flush_buffer_to_disk_unlocked()
+		_flush_buffer_to_disk_async()
 		
 	_lock.unlock()
 
 
 func force_immediate_flush() -> void:
+	if not IS_TELEMETRY_ENABLED: return
 	_lock.lock()
-	_flush_buffer_to_disk_unlocked()
+	_flush_buffer_to_disk_async()
 	_lock.unlock()
 
 
-func _flush_buffer_to_disk_unlocked() -> void:
+func _flush_buffer_to_disk_async() -> void:
 	if _log_buffer.is_empty(): return
 		
+	# Extract and clear the buffer instantly so the main thread isn't blocked
+	var lines_to_write := _log_buffer.duplicate()
+	_log_buffer.clear()
+	
+	# Dispatch I/O completely to the background thread pool
+	WorkerThreadPool.add_task(_write_lines_to_disk.bind(lines_to_write))
+
+
+func _write_lines_to_disk(lines: PackedStringArray) -> void:
 	var file := FileAccess.open(LOG_PATH, FileAccess.READ_WRITE if FileAccess.file_exists(LOG_PATH) else FileAccess.WRITE)
 	if file != null:
 		file.seek_end()
-		for line: String in _log_buffer:
+		for line: String in lines:
 			file.store_line(line)
 		file.close()
-		_log_buffer.clear()
 
 
 func _clear_previous_log_file() -> void:
