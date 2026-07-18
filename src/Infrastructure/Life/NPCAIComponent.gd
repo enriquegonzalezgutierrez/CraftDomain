@@ -1,7 +1,9 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
 # Description: Infrastructure NPC Sensory AI Brain. Coordinates task schedules,
-#              social gossip, and organic curved pathfinding (SRP).
+#              social gossip, and organic curved pathfinding.
+#              SOLID CLEANUP: Separated vector calculations from velocity writing 
+#              to allow steering to dynamically slide NPCs along wall colliders.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -58,17 +60,26 @@ func _setup_steering_component() -> void:
 	_steering_component.initialize(_host, self)
 
 
+## Refactored Loop: Separates desires, steering, and physical execution
 func process_ai(delta: float) -> void:
 	if not is_instance_valid(_host) or _host.domain_entity.is_dead: return
 		
 	if is_instance_valid(AITelemetryService.instance):
 		AITelemetryService.instance.process_telemetry_flush(delta)
 		
+	# 1. PHASE A: Calculate base desired direction (Throttled or Unthrottled)
+	_calculate_base_desired_direction(delta)
+	
+	# 2. PHASE B: Allow the steering component to adjust the desired vector on obstacles
 	if is_instance_valid(_steering_component):
 		_steering_component.process_steering(delta)
-	
+		
+	# 3. PHASE C: Apply the final, safe steered vector to the physical velocity
+	_apply_movement_vectors()
+
+
+func _calculate_base_desired_direction(delta: float) -> void:
 	if is_manual_override:
-		_apply_movement_vectors()
 		return
 		
 	_ai_timer_accum += delta
@@ -76,7 +87,7 @@ func process_ai(delta: float) -> void:
 		_ai_timer_accum = 0.0
 		_execute_throttled_ai_tick()
 	else:
-		_process_unthrottled_ai_tick()
+		_process_path_calculations_unthrottled()
 
 
 func _execute_throttled_ai_tick() -> void:
@@ -85,14 +96,13 @@ func _execute_throttled_ai_tick() -> void:
 	var has_override: bool = _evaluate_active_behavior()
 	if not has_override:
 		_process_fallback_village_routines()
-		_apply_movement_vectors()
-		
-	_dispatch_active_telemetry()
 
 
-func _process_unthrottled_ai_tick() -> void:
+func _process_path_calculations_unthrottled() -> void:
 	var has_override: bool = active_behavior != null and active_behavior.get("overrides_wandering") == true
-	if not has_override: _apply_movement_vectors()
+	if not has_override:
+		if current_task == TaskState.WANDERING and _active_path.size() > 0:
+			_navigate_along_active_path_no_velocity()
 
 
 func _evaluate_active_behavior() -> bool:
@@ -203,37 +213,26 @@ func _apply_movement_vectors() -> void:
 			_host.velocity.z = wander_direction.z * (base_speed * 0.25)
 			stuck_timer = 0.0
 		TaskState.WANDERING, TaskState.PANIC:
-			_process_pathfinding_navigation(base_speed)
+			# Symmetrical Yaw Sway: Apply continuous slight sways for natural walking
+			var elapsed := float(Time.get_ticks_msec()) / 1000.0
+			var seed_val := float(_host.get("npc_seed") if "npc_seed" in _host else 0) * 0.12
+			var sway_angle := sin(elapsed * 1.5 + seed_val) * 0.22 
+			var final_dir := wander_direction.rotated(Vector3.UP, sway_angle).normalized()
+			
+			var speed_mult: float = 2.8 if current_task == TaskState.PANIC else 1.0
+			_host.velocity.x = final_dir.x * base_speed * speed_mult
+			_host.velocity.z = final_dir.z * base_speed * speed_mult
+			_keep_gaze_within_tether()
 
 
-func _process_pathfinding_navigation(base_speed: float) -> void:
-	if current_task == TaskState.WANDERING and _active_path.size() > 0:
-		_navigate_along_active_path(base_speed)
-		return
-		
-	var final_dir := wander_direction
-	if current_task == TaskState.WANDERING:
-		# Symmetrical Yaw Sway: Aplica un desvío sinusoidal continuo para simular marcha real
-		var elapsed := float(Time.get_ticks_msec()) / 1000.0
-		var seed_val := float(_host.get("npc_seed") if "npc_seed" in _host else 0) * 0.12
-		var sway_angle := sin(elapsed * 1.5 + seed_val) * 0.22 
-		final_dir = wander_direction.rotated(Vector3.UP, sway_angle).normalized()
-		
-	var speed_mult: float = 2.8 if current_task == TaskState.PANIC else 1.0
-	_host.velocity.x = final_dir.x * base_speed * speed_mult
-	_host.velocity.z = final_dir.z * base_speed * speed_mult
-	
-	_keep_gaze_within_tether()
-
-
-func _navigate_along_active_path(base_speed: float) -> void:
+## Decoupled: Pathfinder ONLY calculates direction, never writes directly to velocity
+func _navigate_along_active_path_no_velocity() -> void:
 	if _current_path_index < _active_path.size():
 		var target_node: Vector3 = _active_path[_current_path_index]
 		var diff: Vector3 = target_node - _host.global_position
 		diff.y = 0.0 
 		if diff.length_squared() < 0.16:
 			_current_path_index += 1
-			_process_pathfinding_navigation(base_speed)
 			return
 		wander_direction = diff.normalized()
 	else:

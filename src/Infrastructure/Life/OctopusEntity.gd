@@ -2,8 +2,9 @@
 # Pathfile: res://src/Infrastructure/Life/OctopusEntity.gd
 # Description: Physical character controller for the aquatic Octopus.
 #              Sustains strict ocean depth limits polimorphically (OCP/LSP).
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+#              STABILIZATION FIX: Replaced inherited bird '_is_avian' flag with
+#              'false' to restore normal gravity attraction and prevent flying.
+# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name OctopusEntity
 extends PassiveEntity
@@ -51,9 +52,14 @@ func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(7, 1) # Sand
 
 
-func _is_avian() -> bool:
-	return true 
-
-
 func _can_socialize() -> bool:
 	return true
+
+
+# ==============================================================================
+# PHYSICAL GRAVITY FIX (LSP Compliant)
+# ==============================================================================
+
+## Symmetrical Fix: Octopuses cannot fly! Returns false to enforce gravity.
+func _is_avian() -> bool:
+	return false

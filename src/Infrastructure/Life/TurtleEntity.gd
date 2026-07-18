@@ -2,6 +2,8 @@
 # Pathfile: res://src/Infrastructure/Life/TurtleEntity.gd
 # Description: Physical character controller for the Amphibious Sea Turtle.
 #              Sustains strict shore and water limits polymorphically.
+#              STABILIZATION FIX: Replaced inherited bird '_is_avian' flag with
+#              'false' to restore normal gravity attraction and prevent flying.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -51,5 +53,10 @@ func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(7, 1) # Sand block
 
 
+# ==============================================================================
+# PHYSICAL GRAVITY FIX (LSP Compliant)
+# ==============================================================================
+
+## Symmetrical Fix: Turtles cannot fly! Returns false to enforce gravity.
 func _is_avian() -> bool:
-	return true
+	return false
