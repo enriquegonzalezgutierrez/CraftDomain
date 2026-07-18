@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://2m5p50mwj5hy"
-path="res://.godot/imported/farmer_base_0.png-ead9c596310f6671a5b3a4fd546198f3.ctex"
+path.s3tc="res://.godot/imported/farmer_base_0.png-ead9c596310f6671a5b3a4fd546198f3.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/farmer/farmer_base_0.png"
-dest_files=["res://.godot/imported/farmer_base_0.png-ead9c596310f6671a5b3a4fd546198f3.ctex"]
+dest_files=["res://.godot/imported/farmer_base_0.png-ead9c596310f6671a5b3a4fd546198f3.s3tc.ctex"]
 
 [params]
 

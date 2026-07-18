@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dlnv28i5xs278"
-path="res://.godot/imported/gargoyle_Color_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg-e5984542118d86998ff286e5be22a940.ctex"
+path.s3tc="res://.godot/imported/gargoyle_Color_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg-e5984542118d86998ff286e5be22a940.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/gargoyle_Color_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg"
-dest_files=["res://.godot/imported/gargoyle_Color_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg-e5984542118d86998ff286e5be22a940.ctex"]
+dest_files=["res://.godot/imported/gargoyle_Color_e573ff1e-c32d-4b6d-a389-3167c5dc60af.jpg-e5984542118d86998ff286e5be22a940.s3tc.ctex"]
 
 [params]
 

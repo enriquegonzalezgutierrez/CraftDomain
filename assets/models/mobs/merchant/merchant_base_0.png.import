@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bb86javlyn5qk"
-path="res://.godot/imported/merchant_base_0.png-36103e241960b6e01b641bc3239bc474.ctex"
+path.s3tc="res://.godot/imported/merchant_base_0.png-36103e241960b6e01b641bc3239bc474.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/merchant/merchant_base_0.png"
-dest_files=["res://.godot/imported/merchant_base_0.png-36103e241960b6e01b641bc3239bc474.ctex"]
+dest_files=["res://.godot/imported/merchant_base_0.png-36103e241960b6e01b641bc3239bc474.s3tc.ctex"]
 
 [params]
 

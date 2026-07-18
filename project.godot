@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="CraftDomain"
+config/name="Dolores: Chronicles of the Grid"
 run/main_scene="res://src/Core/Bootstrap/bootstrap.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 boot_splash/bg_color=Color(0.04, 0.04, 0.06, 1)
@@ -40,7 +40,6 @@ window/vsync/vsync_mode=0
 
 textures/canvas_textures/default_texture_filter=0
 textures/vram_compression/import_s3tc_bptc=true
-scaling_3d/mode=2
 scaling_3d/scale=0.85
 environment/defaults/default_clear_color=Color(0.04, 0.04, 0.06, 1)
 textures/default_filters/texture_filter_3d=2

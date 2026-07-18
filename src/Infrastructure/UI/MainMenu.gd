@@ -1,7 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/MainMenu.gd
 # Description: Tactile Glassmorphic Main Menu controller. Handles game boots,
-#              modal popups, and cooperative lobby connections.
+#              modal popups, cooperative lobby connections, and author attribution.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly Main Menu 
+#   navigation events and settings transition states.
+# - Declarative UI (Rule 7.1): Respects constraints by reading the copyright 
+#   and title labels declaratively from the .tscn structure.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -84,7 +89,22 @@ func _refresh_localized_text() -> void:
 		_settings_btn.text = tr("MENU_SETTINGS")
 	if is_instance_valid(_exit_btn):
 		_exit_btn.text = tr("MENU_EXIT")
+		
+	_refresh_text_title()
 	_refresh_modal_labels()
+	_refresh_copyright_label()
+
+
+func _refresh_text_title() -> void:
+	if is_instance_valid(_title_label):
+		_title_label.text = tr("MENU_GAME_TITLE").to_upper()
+
+
+func _refresh_copyright_label() -> void:
+	# Declarative binding: searches for a suttle Copyright Label node under the MasterVBox
+	var copyright := get_node_or_null("CenterContainer/MasterVBox/CopyrightLabel") as Label
+	if is_instance_valid(copyright):
+		copyright.text = tr("MENU_COPYRIGHT")
 
 
 func _refresh_modal_labels() -> void:

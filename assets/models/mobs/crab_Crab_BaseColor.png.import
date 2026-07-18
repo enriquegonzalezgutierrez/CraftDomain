@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c3eerce88hf4x"
-path="res://.godot/imported/crab_Crab_BaseColor.png-7f917aa8ceb99afab4c67735cbe6e85f.ctex"
+path.s3tc="res://.godot/imported/crab_Crab_BaseColor.png-7f917aa8ceb99afab4c67735cbe6e85f.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/crab_Crab_BaseColor.png"
-dest_files=["res://.godot/imported/crab_Crab_BaseColor.png-7f917aa8ceb99afab4c67735cbe6e85f.ctex"]
+dest_files=["res://.godot/imported/crab_Crab_BaseColor.png-7f917aa8ceb99afab4c67735cbe6e85f.s3tc.ctex"]
 
 [params]
 

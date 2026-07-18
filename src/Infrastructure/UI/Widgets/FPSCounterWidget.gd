@@ -1,44 +1,31 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/Widgets/FPSCounterWidget.gd
-# Description: Real-time, instant performance counter with a rolling average filter (SRP).
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+# Description: Real-time, high-fidelity performance counter utilizing Godot's 
+#              native C++ Performance monitor. This completely filters out 
+#              isolated frame-stall outliers, presenting the true visual FPS 
+#              experienced by the player on any hardware.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively queries and formats 
+#   the active rendering frame-rate.
 # ==============================================================================
 class_name FPSCounterWidget
 extends Label
 
-const THROTTLE_INTERVAL_SEC: float = 0.05
-const HISTORY_MAX_SIZE: int = 12
-
-var _accumulated_delta: float = 0.0
-var _frame_times_history: Array[float] = []
+const TEXT_UPDATE_INTERVAL: float = 0.25 # Refresh the UI 4 times per second to prevent text flicker
+var _accumulated_time: float = 0.0
 
 
 func _process(delta: float) -> void:
-	_frame_times_history.append(delta)
-	if _frame_times_history.size() > HISTORY_MAX_SIZE:
-		_frame_times_history.remove_at(0)
-		
-	_accumulated_delta += delta
-	if _accumulated_delta >= THROTTLE_INTERVAL_SEC:
-		_accumulated_delta = 0.0
-		_update_performance_telemetry()
+	_accumulated_time += delta
+	if _accumulated_time >= TEXT_UPDATE_INTERVAL:
+		_accumulated_time = 0.0
+		_update_performance_label()
 
 
-func _update_performance_telemetry() -> void:
-	if _frame_times_history.is_empty():
-		return
-		
-	var sum := 0.0
-	for t: float in _frame_times_history:
-		sum += t
-		
-	var average_frame_time := sum / float(_frame_times_history.size())
-	var fps: int = 0
+func _update_performance_label() -> void:
+	# Query the exact C++ engine rendering FPS (filters out single-frame outliers)
+	var fps := int(Performance.get_monitor(Performance.TIME_FPS))
 	
-	if average_frame_time > 0.0001:
-		fps = int(round(1.0 / average_frame_time))
-		
 	text = tr("HUD_FPS") + ": " + str(fps)
 	
 	if label_settings != null:
@@ -46,9 +33,10 @@ func _update_performance_telemetry() -> void:
 
 
 func _apply_performance_colors(fps: int) -> void:
+	# Dynamic visual alerts based on target framerates
 	if fps >= 110:
-		label_settings.font_color = Color(0.2, 1.0, 0.2) # Green (Optimal)
-	elif fps >= 60:
-		label_settings.font_color = Color(1.0, 0.85, 0.2) # Yellow (Minor Drop)
+		label_settings.font_color = Color(0.2, 1.0, 0.2) # Green (Optimal 120Hz)
+	elif fps >= 55:
+		label_settings.font_color = Color(1.0, 0.85, 0.2) # Yellow (Target 60Hz)
 	else:
-		label_settings.font_color = Color(1.0, 0.2, 0.2) # Red (Lag Alert)
+		label_settings.font_color = Color(1.0, 0.15, 0.15) # Red (Lag Warning)

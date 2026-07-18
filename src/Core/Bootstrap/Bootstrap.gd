@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Core/Bootstrap/Bootstrap.gd
 # Description: Central composition root of the application. Orchestrates the 
-#              asynchronous initialization of global systems and unified scene transitions.
+#              asynchronous initialization of global systems, unified scene transitions,
+#              Vulkan pre-warming, and 100% Offline Socket Isolation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -30,7 +31,14 @@ var world_environment: WorldEnvironment
 
 
 func _ready() -> void:
+	_enforce_offline_multiplayer_peer()
 	_initialize_application_async()
+
+
+func _enforce_offline_multiplayer_peer() -> void:
+	# Offline Isolation Protocol: Enforce completely offline socket state by default.
+	# Zero external queries or UPnP lookups will occur in Single-Player.
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 
 
 func _initialize_application_async() -> void:
@@ -51,9 +59,17 @@ func _initialize_application_async() -> void:
 	_setup_persistence_and_env()
 	_setup_celestial()
 	_setup_audio_and_network()
-	await get_tree().process_frame
+	
+	# Milestone 3: Vulkan Pipeline Pre-Warming
+	await _execute_vulkan_prewarming()
 	
 	_transition_to_main_menu(splash)
+
+
+func _execute_vulkan_prewarming() -> void:
+	var prewarmer := VulkanPipelinePrewarmer.new()
+	add_child(prewarmer)
+	await prewarmer.prewarming_completed
 
 
 func _instantiate_startup_splash() -> CanvasLayer:

@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://eodp1gm07oul"
-path="res://.godot/imported/growlithe_pm0058_00_00_BodyA_col.png-1052dbbe68bfb7d340d88db27c0eb0ff.ctex"
+path.s3tc="res://.godot/imported/growlithe_pm0058_00_00_BodyA_col.png-1052dbbe68bfb7d340d88db27c0eb0ff.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/growlithe_pm0058_00_00_BodyA_col.png"
-dest_files=["res://.godot/imported/growlithe_pm0058_00_00_BodyA_col.png-1052dbbe68bfb7d340d88db27c0eb0ff.ctex"]
+dest_files=["res://.godot/imported/growlithe_pm0058_00_00_BodyA_col.png-1052dbbe68bfb7d340d88db27c0eb0ff.s3tc.ctex"]
 
 [params]
 

@@ -4,10 +4,9 @@
 #              growth dynamics across all loaded chunks.
 #              SOLID COMPLIANCE: Adheres strictly to the Single Responsibility 
 #              Principle (SRP) by isolating farming tick algorithms.
-#              WARNING FIX:
-#              - Added explicit static typing to all loop iterators (including `chunk_pos` 
-#                and `i`) to completely resolve `UNTYPED_DECLARATION` 
-#                compiler warnings.
+#              MILESTONE 2 FIX: Completely decoupled from the legacy ChunkNode 
+#              presentation layer. Now queries data directly from the WorldState 
+#              domain to support Direct Server-Side Rendering (RIDs).
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Infrastructure/World/AgricultureService.gd
 # ==============================================================================
@@ -43,20 +42,19 @@ func _execute_random_crop_ticks() -> void:
 	if active_nodes.is_empty():
 		return
 		
-	# FIX: Explicit static typing `Vector3i` on chunk coordinate keys loop iterator
+	# Iterate over active chunk coordinates and fetch their data purely from the Domain
 	for chunk_pos: Vector3i in active_nodes.keys():
-		var chunk_node: ChunkNode = active_nodes[chunk_pos] as ChunkNode
-		if not is_instance_valid(chunk_node) or chunk_node.chunk == null:
+		var chunk: Chunk = world_state.get_chunk(chunk_pos)
+		if chunk == null:
 			continue
 			
 		# Perform exactly 3 random voxel evaluations per active chunk
-		# FIX: Explicit static typing `int` on index range iterator
 		for i: int in range(3):
 			var rx := randi() % Chunk.SIZE
 			var ry := randi() % Chunk.SIZE
 			var rz := randi() % Chunk.SIZE
 			
-			var current_block: BlockType.Type = chunk_node.chunk.get_block(rx, ry, rz)
+			var current_block: BlockType.Type = chunk.get_block(rx, ry, rz)
 			
 			# Check and apply biological stage transformations
 			if current_block == BlockType.Type.CROP_SEED:

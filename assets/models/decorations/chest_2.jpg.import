@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bl0sdmul6fao8"
-path="res://.godot/imported/chest_2.jpg-6ee8fedceeb004f8b7913aed931bb592.ctex"
+path.s3tc="res://.godot/imported/chest_2.jpg-6ee8fedceeb004f8b7913aed931bb592.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/decorations/chest_2.jpg"
-dest_files=["res://.godot/imported/chest_2.jpg-6ee8fedceeb004f8b7913aed931bb592.ctex"]
+dest_files=["res://.godot/imported/chest_2.jpg-6ee8fedceeb004f8b7913aed931bb592.s3tc.ctex"]
 
 [params]
 

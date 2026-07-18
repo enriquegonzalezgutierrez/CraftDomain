@@ -1,10 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/DynamicResolutionService.gd
 # Description: Infrastructure Service managing dynamic resolution scaling (DRS)
-#              with CPU-side scale caching and optimized FSR 2.2 quality bounds.
-#              PERFORMANCE & VISUAL UPGRADE: Replaced forced 120Hz calculations 
-#              with actual monitor refresh rate sweeps to prevent aggressive 
-#              downscaling and blurry graphics on 60Hz screens.
+#              with optimized FSR 2.2 and Bilinear fallbacks.
+#              HARDWARE GUARDRAIL: Automatically bypasses FSR 2.2 compute scaling
+#              on Integrated/Software GPUs (Intel UHD) to prevent driver crashes
+#              in fsr2.cpp, falling back to ultra-stable Bilinear scaling.
+#              EXIT SAFEGUARD: Intercepts destruction notifications to prevent
+#              out-of-order X11 window geometry queries during shutdown.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -18,14 +20,15 @@ const SCALE_DOWN_STEP: float = 0.15
 const SCALE_UP_STEP: float = 0.02        
 const EVALUATION_INTERVAL_SEC: float = 0.12 
 
+# Symmetrical constants to bypass unexposed Godot 4 C++ DeviceType enums
+const ADAPTER_TYPE_INTEGRATED: int = 1
+const ADAPTER_TYPE_CPU: int = 4
+
 var _viewport: Viewport
 var _elapsed_time: float = 0.0
 
-# Dynamic performance thresholds calculated on ready based on monitor hardware
 var _target_frame_time_sec: float = 0.00833 
 var _safe_frame_time_sec: float = 0.00700   
-
-# CPU-side scale cache to prevent redundant rendering queries and float mismatches
 var _current_scale: float = 1.0
 
 
@@ -34,6 +37,12 @@ func _ready() -> void:
 	_viewport = get_viewport()
 	_elapsed_time = 0.0
 	_initialize_viewport_rendering_properties()
+
+
+func _notification(what: int) -> void:
+	# Intercept close requests to halt processing instantly, avoiding X11 BadWindow errors
+	if what == NOTIFICATION_PREDELETE or what == NOTIFICATION_WM_CLOSE_REQUEST:
+		set_process(false)
 
 
 func _process(delta: float) -> void:
@@ -50,28 +59,33 @@ func _initialize_viewport_rendering_properties() -> void:
 	if not is_instance_valid(_viewport):
 		return
 		
-	var adapter_name := RenderingServer.get_video_adapter_name().to_lower()
-	var is_software := _is_adapter_software_rasterizer(adapter_name)
+	var adapter_type := RenderingServer.get_video_adapter_type()
+	var is_low_end := (
+		adapter_type == ADAPTER_TYPE_INTEGRATED or 
+		adapter_type == ADAPTER_TYPE_CPU
+	)
 	
-	if is_software:
-		_viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-		print("[DRS] Software rasterizer detected. Bypassed FSR 2.2 to use Bilinear scaling.")
-	else:
-		_viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2
-		print("[DRS] Dedicated/Integrated GPU detected. Initialized under FSR 2.2 upscaling.")
-		
+	_configure_scaling_mode(is_low_end)
+	
 	_viewport.scaling_3d_scale = MAX_RESOLUTION_SCALE
 	_current_scale = MAX_RESOLUTION_SCALE
 	_calculate_dynamic_performance_thresholds()
 
 
+func _configure_scaling_mode(is_low_end: bool) -> void:
+	if is_low_end:
+		_viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		print("[DRS] Integrated/Software GPU detected. Bypassed FSR 2 to prevent C++ driver crashes.")
+	else:
+		_viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2
+		print("[DRS] Dedicated GPU detected. Initialized under FSR 2 upscaling.")
+
+
 func _calculate_dynamic_performance_thresholds() -> void:
 	var screen_hz := DisplayServer.screen_get_refresh_rate()
 	if screen_hz <= 0.0:
-		screen_hz = 60.0 # Default safe fallback
+		screen_hz = 60.0
 		
-	# SENSITIVITY FIX: Target the actual hardware monitor refresh rate (screen_hz)
-	# instead of forcing 120Hz, preventing aggressive blurry downscaling on 60Hz screens.
 	_target_frame_time_sec = 1.0 / maxf(10.0, screen_hz - 10.0)
 	_safe_frame_time_sec = 1.0 / maxf(10.0, screen_hz - 2.0)
 	
@@ -80,14 +94,6 @@ func _calculate_dynamic_performance_thresholds() -> void:
 		_target_frame_time_sec * 1000.0, 
 		_safe_frame_time_sec * 1000.0
 	])
-
-
-func _is_adapter_software_rasterizer(adapter_name: String) -> bool:
-	return (
-		adapter_name.contains("llvmpipe") or 
-		adapter_name.contains("swiftshader") or 
-		adapter_name.contains("software")
-	)
 
 
 func _evaluate_performance_metrics() -> void:

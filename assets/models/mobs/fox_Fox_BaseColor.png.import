@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cs0k0r2op6r02"
-path="res://.godot/imported/fox_Fox_BaseColor.png-1442ae9f35966fa0926f2f767f2c611b.ctex"
+path.s3tc="res://.godot/imported/fox_Fox_BaseColor.png-1442ae9f35966fa0926f2f767f2c611b.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/fox_Fox_BaseColor.png"
-dest_files=["res://.godot/imported/fox_Fox_BaseColor.png-1442ae9f35966fa0926f2f767f2c611b.ctex"]
+dest_files=["res://.godot/imported/fox_Fox_BaseColor.png-1442ae9f35966fa0926f2f767f2c611b.s3tc.ctex"]
 
 [params]
 

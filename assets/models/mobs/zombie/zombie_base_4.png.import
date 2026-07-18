@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://7jqk41jvy4fx"
-path="res://.godot/imported/zombie_base_4.png-a63e8da0758f26b5207916084f60d1d8.ctex"
+path.s3tc="res://.godot/imported/zombie_base_4.png-a63e8da0758f26b5207916084f60d1d8.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/zombie/zombie_base_4.png"
-dest_files=["res://.godot/imported/zombie_base_4.png-a63e8da0758f26b5207916084f60d1d8.ctex"]
+dest_files=["res://.godot/imported/zombie_base_4.png-a63e8da0758f26b5207916084f60d1d8.s3tc.ctex"]
 
 [params]
 

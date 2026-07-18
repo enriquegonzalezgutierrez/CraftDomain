@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cpa0dmjaqmpai"
-path="res://.godot/imported/druid_base_0.png-1e6b683c1eea649d675e25eea95a0f91.ctex"
+path.s3tc="res://.godot/imported/druid_base_0.png-1e6b683c1eea649d675e25eea95a0f91.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/druid/druid_base_0.png"
-dest_files=["res://.godot/imported/druid_base_0.png-1e6b683c1eea649d675e25eea95a0f91.ctex"]
+dest_files=["res://.godot/imported/druid_base_0.png-1e6b683c1eea649d675e25eea95a0f91.s3tc.ctex"]
 
 [params]
 

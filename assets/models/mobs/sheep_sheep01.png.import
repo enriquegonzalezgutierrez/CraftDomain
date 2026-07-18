@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dwhiwcadfs4j7"
-path="res://.godot/imported/sheep_sheep01.png-e43af9d1c40dbff663c5ec38fd086ff5.ctex"
+path.s3tc="res://.godot/imported/sheep_sheep01.png-e43af9d1c40dbff663c5ec38fd086ff5.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/sheep_sheep01.png"
-dest_files=["res://.godot/imported/sheep_sheep01.png-e43af9d1c40dbff663c5ec38fd086ff5.ctex"]
+dest_files=["res://.godot/imported/sheep_sheep01.png-e43af9d1c40dbff663c5ec38fd086ff5.s3tc.ctex"]
 
 [params]
 

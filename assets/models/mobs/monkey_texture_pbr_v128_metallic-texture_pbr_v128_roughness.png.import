@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bjna8e80vn2te"
-path="res://.godot/imported/monkey_texture_pbr_v128_metallic-texture_pbr_v128_roughness.png-5201fe18957aa964523c86de968601ef.ctex"
+path.s3tc="res://.godot/imported/monkey_texture_pbr_v128_metallic-texture_pbr_v128_roughness.png-5201fe18957aa964523c86de968601ef.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/mobs/monkey_texture_pbr_v128_metallic-texture_pbr_v128_roughness.png"
-dest_files=["res://.godot/imported/monkey_texture_pbr_v128_metallic-texture_pbr_v128_roughness.png-5201fe18957aa964523c86de968601ef.ctex"]
+dest_files=["res://.godot/imported/monkey_texture_pbr_v128_metallic-texture_pbr_v128_roughness.png-5201fe18957aa964523c86de968601ef.s3tc.ctex"]
 
 [params]
 

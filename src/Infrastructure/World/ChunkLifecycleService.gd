@@ -1,11 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/ChunkLifecycleService.gd
-# Description: High-Performance Infrastructure Service responsible for managing 
-#              chunk instantiation, asynchronous/synchronous edits, and LODs (SRP).
-#              PERFORMANCE UPGRADE: Instant rebuilds no longer compile Concave
-#              Physics shapes synchronously. Neighbors are forced into async queues
-#              to protect the 120 FPS main-thread budget.
-#              COMPILER FIX: Prefixed unused '_is_distant' variable.
+# Description: High-Performance Infrastructure Service managing background tasks,
+#              LODs, and asynchronous edits.
+#              MILESTONE 1 (TIME-SLICING): Incorporates a strict 2.0ms execution
+#              budget to amortize chunk injections, eliminating main-thread stutters.
+#              MILESTONE 2 (DIRECT ARCHITECTURE): Purged ChunkNode instantiations.
+#              Delegates to DirectChunkRenderingService for SceneTree bypassing.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -14,31 +14,22 @@ extends RefCounted
 
 const CHUNK_MASK: int = 15
 
+# Time-Slicing Budgets (Microseconds)
+const TIME_BUDGET_ACTIVE_USEC: int = 2000  # 2.0ms budget for active 120FPS gameplay
+const TIME_BUDGET_LOADING_USEC: int = 40000 # 40.0ms budget during loading screens
+
 var controller: Node3D 
 var world_state: WorldState
 var task_scheduler: ChunkTaskScheduler
+var direct_renderer: DirectChunkRenderingService
 
 var _unload_queue: Array[Vector3i] = []
-var _chunk_nodes: Dictionary = {}
-var _chunk_entities: Dictionary = {}
-var _physics_bodies: Dictionary = {}
-
 var _chunk_lod_states: Dictionary = {} 
-var _last_known_viewer_chunk_pos: Vector3i = Vector3i.ZERO
 var _chunk_versions: Dictionary = {}
+var _chunk_entities: Dictionary = {}
 
-var _chunk_node_pool: Array[ChunkNode] = []
-static var _frictionless_material: PhysicsMaterial = null
-
+var _last_known_viewer_chunk_pos: Vector3i = Vector3i.ZERO
 var _queue_mutex: Mutex
-
-
-static func _get_frictionless_material() -> PhysicsMaterial:
-	if _frictionless_material == null:
-		_frictionless_material = PhysicsMaterial.new()
-		_frictionless_material.rough = false
-		_frictionless_material.bounce = 0.0
-	return _frictionless_material
 
 
 func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
@@ -46,14 +37,18 @@ func _init(p_controller: Node3D, p_world_state: WorldState) -> void:
 	controller = p_controller
 	world_state = p_world_state
 	task_scheduler = ChunkTaskScheduler.new(self, _queue_mutex)
+	
+	var scenario: RID = controller.get_world_3d().scenario if controller.is_inside_tree() else RID()
+	var space: RID = controller.get_world_3d().space if controller.is_inside_tree() else RID()
+	direct_renderer = DirectChunkRenderingService.new(controller, scenario, space)
 
 
 func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
-	return _chunk_nodes.has(chunk_pos)
+	return _chunk_lod_states.has(chunk_pos)
 
 
 func get_active_nodes() -> Dictionary:
-	return _chunk_nodes
+	return _chunk_lod_states # Used by other services as an active chunk ledger
 
 
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
@@ -90,13 +85,34 @@ func _update_viewer_chunk_position() -> void:
 			_last_known_viewer_chunk_pos = active_pos
 
 
+## Time-Sliced Unload Queue: Prevents bulk memory deallocation stutters
 func _process_unload_queue(player_active: bool) -> void:
-	var max_unloads := 100 if not player_active else 5
-	var unloads_processed := 0
-	while _unload_queue.size() > 0 and unloads_processed < max_unloads:
+	var start_time := Time.get_ticks_usec()
+	var time_budget := 500 if player_active else 10000 
+	
+	while _unload_queue.size() > 0:
+		var elapsed := Time.get_ticks_usec() - start_time
+		if elapsed > time_budget:
+			break
+			
 		var chunk_to_unload := _unload_queue.pop_front() as Vector3i
-		_unload_chunk_node(chunk_to_unload)
-		unloads_processed += 1
+		_unload_chunk_direct(chunk_to_unload)
+
+
+func _unload_chunk_direct(chunk_pos: Vector3i) -> void:
+	direct_renderer.free_chunk(chunk_pos)
+	
+	if _chunk_lod_states.has(chunk_pos):
+		_chunk_lod_states.erase(chunk_pos)
+		
+	var entities_key := Vector3i(chunk_pos.x, 0, chunk_pos.z)
+	if _chunk_entities.has(entities_key):
+		var entities: Array = _chunk_entities[entities_key] as Array
+		_chunk_entities.erase(entities_key)
+		for ent: Node in entities:
+			if is_instance_valid(ent): ent.queue_free()
+			
+	world_state.remove_chunk(chunk_pos)
 
 
 ## Synchronous channel: Intended for responsive, zero-latency player block edits
@@ -107,18 +123,17 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
 	_rebuild_chunk_instantly(chunk_pos)
 	
-	# 120 FPS GUARDRAIL: Adjacent neighbor chunks MUST always be rebuilt asynchronously 
-	# to prevent cascading main-thread freezes.
+	# Adjacent neighbor chunks MUST always be rebuilt asynchronously
 	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos, true)
 
 
-## Asynchronous channel: Intended for high-performance automated systems (fluids, crops, physics)
+## Asynchronous channel: Intended for high-performance automated systems
 func set_block_globally_async(global_pos: Vector3i, type: BlockType.Type) -> void:
 	world_state.set_block(global_pos, type)
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	
 	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
-	_request_chunk_rebuild(chunk_pos) # Background-threaded task
+	_request_chunk_rebuild(chunk_pos) 
 	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos, true)
 
 
@@ -145,68 +160,58 @@ func _check_neighbor_rebuild(condition: bool, chunk_pos: Vector3i, offset: Vecto
 func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	var chunk := world_state.get_chunk(chunk_pos)
 	if chunk == null: return
+	
 	var task_result := _compile_instant_rebuild_task(chunk)
 	_render_single_completed_task(task_result)
 	_request_chunk_rebuild(chunk_pos) # Background physics compilation
 
 
 func _compile_instant_rebuild_task(chunk: Chunk) -> GeneratedChunkTask:
-	# WARNING FIX: Prefix with underscore to silence the UNUSED_VARIABLE compiler warning.
-	var _is_distant := _calculate_is_chunk_distant(chunk.position)
-	
-	# 120 FPS GUARDRAIL: We pass 'false' to build_collision so the ChunkVisualBuilder 
-	# skips topology extraction, eliminating the ConcavePolygonShape3D allocation overhead.
 	var visual_data := ChunkVisualBuilder.extract_render_data(chunk, world_state, false)
-	
 	var task_result := GeneratedChunkTask.new()
 	task_result.chunk = chunk
 	task_result.multimesh_data = visual_data["multimesh"] as Dictionary
 	task_result.is_rebuild = true
 	task_result.liquid_meshes = ChunkMesher.generate_special_meshes(chunk, world_state)
 	task_result.set_meta("version", _chunk_versions.get(chunk.position, 0))
-	task_result.set_meta("preserve_physics", true) # Instruct ChunkNode not to free the active collider
 	task_result.set_meta("nav_nodes", [])
 	return task_result
 
 
 func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
-	if not _chunk_nodes.has(chunk_pos): return
+	if not _chunk_lod_states.has(chunk_pos): return
 	task_scheduler.request_chunk_rebuild(chunk_pos, _chunk_versions.get(chunk_pos, 0))
 
 
+## TIME-SLICING ALGORITHM: Restricts extraction from WorkerThreadPool to 2.0ms max.
 func _render_completed_chunks_from_queue(player_active: bool) -> void:
 	var start_time := Time.get_ticks_usec()
-	var time_budget_usec := 40000 if not player_active else 3000
-	var rendered_this_frame := 0
+	var time_budget := TIME_BUDGET_ACTIVE_USEC if player_active else TIME_BUDGET_LOADING_USEC
 	
 	while task_scheduler.has_completed_tasks():
-		if (Time.get_ticks_usec() - start_time) > time_budget_usec and rendered_this_frame >= 1: 
-			break
+		var elapsed := Time.get_ticks_usec() - start_time
+		if elapsed > time_budget:
+			break # Strict time-slice budget reached. Defer to next frame to preserve 120 FPS.
 			
 		var task := task_scheduler.pop_completed_task()
 		if task != null:
 			_render_single_completed_task(task)
-			rendered_this_frame += 1
 
 
 func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var chunk_pos: Vector3i = task.chunk.position
-	if _is_task_version_obsolete(task, chunk_pos): return
+	if _is_task_version_obsolete(task, chunk_pos): 
+		return
 		
 	_cleanup_task_states(chunk_pos)
 	_register_completed_chunk_state(task, chunk_pos)
 	_register_navigation_nodes(task)
-	_apply_visuals_to_chunk_node(task, chunk_pos)
+	_apply_visuals_direct(task, chunk_pos)
 
 
 func _register_completed_chunk_state(task: GeneratedChunkTask, chunk_pos: Vector3i) -> void:
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
 	_chunk_lod_states[chunk_pos] = is_distant
-	
-	var static_body := _ensure_physics_body(task)
-	if is_instance_valid(static_body):
-		_physics_bodies[chunk_pos] = static_body.get_rid()
-		task.set_meta("static_body", static_body)
 		
 	if not task.is_rebuild and is_instance_valid(world_state):
 		world_state.add_chunk(task.chunk)
@@ -218,38 +223,14 @@ func _register_completed_chunk_state(task: GeneratedChunkTask, chunk_pos: Vector
 func _is_task_version_obsolete(task: GeneratedChunkTask, chunk_pos: Vector3i) -> bool:
 	var task_version: int = task.get_meta("version") if task.has_meta("version") else 0
 	var current_version: int = _chunk_versions.get(chunk_pos, 0)
-	
-	if task_version < current_version:
-		if not task.get_meta("preserve_physics", false):
-			var orphaned_body: Node = task.get_meta("static_body") if task.has_meta("static_body") else null
-			if is_instance_valid(orphaned_body):
-				orphaned_body.queue_free()
-		return true
-	return false
+	return task_version < current_version
 
 
 func _cleanup_task_states(chunk_pos: Vector3i) -> void:
 	task_scheduler.mark_task_completed(chunk_pos)
-	
 	if task_scheduler.needs_rebuild(chunk_pos):
 		task_scheduler.clear_rebuild_flag(chunk_pos)
 		_request_chunk_rebuild(chunk_pos)
-		
-	_physics_bodies.erase(chunk_pos)
-
-
-func _ensure_physics_body(task: GeneratedChunkTask) -> StaticBody3D:
-	var static_body: StaticBody3D = task.get_meta("static_body") if task.has_meta("static_body") else null
-	if static_body == null and task.collision_shape != null:
-		static_body = StaticBody3D.new()
-		static_body.collision_layer = 1
-		static_body.collision_mask = 1
-		static_body.physics_material_override = _get_frictionless_material()
-		
-		var col := CollisionShape3D.new()
-		col.shape = task.collision_shape
-		static_body.add_child(col)
-	return static_body
 
 
 func _register_navigation_nodes(task: GeneratedChunkTask) -> void:
@@ -260,51 +241,32 @@ func _register_navigation_nodes(task: GeneratedChunkTask) -> void:
 			ChunkNavigationBuilder.register_compiled_nodes_synchronous(nav_nodes, world_state, nav_service)
 
 
-func _apply_visuals_to_chunk_node(task: GeneratedChunkTask, chunk_pos: Vector3i) -> void:
-	var chunk_node: ChunkNode = null
-	if _chunk_nodes.has(chunk_pos):
-		chunk_node = _chunk_nodes[chunk_pos] as ChunkNode
-	else:
-		if task.is_rebuild: 
-			var body: Node = task.get_meta("static_body") if task.has_meta("static_body") else null
-			if is_instance_valid(body): body.queue_free()
-			return
-		chunk_node = _acquire_chunk_node_from_pool(task.chunk)
-		_chunk_nodes[chunk_pos] = chunk_node
-		_notify_controller_spawn(task.chunk)
-				
+## Direct Server-Side Integration (Bypasses SceneTree instantiation)
+func _apply_visuals_direct(task: GeneratedChunkTask, chunk_pos: Vector3i) -> void:
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
-	var static_body: StaticBody3D = null
+	var collision_shape := task.collision_shape
 	
-	if task.has_meta("preserve_physics") and task.get_meta("preserve_physics"):
-		# Hack: Unbinds existing collision body to hide it from `setup_chunk_visuals` queue_free() call
-		static_body = chunk_node.get("_collision_body") as StaticBody3D
-		chunk_node.set("_collision_body", null)
-	else:
-		static_body = task.get_meta("static_body") if task.has_meta("static_body") else null
-		
-	chunk_node.setup_chunk_visuals(task.multimesh_data, static_body, task.liquid_meshes, is_distant)
+	if task.is_rebuild and collision_shape == null:
+		# Extract the previously cached shape on instant rebuilds if absent
+		var record: DirectChunkRenderingService.ChunkRIDRecord = direct_renderer._active_chunks.get(chunk_pos) as DirectChunkRenderingService.ChunkRIDRecord
+		if record != null:
+			collision_shape = record.collision_shape_ref
+			
+	direct_renderer.allocate_chunk_visuals(
+		chunk_pos,
+		task.multimesh_data,
+		task.liquid_meshes,
+		collision_shape,
+		is_distant
+	)
+	
+	if not task.is_rebuild:
+		_notify_controller_spawn(task.chunk)
 
 
-func _notify_controller_spawn(chunk: Chunk) -> void:
-	if controller.has_method("register_streetlights_for_chunk"): 
-		controller.call("register_streetlights_for_chunk", chunk)
+func _notify_controller_spawn(_chunk: Chunk) -> void:
 	if controller.has_method("check_player_spawn_activation"): 
 		controller.call("check_player_spawn_activation")
-
-
-func _acquire_chunk_node_from_pool(chunk: Chunk) -> ChunkNode:
-	var chunk_node: ChunkNode
-	if _chunk_node_pool.size() > 0:
-		chunk_node = _chunk_node_pool.pop_back() as ChunkNode
-		chunk_node.chunk = chunk
-		chunk_node.name = "Chunk_%d_%d_%d" % [chunk.position.x, chunk.position.y, chunk.position.z]
-		chunk_node.position = Vector3(chunk.position * Chunk.SIZE)
-		chunk_node.visible = true
-	else:
-		chunk_node = ChunkNode.new(chunk)
-		controller.add_child(chunk_node)
-	return chunk_node
 
 
 func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
@@ -318,18 +280,16 @@ func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int =
 
 func _evaluate_entity_spawn_for_chunk(center: Vector3i, offset_x: int, offset_z: int) -> void:
 	var target_chunk_pos := Vector3i(center.x + offset_x, 0, center.z + offset_z)
-	if not _chunk_nodes.has(target_chunk_pos) or not _physics_bodies.has(target_chunk_pos):
+	if not _chunk_lod_states.has(target_chunk_pos) or not direct_renderer.has_collision_body(target_chunk_pos):
 		return
 		
-	# Symmetrical Spawning Guardrail: Do not spawn mobile entities on distant chunks
-	# to completely prevent the floating entities visual glitch and save massive CPU.
 	if _calculate_is_chunk_distant(target_chunk_pos):
 		return
 		
 	var col_pos := Vector3i(target_chunk_pos.x, 0, target_chunk_pos.z)
 	if not _chunk_entities.has(col_pos):
-		var chunk_0: Chunk = _chunk_nodes[target_chunk_pos].chunk as Chunk
-		if controller.has_method("spawn_entities_for_chunk"):
+		var chunk_0 := world_state.get_chunk(target_chunk_pos)
+		if chunk_0 != null and controller.has_method("spawn_entities_for_chunk"):
 			var raw_array: Array = controller.call("spawn_entities_for_chunk", chunk_0) as Array
 			var typed_nodes: Array[Node] = []
 			for n_element: Variant in raw_array:
@@ -337,51 +297,17 @@ func _evaluate_entity_spawn_for_chunk(center: Vector3i, offset_x: int, offset_z:
 			_chunk_entities[col_pos] = typed_nodes
 
 
-func _unload_chunk_node(chunk_pos: Vector3i) -> void:
-	if _chunk_nodes.has(chunk_pos):
-		var node: ChunkNode = _chunk_nodes[chunk_pos] as ChunkNode
-		_chunk_nodes.erase(chunk_pos)
-		_recycle_chunk_node(node)
-		
-	if _chunk_lod_states.has(chunk_pos):
-		_chunk_lod_states.erase(chunk_pos)
-		
-	var entities_key := Vector3i(chunk_pos.x, 0, chunk_pos.z)
-	if _chunk_entities.has(entities_key):
-		var entities: Array = _chunk_entities[entities_key] as Array
-		_chunk_entities.erase(entities_key)
-		for ent: Node in entities:
-			if is_instance_valid(ent): ent.queue_free()
-				
-	_physics_bodies.erase(chunk_pos)
-	world_state.remove_chunk(chunk_pos)
-
-
-func _recycle_chunk_node(node: ChunkNode) -> void:
-	if is_instance_valid(node):
-		node.visible = false
-		if node.has_method("set_collision_body"):
-			node.call("set_collision_body", null)
-		if node.has_method("setup_chunk_visuals"):
-			node.call("setup_chunk_visuals", {}, null, {})
-		_chunk_node_pool.append(node)
-
-
 func _execute_lod_scans() -> void:
-	for pos: Vector3i in _chunk_nodes.keys():
+	for pos: Vector3i in _chunk_lod_states.keys():
 		var is_currently_distant := _calculate_is_chunk_distant(pos)
 		var was_distant: bool = _chunk_lod_states.get(pos, false) as bool
 		
 		if is_currently_distant != was_distant:
 			_chunk_lod_states[pos] = is_currently_distant
-			var node: ChunkNode = _chunk_nodes[pos] as ChunkNode
-			if is_instance_valid(node):
-				if node.has_method("update_lod_materials"):
-					node.call("update_lod_materials", is_currently_distant)
-				
-				if not is_currently_distant and node.has_method("has_collision_body"):
-					if not node.call("has_collision_body") as bool:
-						_request_chunk_rebuild(pos)
+			direct_renderer.update_lod_materials(pos, is_currently_distant)
+			
+			if not is_currently_distant and not direct_renderer.has_collision_body(pos):
+				_request_chunk_rebuild(pos)
 
 
 func _calculate_is_chunk_distant(chunk_pos: Vector3i) -> bool:
@@ -396,3 +322,4 @@ func _calculate_is_chunk_distant(chunk_pos: Vector3i) -> bool:
 
 func shutdown() -> void:
 	task_scheduler.shutdown()
+	direct_renderer.clear_all()
