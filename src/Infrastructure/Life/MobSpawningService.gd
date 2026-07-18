@@ -2,8 +2,9 @@
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service responsible for managing dynamic herd
 #              spawning, local chunk populating, and mission objective targets.
-# SOLID COMPLIANCE: Decomposed into highly cohesive, short sub-methods.
-#              Introduced an OCP-compliant Quest Objective Spawner.
+#              SOLID COMPLIANCE: Decomposed into highly cohesive, short sub-methods.
+#              Introduced an OCP-compliant Quest Objective Spawner with explicit
+#              target allocation to eliminate duplicates and double arrows.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -75,6 +76,8 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 		_spawn_wilderness_wildlife(chunk_offset, world_state, world_node, biome, spawned_nodes)
 
 	_spawn_megastructure_defenders(chunk.position, world_state, world_node, spawned_nodes)
+	
+	# SOLID UPGRADE: Ensure active quest targets are dynamically spawned in this chunk
 	_spawn_active_quest_objectives(chunk, chunk_offset, world_state, world_node, spawned_nodes)
 
 
@@ -143,6 +146,7 @@ func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState
 					
 				var spawn_node := MobRegistry.create_mob(mob_id, spawn_pos)
 				if spawn_node != null:
+					spawn_node.set_meta("spawn_id", mob_id) # Metadata tag injected for O(1) tracking
 					world_node.add_child(spawn_node)
 					spawned_nodes.append(spawn_node)
 
@@ -162,10 +166,27 @@ func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_s
 	# Verifies if the active mission's target coordinates fall inside the loading chunk
 	if target_chunk_pos == chunk.position:
 		var mob_id: int = QUEST_TARGET_MOBS[active_q.quest_id]
-		_spawn_exact_quest_mob(mob_id, target_pos, chunk_offset, world_state, world_node, spawned_nodes)
+		
+		# 1. Search if an eligible entity has ALREADY been spawned in this chunk (Prevents double merchants)
+		var existing_target := _find_eligible_entity_in_list(spawned_nodes, mob_id)
+		if existing_target != null:
+			existing_target.quest_target_id = active_q.quest_id
+			print("[MobSpawning] Existing entity %s designated as unique Quest Target for %s" % [existing_target.name, active_q.quest_id])
+			return
+			
+		# 2. If none exists, spawn a new unique one
+		_spawn_exact_quest_mob(mob_id, target_pos, chunk_offset, world_state, world_node, spawned_nodes, active_q.quest_id)
 
 
-func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
+func _find_eligible_entity_in_list(nodes: Array[Node], mob_id: int) -> CharacterBody3D:
+	for node: Node in nodes:
+		if node is CharacterBody3D and node.has_meta("spawn_id"):
+			if int(node.get_meta("spawn_id")) == mob_id:
+				return node as CharacterBody3D
+	return null
+
+
+func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node], quest_id: String) -> void:
 	var spawn_pos := target_pos
 	var block_coord := Vector3i(spawn_pos)
 	
@@ -177,6 +198,8 @@ func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vect
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var mob := MobRegistry.create_mob(mob_id, spawn_pos)
 		if mob != null:
+			mob.set_meta("spawn_id", mob_id) # Metadata tag injected for O(1) tracking
+			mob.quest_target_id = quest_id  # Explicit unique quest mapping
 			world_node.add_child(mob)
 			spawned_nodes.append(mob)
 			print("[MobSpawning] Successfully spawned Quest Target Mob ID %d at %s" % [mob_id, spawn_pos])
@@ -202,6 +225,7 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	if _is_voxel_spawn_space_free(world_state, pos):
 		var mob := MobRegistry.create_mob(spawn_id, pos)
 		if mob != null:
+			mob.set_meta("spawn_id", spawn_id) # Metadata tag injected for O(1) tracking
 			world_node.add_child(mob)
 			list.append(mob)
 

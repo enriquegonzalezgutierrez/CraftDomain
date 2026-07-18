@@ -2,6 +2,8 @@
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical base class representing NPCs and Wildlife.
 #              Coordinates physical movements, gravity slides, and fluid states.
+#              SOLID CLEANUP: Completely removed passive distance-based quest
+#              auto-claiming to prevent duplicate targets and multiple arrows.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -37,6 +39,7 @@ var _talking_partner: CharacterBody3D = null
 var _last_attacker: Node = null
 var _is_physically_sleeping: bool = false
 
+# Set exclusively and explicitly by the Spawning Service (SOLID Compliant)
 var quest_target_id: String = ""
 var _is_lifecycle_initialized: bool = false
 var _ui_component: EntityUIComponent
@@ -74,7 +77,7 @@ func _execute_lifecycle_initialization() -> void:
 	
 	_setup_nameplate_height()
 	_setup_ui_component()
-	_auto_claim_registered_quest_target()
+	# SOLID CLEANUP: Removed the auto-claim quest routine to guarantee target uniqueness
 
 
 func _setup_nameplate_height() -> void:
@@ -97,18 +100,6 @@ func _setup_ui_component() -> void:
 	_ui_component = EntityUIComponent.new()
 	add_child(_ui_component)
 	_ui_component.initialize(self, _collision_height)
-
-
-func _auto_claim_registered_quest_target() -> void:
-	if QuestService._quests.is_empty(): return
-		
-	for q_id: String in QuestService._quests.keys():
-		var q := QuestService._quests[q_id] as Quest
-		if q != null and q.target_position != Vector3.ZERO:
-			var dist := global_position.distance_to(q.target_position)
-			if dist <= 25.0 and _is_eligible_for_quest(q_id):
-				quest_target_id = q_id
-				break
 
 
 func _get_entity_name_key() -> String:
@@ -380,14 +371,12 @@ func _apply_liquid_buoyancy(delta: float) -> void:
 
 func _apply_grounded_snap(delta: float) -> void:
 	if _get_habitat() == 2:
-		# Symmetrical Gravity: Aquatic entities in empty air fall due to gravity
 		velocity.y -= gravity * delta
 	else:
 		velocity.y = -1.2
 
 
 ## Public API: Exposes if the host is currently submerged in water or lava volumes.
-## Allows active AI behaviors to bypass swimming balance sways when in empty air.
 func is_in_liquid() -> bool:
 	return _check_in_liquid_state()
 
