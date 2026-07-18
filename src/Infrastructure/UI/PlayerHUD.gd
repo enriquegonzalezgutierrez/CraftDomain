@@ -2,8 +2,10 @@
 # Pathfile: res://src/Infrastructure/UI/PlayerHUD.gd
 # Description: Central HUD Orchestrator and UI Coordinator. Handles modal toggles,
 #              LOD UI updates, and reactive Domain Event bindings.
-#              GRAPHICAL UPGRADE: Programmatically attached and modulated the 
+#              GRADIENT UPGRADE: Programmatically attached and modulated the 
 #              Null Void screen-space glitch post-processing layer.
+#              PERFORMANCE FIX: Cached glitch intensity on CPU to eliminate 
+#              slow GPU queries and prevent invalid float casting crashes.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -34,6 +36,9 @@ var world_controller: Node3D
 # Dynamic post-processing overlays (SOLID / Section 7.1 Compliant)
 var glitch_overlay: ColorRect
 var glitch_material: ShaderMaterial
+
+# CPU-Side Cache tracking to prevent raw GPU query crashes (120 FPS Guardrail)
+var _current_glitch_intensity: float = 0.0
 
 # INTEGRATION: Binds safely to the Chat Box using a recursive search
 var chat_box: ChatBoxWidget
@@ -126,6 +131,7 @@ func _process(delta: float) -> void:
 	_update_null_void_glitch(delta)
 
 
+## High-Performance: Interpolates purely on CPU, executing an absolute write-only push to GPU
 func _update_null_void_glitch(delta: float) -> void:
 	if not is_instance_valid(glitch_material) or not is_instance_valid(player):
 		return
@@ -138,11 +144,10 @@ func _update_null_void_glitch(delta: float) -> void:
 		is_corrupted = rift_service.is_position_corrupted(player.global_position)
 		
 	var target_intensity: float = 0.38 if is_corrupted else 0.0
-	var current_intensity: float = glitch_material.get_shader_parameter("glitch_intensity") as float
 	
-	# Smoothly interpolate active screen distortion
-	var next_intensity := lerp(current_intensity, target_intensity, delta * 5.0)
-	glitch_material.set_shader_parameter("glitch_intensity", next_intensity)
+	# Smoothly interpolate the cached CPU value directly! No slow GPU queries needed.
+	_current_glitch_intensity = lerp(_current_glitch_intensity, target_intensity, delta * 5.0)
+	glitch_material.set_shader_parameter("glitch_intensity", _current_glitch_intensity)
 
 
 func _unhandled_input(event: InputEvent) -> void:

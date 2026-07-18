@@ -5,8 +5,8 @@
 #              SOLID COMPLIANCE: Solved the duplicate target arrow bug.
 #              Implemented typesafe, exclusive proximity quest-target claiming
 #              anchored to the WorldState domain.
-#              ANIMATION UPGRADE: Implemented CPU-calculated Slope Body Tilt 
-#              to smoothly tilt quadruped animals along terrain inclines.
+#              PHYSICS FIX: Unified grounded snapping gravity to prevent aquatic
+#              entities (Sharks) from accumulating infinite gravity and sliding on land.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -376,11 +376,11 @@ func _apply_liquid_buoyancy(delta: float) -> void:
 		velocity.y = move_toward(velocity.y, -1.8, gravity * 0.5 * delta)
 
 
-func _apply_grounded_snap(delta: float) -> void:
-	if _get_habitat() == 2:
-		velocity.y -= gravity * delta
-	else:
-		velocity.y = -1.2
+func _apply_grounded_snap(_delta: float) -> void:
+	# Symmetrical Gravity Fix: Prevents aquatic entities (Sharks) from accumulating 
+	# infinite gravity when stranded on shores, which translates into 
+	# massive horizontal slide forces pushing them onto dry land.
+	velocity.y = -1.2
 
 
 ## Public API: Exposes if the host is currently submerged in water or lava volumes.

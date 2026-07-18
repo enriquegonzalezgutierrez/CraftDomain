@@ -3,6 +3,8 @@
 // Description: Post-processing screen-space shader representing the Null Void.
 //              Applies dynamic chromatic aberration and horizontal scanline 
 //              vibrations based on glitch intensity.
+//              COMPILER FIX: Removed early 'return' from fragment processor
+//              to satisfy Godot 4 Vulkan GLSL parser standards.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -19,12 +21,6 @@ float rand(vec2 co) {
 }
 
 void fragment() {
-	// Zero-overhead bypass if the player is in safe, uncorrupted territory
-	if (glitch_intensity <= 0.001) {
-		COLOR = texture(screen_texture, SCREEN_UV);
-		return;
-	}
-	
 	vec2 uv = SCREEN_UV;
 	
 	// 1. Horizontal Scanline Jitter (Robotic horizontal shifts)
@@ -36,7 +32,7 @@ void fragment() {
 	// 2. Chromatic Aberration (Color channel splitting: Red and Blue drift)
 	float ab_offset = glitch_intensity * 0.012;
 	float r_chan = texture(screen_texture, vec2(uv.x - ab_offset, uv.y)).r;
-	var g_chan = texture(screen_texture, uv).g;
+	float g_chan = texture(screen_texture, uv).g;
 	float b_chan = texture(screen_texture, vec2(uv.x + ab_offset, uv.y)).b;
 	
 	vec3 final_color = vec3(r_chan, g_chan, b_chan);

@@ -2,14 +2,17 @@
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader
 // Description: Advanced triplanar PBR shader optimized for voxel blocks.
 //              Features dynamic wetness mapping reacting to rain storms,
-//              high-contrast sharp triplanar transitions, and procedural
-//              specular bevel highlights to simulate rounded block corners.
+//              high-contrast sharp triplanar transitions, procedural
+//              specular bevel highlights, and dynamic drifting cloud shadows.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, diffuse_burley, specular_schlick_ggx;
 
+// Sourced globally from project.godot (Zero-allocation GPU translations)
+global uniform vec2 wind_vector;
+global uniform float wind_strength;
 global uniform float storm_weight;
 
 // Albedo parameters
@@ -70,7 +73,20 @@ void fragment() {
 	ALBEDO = mix(final_albedo, final_albedo * 0.55, wetness);
 	ROUGHNESS = mix(roughness_val, 0.08, wetness);
 
-	// 4. Optional Normal Mapping projection
+	// 4. Symmetrical Cloud Shadows (OCP / LSP Compliant)
+	// Projects smooth, drifting shadows synchronized with sky winds (Scale 0.008 is approx 125m per cloud)
+	vec2 shadow_uv = world_pos.xz * 0.008 - wind_vector * (TIME * 0.015 * (1.0 + wind_strength));
+	float s1 = sin(shadow_uv.x * 2.0 + cos(shadow_uv.y * 1.5)) * 0.5 + 0.5;
+	float s2 = cos(shadow_uv.y * 3.5 + sin(shadow_uv.x * 2.5)) * 0.5 + 0.5;
+	float shadow_noise = s1 * 0.65 + s2 * 0.35;
+	
+	float upward_facing = clamp(world_normal.y, 0.0, 1.0);
+	float shadow_factor = smoothstep(0.45, 0.75, shadow_noise) * 0.38 * upward_facing;
+	
+	// Apply procedural shadow directly over wetness/albedo mix
+	ALBEDO = mix(ALBEDO, ALBEDO * (1.0 - shadow_factor), upward_facing);
+
+	// 5. Optional Normal Mapping projection
 	vec3 resolved_normal = world_normal;
 	if (use_normal_map) {
 		vec4 norm_x = texture(normal_texture, world_pos.zy);
@@ -89,7 +105,7 @@ void fragment() {
 		NORMAL_MAP_DEPTH = normal_scale;
 	}
 
-	// 5. Procedural Beveling & Specular Edge Highlights (Rounded Corners)
+	// 6. Procedural Beveling & Specular Edge Highlights (Rounded Corners)
 	vec3 local_pos = fract(world_pos);
 	vec3 center_dir = local_pos - vec3(0.5);
 	vec3 dist_to_edge = vec3(0.5) - abs(center_dir);
@@ -133,7 +149,6 @@ void fragment() {
 	}
 
 	// 120 FPS GUARDRAIL: Procedurally polish the edge (decrease roughness and spike specular highlights)
-	// This makes block aristas catch glorious glistening highlights in the sun!
 	float edge_intensity = max(bevel_factor.x * bevel_factor.y, max(bevel_factor.y * bevel_factor.z, bevel_factor.z * bevel_factor.x));
 	ROUGHNESS = mix(ROUGHNESS, 0.12, edge_intensity * 0.85);
 	SPECULAR = mix(SPECULAR, 1.0, edge_intensity * 0.95);
