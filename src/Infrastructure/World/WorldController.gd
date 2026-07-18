@@ -1,9 +1,13 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/WorldController.gd
 # Description: Central World Controller and Redraw Orchestrator. Coordinates
-#              LOD updates, background simulation threads, and active timeline warps.
-#              PERFORMANCE UPGRADE: Eliminated O(N) get_children() loops on block 
-#              breaks by implementing a reactive _interactive_props cache.
+#              LOD updates, background simulation threads, active timeline warps,
+#              and real-time A* navigation graph re-evaluations.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly world sub-services,
+#   timeline swaps, and signal routing, delegating rendering/physics logic.
+# - Dependency Inversion Principle (DIP): Communicates with Domain strategies
+#   through the abstract IWorldModifier adapter.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -83,7 +87,9 @@ func _initialize_shadows_and_terrain_smoothing() -> void:
 	_agriculture_service = AgricultureService.new(self, world_state)
 	_fluid_service = FluidSimulationService.new(self, world_state)
 	
+	# Connect reactive world simulation services (Observer Pattern)
 	block_modified.connect(_fluid_service._on_block_modified)
+	block_modified.connect(_on_block_modified_navigation)
 	
 	chunk_lifecycle = ChunkLifecycleService.new(self, world_state)
 	persistence_service = WorldPersistenceService.new(repository)
@@ -109,7 +115,7 @@ func _initialize_shadows_and_terrain_smoothing() -> void:
 
 func _load_and_restore_global_save() -> void:
 	var saved_global: Dictionary = repository.load_global_state() as Dictionary
-	var active_seed := randi()
+	var active_seed := 42 # Locks default un-saved world generation to seed 42
 	var spawn_pos := Vector3(8.5, 14.0, 8.5)
 	var spawn_rot := Vector3.ZERO
 	var current_time := 0.5
@@ -149,7 +155,7 @@ func _process(delta: float) -> void:
 	if is_instance_valid(_fluid_service): _fluid_service.process_fluid_simulation(delta)
 		
 	if is_instance_valid(chunk_lifecycle):
-		chunk_lifecycle.process_frame_queues(delta)
+		chunk_lifecycle.process_frame_queues(player.get("is_active") as bool if is_instance_valid(player) else false)
 
 
 func _physics_process(delta: float) -> void:
@@ -363,6 +369,11 @@ func open_hacking_terminal() -> void:
 		var hud_node: PlayerHUD = player.get("hud") as PlayerHUD
 		if is_instance_valid(hud_node):
 			hud_node.toggle_hacking_terminal(true)
+
+
+func _on_block_modified_navigation(global_pos: Vector3i, type: BlockType.Type) -> void:
+	if is_instance_valid(navigation_service):
+		ChunkNavigationBuilder.update_navigation_on_block_modified(global_pos, type, world_state, navigation_service)
 
 
 # ==============================================================================

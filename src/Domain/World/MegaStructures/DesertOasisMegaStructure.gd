@@ -2,8 +2,12 @@
 # Pathfile: res://src/Domain/World/MegaStructures/DesertOasisMegaStructure.gd
 # Description: Handcrafted two-story step-pyramid and oasis sanctuary.
 #              Provides structured multi-floor dungeon parameters.
-#              SOLID COMPLIANCE: Monolithic 'build_chunk' loop decomposed into 
-#              isolated, SRP-compliant sculpt methods (< 20 lines each).
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively manages the 
+#   geometric block-sculpting algorithms, completely decoupled from
+#   entity spawning, registries, and raw database IDs.
+# - Method Size Limits (Rule 4.2): Decomposed into modular, typesafe helper 
+#   initializers kept strictly < 20 lines of code.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -229,17 +233,3 @@ func _sculpt_apex_beacon(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dx: i
 		if dx == 0 and dz == 0:
 			var cy_crown := BASE_ALTITUDE_Y + LEVEL_BEACON_CROWN
 			set_global_block(chunk, offset, gx, cy_crown, gz, BlockType.Type.GLOWSTONE)
-
-
-func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
-	var entities: Array[Dictionary] = []
-	if chunk_pos.x == -10 and chunk_pos.z == 15:
-		var chest_pos_x := float(global_center.x - 9) + 0.5 
-		var chest_pos_y := float(BASE_ALTITUDE_Y + 7)       
-		var chest_pos_z := float(global_center.y) + 0.5     
-		entities.append({"mob_id": 200, "pos": Vector3(chest_pos_x, chest_pos_y, chest_pos_z)})
-		
-		var mummy_y := float(BASE_ALTITUDE_Y + 1)
-		entities.append({"mob_id": 10, "pos": Vector3(float(global_center.x) + 0.5, mummy_y, float(global_center.y - 4) + 0.5)}) 
-		entities.append({"mob_id": 10, "pos": Vector3(float(global_center.x - 9) + 0.5, mummy_y, float(global_center.y + 4) + 0.5)}) 
-	return entities

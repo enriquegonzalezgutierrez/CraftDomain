@@ -2,11 +2,8 @@
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical base class representing NPCs and Wildlife.
 #              Coordinates physical movements, gravity slides, and fluid states.
-#              SOLID COMPLIANCE: Solved the duplicate target arrow bug.
-#              Implemented typesafe, exclusive proximity quest-target claiming
-#              anchored to the WorldState domain.
-#              PHYSICS FIX: Unified grounded snapping gravity to prevent aquatic
-#              entities (Sharks) from accumulating infinite gravity and sliding on land.
+#              AI TASK FIX: Forces unconditional 2Hz visual updates to prevent
+#              quest early returns from freezing action subtitles to IDLE.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -377,9 +374,6 @@ func _apply_liquid_buoyancy(delta: float) -> void:
 
 
 func _apply_grounded_snap(_delta: float) -> void:
-	# Symmetrical Gravity Fix: Prevents aquatic entities (Sharks) from accumulating 
-	# infinite gravity when stranded on shores, which translates into 
-	# massive horizontal slide forces pushing them onto dry land.
 	velocity.y = -1.2
 
 
@@ -409,6 +403,13 @@ func _process_ai_and_boundaries(delta: float) -> void:
 	if quest_check_timer <= 0.0:
 		quest_check_timer = 0.5
 		_update_quest_bubble_state()
+		_update_floating_nameplate_unconditional()
+
+
+func _update_floating_nameplate_unconditional() -> void:
+	if is_instance_valid(_ui_component):
+		var active_quest := QuestService.get_active_quest() as Quest
+		_ui_component.update_ui_state(active_quest, quest_target_id)
 
 
 ## Unique Subscription Selector: Guarantees exactly one unique entity is gold and tracks GPS

@@ -27,6 +27,11 @@
 
   "LOADING_STATUS": "Generating infinite chunks",
   "LOADING_TIP": "Gameplay Tip: Hold 'Left Alt' to release your hardware mouse cursor, allowing you to click the backpack or crafting workshop buttons at any time.",
+  "LOADING_TIP_GLIDER": "Gameplay Tip: Leap from high cliffs and double-press JUMP (Space) in mid-air to deploy the Voxel Glider, allowing you to soar across deep canyons.",
+  "LOADING_TIP_LAVA": "Survival Tip: Give the Village Merchant (Valerius) a volatile Lava Bucket to keep his fryer hot and barter for highly therapeutic Fried Chicken.",
+  "LOADING_TIP_ZOMBIE": "Combat Tip: Use the Wooden Sword's heavy knockback to push hostile Cave Zombies away and construct blocks in real-time to build defensive walls.",
+  "LOADING_TIP_SCYTHE": "Chrono Tip: The Chrono-Scythe can restore glitched static voids, patching up unweaving chunk boundaries back into solid stone.",
+  "LOADING_TIP_SHIELD": "Village Tip: Village Guards and Golems form a coordinated alarm network, automatically sprinting to defend any under-attack civilian nearby.",
   "LOADING_UNLOAD_WORLD": "Saving chunks and returning to menu...",
 
   "HUD_ACTIVE_MISSION": "Active Campaign Quest",

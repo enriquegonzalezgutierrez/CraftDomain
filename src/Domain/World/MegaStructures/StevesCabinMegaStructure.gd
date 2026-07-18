@@ -1,8 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/MegaStructures/StevesCabinMegaStructure.gd
-# Description: HANDCRAFTED 2-STORY LOG CABIN, TRANSITABLE WINDMILL & VALLEY ARCH.
-#              SOLID COMPLIANCE: Monolithic 'build_chunk' loop decomposed into 
-#              isolated, SRP-compliant sculpt methods (< 20 lines each).
+# Description: Handcrafted 2-story log cabin, transitable windmill & valley arch.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively manages the 
+#   geometric block-sculpting algorithms, completely decoupled from
+#   entity spawning, registries, and raw database IDs.
+# - Method Size Limits (Rule 4.2): Decomposed into modular, typesafe helper 
+#   initializers kept strictly < 20 lines of code.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -137,9 +141,9 @@ func _sculpt_log_cabin(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -> void
 			_build_cabin_interior(chunk, offset, gx, gz, cy, wy, cx_min, cz_min)
 
 
-func _build_cabin_wall(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, cx: int, cz: int, is_door: bool) -> void:
-	if is_door and wy <= 3: return
-	var is_win: bool = (wy == 3 or wy == 9) and ((gx == global_center.x - 7 and gz == cz) or (gz == global_center.y - 7 and gx == cx))
+func _build_cabin_wall(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, _wy: int, cx: int, cz: int, is_door: bool) -> void:
+	if is_door and _wy <= 3: return
+	var is_win: bool = (_wy == 3 or _wy == 9) and ((gx == global_center.x - 7 and gz == cz) or (gz == global_center.y - 7 and gx == cx))
 	set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.GLASS if is_win else BlockType.Type.WOOD)
 
 
@@ -188,13 +192,3 @@ func _sculpt_wheat_farm(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -> voi
 		else:
 			set_global_block(chunk, offset, gx, TAV_DOCK_LEVEL, gz, BlockType.Type.DIRT)
 			set_global_block(chunk, offset, gx, TAV_DOCK_LEVEL + 1, gz, BlockType.Type.CROP_RIPE)
-
-
-func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
-	var entities: Array[Dictionary] = []
-	if chunk_pos.x == 18 and chunk_pos.z == -19:
-		entities.append({"mob_id": 101, "pos": Vector3(302.5, 11.0, -297.5)})
-		entities.append({"mob_id": 103, "pos": Vector3(292.5, 11.0, -292.5)})
-		entities.append({"mob_id": 107, "pos": Vector3(300.5, 11.0, -300.5)})
-		entities.append({"mob_id": 200, "pos": Vector3(293.5, 17.0, -308.5)})
-	return entities

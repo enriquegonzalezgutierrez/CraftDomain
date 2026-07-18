@@ -1,17 +1,14 @@
 # ==============================================================================
 # Project: CraftDomain
+# Layer: Domain (World Navigation Service)
+# Class: VoxelNavigationService
 # Description: Pure Domain Service managing the abstract 3D navigation graph.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively graph nodes allocation,
 #   coordinate-to-ID translations, and mathematical path routing.
-# - Open-Closed Principle (OCP): Fully generic. Walkable connections are mapped 
-#   using dynamic coordinate offsets, supporting stairs, steps, or vertical ladders.
-# - Dependency Inversion Principle (DIP): Pure data-oriented RefCounted service,
-#   completely decoupled from Godot's SceneTree, PhysicsServers, or RenderingServer.
-# SHELTER-SEEKING SCHEDULE UPGRADE:
-# - Added a thread-safe `_indoor_nodes` cache array to store shelter coordinates (roofed blocks).
-# - Implemented `find_closest_shelter_node` to allow civilian NPCs to instantly locate 
-#   the nearest indoor safety coordinate during nightfall or storm cycles.
+# - Open-Closed Principle (OCP): Dynamically filters target coordinates to the
+#   closest open, walkable node when targets are inside solid walls.
+# - Method Size Limits (Rule 4.2): All methods strictly refactored to remain < 20 lines.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # File: res://src/Domain/World/VoxelNavigationService.gd
 # ==============================================================================
@@ -39,11 +36,9 @@ func _init() -> void:
 
 
 ## Registers a walkable node coordinate into the navigation graph if not already present.
-## Also registers it as an indoor shelter if flagged as roofed by the compiler.
 func add_navigation_node(coord: Vector3i, is_roofed: bool = false) -> void:
 	_lock.lock()
 	if _coord_to_id.has(coord):
-		# If already exists but is now flagged as roofed, update the shelter cache
 		if is_roofed and not _indoor_nodes.has(coord):
 			_indoor_nodes.append(coord)
 		_lock.unlock()
@@ -92,7 +87,7 @@ func connect_nodes(coord_a: Vector3i, coord_b: Vector3i) -> void:
 	var id_a: int = _coord_to_id[coord_a]
 	var id_b: int = _coord_to_id[coord_b]
 	
-	_astar.connect_points(id_a, id_b, true) # True for bidirectional traversal
+	_astar.connect_points(id_a, id_b, true)
 	_lock.unlock()
 
 
@@ -129,46 +124,63 @@ func find_path(start_pos: Vector3, target_pos: Vector3) -> Array[Vector3]:
 		_lock.unlock()
 		return []
 		
-	# 1. Translate world floats to integer voxel coordinates
 	var start_coord := Vector3i(floori(start_pos.x), floori(start_pos.y), floori(start_pos.z))
 	var target_coord := Vector3i(floori(target_pos.x), floori(target_pos.y), floori(target_pos.z))
 	
-	# 2. Locate the closest registered graph IDs
-	var start_id := _astar.get_closest_point(Vector3(start_coord))
-	var target_id := _astar.get_closest_point(Vector3(target_coord))
+	var start_id := _resolve_target_id(start_coord)
+	var target_id := _resolve_target_id(target_coord)
 	
-	# Fallback check: If the targets map to invalid IDs, cancel routing
 	if start_id == -1 or target_id == -1:
 		_lock.unlock()
 		return []
 		
-	# 3. Solve the path using high-performance A* heuristic calculations
 	var id_path := _astar.get_id_path(start_id, target_id)
-	var world_path: Array[Vector3] = []
+	var world_path := _translate_id_path_to_world(id_path)
 	
-	# Translate sequential integer IDs back to floating world coordinates
-	for node_id: int in id_path:
-		if _id_to_coord.has(node_id):
-			var coord: Vector3i = _id_to_coord[node_id]
-			# Placed slightly above block floor to prevent capsule interpenetration clipping
-			world_path.append(Vector3(float(coord.x) + 0.5, float(coord.y) + 0.1, float(coord.z) + 0.5))
-			
 	_lock.unlock()
 	return world_path
 
 
-# ==============================================================================
-# PROACTIVE SHELTER SEEKING GEOMETRIES (Phase 2)
-# ==============================================================================
+func _resolve_target_id(target_coord: Vector3i) -> int:
+	if _coord_to_id.has(target_coord):
+		return _coord_to_id[target_coord] as int
+		
+	# If target is inside a solid block/wall, scan 3x3x3 neighbors for registered air nodes
+	var closest_id := -1
+	var min_dist_sq := 9999.0
+	
+	for x in range(-1, 2):
+		for y in range(-1, 2):
+			for z in range(-1, 2):
+				var neighbor := target_coord + Vector3i(x, y, z)
+				if _coord_to_id.has(neighbor):
+					var dist_sq := float(x*x + y*y + z*z)
+					if dist_sq < min_dist_sq:
+						min_dist_sq = dist_sq
+						closest_id = _coord_to_id[neighbor] as int
+						
+	if closest_id != -1:
+		return closest_id
+	return _astar.get_closest_point(Vector3(target_coord))
+
+
+func _translate_id_path_to_world(id_path: PackedInt64Array) -> Array[Vector3]:
+	var world_path: Array[Vector3] = []
+	for node_id in id_path:
+		var id_int := int(node_id)
+		if _id_to_coord.has(id_int):
+			var coord: Vector3i = _id_to_coord[id_int]
+			world_path.append(Vector3(float(coord.x) + 0.5, float(coord.y) + 0.1, float(coord.z) + 0.5))
+	return world_path
+
 
 ## Proximity Scanner: Returns the global coordinates of the closest registered 
 ## roofed shelter block relative to the querying NPC position.
-## Returns Vector3.ZERO if no indoor nodes are loaded yet.
 func find_closest_shelter_node(from_pos: Vector3) -> Vector3:
 	_lock.lock()
 	if _indoor_nodes.is_empty():
 		_lock.unlock()
-		return Vector3.ZERO # No shelters registered in this region yet
+		return Vector3.ZERO
 		
 	var closest_coord := Vector3i.ZERO
 	var min_dist_sq := 999999.0

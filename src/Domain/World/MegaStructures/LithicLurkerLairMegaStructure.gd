@@ -4,9 +4,11 @@
 #              Carves a deep basalt crater, generates lava pools, and spawns 
 #              the boss entity at fixed coordinates.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively the mathematical 
-#   layout of the arena and the localized entity spawning data.
-# - Liskov Substitution Principle (LSP): Fully implements IMegaStructure.
+# - Single Responsibility Principle (SRP): Exclusively manages the 
+#   geometric block-sculpting algorithms, completely decoupled from
+#   entity spawning, registries, and raw database IDs.
+# - Method Size Limits (Rule 4.2): Decomposed into modular, typesafe helper 
+#   initializers kept strictly < 20 lines of code.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -69,21 +71,3 @@ func _build_arena_floor(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_s
 	# Solidify the foundation below the arena floor
 	for gy in range(BASE_ALTITUDE_Y - 3, BASE_ALTITUDE_Y):
 		set_global_block(chunk, offset, gx, gy, gz, BlockType.Type.STONE)
-
-
-func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
-	var entities: Array[Dictionary] = []
-	
-	# Determine which chunk contains the absolute center of the arena
-	var expected_chunk_x := floori(float(global_center.x) / 16.0)
-	var expected_chunk_z := floori(float(global_center.y) / 16.0)
-	
-	if chunk_pos.x == expected_chunk_x and chunk_pos.z == expected_chunk_z:
-		var spawn_x := float(global_center.x) + 0.5
-		var spawn_y := float(BASE_ALTITUDE_Y) + 1.0
-		var spawn_z := float(global_center.y) + 0.5
-		
-		# Spawn ID 50 corresponds to the Lithic Lurker Boss
-		entities.append({"mob_id": 50, "pos": Vector3(spawn_x, spawn_y, spawn_z)})
-		
-	return entities

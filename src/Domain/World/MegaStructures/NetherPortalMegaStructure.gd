@@ -1,12 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/MegaStructures/NetherPortalMegaStructure.gd
 # Description: Handcrafted two-story volcanic brick citadel and portal sanctuary.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Coordinates strictly 
-#                the geometric lava moats, obsidian towers, and custom portal 
-#                spawning coordinates. All methods are under 20 lines.
-#              - Open-Closed Principle (OCP): Spawns the Obsidian Colossus (ID 51)
-#                as the central portal guardian on the main entrance bridge.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively manages the 
+#   geometric block-sculpting algorithms, completely decoupled from
+#   entity spawning, registries, and raw database IDs.
+# - Method Size Limits (Rule 4.2): Decomposed into modular, typesafe helper 
+#   initializers kept strictly < 20 lines of code.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -131,9 +131,9 @@ func _sculpt_sanctuary(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_x:
 			_build_sanctuary_interior(chunk, offset, gx, gz, cy, wy, dist_x, dist_z)
 
 
-func _build_sanctuary_wall(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, dx: int, dz: int, is_gate: bool) -> void:
-	if is_gate and wy <= 5: return
-	var is_win: bool = (wy == 3 or wy == 10) and ((dx == SANCTUARY_HALF_SIZE and gz % 4 == 0) or (dz == SANCTUARY_HALF_SIZE and gx % 4 == 0))
+func _build_sanctuary_wall(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, _wy: int, dx: int, dz: int, is_gate: bool) -> void:
+	if is_gate and _wy <= 5: return
+	var is_win: bool = (_wy == 3 or _wy == 10) and ((dx == SANCTUARY_HALF_SIZE and gz % 4 == 0) or (dz == SANCTUARY_HALF_SIZE and gx % 4 == 0))
 	var b_type := BlockType.Type.GLASS if (is_win and not is_gate) else BlockType.Type.STONE
 	set_global_block(chunk, offset, gx, cy, gz, b_type)
 
@@ -185,20 +185,3 @@ func _build_sanctuary_upper_suites(chunk: Chunk, offset: Vector3i, gx: int, gz: 
 			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.BRICKS if is_pedestal else BlockType.Type.AIR)
 		else:
 			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
-
-
-## Real-time replication trigger (LSP/OCP Compliant)
-func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
-	var entities: Array[Dictionary] = []
-	
-	if chunk_pos.x == -19 and chunk_pos.z == -19:
-		# Chest Loot
-		entities.append({"mob_id": 200, "pos": Vector3(-306.5, 16.0, -306.5)})
-		# Symmetrical Guards (Zombies)
-		entities.append({"mob_id": 10, "pos": Vector3(-295.5, 9.5, -298.5)}) 
-		entities.append({"mob_id": 10, "pos": Vector3(-304.5, 9.5, -298.5)}) 
-		
-		# ACT III BOSS: The Obsidian Colossus (Spawn ID 51) guarding the Portal Bridge
-		entities.append({"mob_id": 51, "pos": Vector3(-300.5, 9.5, -294.5)})
-		
-	return entities

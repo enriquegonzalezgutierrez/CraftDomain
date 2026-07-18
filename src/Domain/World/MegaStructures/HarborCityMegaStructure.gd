@@ -1,8 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/MegaStructures/HarborCityMegaStructure.gd
-# Description: HANDCRAFTED MULTI-DECK GALLEON & TWO-STORY SEAPORT TAVERN.
-#              SOLID COMPLIANCE: Monolithic 'build_chunk' loop decomposed into 
-#              isolated, SRP-compliant sculpt methods (< 20 lines each).
+# Description: Handcrafted multi-deck galleon & two-story seaport tavern.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively manages the 
+#   geometric block-sculpting algorithms, completely decoupled from
+#   entity spawning, registries, and raw database IDs.
+# - Method Size Limits (Rule 4.2): Decomposed into modular, typesafe helper 
+#   initializers kept strictly < 20 lines of code.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -94,9 +98,9 @@ func _sculpt_tavern(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -> void:
 	set_global_block(chunk, offset, gx, DOCK_LEVEL + 13, gz, BlockType.Type.OAK_PLANKS)
 
 
-func _build_tavern_wall(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int, dx: int, dz: int, is_door: bool) -> void:
-	if is_door and wy <= 3: return
-	var is_window: bool = (wy == 3 or wy == 9) and (abs(dx) == 3 or abs(dz) == 4)
+func _build_tavern_wall(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, _wy: int, dx: int, dz: int, is_door: bool) -> void:
+	if is_door and _wy <= 3: return
+	var is_window: bool = (_wy == 3 or _wy == 9) and (abs(dx) == 3 or abs(dz) == 4)
 	var b_type := BlockType.Type.GLASS if is_window else BlockType.Type.STONE
 	set_global_block(chunk, offset, gx, cy, gz, b_type)
 
@@ -193,16 +197,3 @@ func _build_masts(chunk: Chunk, offset: Vector3i, gx: int, gz: int, ship_x: int)
 		for sz: int in range(-sail_radius, sail_radius + 1):
 			if sz != 0:
 				set_global_block(chunk, offset, gx - 1, gy, gz + sz, BlockType.Type.CLOUD)
-
-
-func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
-	var entities: Array[Dictionary] = []
-	if chunk_pos.x == -9 and chunk_pos.z == 0:
-		entities.append({"mob_id": 100, "pos": Vector3(-138.5, 12.0, 3.5)})
-		entities.append({"mob_id": 101, "pos": Vector3(-136.5, 12.0, -3.5)})
-		entities.append({"mob_id": 102, "pos": Vector3(-131.5, 12.5, -4.5)})
-	elif chunk_pos.x == -10 and chunk_pos.z == 0:
-		entities.append({"mob_id": 102, "pos": Vector3(-150.5, 17.5, 0.5)})
-		entities.append({"mob_id": 200, "pos": Vector3(-146.5, 17.5, -2.5)})
-		entities.append({"mob_id": 100, "pos": Vector3(-162.5, 7.5, -3.5)})
-	return entities

@@ -2,9 +2,12 @@
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service responsible for managing dynamic herd
 #              spawning, local chunk populating, and mission objective targets.
-#              SOLID COMPLIANCE: Decomposed into highly cohesive, short sub-methods.
-#              Introduced an OCP-compliant Quest Objective Spawner with explicit
-#              target allocation to eliminate duplicates and double arrows.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates exclusively dynamic 
+#   animal herds and quest target placements, decoupling rosters from blueprints.
+# - Dependency Inversion Principle (DIP): Depends on the abstract domain
+#   interface of StructurePopulationService instead of untyped dictionaries.
+# - Method Size Limits (Rule 4.2): All helper methods strictly remain < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -76,8 +79,6 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 		_spawn_wilderness_wildlife(chunk_offset, world_state, world_node, biome, spawned_nodes)
 
 	_spawn_megastructure_defenders(chunk.position, world_state, world_node, spawned_nodes)
-	
-	# SOLID UPGRADE: Ensure active quest targets are dynamically spawned in this chunk
 	_spawn_active_quest_objectives(chunk, chunk_offset, world_state, world_node, spawned_nodes)
 
 
@@ -132,28 +133,25 @@ func _spawn_wildlife_group(wildlife_ids: Array[int], chunk_offset: Vector3, worl
 
 
 func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
-	var mega_entities := MegaStructureService.get_entities_for_chunk(chunk_pos)
-	for edata: Dictionary in mega_entities:
-		var mob_id := edata["mob_id"] as int
-		var exact_pos := edata["pos"] as Vector3
-		
-		if MobRegistry.has_mob(mob_id):
-			var spawn_pos := exact_pos
-			if _is_voxel_spawn_space_free(world_state, spawn_pos):
-				var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
-				if BlockType.is_solid(block_at_pos):
-					spawn_pos.y = world_state.get_highest_solid_y(floori(spawn_pos.x), floori(spawn_pos.z))
-					
-				var spawn_node := MobRegistry.create_mob(mob_id, spawn_pos)
-				if spawn_node != null:
-					spawn_node.set_meta("spawn_id", mob_id) # Metadata tag injected for O(1) tracking
-					world_node.add_child(spawn_node)
-					spawned_nodes.append(spawn_node)
+	# Centralized Spawning Registry (SOLID Compliant)
+	var pop_points := StructurePopulationService.get_population_for_chunk(chunk_pos)
+	
+	for point: StructurePopulationService.PopulationPoint in pop_points:
+		if not point.is_prop and MobRegistry.has_mob(point.spawn_id):
+			_spawn_decoupled_landmark_mob(point, world_state, world_node, spawned_nodes)
 
 
-# ==============================================================================
-# SOLID QUEST OBJECTIVE GUARANTOR PIPELINE (SRP / OCP Compliant)
-# ==============================================================================
+func _spawn_decoupled_landmark_mob(point: StructurePopulationService.PopulationPoint, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
+	var spawn_pos := point.global_pos
+	
+	# FIXED: Spawns exactly at predefined room Y, preventing roof snapping
+	if _is_voxel_spawn_space_free(world_state, spawn_pos):
+		var spawn_node := MobRegistry.create_mob(point.spawn_id, spawn_pos)
+		if spawn_node != null:
+			spawn_node.set_meta("spawn_id", point.spawn_id)
+			world_node.add_child(spawn_node)
+			spawned_nodes.append(spawn_node)
+
 
 func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
 	var active_q := QuestService.get_active_quest() as Quest
@@ -163,18 +161,14 @@ func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_s
 	var target_pos := active_q.target_position
 	var target_chunk_pos := world_state.global_to_chunk_pos(Vector3i(target_pos))
 	
-	# Verifies if the active mission's target coordinates fall inside the loading chunk
 	if target_chunk_pos == chunk.position:
 		var mob_id: int = QUEST_TARGET_MOBS[active_q.quest_id]
-		
-		# 1. Search if an eligible entity has ALREADY been spawned in this chunk (Prevents double merchants)
 		var existing_target := _find_eligible_entity_in_list(spawned_nodes, mob_id)
+		
 		if existing_target != null:
 			existing_target.quest_target_id = active_q.quest_id
-			print("[MobSpawning] Existing entity %s designated as unique Quest Target for %s" % [existing_target.name, active_q.quest_id])
 			return
 			
-		# 2. If none exists, spawn a new unique one
 		_spawn_exact_quest_mob(mob_id, target_pos, chunk_offset, world_state, world_node, spawned_nodes, active_q.quest_id)
 
 
@@ -188,28 +182,18 @@ func _find_eligible_entity_in_list(nodes: Array[Node], mob_id: int) -> Character
 
 func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node], quest_id: String) -> void:
 	var spawn_pos := target_pos
-	var block_coord := Vector3i(spawn_pos)
 	
-	# Ground Alignment check: prevent vertical clipping inside basalt rocks or air
-	var block := world_state.get_block(block_coord)
-	if BlockType.is_solid(block) or block == BlockType.Type.AIR:
-		spawn_pos.y = world_state.get_highest_solid_y(block_coord.x, block_coord.z)
-		
+	# FIXED: Spawns exactly at predefined target Y, preventing roof snapping
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var mob := MobRegistry.create_mob(mob_id, spawn_pos)
 		if mob != null:
-			mob.set_meta("spawn_id", mob_id) # Metadata tag injected for O(1) tracking
-			mob.quest_target_id = quest_id  # Explicit unique quest mapping
+			mob.set_meta("spawn_id", mob_id)
+			mob.quest_target_id = quest_id
 			world_node.add_child(mob)
 			spawned_nodes.append(mob)
-			print("[MobSpawning] Successfully spawned Quest Target Mob ID %d at %s" % [mob_id, spawn_pos])
 	else:
 		_spawn_and_register_entity(mob_id, chunk_offset, OFFSET_HALF_CHUNK, OFFSET_HALF_CHUNK, world_state, world_node, spawned_nodes, true)
 
-
-# ==============================================================================
-# SPATIAL ALIGNMENTS & UTILITIES (Strict Static Typing & void Returns)
-# ==============================================================================
 
 func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node], allow_any_solid: bool = false) -> void:
 	if not MobRegistry.has_mob(spawn_id): return
@@ -225,31 +209,31 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 	if _is_voxel_spawn_space_free(world_state, pos):
 		var mob := MobRegistry.create_mob(spawn_id, pos)
 		if mob != null:
-			mob.set_meta("spawn_id", spawn_id) # Metadata tag injected for O(1) tracking
+			mob.set_meta("spawn_id", spawn_id)
 			world_node.add_child(mob)
 			list.append(mob)
 
 
-func _resolve_habitat_ground_y(world_state: WorldState, global_x: int, global_z: int, habitat: int, allow_any_solid: bool) -> float:
+func _resolve_habitat_ground_y(world_state_ref: WorldState, global_x: int, global_z: int, habitat: int, allow_any_solid: bool) -> float:
 	var gy := -1.0
 	if habitat == MobRegistry.Habitat.TERRESTRIAL:
-		gy = _get_ground_surface_y(world_state, global_x, global_z, allow_any_solid)
+		gy = _get_ground_surface_y(world_state_ref, global_x, global_z, allow_any_solid)
 	elif habitat == MobRegistry.Habitat.AQUATIC:
-		gy = _get_water_surface_y(world_state, global_x, global_z)
+		gy = _get_water_surface_y(world_state_ref, global_x, global_z)
 	else:
-		gy = _get_water_surface_y(world_state, global_x, global_z)
+		gy = _get_water_surface_y(world_state_ref, global_x, global_z)
 		if gy < 0.0:
-			gy = _get_ground_surface_y(world_state, global_x, global_z, allow_any_solid)
+			gy = _get_ground_surface_y(world_state_ref, global_x, global_z, allow_any_solid)
 	return gy
 
 
-func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int, allow_any_solid: bool) -> float:
+func _get_ground_surface_y(world_state_ref: WorldState, global_x: int, global_z: int, allow_any_solid: bool) -> float:
 	var top_block_type := BlockType.Type.AIR
 	var top_y := -1
 	
 	for y: int in range(HEIGHT_MAX_TERRAIN_LIMIT, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
-		var block_type := world_state.get_block(check_pos)
+		var block_type := world_state_ref.get_block(check_pos)
 		if block_type != BlockType.Type.AIR:
 			top_block_type = block_type
 			top_y = y
@@ -258,81 +242,81 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 	if top_y == -1 or top_block_type == BlockType.Type.WATER or top_block_type == BlockType.Type.LAVA:
 		return -1.0 
 	
-	return _solve_solid_ground_height(world_state, global_x, global_z, top_y, allow_any_solid)
+	return _solve_solid_ground_height(world_state_ref, global_x, global_z, top_y, allow_any_solid)
 
 
-func _solve_solid_ground_height(world_state: WorldState, global_x: int, global_z: int, top_y: int, allow_any_solid: bool) -> float:
+func _solve_solid_ground_height(world_state_ref: WorldState, global_x: int, global_z: int, top_y: int, allow_any_solid: bool) -> float:
 	var hit_y := -1
 	for y: int in range(top_y, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
-		var block_type := world_state.get_block(check_pos)
+		var block_type := world_state_ref.get_block(check_pos)
 		if block_type != BlockType.Type.AIR and block_type != BlockType.Type.WATER:
 			hit_y = y
 			break
 			
 	if hit_y == -1: return -1.0
 		
-	var surface_block := world_state.get_block(Vector3i(global_x, hit_y, global_z))
+	var surface_block := world_state_ref.get_block(Vector3i(global_x, hit_y, global_z))
 	var def := BlockLibrary.get_definition(surface_block) as BlockDefinition
 	
 	if def == null or (not allow_any_solid and not def.is_spawnable_soil) or (allow_any_solid and not def.is_solid):
 		return -1.0
 		
-	var space_above_1 := world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
-	var space_above_2 := world_state.get_block(Vector3i(global_x, hit_y + 2, global_z))
+	var space_above_1 := world_state_ref.get_block(Vector3i(global_x, hit_y + 1, global_z))
+	var space_above_2 := world_state_ref.get_block(Vector3i(global_x, hit_y + 2, global_z))
 	if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
 		return float(hit_y) + 1.0
 		
 	return -1.0
 
 
-func _get_water_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
+func _get_water_surface_y(world_state_ref: WorldState, global_x: int, global_z: int) -> float:
 	var hit_y := -1
 	
 	for y: int in range(HEIGHT_MAX_TERRAIN_LIMIT, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
-		var block_type := world_state.get_block(check_pos)
+		var block_type := world_state_ref.get_block(check_pos)
 		if block_type != BlockType.Type.AIR:
 			hit_y = y
 			break
 			
 	if hit_y == -1: return -1.0
 		
-	var surface_block := world_state.get_block(Vector3i(global_x, hit_y, global_z))
+	var surface_block := world_state_ref.get_block(Vector3i(global_x, hit_y, global_z))
 	if surface_block == BlockType.Type.WATER:
-		var space_above_1 := world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))
+		var space_above_1 := world_state_ref.get_block(Vector3i(global_x, hit_y + 1, global_z))
 		if not BlockType.is_solid(space_above_1):
 			return float(hit_y) - 0.35
 			
 	return -1.0
 
 
-func _is_voxel_spawn_space_free(world_state: WorldState, spawn_pos: Vector3) -> bool:
+func _is_voxel_spawn_space_free(world_state_ref: WorldState, spawn_pos: Vector3) -> bool:
 	var base_coord := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
-	var feet_block := world_state.get_block(base_coord)
-	var chest_block := world_state.get_block(base_coord + Vector3i(0, 1, 0))
+	var feet_block := world_state_ref.get_block(base_coord)
+	var chest_block := world_state_ref.get_block(base_coord + Vector3i(0, 1, 0))
 	return not BlockType.is_solid(feet_block) and not BlockType.is_solid(chest_block)
 
 
 func _detect_chunk_biome_id(chunk_pos: Vector3i, world_node: Node) -> int:
-	var generator_node: WorldGenerator = world_node.get("generator") as WorldGenerator if is_instance_valid(world_node) else null
-	if is_instance_valid(generator_node) and "_terrain_noise" in generator_node:
-		var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
+	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator if is_instance_valid(world_node) else null
+	if is_instance_valid(generator) and "_terrain_noise" in generator:
+		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if terrain_noise != null:
-			var center_x := chunk_pos.x * Chunk.SIZE + int(OFFSET_HALF_CHUNK)
-			var center_z := chunk_pos.z * Chunk.SIZE + int(OFFSET_HALF_CHUNK)
+			var center_x := chunk_pos.x * Chunk.SIZE + 8
+			var center_z := chunk_pos.z * Chunk.SIZE + 8
 			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
 			return profile.biome_id
 	return 2
 
 
 func _is_village_chunk(chunk_pos: Vector3i, world_node: Node) -> bool:
-	var generator_node: WorldGenerator = world_node.get("generator") as WorldGenerator if is_instance_valid(world_node) else null
-	if is_instance_valid(generator_node) and "_terrain_noise" in generator_node:
-		var terrain_noise: FastNoiseLite = generator_node.get("_terrain_noise") as FastNoiseLite
+	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator if is_instance_valid(world_node) else null
+	if is_instance_valid(generator) and "_terrain_noise" in generator:
+		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if terrain_noise != null:
-			var center_x := chunk_pos.x * Chunk.SIZE + int(OFFSET_HALF_CHUNK)
-			var center_z := chunk_pos.z * Chunk.SIZE + int(OFFSET_HALF_CHUNK)
+			var center_x := chunk_pos.x * Chunk.SIZE + 8
+			var center_z := chunk_pos.z * Chunk.SIZE + 8
 			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
 			return profile.landmark_id == 3
 	return false

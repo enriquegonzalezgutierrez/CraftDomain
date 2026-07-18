@@ -1,9 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/MegaStructures/GrandCastleMegaStructure.gd
 # Description: Handcrafted two-story colossal fortress.
-#              SOLID COMPLIANCE: Monolithic 'build_chunk' loop decomposed into 
-#              isolated, SRP-compliant sculpt methods (< 20 lines each).
-#              Corrected: Explicit static typing to resolve compiler inference errors.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Exclusively manages the 
+#                geometric block-sculpting algorithms, completely decoupled from
+#                entity spawning, registries, and raw database IDs.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -63,19 +64,53 @@ func _sculpt_vertical_column(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -
 
 
 func _sculpt_terrain_baseline(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_x: int, dist_z: int) -> void:
-	if dist_x <= CASTLE_WALL_RADIUS and dist_z <= CASTLE_WALL_RADIUS:
+	var inside_castle := dist_x <= CASTLE_WALL_RADIUS and dist_z <= CASTLE_WALL_RADIUS
+	
+	if inside_castle:
+		# Clear airspace above the castle floor
 		for gy: int in range(BASE_ALTITUDE_Y + 1, 32):
 			_clear_air_block(chunk, offset, gx, gz, gy)
 			
+		_build_castle_inner_floor(chunk, offset, gx, gz, dist_x, dist_z)
+	else:
+		# Outside: Retain natural noise height, but sculpt a walkable stair ramp at the gates
+		_sculpt_walkable_ramps(chunk, offset, gx, gz, dist_x, dist_z)
+
+
+func _build_castle_inner_floor(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_x: int, dist_z: int) -> void:
 	for gy: int in range(0, BASE_ALTITUDE_Y + 1):
 		var ly: int = gy - offset.y
-		if not chunk.is_within_bounds(gx - offset.x, ly, gz - offset.z): continue
+		if not chunk.is_within_bounds(gx - offset.x, ly, gz - offset.z): 
+			continue
 		
 		if gy < BASE_ALTITUDE_Y:
 			chunk.set_block(gx - offset.x, ly, gz - offset.z, BlockType.Type.STONE)
 		elif gy == BASE_ALTITUDE_Y:
-			var is_stone: bool = (abs(gx - global_center.x) <= 2 and gz >= global_center.y + CASTLE_WALL_RADIUS) or (dist_x < KEEP_WIDTH_HALF and dist_z < KEEP_LENGTH_HALF)
+			var is_stone: bool = (dist_x < KEEP_WIDTH_HALF and dist_z < KEEP_LENGTH_HALF)
 			chunk.set_block(gx - offset.x, ly, gz - offset.z, BlockType.Type.STONE if is_stone else BlockType.Type.GRASS)
+
+
+func _sculpt_walkable_ramps(chunk: Chunk, offset: Vector3i, gx: int, gz: int, _dist_x: int, _dist_z: int) -> void:
+	var c_x: int = global_center.x
+	var c_z: int = global_center.y
+	
+	# Symmetrical gate limits evaluation
+	var is_s_ramp: bool = abs(gx - c_x) <= 3 and (gz < c_z - CASTLE_WALL_RADIUS and gz >= c_z - CASTLE_WALL_RADIUS - 4)
+	var is_n_ramp: bool = abs(gx - c_x) <= 3 and (gz > c_z + CASTLE_WALL_RADIUS and gz <= c_z + CASTLE_WALL_RADIUS + 4)
+	
+	if is_s_ramp or is_n_ramp:
+		var step_dist: int = int(abs(gz - (c_z - CASTLE_WALL_RADIUS))) if is_s_ramp else int(abs(gz - (c_z + CASTLE_WALL_RADIUS)))
+		var target_ramp_y: int = BASE_ALTITUDE_Y - step_dist
+		
+		# Sculpt solid stone support ramp
+		for gy: int in range(0, target_ramp_y + 1):
+			var ly: int = gy - offset.y
+			if chunk.is_within_bounds(gx - offset.x, ly, gz - offset.z):
+				chunk.set_block(gx - offset.x, ly, gz - offset.z, BlockType.Type.STONE)
+				
+		# Clear airspace above the ramp steps
+		for gy: int in range(target_ramp_y + 1, 32):
+			_clear_air_block(chunk, offset, gx, gz, gy)
 
 
 func _clear_air_block(chunk: Chunk, offset: Vector3i, gx: int, gz: int, gy: int) -> void:
@@ -90,7 +125,9 @@ func _sculpt_outer_walls(chunk: Chunk, offset: Vector3i, gx: int, gz: int, dist_
 	var is_wall_border: bool = (dist_x == CASTLE_WALL_RADIUS and dist_z <= CASTLE_WALL_RADIUS) or (dist_z == CASTLE_WALL_RADIUS and dist_x <= CASTLE_WALL_RADIUS)
 	if not is_wall_border: return
 		
-	var is_gate: bool = (gz == global_center.y + CASTLE_WALL_RADIUS) and (dist_x <= 3)
+	# Symmetrical North and South Gates carved as open AIR paths
+	var is_gate: bool = (abs(gz - global_center.y) == CASTLE_WALL_RADIUS) and (dist_x <= 3)
+	
 	for wy: int in range(1, RAMPART_MAX_LEVEL + 2):
 		if is_gate and wy <= 5: continue
 			
@@ -236,17 +273,21 @@ func _build_wing_upper_rooms(chunk: Chunk, offset: Vector3i, gx: int, gz: int, c
 		var is_door: bool = (gx == 190 or gx == 210) and wy <= 9
 		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR if is_door else BlockType.Type.STONE)
 	else:
-		if gx < global_center.x and gz < 194:
-			var is_bed: bool = (gx >= 189 and gx <= 190) and (gz >= 185 and gz <= 187) and wy == 7
-			var is_pil: bool = (gx >= 189 and gx <= 190) and (gz == 185) and wy == 8
-			if is_bed: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.WOOD)
-			elif is_pil: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.CLOUD)
-			else: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
-		elif gx > global_center.x and gz < 194:
-			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.BRICKS if (gx == 210 and gz == 185 and wy == 7) else BlockType.Type.AIR)
-		else:
-			var is_tbl: bool = (gx >= 208 and gx <= 210) and (gz >= 198 and gz <= 201) and wy == 7
-			set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.WOOD if is_tbl else BlockType.Type.AIR)
+		_build_internal_wing_props(chunk, offset, gx, gz, cy, wy)
+
+
+func _build_internal_wing_props(chunk: Chunk, offset: Vector3i, gx: int, gz: int, cy: int, wy: int) -> void:
+	if gx < global_center.x and gz < 194:
+		var is_bed: bool = (gx >= 189 and gx <= 190) and (gz >= 185 and gz <= 187) and wy == 7
+		var is_pil: bool = (gx == 189 and gx <= 190) and (gz == 185) and wy == 8
+		if is_bed: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.WOOD)
+		elif is_pil: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.CLOUD)
+		else: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
+	elif gx > global_center.x and gz < 194:
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.BRICKS if (gx == 210 and gz == 185 and wy == 7) else BlockType.Type.AIR)
+	else:
+		var is_tbl: bool = (gx >= 208 and gx <= 210) and (gz >= 198 and gz <= 201) and wy == 7
+		set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.WOOD if is_tbl else BlockType.Type.AIR)
 
 
 func _sculpt_rooftop_dome(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -> void:
@@ -271,9 +312,10 @@ func _sculpt_rooftop_dome(chunk: Chunk, offset: Vector3i, gx: int, gz: int) -> v
 				if wy >= 14: set_global_block(chunk, offset, gx, cy, gz, BlockType.Type.AIR)
 
 
+## Restores the exact, original mission targets and chests spawning parameters
 func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
 	var entities: Array[Dictionary] = []
-	var ground_y := float(BASE_ALTITUDE_Y + 1)
+	var ground_y: float = float(BASE_ALTITUDE_Y + 1)
 	
 	if chunk_pos.x == 12 and chunk_pos.z == 12:
 		entities.append({"mob_id": 102, "pos": Vector3(float(global_center.x - 3) + 0.5, ground_y, float(global_center.y + CASTLE_WALL_RADIUS) + 0.5)})

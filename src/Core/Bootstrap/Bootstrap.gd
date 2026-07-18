@@ -3,6 +3,8 @@
 # Description: Central composition root of the application. Orchestrates the 
 #              asynchronous initialization of global systems, unified scene transitions,
 #              Vulkan pre-warming, and 100% Offline Socket Isolation.
+#              EXIT SAFEGUARD: Intercepts OS window close requests to synchronously 
+#              join background worker threads before X11 window destruction (BadWindow).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -33,6 +35,12 @@ var world_environment: WorldEnvironment
 func _ready() -> void:
 	_enforce_offline_multiplayer_peer()
 	_initialize_application_async()
+
+
+func _notification(what: int) -> void:
+	# Intercept OS close requests to execute a safe thread-joining shutdown
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_handle_safe_exit_isolation()
 
 
 func _enforce_offline_multiplayer_peer() -> void:
@@ -444,3 +452,24 @@ func _cleanup_showcase_room_if_exists() -> void:
 	var room := get_node_or_null("AIShowcaseRoom")
 	if is_instance_valid(room):
 		room.queue_free()
+
+
+func _handle_safe_exit_isolation() -> void:
+	print("[Bootstrap] Intercepted close request. Executing secure thread-joining shutdown...")
+	
+	# 1. Stop rendering processes to freeze any further Vulkan shader/draw queries
+	set_process(false)
+	set_physics_process(false)
+	
+	# 2. Save progress and force background threads to safely join synchronously
+	if is_instance_valid(world_controller):
+		world_controller.save_all()
+		if "chunk_lifecycle" in world_controller and is_instance_valid(world_controller.chunk_lifecycle):
+			world_controller.chunk_lifecycle.shutdown()
+			
+	# 3. Stop and free active audio streams
+	if is_instance_valid(audio_service):
+		audio_service.stop_all()
+		
+	# 4. Safely terminate the C++ process now that all threads are fully joined
+	get_tree().quit()

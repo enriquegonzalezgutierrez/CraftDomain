@@ -6,6 +6,8 @@
 #              budget to amortize chunk injections, eliminating main-thread stutters.
 #              MILESTONE 2 (DIRECT ARCHITECTURE): Purged ChunkNode instantiations.
 #              Delegates to DirectChunkRenderingService for SceneTree bypassing.
+#              THREAD FIX: Resolves the collision lock race condition by running 
+#              unconditional thread cleanups on obsolete task discards.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -200,7 +202,11 @@ func _render_completed_chunks_from_queue(player_active: bool) -> void:
 
 func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var chunk_pos: Vector3i = task.chunk.position
-	if _is_task_version_obsolete(task, chunk_pos): 
+	
+	# Symmetrical Thread Guardrail: Even if the task is obsolete, we must still clean 
+	# up its thread-state lock and trigger the new rebuild, but skip rendering old frames.
+	if _is_task_version_obsolete(task, chunk_pos):
+		_cleanup_task_states(chunk_pos)
 		return
 		
 	_cleanup_task_states(chunk_pos)

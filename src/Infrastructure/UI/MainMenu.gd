@@ -2,6 +2,8 @@
 # Pathfile: res://src/Infrastructure/UI/MainMenu.gd
 # Description: Tactile Glassmorphic Main Menu controller. Handles game boots,
 #              modal popups, cooperative lobby connections, and author attribution.
+#              EXIT FIX: Gracefully stops the VideoStreamPlayer on shutdown
+#              notifications to prevent out-of-order X11 geometry queries (BadWindow).
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly Main Menu 
 #   navigation events and settings transition states.
@@ -68,6 +70,8 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED:
 		_refresh_localized_text()
+	elif what == NOTIFICATION_PREDELETE or what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_stop_video_stream()
 
 
 func _process(delta: float) -> void:
@@ -179,5 +183,12 @@ func _on_settings_closed() -> void:
 		_settings_overlay.queue_free()
 
 
+func _stop_video_stream() -> void:
+	var video := get_node_or_null("MenuBackground") as VideoStreamPlayer
+	if is_instance_valid(video):
+		video.stop()
+
+
 func _on_exit_pressed() -> void:
+	_stop_video_stream()
 	get_tree().quit()

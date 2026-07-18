@@ -2,13 +2,9 @@
 # Pathfile: res://src/Domain/World/MegaStructureService.gd
 # Description: Domain Service managing registration, lookup, and physical block 
 #              generation routing of large fixed Mega-Structures (POIs).
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Only manages global fixed 
-#                landmarks and their chunk-offset calculations.
-#              - Open-Closed Principle (OCP): Registers default mega-structures 
-#                internally on startup, removing registration bloat from Bootstrap.
-# MILESTONE 16 UPGRADE:
-#              - Registered the newly designed LithicLurkerLairMegaStructure (Act I Boss).
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Only manages global fixed 
+#   landmarks, fully decoupled from entity spawning or chunk population rosters.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -58,14 +54,6 @@ static func apply_mega_structures(chunk: Chunk) -> void:
 		# If the chunk intersects the structure's territory, let it sculpt!
 		if chunk_rect.intersects(s_rect):
 			s.build_chunk(chunk, c_pos)
-
-
-## Consults structures if they have specific entities (Guards/NPCs/Props) for this chunk.
-static func get_entities_for_chunk(chunk_pos: Vector3i) -> Array[Dictionary]:
-	var entities: Array[Dictionary] = []
-	for s: IMegaStructure in _structures:
-		entities.append_array(s.get_entities_for_chunk(chunk_pos))
-	return entities
 
 
 ## Public API: Returns all globally registered fixed points of interest.

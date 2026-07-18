@@ -2,11 +2,11 @@
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
 # Description: Infrastructure NPC Sensory AI Brain. Coordinates task schedules,
 #              social gossip, and organic curved pathfinding.
-#              SOLID CLEANUP: Separated vector calculations from velocity writing 
-#              to allow steering to dynamically slide NPCs along wall colliders.
-#              STABILIZATION UPGRADE: Implemented a typesafe 1.2s Stuck Resolver 
-#              to automatically re-route NPCs when colliding with walls/corners,
-#              and throttled pathfinding to prevent steering overwrite jitters.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly task states
+#   and sensors, delegating steering and kinematics to specialized services.
+# - Symmetrical Path Accuracy: Disables organic yaw sways during A* pathfinding
+#   navigation, guaranteeing mathematical straight-line precision.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -70,14 +70,11 @@ func process_ai(delta: float) -> void:
 	if is_instance_valid(AITelemetryService.instance):
 		AITelemetryService.instance.process_telemetry_flush(delta)
 		
-	# 1. PHASE A: Calculate base desired direction (Throttled or Unthrottled)
 	_calculate_base_desired_direction(delta)
 	
-	# 2. PHASE B: Allow the steering component to adjust the desired vector on obstacles
 	if is_instance_valid(_steering_component):
 		_steering_component.process_steering(delta)
 		
-	# 3. PHASE C: Apply the final, safe steered vector to the physical velocity
 	_apply_movement_vectors(delta)
 
 
@@ -94,19 +91,12 @@ func _calculate_base_desired_direction(delta: float) -> void:
 func _execute_throttled_ai_tick() -> void:
 	_locate_navigation_service_if_missing()
 	
-	# 120 FPS GUARDRAIL: We calculate the path destination only on throttled ticks (4Hz)
-	# to allow steering tangents to slide the NPC on intermediate frames without jitters.
 	if current_task == TaskState.WANDERING and _active_path.size() > 0:
 		_navigate_along_active_path_no_velocity()
 	
 	var has_override: bool = _evaluate_active_behavior()
 	if not has_override:
 		_process_fallback_village_routines()
-
-
-func _process_path_calculations_unthrottled() -> void:
-	# Cleaned: Pathfinder calculations are now strictly bound to throttled ticks.
-	pass
 
 
 func _evaluate_active_behavior() -> bool:
@@ -217,18 +207,35 @@ func _apply_movement_vectors(delta: float) -> void:
 			_host.velocity.z = wander_direction.z * (base_speed * 0.25)
 			stuck_timer = 0.0
 		TaskState.WANDERING, TaskState.PANIC:
-			# Symmetrical Yaw Sway: Apply continuous slight sways for natural walking
-			var elapsed := float(Time.get_ticks_msec()) / 1000.0
-			var seed_val := float(_host.npc_seed) * 0.12
-			var sway_angle := sin(elapsed * 1.5 + seed_val) * 0.22 
-			var final_dir := wander_direction.rotated(Vector3.UP, sway_angle).normalized()
-			
-			var speed_mult: float = 2.8 if current_task == TaskState.PANIC else 1.0
-			_host.velocity.x = final_dir.x * base_speed * speed_mult
-			_host.velocity.z = final_dir.z * base_speed * speed_mult
-			
-			_evaluate_stuck_state(delta)
-			_keep_gaze_within_tether()
+			_execute_linear_or_sway_walk(base_speed, delta)
+
+
+func _execute_linear_or_sway_walk(base_speed: float, delta: float) -> void:
+	var final_dir := wander_direction
+	
+	# Symmetrical precision: Disable horizontal sway during strict path navigation
+	if not _is_navigating_path_local() and current_task == TaskState.WANDERING:
+		var elapsed := float(Time.get_ticks_msec()) / 1000.0
+		var seed_val := float(_host.npc_seed) * 0.12
+		var sway_angle := sin(elapsed * 1.5 + seed_val) * 0.22 
+		final_dir = wander_direction.rotated(Vector3.UP, sway_angle).normalized()
+		
+	var speed_mult: float = 2.8 if current_task == TaskState.PANIC else 1.0
+	_host.velocity.x = final_dir.x * base_speed * speed_mult
+	_host.velocity.z = final_dir.z * base_speed * speed_mult
+	
+	_evaluate_stuck_state(delta)
+	_keep_gaze_within_tether()
+
+
+func _is_navigating_path_local() -> bool:
+	if _host.has_meta("guard_active_path"):
+		var path: Array = _host.get_meta("guard_active_path") as Array
+		return not path.is_empty()
+	if _host.has_meta("villager_active_path"):
+		var path: Array = _host.get_meta("villager_active_path") as Array
+		return not path.is_empty()
+	return _active_path.size() > 0
 
 
 func _evaluate_stuck_state(delta: float) -> void:
@@ -237,7 +244,7 @@ func _evaluate_stuck_state(delta: float) -> void:
 	
 	if is_trying_to_move and is_physically_stopped and _host.is_on_floor():
 		stuck_timer += delta
-		if stuck_timer >= 1.2: # If trapped against a corner for more than 1.2 seconds
+		if stuck_timer >= 1.2:
 			_resolve_stuck_state()
 	else:
 		stuck_timer = 0.0
@@ -247,7 +254,6 @@ func _resolve_stuck_state() -> void:
 	_active_path.clear()
 	_current_path_index = 0
 	
-	# Project reverse vector with random deflection angle
 	var reverse_dir := -wander_direction.normalized()
 	reverse_dir = reverse_dir.rotated(Vector3.UP, randf_range(-0.8, 0.8)).normalized()
 	
@@ -256,9 +262,7 @@ func _resolve_stuck_state() -> void:
 	task_timer = randf_range(1.5, 3.5)
 	stuck_timer = 0.0
 	
-	# Agile hop to clear any tiny visual brick lips/crevices
 	_host.velocity.y = 4.0
-	print("[NPCAI] Resolved stuck state on %s. Clearing path and re-routing." % _host.name)
 
 
 ## Decoupled: Pathfinder ONLY calculates direction, never writes directly to velocity

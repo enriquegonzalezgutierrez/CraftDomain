@@ -1,7 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCObstacleSteering.gd
 # Description: Infrastructure Component managing 3D whisker raycast avoidance,
-#              cliff edge sensing, and intelligent step-climbing jumps (SRP).
+#              cliff edge sensing, and intelligent step-climbing jumps.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates exclusively physical 
+#   whisker raycasts and steering, fully decoupled from high-level state decisions.
+# - Voxel Navigation Integration: Allows step-climbing and stuck-resolving to
+#   execute during active A* paths, preventing NPCs from blocking on block lips.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -26,9 +31,27 @@ func process_steering(delta: float) -> void:
 	if not is_instance_valid(host) or not is_instance_valid(ai_component):
 		return
 		
-	_perform_proactive_whisker_avoidance(delta)
+	# Cliff and hazard avoidance must run under all conditions to prevent falling into the void
 	_perform_cliff_and_hazard_avoidance(delta)
+	
+	# If navigating a pre-compiled safe A* path, we bypass horizontal whisker avoidance
+	# to prevent fighting with the pathfinder's direction, but we MUST process step-climbing.
+	if _is_navigating_path():
+		_handle_step_climbing_and_unsticking(delta)
+		return
+		
+	_perform_proactive_whisker_avoidance(delta)
 	_handle_step_climbing_and_unsticking(delta)
+
+
+func _is_navigating_path() -> bool:
+	if host.has_meta("guard_active_path"):
+		var path: Array = host.get_meta("guard_active_path") as Array
+		return not path.is_empty()
+	if host.has_meta("villager_active_path"):
+		var path: Array = host.get_meta("villager_active_path") as Array
+		return not path.is_empty()
+	return false
 
 
 func _perform_proactive_whisker_avoidance(delta: float) -> void:
@@ -84,7 +107,6 @@ func _perform_cliff_and_hazard_avoidance(delta: float) -> void:
 	var wander_direction: Vector3 = ai_component.get("wander_direction") as Vector3
 	var habitat: int = host.get("entity_habitat") if "entity_habitat" in host else 0
 	
-	# Skip checks for flying entities (Gargoyles/Birds) or aquatic entities
 	if wander_direction == Vector3.ZERO or not host.is_on_floor() or habitat == 2:
 		return
 		
@@ -92,13 +114,12 @@ func _perform_cliff_and_hazard_avoidance(delta: float) -> void:
 	if space_state == null:
 		return
 		
-	# Project a vertical look-ahead point 1.2m in front of the entity's feet
 	var look_ahead := host.global_position + wander_direction.normalized() * 1.2
-	var start_pos := look_ahead + Vector3(0.0, 0.5, 0.0) # Start slightly above feet level
-	var end_pos := look_ahead + Vector3(0.0, -1.8, 0.0)  # Scan 1.8 meters down
+	var start_pos := look_ahead + Vector3(0.0, 0.5, 0.0) 
+	var end_pos := look_ahead + Vector3(0.0, -1.8, 0.0)  
 	
 	var query := PhysicsRayQueryParameters3D.create(start_pos, end_pos)
-	query.collision_mask = 1 # Solid chunk mesh collision layer
+	query.collision_mask = 1 
 	query.exclude = [host.get_rid()]
 	
 	var result := space_state.intersect_ray(query)
@@ -107,18 +128,15 @@ func _perform_cliff_and_hazard_avoidance(delta: float) -> void:
 
 
 func _execute_cliff_rebound(wander_direction: Vector3, delta: float) -> void:
-	# Reverse direction 180 degrees back onto safe solid ground
 	var turn_dir := -wander_direction.normalized()
-	# Apply slight randomized deflection to prevent getting locked in back-and-forth loops
 	turn_dir = turn_dir.rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
 	
 	ai_component.set("wander_direction", turn_dir)
 	
-	# Apply a brief horizontal brake to prevent inertia from sliding them off the edge
 	var v := host.velocity
 	v.x = move_toward(v.x, 0.0, 15.0 * delta)
 	v.z = move_toward(v.z, 0.0, 15.0 * delta)
-	host.set("velocity", v)
+	host.velocity = v
 
 
 func _handle_step_climbing_and_unsticking(delta: float) -> void:
@@ -171,7 +189,7 @@ func _try_step_climb(target_coord: Vector3i, world_node: Node) -> void:
 			
 		var v := host.velocity
 		v.y = jump_vel
-		host.set("velocity", v)
+		host.velocity = v
 		host.set_meta("last_jump_time", current_time)
 		ai_component.set("stuck_timer", 0.0)
 

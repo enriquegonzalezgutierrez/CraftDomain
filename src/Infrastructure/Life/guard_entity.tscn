@@ -11,9 +11,6 @@ height = 2.1119142
 
 [node name="GuardEntity" type="CharacterBody3D" unique_id=862353002]
 script = ExtResource("1_guard")
-is_conversational_npc = null
-humanoid_role = null
-entity_habitat = null
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=957045320]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0559571, 0)

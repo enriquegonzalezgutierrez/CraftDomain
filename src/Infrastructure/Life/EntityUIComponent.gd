@@ -2,12 +2,12 @@
 # Pathfile: res://src/Infrastructure/Life/EntityUIComponent.gd
 # Description: Infrastructure Component managing floating UI decorations for 
 #              NPCs (Nameplates, Speech Bubbles, and Quest Indicator Arrows).
-#              Decouples all UI presentation logic from PassiveEntity (SRP).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Only manages visual labels and 
-#   decorations overlays.
-# - Open-Closed Principle (OCP): Reads manual overrides from the AI brain 
-#   without altering standard game behavior states.
+#              SOLID COMPLIANCE:
+#              - Single Responsibility Principle (SRP): Only manages visual labels 
+#                and decorations overlays.
+#              - VM Direct Access Fix: Replaced all slow C++ ClassDB 'get()' and 
+#                'call()' methods with direct GDScript VM member access to resolve 
+#                the uninitialized active_behavior bug.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -160,22 +160,21 @@ func _update_bubble(is_target: bool) -> void:
 
 
 func _get_task_subtitle() -> String:
-	var ai: Object = host.get("ai_component")
+	var ai: NPCAIComponent = host.ai_component if "ai_component" in host else null
 	if not is_instance_valid(ai):
 		return ""
 		
 	var task_name := "IDLE"
-	var is_manual := false
-	if "is_manual_override" in ai:
-		is_manual = ai.get("is_manual_override") as bool
-		
-	var active_behavior: IAIBehavior = ai.active_behavior as IAIBehavior
-	# Si está en modo de control manual del banco de pruebas, ignoramos la estrategia autónoma
+	var is_manual: bool = ai.is_manual_override if "is_manual_override" in ai else false
+	var active_behavior: Resource = ai.active_behavior if "active_behavior" in ai else null
+	
+	# VM Direct Member Access: Bypasses C++ ClassDB completely to query the active 
+	# task state and dynamic strategy polimorphically through the GDScript Virtual Machine.
 	if not is_manual and active_behavior != null and active_behavior.has_method("get_active_state_name"):
-		task_name = str(active_behavior.call("get_active_state_name", host))
+		task_name = str(active_behavior.get_active_state_name(host))
 	else:
-		var task_val: int = ai.get("current_task") as int
-		task_name = ai.call("_get_task_state_name", task_val) if ai.has_method("_get_task_state_name") else "IDLE"
+		var task_val: int = ai.current_task if "current_task" in ai else 0
+		task_name = ai._get_task_state_name(task_val) if ai.has_method("_get_task_state_name") else "IDLE"
 		
 	var lookup_key := task_name
 	if lookup_key == "WANDERING":

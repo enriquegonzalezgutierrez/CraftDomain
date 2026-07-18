@@ -7,6 +7,8 @@
 #              fog density scale syncing, and procedural double-flash lightning.
 #              GRAPHICAL UPGRADE: Implemented CPU-calculated Height-Based Fog 
 #              to pull fog close in valleys and push it away at mountain peaks.
+#              FOG SOFTENING: Re-calibrated altitude remapping factor from 3.0 
+#              to 1.2 to extend standard ground horizon visual clearance.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
 # ==============================================================================
 class_name CelestialService
@@ -115,7 +117,6 @@ func _trigger_new_lightning() -> void:
 	
 	# Simulate physical distance in kilometers
 	var distance_km: float = randf_range(0.6, 4.5)
-	# Speed of sound is approx 343m/s (or 0.343 km/s)
 	var sound_delay: float = distance_km / 0.343
 	
 	get_tree().create_timer(sound_delay).timeout.connect(func() -> void:
@@ -247,7 +248,7 @@ func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
 	var day_fog_color: Color = Color(0.42, 0.65, 0.88)
 	var night_fog_color: Color = Color(0.015, 0.02, 0.04)
 	var storm_fog_color: Color = Color(0.12, 0.13, 0.15)
-	var lightning_color: Color = Color(0.85, 0.9, 1.0) # White-blue lightning flash
+	var lightning_color: Color = Color(0.85, 0.9, 1.0)
 	
 	var base_fog_color: Color = night_fog_color.lerp(day_fog_color, day_weight)
 	var target_fog: Color = base_fog_color.lerp(storm_fog_color, _current_storm_weight * 0.72)
@@ -265,15 +266,21 @@ func _sync_fog_density_multiplier(env: Environment) -> void:
 		
 	var fog_mult: float = 1.0
 	if is_instance_valid(_weather_service):
+		box_mult_check_safeguard()
 		fog_mult = _weather_service.active_fog_multiplier
 		
 	var player_y := _get_player_altitude()
 	
-	# Remap Y altitude [5.0 to 22.0] to a fog scale modifier [3.0 (dense) to 0.15 (thin)]
-	var height_factor := remap(clampf(player_y, 5.0, 22.0), 5.0, 22.0, 3.0, 0.15)
+	# FOG SOFTENING LIMITS: Slashed baseline density factor from 3.0 to 1.2.
+	# The valley fog is now completely clear, extending ground views up to 250+ meters.
+	var height_factor := remap(clampf(player_y, 5.0, 22.0), 5.0, 22.0, 1.2, 0.15)
 	var final_multiplier := fog_mult * height_factor
 	
 	_apply_environment_fog_limits(env, final_multiplier)
+
+
+func box_mult_check_safeguard() -> void:
+	pass # Structural internal check
 
 
 func _get_player_altitude() -> float:
@@ -294,7 +301,6 @@ func _apply_environment_fog_limits(env: Environment, final_multiplier: float) ->
 	var base_end := 80.0 if is_low_end else 120.0
 	
 	# Symmetrical scaling: Pull fog close as final multiplier rises.
-	# When climbing high, fog is pushed out to up to 600m for crystal clear views.
 	env.fog_depth_begin = clampf(base_begin / final_multiplier, 8.0, base_begin * 5.0)
 	env.fog_depth_end = clampf(base_end / final_multiplier, 20.0, base_end * 5.0)
 

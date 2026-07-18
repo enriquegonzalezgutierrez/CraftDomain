@@ -27,6 +27,11 @@
 
   "LOADING_STATUS": "Generando chunks infinitos",
   "LOADING_TIP": "Consejo de Juego: Mantén presionado 'Alt Izquierdo' para liberar el cursor del ratón, lo que te permitirá hacer clic en los botones de acceso directo de mochila o fabricación en cualquier momento.",
+"LOADING_TIP_GLIDER": "Consejo de Juego: Salta desde acantilados altos y presiona dos veces SALTO (Espacio) en el aire para desplegar el Planeador Voxel y planear sobre cañones profundos.",
+  "LOADING_TIP_LAVA": "Consejo de Supervivencia: Entrégale un Cubo de Lava caliente al comerciante (Valerius) para encender su freidora y conseguir su Pollo Frito terapéutico.",
+  "LOADING_TIP_ZOMBIE": "Consejo de Combate: Aprovecha el retroceso de la Espada de Madera para alejar a los zombis de cueva y construye bloques en tiempo real para crear barricadas.",
+  "LOADING_TIP_SCYTHE": "Consejo Temporal: La Guadaña Cronológica puede restaurar vacíos con estática, devolviendo los límites desestabilizados de los chunks a piedra sólida.",
+  "LOADING_TIP_SHIELD": "Consejo de Aldea: Los guardias y golems forman una red de alarma coordinada, corriendo automáticamente a defender a cualquier civil que sea atacado cerca.",
   "LOADING_UNLOAD_WORLD": "Guardando chunks y volviendo al menú...",
 
   "HUD_ACTIVE_MISSION": "Misión de Campaña Activa",

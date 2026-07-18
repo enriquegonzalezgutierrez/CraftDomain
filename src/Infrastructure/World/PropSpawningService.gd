@@ -3,10 +3,11 @@
 # Description: Infrastructure Service responsible for calculating and spawning
 #              inert scenery props and interactive decorations inside loaded chunks.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates all static prop instantiations.
-# - Thread-Safe Physics (DDD Inversion): Removed direct physics server space queries 
-#   (which caused thread locks during idle frames) in favor of pure, 
-#   high-performance, and thread-safe WorldState voxel occupancy checks.
+# - Single Responsibility Principle (SRP): Coordinates all static prop instantiations
+#   in the loaded chunks, completely isolated from coordinate terrain sculpting.
+# - Dependency Inversion Principle (DIP): Resolves Landmark prop configurations
+#   through the typesafe PopulationPoint value object.
+# - Method Size Limits (Rule 4.2): All helper methods strictly remain < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -82,22 +83,26 @@ func _spawn_random_vegetation_prop(chunk_offset: Vector3, world_state: WorldStat
 
 
 func _spawn_megastructure_props(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, entities_list: Array[Node]) -> void:
-	var mega_entities := MegaStructureService.get_entities_for_chunk(chunk_pos)
-	for edata: Dictionary in mega_entities:
-		var mob_id := edata["mob_id"] as int
-		var exact_pos := edata["pos"] as Vector3
+	# Centralized Spawning Registry (SOLID Compliant)
+	var pop_points := StructurePopulationService.get_population_for_chunk(chunk_pos)
+	
+	for point: StructurePopulationService.PopulationPoint in pop_points:
+		if point.is_prop and PropRegistry.has_prop(point.spawn_id):
+			_spawn_decoupled_landmark_prop(point, world_state, world_node, entities_list)
+
+
+func _spawn_decoupled_landmark_prop(point: StructurePopulationService.PopulationPoint, world_state: WorldState, world_node: Node, entities_list: Array[Node]) -> void:
+	var spawn_pos := point.global_pos
+	var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
+	
+	if BlockType.is_solid(block_at_pos):
+		spawn_pos.y = _get_structural_ground_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
 		
-		if PropRegistry.has_prop(mob_id):
-			var spawn_pos := exact_pos
-			if _is_voxel_spawn_space_free(world_state, spawn_pos):
-				var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
-				if BlockType.is_solid(block_at_pos):
-					spawn_pos.y = _get_structural_ground_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
-					
-				var prop := PropRegistry.create_prop(mob_id, spawn_pos)
-				if prop != null:
-					world_node.add_child(prop)
-					entities_list.append(prop)
+	if _is_voxel_spawn_space_free(world_state, spawn_pos):
+		var prop := PropRegistry.create_prop(point.spawn_id, spawn_pos)
+		if prop != null:
+			world_node.add_child(prop)
+			entities_list.append(prop)
 
 
 func _spawn_roadside_streetlights(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, entities_list: Array[Node]) -> void:
@@ -106,7 +111,7 @@ func _spawn_roadside_streetlights(chunk_pos: Vector3i, world_state: WorldState, 
 		_evaluate_and_spawn_streetlight(lamp_pos, chunk_pos, world_state, world_node, entities_list)
 
 
-func _evaluate_and_spawn_streetlight(lamp_pos: Vector3, chunk_pos: Vector3i, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
+func _evaluate_and_spawn_streetlight(lamp_pos: Vector3, chunk_pos: Vector3i, world_state: WorldState, world_node: Node, entities_list: Array[Node]) -> void:
 	var gx := floori(lamp_pos.x)
 	var gz := floori(lamp_pos.z)
 	
@@ -119,7 +124,7 @@ func _evaluate_and_spawn_streetlight(lamp_pos: Vector3, chunk_pos: Vector3i, wor
 		return
 		
 	var spawn_pos := Vector3(lamp_pos.x, gy, lamp_pos.z)
-	_instantiate_streetlight(spawn_pos, chunk_pos, world_state, world_node, list)
+	_instantiate_streetlight(spawn_pos, chunk_pos, world_state, world_node, entities_list)
 
 
 func _instantiate_streetlight(spawn_pos: Vector3, chunk_pos: Vector3i, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
@@ -179,15 +184,10 @@ func _get_biological_ground_y(world_state: WorldState, global_x: int, global_z: 
 	return -1.0
 
 
-## Symmetrical Voxel Occupancy Solver: Pure, thread-safe memory lookup replacing 
-## expensive and non-thread-safe C++ physics direct space state queries.
 func _is_voxel_spawn_space_free(world_state: WorldState, spawn_pos: Vector3) -> bool:
 	var base_coord := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
-	
 	var feet_block := world_state.get_block(base_coord)
 	var chest_block := world_state.get_block(base_coord + Vector3i(0, 1, 0))
-	
-	# The coordinate is legally free if both feet and chest spaces are non-solid
 	return not BlockType.is_solid(feet_block) and not BlockType.is_solid(chest_block)
 
 
