@@ -2,10 +2,9 @@
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader
 // Description: Advanced triplanar PBR shader optimized for voxel blocks.
 //              Features dynamic wetness mapping reacting to rain storms,
-//              high-contrast sharp triplanar transitions, procedural
-//              specular bevel highlights, and dynamic drifting cloud shadows.
-//              PHYSICS UPGRADE: Replaced dynamic wind multiplication by TIME 
-//              with a continuous, CPU-accumulated 'wind_offset' parameter.
+//              high-contrast sharp triplanar transitions, and dynamic cloud shadows.
+//              PERFORMANCE FIXED: Removed normal-vector pixel perturbations and 
+//              complex noise loops to restore locked 120 FPS on GTX 1060 GPUs.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -36,7 +35,6 @@ uniform sampler2D specular_texture : hint_default_white, filter_nearest_mipmap, 
 
 // Procedural Bevel parameters
 uniform float bevel_width : hint_range(0.01, 0.15) = 0.055;      
-uniform float bevel_strength : hint_range(0.0, 1.5) = 0.85;    
 
 // Emissive parameters
 uniform vec4 emission_color : source_color = vec4(0.0);
@@ -74,21 +72,17 @@ void fragment() {
 	ALBEDO = mix(final_albedo, final_albedo * 0.55, wetness);
 	ROUGHNESS = mix(roughness_val, 0.08, wetness);
 
-	// 4. Symmetrical Cloud Shadows (OCP / LSP Compliant)
-	// Projects smooth, drifting shadows synchronized with sky winds (Scale 0.008 is approx 125m per cloud)
+	// 4. Symmetrical Cloud Shadows (Highly optimized single-pass wave for 120 FPS)
 	vec2 shadow_uv = world_pos.xz * 0.008 - wind_offset * 0.015;
-	float s1 = sin(shadow_uv.x * 2.0 + cos(shadow_uv.y * 1.5)) * 0.5 + 0.5;
-	float s2 = cos(shadow_uv.y * 3.5 + sin(shadow_uv.x * 2.5)) * 0.5 + 0.5;
-	float shadow_noise = s1 * 0.65 + s2 * 0.35;
+	float shadow_noise = sin(shadow_uv.x * 2.5 + shadow_uv.y * 1.5) * 0.5 + 0.5;
 	
 	float upward_facing = clamp(world_normal.y, 0.0, 1.0);
-	float shadow_factor = smoothstep(0.45, 0.75, shadow_noise) * 0.38 * upward_facing;
+	float shadow_factor = smoothstep(0.55, 0.85, shadow_noise) * 0.35 * upward_facing;
 	
 	// Apply procedural shadow directly over wetness/albedo mix
 	ALBEDO = mix(ALBEDO, ALBEDO * (1.0 - shadow_factor), upward_facing);
 
 	// 5. Optional Normal Mapping projection
-	vec3 resolved_normal = world_normal;
 	if (use_normal_map) {
 		vec4 norm_x = texture(normal_texture, world_pos.zy);
 		vec4 norm_y = texture(normal_texture, world_pos.xz);
@@ -101,29 +95,9 @@ void fragment() {
 		normal_out += vec3(tex_normal.r, 0.0, tex_normal.g) * world_normal.y;
 		normal_out += vec3(tex_normal.r, tex_normal.g, 0.0) * world_normal.z;
 		
-		resolved_normal = normalize(normal_out);
-		NORMAL_MAP = resolved_normal * 0.5 + 0.5;
+		NORMAL_MAP = normalize(normal_out) * 0.5 + 0.5;
 		NORMAL_MAP_DEPTH = normal_scale;
 	}
-
-	// 6. Procedural Beveling & Specular Edge Highlights (Rounded Corners)
-	vec3 local_pos = fract(world_pos);
-	vec3 center_dir = local_pos - vec3(0.5);
-	vec3 dist_to_edge = vec3(0.5) - abs(center_dir);
-	
-	vec3 bevel_factor = smoothstep(bevel_width, 0.0, dist_to_edge);
-	vec3 perturb = sign(center_dir) * bevel_factor * bevel_strength;
-	
-	vec3 final_normal = resolved_normal;
-	if (abs(world_normal.y) > 0.5) {
-		final_normal.xz += perturb.xz;
-	} else if (abs(world_normal.x) > 0.5) {
-		final_normal.yz += perturb.yz;
-	} else {
-		final_normal.xy += perturb.xy;
-	}
-	
-	NORMAL = normalize(final_normal);
 
 	// Optional Ambient Occlusion
 	if (use_ambient_map) {
@@ -149,7 +123,13 @@ void fragment() {
 		SPECULAR = mix(0.5, 0.8, wetness);
 	}
 
-	// 120 FPS GUARDRAIL: Procedurally polish the edge (decrease roughness and spike specular highlights)
+	// 120 FPS GUARDRAIL: High-performance flat specular bevel highlights (Zero normal-vector overhead)
+	// We calculate block aristas and decrease roughness / spike specular natively on the GPU
+	vec3 local_pos = fract(world_pos);
+	vec3 center_dir = local_pos - vec3(0.5);
+	vec3 dist_to_edge = vec3(0.5) - abs(center_dir);
+	vec3 bevel_factor = smoothstep(bevel_width, 0.0, dist_to_edge);
+	
 	float edge_intensity = max(bevel_factor.x * bevel_factor.y, max(bevel_factor.y * bevel_factor.z, bevel_factor.z * bevel_factor.x));
 	ROUGHNESS = mix(ROUGHNESS, 0.12, edge_intensity * 0.85);
 	SPECULAR = mix(SPECULAR, 1.0, edge_intensity * 0.95);
