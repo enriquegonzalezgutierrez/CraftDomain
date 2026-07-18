@@ -1,15 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Core/Bootstrap/Bootstrap.gd
 # Description: Central composition root of the application. Orchestrates the 
-#              asynchronous initialization of global systems, applies user 
-#              settings, injects dependencies, and prevents black-screen boot freezes.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Only manages initial system startups, 
-#   registries compilation, and viewport transitions.
-# - Open-Closed Principle (OCP): Asynchronously yields frames on boot, keeping the
-#   rendering thread active to animate the splash screen smoothly at 120 FPS.
-# - Initialization Order Fix: Loads settings and translations BEFORE instantiating 
-#   any UI nodes, ensuring perfect localization on startup.
+#              asynchronous initialization of global systems and unified scene transitions.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -43,35 +35,24 @@ func _ready() -> void:
 
 func _initialize_application_async() -> void:
 	print("[Bootstrap] Launching asynchronous application bootstrapper...")
-	
-	# 1. Load user settings FIRST to read the saved locale and username
 	_init_basic_telemetry_and_settings()
-	
-	# 2. Initialize and register translation packs in RAM
 	TranslationRegistry.initialize_translations()
 	
-	# 3. Now that the saved locale is set and translations are loaded, we can 
-	#    safely instantiate the splash screen to guarantee perfect localization!
 	var splash := _instantiate_startup_splash()
-	
-	# Yield two frames to guarantee Godot renders the beautiful translated splash spinner
 	await get_tree().process_frame
 	await get_tree().process_frame
 	
-	# 4. Asynchronously initialize heaviest file registries (Texture pre-caching)
 	TextureRegistry.initialize_textures()
 	await get_tree().process_frame
 	
 	_init_registries_async()
 	await get_tree().process_frame
 	
-	# 5. Build environment and audio
 	_setup_persistence_and_env()
 	_setup_celestial()
 	_setup_audio_and_network()
 	await get_tree().process_frame
 	
-	# 6. Smoothly fade out the splash and transition to Main Menu!
 	_transition_to_main_menu(splash)
 
 
@@ -88,6 +69,22 @@ func _instantiate_startup_splash() -> CanvasLayer:
 	var status := splash.get_node_or_null("CenterContainer/VBoxContainer/Status") as Label
 	if is_instance_valid(status):
 		status.text = tr("LOADING_STATUS").to_upper()
+		
+	return canvas_layer
+
+
+func _create_declarative_loading_screen() -> CanvasLayer:
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.name = "UnloadLoadingScreenCanvas"
+	canvas_layer.layer = 100
+	
+	var splash := LOADING_SCREEN_SCENE.instantiate() as LoadingScreen
+	splash.name = "UnloadLoadingScreen"
+	canvas_layer.add_child(splash)
+	
+	var status := splash.get_node_or_null("CenterContainer/VBoxContainer/Status") as Label
+	if is_instance_valid(status):
+		status.text = tr("LOADING_UNLOAD_WORLD").to_upper()
 		
 	return canvas_layer
 
@@ -302,12 +299,12 @@ func _load_main_menu() -> void:
 	main_menu = MAIN_MENU_SCENE.instantiate() as MainMenu
 	main_menu.name = "MainMenu"
 	main_menu.play_pressed.connect(_on_start_game_requested)
+	main_menu.showcase_pressed.connect(_on_showcase_requested)
 	add_child(main_menu)
 
 
 func _transition_to_main_menu(splash_canvas: CanvasLayer) -> void:
 	_load_main_menu()
-	
 	if is_instance_valid(audio_service):
 		audio_service.play_menu_music()
 		
@@ -315,7 +312,6 @@ func _transition_to_main_menu(splash_canvas: CanvasLayer) -> void:
 		var splash_panel := splash_canvas.get_node_or_null("StartupSplash") as Panel
 		if is_instance_valid(splash_panel):
 			splash_panel.set_process(false)
-			
 			var fade_tween := create_tween()
 			fade_tween.tween_property(splash_panel, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE)
 			fade_tween.chain().tween_callback(splash_canvas.queue_free)
@@ -332,7 +328,10 @@ func _on_start_game_requested(should_clear_save: bool = false) -> void:
 	canvas_layer.add_child(loading_screen)
 	
 	await get_tree().process_frame
-	
+	_execute_world_start(should_clear_save, loading_screen)
+
+
+func _execute_world_start(should_clear_save: bool, loading_screen: LoadingScreen) -> void:
 	if should_clear_save:
 		var task_id := WorkerThreadPool.add_task(DiskWorldRepository.delete_save_game_files)
 		while not WorkerThreadPool.is_task_completed(task_id):
@@ -351,8 +350,32 @@ func _on_start_game_requested(should_clear_save: bool = false) -> void:
 	
 	add_child(world_controller)
 	add_child(player_controller)
-	
 	loading_screen.player = player_controller
+
+
+func _on_showcase_requested() -> void:
+	var canvas_layer := _create_declarative_loading_screen()
+	var splash := canvas_layer.get_child(0) as LoadingScreen
+	var status := splash.get_node_or_null("CenterContainer/VBoxContainer/Status") as Label
+	if is_instance_valid(status):
+		status.text = tr("BOOT_STATUS_TELEMETRY").to_upper()
+	add_child(canvas_layer)
+	
+	await get_tree().process_frame
+	_execute_showcase_start(canvas_layer, splash)
+
+
+func _execute_showcase_start(canvas_layer: CanvasLayer, splash: LoadingScreen) -> void:
+	if is_instance_valid(main_menu):
+		main_menu.queue_free()
+		main_menu = null
+		
+	var showcase_room := AIShowcaseRoom.new()
+	add_child(showcase_room)
+	
+	var fade_tween := create_tween()
+	fade_tween.tween_property(splash, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE)
+	fade_tween.chain().tween_callback(canvas_layer.queue_free)
 
 
 func _inject_dependencies() -> void:
@@ -369,16 +392,18 @@ func _inject_dependencies() -> void:
 
 
 func return_to_main_menu() -> void:
-	var unload_screen := _create_unload_loading_screen()
-	add_child(unload_screen)
+	var unload_canvas := _create_declarative_loading_screen()
+	add_child(unload_canvas)
 	await get_tree().process_frame
+	
 	if is_instance_valid(world_controller):
 		world_controller.save_all()
 	await get_tree().process_frame
-	_cleanup_and_load_menu(unload_screen)
+	
+	_cleanup_and_load_menu(unload_canvas)
 
 
-func _cleanup_and_load_menu(unload_screen: Panel) -> void:
+func _cleanup_and_load_menu(unload_canvas: CanvasLayer) -> void:
 	if is_instance_valid(player_controller):
 		player_controller.queue_free()
 		player_controller = null
@@ -392,42 +417,14 @@ func _cleanup_and_load_menu(unload_screen: Panel) -> void:
 		audio_service.crossfade_to_menu()
 	await get_tree().create_timer(0.15).timeout
 	_load_main_menu()
+	
+	var splash := unload_canvas.get_child(0) as LoadingScreen
 	var fade_tween := create_tween()
-	fade_tween.tween_property(unload_screen, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
-	fade_tween.chain().tween_callback(unload_screen.queue_free)
+	fade_tween.tween_property(splash, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
+	fade_tween.chain().tween_callback(unload_canvas.queue_free)
 
 
 func _cleanup_showcase_room_if_exists() -> void:
 	var room := get_node_or_null("AIShowcaseRoom")
 	if is_instance_valid(room):
 		room.queue_free()
-
-
-func _create_unload_loading_screen() -> Panel:
-	var panel := Panel.new()
-	panel.name = "UnloadLoadingScreen"
-	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.04, 0.06, 1.0)
-	panel.add_theme_stylebox_override("panel", style)
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	panel.add_child(center)
-	_add_unloading_title(center)
-	return panel
-
-
-func _add_unloading_title(parent: Control) -> void:
-	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	parent.add_child(vbox)
-	var title := Label.new()
-	title.text = tr("LOADING_STATUS").to_upper()
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ts := LabelSettings.new()
-	ts.font_size = 28
-	ts.font_color = Color(1.0, 0.85, 0.2)
-	ts.outline_size = 6
-	ts.outline_color = Color.BLACK
-	title.label_settings = ts
-	vbox.add_child(title)

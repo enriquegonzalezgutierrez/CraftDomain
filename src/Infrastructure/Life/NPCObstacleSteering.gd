@@ -1,12 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCObstacleSteering.gd
 # Description: Infrastructure Component managing 3D whisker raycast avoidance,
-#              wall collision re-routing, and intelligent step-climbing jumps.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively physical steering,
-#   obstacle-height evaluations, and wall tangent sliding.
-# - Open-Closed Principle (OCP): Closes the physics body loop to modifications,
-#   injecting advanced re-routing vectors dynamically based on wall normals.
+#              cliff edge sensing, and intelligent step-climbing jumps (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -32,6 +27,7 @@ func process_steering(delta: float) -> void:
 		return
 		
 	_perform_proactive_whisker_avoidance(delta)
+	_perform_cliff_and_hazard_avoidance(delta)
 	_handle_step_climbing_and_unsticking(delta)
 
 
@@ -44,12 +40,11 @@ func _perform_proactive_whisker_avoidance(delta: float) -> void:
 	if space_state == null:
 		return
 		
-	var host_pos := host.global_position
-	var r_origin := host_pos + Vector3(0.0, 0.9, 0.0) 
+	var r_origin := host.global_position + Vector3(0.0, 0.9, 0.0) 
 	
 	var col: CollisionShape3D = host.get_node_or_null("EntityCollider") as CollisionShape3D
 	if is_instance_valid(col) and col.position.y > 0.1:
-		r_origin = host_pos + Vector3(0.0, col.position.y, 0.0)
+		r_origin = host.global_position + Vector3(0.0, col.position.y, 0.0)
 		
 	var center_dir := wander_direction.normalized()
 	var left_dir := center_dir.rotated(Vector3.UP, deg_to_rad(30.0))
@@ -82,6 +77,48 @@ func _cast_whisker_rays(space_state: PhysicsDirectSpaceState3D, r_origin: Vector
 		if flat_normal != Vector3.ZERO:
 			var steer_target := wander_dir.bounce(flat_normal).normalized()
 			ai_component.set("wander_direction", wander_dir.lerp(steer_target, delta * 8.0).normalized())
+
+
+## Senses empty air or hazard rifts ahead and executes a 180-degree turn
+func _perform_cliff_and_hazard_avoidance(delta: float) -> void:
+	var wander_direction: Vector3 = ai_component.get("wander_direction") as Vector3
+	var habitat: int = host.get("entity_habitat") if "entity_habitat" in host else 0
+	
+	# Skip checks for flying entities (Gargoyles/Birds) or aquatic entities
+	if wander_direction == Vector3.ZERO or not host.is_on_floor() or habitat == 2:
+		return
+		
+	var space_state := host.get_world_3d().direct_space_state
+	if space_state == null:
+		return
+		
+	# Project a vertical look-ahead point 1.2m in front of the entity's feet
+	var look_ahead := host.global_position + wander_direction.normalized() * 1.2
+	var start_pos := look_ahead + Vector3(0.0, 0.5, 0.0) # Start slightly above feet level
+	var end_pos := look_ahead + Vector3(0.0, -1.8, 0.0)  # Scan 1.8 meters down
+	
+	var query := PhysicsRayQueryParameters3D.create(start_pos, end_pos)
+	query.collision_mask = 1 # Solid chunk mesh collision layer
+	query.exclude = [host.get_rid()]
+	
+	var result := space_state.intersect_ray(query)
+	if result.is_empty():
+		_execute_cliff_rebound(wander_direction, delta)
+
+
+func _execute_cliff_rebound(wander_direction: Vector3, delta: float) -> void:
+	# Reverse direction 180 degrees back onto safe solid ground
+	var turn_dir := -wander_direction.normalized()
+	# Apply slight randomized deflection to prevent getting locked in back-and-forth loops
+	turn_dir = turn_dir.rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
+	
+	ai_component.set("wander_direction", turn_dir)
+	
+	# Apply a brief horizontal brake to prevent inertia from sliding them off the edge
+	var v := host.velocity
+	v.x = move_toward(v.x, 0.0, 15.0 * delta)
+	v.z = move_toward(v.z, 0.0, 15.0 * delta)
+	host.set("velocity", v)
 
 
 func _handle_step_climbing_and_unsticking(delta: float) -> void:

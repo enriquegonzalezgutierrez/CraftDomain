@@ -38,14 +38,15 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 
 
 func _spawn_village_mobs(chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
-	_spawn_and_register_entity(100, chunk_offset, 7.5, 5.5, world_state, world_node, spawned_nodes)
-	_spawn_and_register_entity(101, chunk_offset, 5.5, 7.5, world_state, world_node, spawned_nodes)
-	_spawn_and_register_entity(107, chunk_offset, 8.5, 5.5, world_state, world_node, spawned_nodes)
+	# Symmetrical Village Spawning: Allows any solid block (foundation/road/floor) for NPCs
+	_spawn_and_register_entity(100, chunk_offset, 7.5, 5.5, world_state, world_node, spawned_nodes, true)
+	_spawn_and_register_entity(101, chunk_offset, 5.5, 7.5, world_state, world_node, spawned_nodes, true)
+	_spawn_and_register_entity(107, chunk_offset, 8.5, 5.5, world_state, world_node, spawned_nodes, true)
 
 
 func _spawn_wilderness_wildlife(chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
 	var roll := randf()
-	var spawn_chance := 0.28 # Increased base spawn chance from 0.12 to 0.28
+	var spawn_chance := 0.28 
 	if is_instance_valid(biome) and biome.has_method("get_spawn_chance"):
 		spawn_chance = biome.call("get_spawn_chance") as float
 		
@@ -59,13 +60,11 @@ func _spawn_wildlife_group(wildlife_ids: Array[int], chunk_offset: Vector3, worl
 	var rand_idx := randi() % wildlife_ids.size()
 	var spawn_id := int(wildlife_ids[rand_idx])
 	
-	# Symmetrical Herd Spawning: Spawn a group of 2 to 4 animals together
 	var group_size := randi_range(2, 4)
 	for i: int in range(group_size):
-		# Scatter herd members randomly inside the 16x16 chunk grid
 		var rx := randf_range(2.0, 14.0)
 		var rz := randf_range(2.0, 14.0)
-		_spawn_and_register_entity(spawn_id, chunk_offset, rx, rz, world_state, world_node, spawned_nodes)
+		_spawn_and_register_entity(spawn_id, chunk_offset, rx, rz, world_state, world_node, spawned_nodes, false)
 
 
 func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
@@ -87,13 +86,13 @@ func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState
 					spawned_nodes.append(spawn_node)
 
 
-func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
+func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node], allow_any_solid: bool = false) -> void:
 	if not MobRegistry.has_mob(spawn_id): return
 		
 	var global_x := int(offset.x + lx)
 	var global_z := int(offset.z + lz)
 	var habitat := MobRegistry.get_mob_habitat(spawn_id)
-	var gy := _resolve_habitat_ground_y(world_state, global_x, global_z, habitat)
+	var gy := _resolve_habitat_ground_y(world_state, global_x, global_z, habitat, allow_any_solid)
 	
 	if gy < 0.0: return 
 		
@@ -105,20 +104,20 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 			list.append(mob)
 
 
-func _resolve_habitat_ground_y(world_state: WorldState, global_x: int, global_z: int, habitat: int) -> float:
+func _resolve_habitat_ground_y(world_state: WorldState, global_x: int, global_z: int, habitat: int, allow_any_solid: bool) -> float:
 	var gy := -1.0
 	if habitat == MobRegistry.Habitat.TERRESTRIAL:
-		gy = _get_ground_surface_y(world_state, global_x, global_z)
+		gy = _get_ground_surface_y(world_state, global_x, global_z, allow_any_solid)
 	elif habitat == MobRegistry.Habitat.AQUATIC:
 		gy = _get_water_surface_y(world_state, global_x, global_z)
 	else:
 		gy = _get_water_surface_y(world_state, global_x, global_z)
 		if gy < 0.0:
-			gy = _get_ground_surface_y(world_state, global_x, global_z)
+			gy = _get_ground_surface_y(world_state, global_x, global_z, allow_any_solid)
 	return gy
 
 
-func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int) -> float:
+func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int, allow_any_solid: bool) -> float:
 	var top_block_type := BlockType.Type.AIR
 	var top_y := -1
 	
@@ -133,8 +132,12 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 	if top_y == -1 or top_block_type == BlockType.Type.WATER or top_block_type == BlockType.Type.LAVA:
 		return -1.0 
 	
+	return _solve_solid_ground_height(world_state, global_x, global_z, top_y, allow_any_solid)
+
+
+func _solve_solid_ground_height(world_state: WorldState, global_x: int, global_z: int, top_y: int, allow_any_solid: bool) -> float:
 	var hit_y := -1
-	for y: int in range(31, -1, -1):
+	for y: int in range(top_y, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
 		var block_type := world_state.get_block(check_pos)
 		if block_type != BlockType.Type.AIR and block_type != BlockType.Type.WATER:
@@ -146,7 +149,7 @@ func _get_ground_surface_y(world_state: WorldState, global_x: int, global_z: int
 	var surface_block := world_state.get_block(Vector3i(global_x, hit_y, global_z))
 	var def := BlockLibrary.get_definition(surface_block) as BlockDefinition
 	
-	if def == null or not def.is_spawnable_soil:
+	if def == null or (not allow_any_solid and not def.is_spawnable_soil) or (allow_any_solid and not def.is_solid):
 		return -1.0
 		
 	var space_above_1 := world_state.get_block(Vector3i(global_x, hit_y + 1, global_z))

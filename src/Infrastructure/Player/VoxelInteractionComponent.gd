@@ -1,10 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
 # Description: Component managing first-person raycasting, target highlights,
-#              mining ticks, placing blocks, eating, and planting.
-#              SOLID COMPLIANCE: Monolithic interaction loops decomposed to 
-#              isolated, SRP-compliant helpers (< 15 lines each).
-#              Corrected: Prefixed unused parameters with underscore.
+#              mining ticks, placing blocks, eating, and planting (DIP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -123,9 +120,14 @@ func _update_placement_preview_geometry(resolved: Dictionary) -> void:
 		_evaluate_preview_placement(world_ctrl.world_state, target_coord, hit_normal, build_coord)
 
 
-func _evaluate_preview_placement(ws: WorldState, target_coord: Vector3i, hit_normal: Vector3, build_coord: Vector3i) -> void:
-	var is_spot_free := ws.get_block(build_coord) == BlockType.Type.AIR or ws.get_block(build_coord) == BlockType.Type.WATER
-	var is_mergeable := VoxelInteractionSolver.is_slab_mergeable(ws, target_coord, hit_normal)
+# DIP/OCP: Typado como RefCounted para evitar el bloqueo cíclico del compilador de Godot 4.7
+func _evaluate_preview_placement(ws: RefCounted, target_coord: Vector3i, hit_normal: Vector3, build_coord: Vector3i) -> void:
+	var block_at_build: BlockType.Type = ws.call("get_block", build_coord) as BlockType.Type
+	var is_spot_free: bool = (block_at_build == BlockType.Type.AIR or block_at_build == BlockType.Type.WATER)
+	
+	# Fallback cast para evitar el acoplamiento cíclico en la firma estática
+	var world_state_obj := ws as WorldState
+	var is_mergeable := VoxelInteractionSolver.is_slab_mergeable(world_state_obj, target_coord, hit_normal)
 	var player_collides := VoxelInteractionSolver.does_block_collide_with_player(build_coord, player)
 	
 	placement_highlight_mesh.global_position = Vector3(build_coord) + Vector3(0.5, 0.5, 0.5)
@@ -177,7 +179,11 @@ func _process_mining_strike(inventory_comp: InventoryComponent) -> void:
 	if resolved.is_empty(): return
 		
 	var block_coord: Vector3i = resolved["target_coord"]
-	var mined_type := world_ctrl.world_state.get_block(block_coord) if is_instance_valid(world_ctrl.world_state) else BlockType.Type.AIR
+	
+	# DIP/OCP: Se utiliza call() para obtener el bloque síncronamente, evitando el acoplamiento directo
+	var mined_type: BlockType.Type = BlockType.Type.AIR
+	if is_instance_valid(world_ctrl.world_state):
+		mined_type = world_ctrl.world_state.call("get_block", block_coord) as BlockType.Type
 	
 	if mined_type != BlockType.Type.AIR:
 		_execute_block_damage_and_drops(block_coord, mined_type, inventory_comp, world_ctrl)
@@ -297,8 +303,8 @@ func _process_building_and_usage() -> void:
 	var slot_data := inventory_comp.get_slot_data(active_slot)
 	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0: return
 		
-	var world_state := world_ctrl.world_state
-	if not is_instance_valid(world_state): return
+	var world_state_obj := world_ctrl.world_state
+	if not is_instance_valid(world_state_obj): return
 		
 	var strategy := ItemStrategyRegistry.get_strategy(slot_data.item_id) as ItemUsageStrategy
 	if strategy != null:

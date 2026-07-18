@@ -1,23 +1,15 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/MainMenu.gd
 # Description: Tactile Glassmorphic Main Menu controller. Handles game boots,
-#              settings modal instantiations, and multiplayer network lobbies.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively main menu 
-#   navigation, animation triggers, and confirmation overlays.
-# - Open-Closed Principle (OCP): Decoupled from settings persistence. Delegates 
-#   actions to SettingsMenu and MultiplayerLobby widgets dynamically.
-# - UX Optimization: Defers heavy save file deletion I/O to the Bootstrap layer
-#   to prevent visual freezing when clicking New Game.
+#              modal popups, and cooperative lobby connections.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MainMenu
 extends Control
 
-## Signal emitted when the play world or new game sequence is requested.
-## If [param should_clear_save] is true, the bootstrap will wipe active files.
 signal play_pressed(should_clear_save: bool)
+signal showcase_pressed # Decoupled transition signal for Composition Root
 
 const SETTINGS_MENU_SCENE := preload("res://src/Infrastructure/UI/settings_menu.tscn")
 const LOBBY_MENU_SCENE := preload("res://src/Infrastructure/UI/Widgets/multiplayer_lobby_widget.tscn")
@@ -26,7 +18,6 @@ var _settings_overlay: SettingsMenu
 var _lobby_overlay: MultiplayerLobbyWidget
 var _has_save_game: bool = false
 
-# Visual Nodes (Bound from .tscn)
 @onready var _title_label: Label = $CenterContainer/MasterVBox/GameTitle
 @onready var _menu_card: PanelContainer = $CenterContainer/MasterVBox/MenuCard
 
@@ -37,7 +28,6 @@ var _has_save_game: bool = false
 @onready var _settings_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/SettingsButton
 @onready var _exit_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/ExitButton
 
-# Confirmation Modal Nodes
 @onready var _confirm_modal: Panel = $ConfirmationModal
 @onready var _modal_card: PanelContainer = $ConfirmationModal/CenterContainer/ModalCard
 @onready var _modal_title: Label = $ConfirmationModal/CenterContainer/ModalCard/ModalMargin/VBoxContainer/ModalTitle
@@ -59,7 +49,7 @@ func _ready() -> void:
 	else:
 		_reset_btn.visible = false
 		
-	_showcase_btn.pressed.connect(_on_showcase_pressed)
+	_showcase_btn.pressed.connect(func() -> void: showcase_pressed.emit())
 	_settings_btn.pressed.connect(_on_settings_pressed)
 	_exit_btn.pressed.connect(_on_exit_pressed)
 	
@@ -94,6 +84,10 @@ func _refresh_localized_text() -> void:
 		_settings_btn.text = tr("MENU_SETTINGS")
 	if is_instance_valid(_exit_btn):
 		_exit_btn.text = tr("MENU_EXIT")
+	_refresh_modal_labels()
+
+
+func _refresh_modal_labels() -> void:
 	if is_instance_valid(_modal_title):
 		_modal_title.text = tr("MENU_RESET_WARNING_TITLE")
 	if is_instance_valid(_modal_desc):
@@ -116,7 +110,6 @@ func _play_entry_animation() -> void:
 
 
 func _on_play_pressed() -> void:
-	# If continuing a save, should_clear_save is false. If first-time play, it is true.
 	play_pressed.emit(not _has_save_game)
 
 
@@ -145,7 +138,6 @@ func _on_new_game_clicked_with_save() -> void:
 func _on_overwrite_confirmed() -> void:
 	_confirm_modal.visible = false
 	_has_save_game = false
-	# Emit signal requesting sychronous save wiping behind the loading screen
 	play_pressed.emit(true)
 
 
@@ -154,16 +146,6 @@ func _on_overwrite_cancelled() -> void:
 	tween.tween_property(_confirm_modal, "modulate:a", 0.0, 0.15).set_trans(Tween.TRANS_SINE)
 	tween.tween_property(_modal_card, "scale", Vector2(0.95, 0.95), 0.15).set_trans(Tween.TRANS_SINE)
 	tween.chain().tween_callback(func() -> void: _confirm_modal.visible = false)
-
-
-func _on_showcase_pressed() -> void:
-	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "modulate:a", 0.0, 0.20).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.chain().tween_callback(func() -> void:
-		var room := AIShowcaseRoom.new()
-		get_parent().add_child(room)
-		queue_free()
-	)
 
 
 func _on_settings_pressed() -> void:

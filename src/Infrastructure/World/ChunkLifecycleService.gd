@@ -1,15 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/ChunkLifecycleService.gd
 # Description: High-Performance Infrastructure Service responsible for managing 
-#              chunk instantiation, garbage collection, and physics Rid assignment.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly chunk instantiations, 
-#   recycling pool, and LOD switches, offloading threading to ChunkTaskScheduler.
-# - Method Size Limits (Rule 4.1 & 4.2): File kept under 300 lines; all methods < 20 lines.
-# - Safe Metadata Query: Added preventative has_meta checks to prevent C++ console
-#   errors on air/distant chunks that do not register static body colliders.
-# - Physics Scope Reconciliation: Reconciled and saved the instantiated static_body
-#   as task metadata during standard loading to prevent collision dropouts.
+#              chunk instantiation, asynchronous/synchronous edits, and LODs (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -103,30 +95,44 @@ func _process_unload_queue(player_active: bool) -> void:
 		unloads_processed += 1
 
 
+## Synchronous channel: Intended for responsive, zero-latency player block edits
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	world_state.set_block(global_pos, type)
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	
 	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
 	_rebuild_chunk_instantly(chunk_pos)
-	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos)
+	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos, false)
 
 
-func _trigger_adjacent_boundary_redraws(global_pos: Vector3i, chunk_pos: Vector3i) -> void:
+## Asynchronous channel: Intended for high-performance automated systems (fluids, crops, physics)
+func set_block_globally_async(global_pos: Vector3i, type: BlockType.Type) -> void:
+	world_state.set_block(global_pos, type)
+	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
+	
+	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
+	_request_chunk_rebuild(chunk_pos) # Background-threaded task
+	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos, true)
+
+
+func _trigger_adjacent_boundary_redraws(global_pos: Vector3i, chunk_pos: Vector3i, is_async: bool) -> void:
 	var local_pos := world_state.global_to_local_pos(global_pos)
-	_check_neighbor_rebuild(local_pos.x == 0, chunk_pos, Vector3i(-1, 0, 0))
-	_check_neighbor_rebuild(local_pos.x == Chunk.SIZE - 1, chunk_pos, Vector3i(1, 0, 0))
-	_check_neighbor_rebuild(local_pos.y == 0, chunk_pos, Vector3i(0, -1, 0))
-	_check_neighbor_rebuild(local_pos.y == Chunk.SIZE - 1, chunk_pos, Vector3i(0, 1, 0))
-	_check_neighbor_rebuild(local_pos.z == 0, chunk_pos, Vector3i(0, 0, -1))
-	_check_neighbor_rebuild(local_pos.z == Chunk.SIZE - 1, chunk_pos, Vector3i(0, 0, 1))
+	_check_neighbor_rebuild(local_pos.x == 0, chunk_pos, Vector3i(-1, 0, 0), is_async)
+	_check_neighbor_rebuild(local_pos.x == Chunk.SIZE - 1, chunk_pos, Vector3i(1, 0, 0), is_async)
+	_check_neighbor_rebuild(local_pos.y == 0, chunk_pos, Vector3i(0, -1, 0), is_async)
+	_check_neighbor_rebuild(local_pos.y == Chunk.SIZE - 1, chunk_pos, Vector3i(0, 1, 0), is_async)
+	_check_neighbor_rebuild(local_pos.z == 0, chunk_pos, Vector3i(0, 0, -1), is_async)
+	_check_neighbor_rebuild(local_pos.z == Chunk.SIZE - 1, chunk_pos, Vector3i(0, 0, 1), is_async)
 
 
-func _check_neighbor_rebuild(condition: bool, chunk_pos: Vector3i, offset: Vector3i) -> void:
+func _check_neighbor_rebuild(condition: bool, chunk_pos: Vector3i, offset: Vector3i, is_async: bool) -> void:
 	if condition:
 		var neighbor_pos := chunk_pos + offset
 		_chunk_versions[neighbor_pos] = _chunk_versions.get(neighbor_pos, 0) + 1
-		_request_chunk_rebuild(neighbor_pos)
+		if is_async:
+			_request_chunk_rebuild(neighbor_pos)
+		else:
+			_rebuild_chunk_instantly(neighbor_pos)
 
 
 func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
@@ -209,9 +215,6 @@ func _register_completed_chunk_state(task: GeneratedChunkTask, chunk_pos: Vector
 	var static_body := _ensure_physics_body(task)
 	if is_instance_valid(static_body):
 		_physics_bodies[chunk_pos] = static_body.get_rid()
-		
-		# RECONCILE STATIC BODY: Store the compiled physics body as metadata
-		# so that _apply_visuals_to_chunk_node can safely retrieve it!
 		task.set_meta("static_body", static_body)
 		
 	if not task.is_rebuild and is_instance_valid(world_state):

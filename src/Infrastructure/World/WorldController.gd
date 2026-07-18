@@ -1,14 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/WorldController.gd
 # Description: Central World Controller and Redraw Orchestrator. Coordinates
-#              LOD updates, player spawn drop, sub-service ticks, network 
-#              replication, chronological timeline warp swaps, and UI triggers.
-# SOLID COMPLIANCE:
-# - Don't Repeat Yourself (DRY): Purged duplicate adjacent-chunk redraw logic. 
-#   Block mutations are now correctly delegated to ChunkLifecycleService.
-# - Dependency Inversion Principle (DIP): Injects isolated domain services.
-# - Thread-Safe Physics: Shifted dynamic world updates to _physics_process to 
-#   guarantee safe direct space state queries under multi-threaded physics.
+#              LOD updates, background simulation threads, and active timeline warps.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -146,7 +139,7 @@ func _physics_process(delta: float) -> void:
 	_update_timer += delta
 	if _update_timer >= UPDATE_INTERVAL:
 		_update_timer = 0.0
-		_process_dynamic_world() # Safely executed inside synchronized physics frames!
+		_process_dynamic_world() 
 		_process_day_night_lighting()
 
 
@@ -180,10 +173,20 @@ func get_active_chunk_nodes() -> Dictionary:
 	return chunk_lifecycle.get_active_nodes() if is_instance_valid(chunk_lifecycle) else {}
 
 
+## Synchronous channel: Intended for responsive player block edits
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	if is_instance_valid(chunk_lifecycle):
 		chunk_lifecycle.set_block_globally(global_pos, type)
 	
+	_apply_procedural_gravity_on_block_broken(global_pos, type)
+	block_modified.emit(global_pos, type)
+
+
+## Asynchronous channel: Intended for high-performance automated systems (fluids, crops, physics)
+func set_block_globally_async(global_pos: Vector3i, type: BlockType.Type) -> void:
+	if is_instance_valid(chunk_lifecycle):
+		chunk_lifecycle.set_block_globally_async(global_pos, type)
+		
 	_apply_procedural_gravity_on_block_broken(global_pos, type)
 	block_modified.emit(global_pos, type)
 

@@ -1,12 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
 # Description: Infrastructure NPC Sensory AI Brain. Coordinates task schedules,
-#              social gossip, and A* pathfinding, with manual developer overrides.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates task states, timelines,
-#   and pathing nodes. Decomposed to remain strictly under 300 lines.
-# - Open-Closed Principle (OCP): Added type-safe developer manual override APIs 
-#   without altering core movement physics or steering components.
+#              social gossip, and organic curved pathfinding (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -72,7 +67,6 @@ func process_ai(delta: float) -> void:
 	if is_instance_valid(_steering_component):
 		_steering_component.process_steering(delta)
 	
-	# If manually overridden by the developer dashboard, freeze automated ticks
 	if is_manual_override:
 		_apply_movement_vectors()
 		return
@@ -217,9 +211,17 @@ func _process_pathfinding_navigation(base_speed: float) -> void:
 		_navigate_along_active_path(base_speed)
 		return
 		
+	var final_dir := wander_direction
+	if current_task == TaskState.WANDERING:
+		# Symmetrical Yaw Sway: Aplica un desvío sinusoidal continuo para simular marcha real
+		var elapsed := float(Time.get_ticks_msec()) / 1000.0
+		var seed_val := float(_host.get("npc_seed") if "npc_seed" in _host else 0) * 0.12
+		var sway_angle := sin(elapsed * 1.5 + seed_val) * 0.22 
+		final_dir = wander_direction.rotated(Vector3.UP, sway_angle).normalized()
+		
 	var speed_mult: float = 2.8 if current_task == TaskState.PANIC else 1.0
-	_host.velocity.x = wander_direction.x * base_speed * speed_mult
-	_host.velocity.z = wander_direction.z * base_speed * speed_mult
+	_host.velocity.x = final_dir.x * base_speed * speed_mult
+	_host.velocity.z = final_dir.z * base_speed * speed_mult
 	
 	_keep_gaze_within_tether()
 
@@ -458,17 +460,12 @@ func _get_task_state_name(task_val: int) -> String:
 	return "IDLE"
 
 
-# ==============================================================================
-# DEVELOPER MANUAL OVERRIDE INTERFACE (OCP Aligned)
-# ==============================================================================
-
 ## Forces the AI component into a manual task state, disabling automated schedules
 func force_manual_task(task_state_id: int) -> void:
 	is_manual_override = true
 	current_task = task_state_id as TaskState
 	_active_path.clear()
 	
-	# Set a random direction vector for movement states
 	if current_task == TaskState.WANDERING or current_task == TaskState.PANIC or current_task == TaskState.EXAMINING:
 		var angle := randf() * TAU
 		wander_direction = Vector3(cos(angle), 0.0, sin(angle))
