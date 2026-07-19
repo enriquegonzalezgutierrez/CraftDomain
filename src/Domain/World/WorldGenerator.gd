@@ -3,9 +3,9 @@
 # Description: Domain Generator responsible for procedurally carving chunk block data.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly procedural noise
-#   decimations and 3D cave carving. Methods decomposed to under 20 lines each.
-# - Open-Closed Principle (OCP): Closes terrain generation to modification while
-#   sculpting all wilderness biomes dynamically. Integrated IronVeinBlueprint.
+#   decimations and 3D cave carving.
+# - Structure Protection (OCP): Excludes and blocks random scatter tree generation 
+#   inside the bounding boxes of all registered Mega-Structures (such as the Castle).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -60,7 +60,7 @@ func _init(p_seed: int = 42) -> void:
 
 	_ore_veins.append(CoalVeinBlueprint.new())        
 	_ore_veins.append(DiamondGeodeBlueprint.new())   
-	_ore_veins.append(IronVeinBlueprint.new()) # INTEGRATED: Added raw iron veins
+	_ore_veins.append(IronVeinBlueprint.new())
 
 
 func generate_chunk(chunk: Chunk) -> void:
@@ -202,7 +202,9 @@ func _spawn_structures_and_flora(chunk: Chunk, offset: Vector3i, profile: ChunkP
 			var idx: int = x + Chunk.SIZE * z
 			var ground_y: int = smoothed_heights[idx]
 			
-			if ground_y < 2 or ground_y > 27 or profile.on_road[idx] == 1: continue
+			# Symmetrical Protection Check: Block random tree/shrub scatter generation inside any Mega-Structure bounds!
+			if ground_y < 2 or ground_y > 27 or profile.on_road[idx] == 1 or WorldGenerator.is_inside_megastructure(global_x, global_z): 
+				continue
 				
 			var local_ground_y: int = ground_y - offset.y
 			var biome: IBiome = BiomeService.get_biome(profile.biomes[idx])
@@ -231,11 +233,11 @@ func _process_subterranean_veins(chunk: Chunk, offset_x: int, offset_z: int) -> 
 		var selected_vein: IOreVeinBlueprint = null
 
 		if spawn_roll < 0.45:
-			selected_vein = _ore_veins[0] # Coal
+			selected_vein = _ore_veins[0] 
 		elif spawn_roll < 0.85:
-			selected_vein = _ore_veins[2] # INTEGRATED: Iron Ore
+			selected_vein = _ore_veins[2] 
 		elif ry < 8: 
-			selected_vein = _ore_veins[1] # Diamond
+			selected_vein = _ore_veins[1] 
 
 		if selected_vein != null:
 			var unique_vein_seed: int = abs(int(offset_x + rx) * 3121 ^ int(offset_z + rz) * 19331 ^ (ry * 777))
@@ -309,3 +311,14 @@ func _spawn_blueprint(chunk: Chunk, x: int, z: int, local_ground_y: int, bluepri
 	var blueprint: IStructureBlueprint = StructureLibrary.get_blueprint(blueprint_id) as IStructureBlueprint
 	if blueprint != null:
 		blueprint.build_structure(chunk, x, z, local_ground_y)
+
+
+## Symmetrical POI Scanner: Returns true if the coordinate falls inside any active landmark bounding box
+static func is_inside_megastructure(gx: int, gz: int) -> bool:
+	for s: IMegaStructure in MegaStructureService.get_structures():
+		var half_w := int(s.bounds_size.x / 2.0)
+		var half_h := int(s.bounds_size.y / 2.0)
+		if gx >= s.global_center.x - half_w and gx <= s.global_center.x + half_w:
+			if gz >= s.global_center.y - half_h and gz <= s.global_center.y + half_h:
+				return true
+	return false

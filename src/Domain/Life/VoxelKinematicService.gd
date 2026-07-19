@@ -5,8 +5,8 @@
 #              for all mobile entities (NPCs and Wildlife).
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical translations.
-# - SOLID OCP: Uses the new block model property is_liquid and is_air to perform 
-#   boundary checks, eliminating hardcoded block ID lists.
+# - Real-Time Sandbox Validation: Before taking a step, NPCs query the live WorldState 
+#   to verify if the target node is still walkable, allowing instant detours.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -49,6 +49,16 @@ static func navigate_along_path(host: CharacterBody3D, ai: Object, path: Array, 
 		return path_index
 		
 	var target_node: Vector3 = path[path_index]
+	var target_coord := Vector3i(floori(target_node.x), floori(target_node.y), floori(target_node.z))
+	
+	# Real-Time Voxel Validation: Invalidate path instantly if the target coordinate is blocked or mined out
+	var world_node := host.get_parent()
+	if is_instance_valid(world_node) and "world_state" in world_node:
+		var ws: WorldState = world_node.world_state
+		if is_instance_valid(ws) and not _is_node_still_walkable(ws, target_coord):
+			_invalidate_active_path(host, meta_index_key)
+			return path_index
+			
 	var diff := target_node - host.global_position
 	diff.y = 0.0
 	
@@ -82,7 +92,6 @@ static func _evaluate_stuck_state(host: CharacterBody3D, speed: float) -> bool:
 	var delta := host.get_physics_process_delta_time()
 	var dist_moved := host.global_position.distance_to(last_pos)
 	
-	# Symmetrical Displacement: Check if movement is less than 10% of expected distance
 	var expected_dist := speed * delta
 	var is_stopped := dist_moved < (expected_dist * 0.1)
 	
@@ -94,7 +103,6 @@ static func _evaluate_stuck_state(host: CharacterBody3D, speed: float) -> bool:
 	host.set_meta("nav_last_pos", host.global_position)
 	host.set_meta("nav_stuck_time", stuck_time)
 	
-	# If physically blocked for 0.8 seconds continuously, trigger escape jump
 	return stuck_time >= 0.8
 
 
@@ -137,3 +145,28 @@ static func _evaluate_habitat_safety(host: CharacterBody3D, ws: WorldState, b_be
 	var is_void := is_below_air
 	
 	return not is_liquid and not is_void
+
+
+static func _is_node_still_walkable(ws: WorldState, coord: Vector3i) -> bool:
+	var block_below := ws.get_block(coord + Vector3i(0, -1, 0))
+	var def_below := BlockLibrary.get_definition(block_below)
+	if not BlockType.is_solid(block_below) or (def_below != null and def_below.is_liquid):
+		return false # Floor is no longer solid
+		
+	var block_feet := ws.get_block(coord)
+	if BlockType.is_solid(block_feet):
+		return false # Block placed on feet
+		
+	var block_above := ws.get_block(coord + Vector3i(0, 1, 0))
+	if BlockType.is_solid(block_above):
+		return false # Block placed on head
+		
+	return true
+
+
+static func _invalidate_active_path(host: CharacterBody3D, meta_index_key: String) -> void:
+	host.set_meta(meta_index_key, 9999) # Out of bounds index triggers immediate repathing
+	if host.has_meta("guard_active_path"):
+		host.set_meta("guard_active_path", [])
+	if host.has_meta("villager_active_path"):
+		host.set_meta("villager_active_path", [])

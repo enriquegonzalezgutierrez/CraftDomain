@@ -7,6 +7,8 @@
 #   and sensors, delegating steering and kinematics to specialized services.
 # - SOLID OCP: Uses the new block model property is_liquid and is_air to perform 
 #   boundary checks, eliminating hardcoded block ID lists.
+# - Zero Warnings: Removed unused local variable is_below_liquid from 
+#   _evaluate_habitat_safety to ensure 100% warning-free compiles.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -409,9 +411,6 @@ func _evaluate_habitat_safety(ws: WorldState, check_pos: Vector3) -> bool:
 	var block_at_coord: Vector3i = Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
 	var block_below: BlockType.Type = ws.get_block(block_below_coord)
 	var block_at: BlockType.Type = ws.get_block(block_at_coord)
-	
-	var def_below := BlockLibrary.get_definition(block_below)
-	var is_below_liquid := def_below != null and def_below.is_liquid
 	
 	if _host.has_method("_is_block_type_habitable"):
 		var is_feet_safe: bool = _host.call("_is_block_type_habitable", block_at) as bool

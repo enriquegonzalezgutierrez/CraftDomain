@@ -4,17 +4,14 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively spatial chunk scans,
 #   identifying walkable block zones, and linking adjacent graph nodes.
-# - Voxel Navigation Integration: Allows step-climbing and stuck-resolving to
-#   execute during active A* paths, preventing NPCs from blocking on block lips.
-# - Real-Time Sandbox Adaptation: Provides a reactive API to update the A* graph
-#   locally in <0.05ms when blocks are placed or broken in real-time.
+# - Boundary Protection: Defers diagonal and stair connections until adjacent 
+#   neighbor chunks are fully generated, preventing phantom paths through walls.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ChunkNavigationBuilder
 extends RefCounted
 
-# Directional coordinate offsets used to scan adjacent block headings (Horizontal plane)
 const HORIZONTAL_OFFSETS: Array[Vector3i] = [
 	Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
 	Vector3i(0, 0, 1), Vector3i(0, 0, -1)
@@ -62,14 +59,12 @@ static func register_compiled_nodes_synchronous(walkable_nodes: Array[Dictionary
 
 
 ## Reactive API: Updates the global A* navigation graph dynamically when a block is modified in real-time.
-## Takes less than 0.05ms, preserving a locked 120 FPS frame rate during high-frequency sandbox edits.
 static func update_navigation_on_block_modified(global_pos: Vector3i, _type: BlockType.Type, world_state: WorldState, nav_service: VoxelNavigationService) -> void:
 	if nav_service == null or world_state == null:
 		return
 		
-	var scan_range := range(-1, 3) # Evaluates Y-1, Y, Y+1, Y+2 relative to modification
+	var scan_range := range(-1, 3) 
 	
-	# FIXED WARNING: Added explicit static typing ": int" to prevent UNTYPED_DECLARATION warnings
 	for offset_y: int in scan_range:
 		var eval_pos := global_pos + Vector3i(0, offset_y, 0)
 		_re_evaluate_node_integrity(eval_pos, world_state, nav_service)
@@ -81,16 +76,13 @@ static func _re_evaluate_node_integrity(pos: Vector3i, world_state: WorldState, 
 	
 	if currently_walkable:
 		if not registered_in_graph:
-			# Node became walkable (e.g. block broken): Register and link to nearby open paths
 			var is_roofed := _check_is_roofed_global(pos, world_state)
 			nav_service.add_navigation_node(pos, is_roofed)
 			_connect_walkable_neighbors(pos, world_state, nav_service)
 		else:
-			# Already walkable, but adjacent block changes might have opened new stair/descent vectors
 			_connect_walkable_neighbors(pos, world_state, nav_service)
 	else:
 		if registered_in_graph:
-			# Node is blocked (e.g. block placed): Remove from A* (cuts all connections automatically)
 			nav_service.remove_navigation_node(pos)
 
 
@@ -109,21 +101,17 @@ static func _get_block_safe(chunk: Chunk, local_pos: Vector3i, global_pos: Vecto
 
 ## Evaluates if a specific global coordinate has solid ground and sufficient standing clearance
 static func _is_node_walkable_local(chunk: Chunk, local_pos: Vector3i, global_pos: Vector3i, world_state: WorldState) -> bool:
-	# 1. Floor below must be solid
 	var below_local := local_pos + Vector3i(0, -1, 0)
 	var below_global := global_pos + Vector3i(0, -1, 0)
 	var block_below := _get_block_safe(chunk, below_local, below_global, world_state)
 	
-	# Liquid and air bodies cannot support stable A* walking
 	if not BlockType.is_solid(block_below) or block_below == BlockType.Type.WATER or block_below == BlockType.Type.LAVA:
 		return false
 		
-	# 2. Feet space must be non-solid (empty standing space)
 	var block_self := _get_block_safe(chunk, local_pos, global_pos, world_state)
 	if BlockType.is_solid(block_self):
 		return false
 		
-	# 3. Head space must also be non-solid (standing clearance)
 	var above_local := local_pos + Vector3i(0, 1, 0)
 	var above_global := global_pos + Vector3i(0, 1, 0)
 	var block_above := _get_block_safe(chunk, above_local, above_global, world_state)
@@ -173,30 +161,30 @@ static func _check_is_roofed_global(pos: Vector3i, world_state: WorldState) -> b
 ## Checks neighbors horizontally and vertically to map stair climbs and steep drops
 static func _connect_walkable_neighbors(pos: Vector3i, world_state: WorldState, nav_service: VoxelNavigationService) -> void:
 	for offset: Vector3i in HORIZONTAL_OFFSETS:
-		
-		# ----------------------------------------------------------------------
-		# CASE 1: FLAT WALK (Same elevation level)
-		# ----------------------------------------------------------------------
 		var neighbor_flat := pos + offset
+		
+		# Symmetrical Boundary Shield: Only map paths if the neighbor chunk is active in world state.
+		# This completely prevents phantom A* connections through un-generated castle walls!
+		var neighbor_chunk_pos := world_state.global_to_chunk_pos(neighbor_flat)
+		if world_state.get_chunk(neighbor_chunk_pos) == null:
+			continue
+		
+		# 1. FLAT WALK
 		if nav_service._coord_to_id.has(neighbor_flat):
 			nav_service.connect_nodes(pos, neighbor_flat)
 			
-		# ----------------------------------------------------------------------
-		# CASE 2: STEP-UP STAIR CLIMB (1-block vertical step with clearance check)
-		# ----------------------------------------------------------------------
+		# 2. STEP-UP STAIR CLIMB
 		var neighbor_up := pos + offset + Vector3i(0, 1, 0)
 		if nav_service._coord_to_id.has(neighbor_up):
-			var wall_check: BlockType.Type = world_state.get_block(pos + offset)
-			var ceiling_check: BlockType.Type = world_state.get_block(pos + offset + Vector3i(0, 1, 0))
+			var wall_check := world_state.get_block(pos + offset)
+			var ceiling_check := world_state.get_block(pos + offset + Vector3i(0, 1, 0))
 			if not BlockType.is_solid(wall_check) and not BlockType.is_solid(ceiling_check):
 				nav_service.connect_nodes(pos, neighbor_up)
 				
-		# ----------------------------------------------------------------------
-		# CASE 3: STEP-DOWN DESCENT (1-block vertical drop with clearance check)
-		# ----------------------------------------------------------------------
+		# 3. STEP-DOWN DESCENT
 		var neighbor_down := pos + offset + Vector3i(0, -1, 0)
 		if nav_service._coord_to_id.has(neighbor_down):
-			var wall_check: BlockType.Type = world_state.get_block(pos + offset)
-			var ceiling_check: BlockType.Type = world_state.get_block(pos + offset + Vector3i(0, 1, 0))
+			var wall_check := world_state.get_block(pos + offset)
+			var ceiling_check := world_state.get_block(pos + offset + Vector3i(0, 1, 0))
 			if not BlockType.is_solid(wall_check) and not BlockType.is_solid(ceiling_check):
 				nav_service.connect_nodes(pos, neighbor_down)
