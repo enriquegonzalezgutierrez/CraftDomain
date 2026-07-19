@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://bsp2mlh1xiqja"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/zombie_entity.tscn
+; Description: 3D Scene representing the Cave Zombie hostile entity.
+;              Fully cleaned of all legacy/orphan UIDs for stable loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://doqsyhm3blpmf" path="res://src/Infrastructure/Life/HostileEntity.gd" id="1_zombie"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://n2u5ji0w8e5w" path="res://assets/models/mobs/zombie/zombie_base.fbx" id="4_fbx"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/HostileEntity.gd" id="1_zombie"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/zombie/zombie_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_zombie"]
 radius = 0.77441406
@@ -27,5 +34,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=894020813]
 
-[node name="zombie_base" parent="Visuals/BodyBobJoint" unique_id=1951391980 instance=ExtResource("4_fbx")]
+[node name="zombie_base" parent="Visuals/BodyBobJoint" unique_id=1951391980 instance=ExtResource("4_glb")]
 transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0)

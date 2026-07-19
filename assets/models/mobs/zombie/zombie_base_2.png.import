@@ -2,7 +2,7 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d0eja8kbnseqe"
+uid="uid://c3rqpp2y0g3jb"
 path.s3tc="res://.godot/imported/zombie_base_2.png-4d4b343fe822820d9c4c1e6a081c9955.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
@@ -22,12 +22,12 @@ compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=0
-roughness/src_normal=""
+roughness/mode=1
+roughness/src_normal="res://assets/models/mobs/zombie/zombie_base_2.png"
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

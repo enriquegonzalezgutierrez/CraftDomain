@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://cowshcdd2ok63"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/golem_entity.tscn
+; Description: 3D Scene representing the defensive colossus Iron Golem entity.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://byy621b8vwf30" path="res://src/Infrastructure/Life/GolemEntity.gd" id="1_golem"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://l6swaufujfss" path="res://assets/models/mobs/golem.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/GolemEntity.gd" id="1_golem"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/golem.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_golem"]
 radius = 1.7431641

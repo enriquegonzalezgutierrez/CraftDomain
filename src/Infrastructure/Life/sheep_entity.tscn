@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://bwk5ibc5ooi8q"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/sheep_entity.tscn
+; Description: 3D Scene representing the passive Fluffy Sheep entity.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://ccao5g6f5rcdx" path="res://src/Infrastructure/Life/SheepEntity.gd" id="1_sheep"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://8xmbv6n00v4c" path="res://assets/models/mobs/sheep.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/SheepEntity.gd" id="1_sheep"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/sheep.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_sheep"]
 radius = 0.40673828

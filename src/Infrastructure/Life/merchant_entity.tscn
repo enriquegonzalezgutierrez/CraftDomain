@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://dbumty4fo5njm"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/merchant_entity.tscn
+; Description: 3D Scene representing the passive village Merchant entity.
+;              Updated to reference native, highly-portable .glb skeletal meshes.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://cc7ixwduwkj8b" path="res://src/Infrastructure/Life/MerchantEntity.gd" id="1_merchant"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://b4y4xpfys1n26" path="res://assets/models/mobs/merchant/merchant_base.fbx" id="4_fbx"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/MerchantEntity.gd" id="1_merchant"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/merchant/merchant_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_merchant"]
 radius = 0.3334961
@@ -27,5 +34,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1819838518]
 
-[node name="merchant_base" parent="Visuals/BodyBobJoint" unique_id=1030556118 instance=ExtResource("4_fbx")]
+[node name="merchant_base" parent="Visuals/BodyBobJoint" unique_id=1030556118 instance=ExtResource("4_glb")]
 transform = Transform3D(0.75, 0, 0, 0, 0.75, 0, 0, 0, 0.75, 0, 0, 0)

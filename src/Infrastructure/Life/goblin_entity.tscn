@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://cpup55dqlhbo1"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/goblin_entity.tscn
+; Description: 3D Scene representing the hostile skirmisher Goblin entity.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://bx3wns0hnau3x" path="res://src/Infrastructure/Life/GoblinEntity.gd" id="1_goblin"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://b7n8s6of8kujt" path="res://assets/models/mobs/goblin.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/GoblinEntity.gd" id="1_goblin"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/goblin.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_goblin"]
 radius = 0.31933594

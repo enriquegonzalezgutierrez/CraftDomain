@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://bv3tgrreqa875"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/farmer_entity.tscn
+; Description: 3D Scene representing the agricultural Farmer entity.
+;              Updated to reference native, highly-portable .glb skeletal meshes.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://c3rk2e4intaej" path="res://src/Infrastructure/Life/FarmerEntity.gd" id="1_farmer"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://bx5i0oejm33g5" path="res://assets/models/mobs/farmer/farmer_base.fbx" id="4_fbx"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/FarmerEntity.gd" id="1_farmer"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/farmer/farmer_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_farmer"]
 radius = 0.3154297
@@ -27,4 +34,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1480662787]
 
-[node name="farmer_base" parent="Visuals/BodyBobJoint" unique_id=129441276 instance=ExtResource("4_fbx")]
+[node name="farmer_base" parent="Visuals/BodyBobJoint" unique_id=129441276 instance=ExtResource("4_glb")]

@@ -1,6 +1,13 @@
 [gd_scene format=3 uid="uid://byvpdrb52cgmk"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/World/streetlight_entity.tscn
+; Description: 3D Scene representing the interactive village Streetlight prop.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://cnjfhmw2fuyd5" path="res://src/Infrastructure/World/StreetlightEntity.gd" id="1_script"]
+[ext_resource type="Script" path="res://src/Infrastructure/World/StreetlightEntity.gd" id="1_script"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_col"]
 size = Vector3(0.6, 2.6, 0.6)

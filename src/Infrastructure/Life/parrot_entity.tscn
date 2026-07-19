@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://dt0jpaycy35ec"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/parrot_entity.tscn
+; Description: 3D Scene representing the passive flying Parrot entity.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://cevb1h3w51uv8" path="res://src/Infrastructure/Life/ParrotEntity.gd" id="1_parrot"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://5gdq81arvrlo" path="res://assets/models/mobs/parrot.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/ParrotEntity.gd" id="1_parrot"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/parrot.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_parrot"]
 radius = 1.0014648

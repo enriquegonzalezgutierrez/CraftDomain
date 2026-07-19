@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://tve7m1qj48xy"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/raccoon_entity.tscn
+; Description: 3D Scene representing the passive forest Raccoon entity.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://2jm0qkuqqby6" path="res://src/Infrastructure/Life/RaccoonEntity.gd" id="1_raccoon"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://n16fo3d5vmug" path="res://assets/models/mobs/raccoon.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/RaccoonEntity.gd" id="1_raccoon"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/raccoon.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_raccoon"]
 radius = 0.15429688

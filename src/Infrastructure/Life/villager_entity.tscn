@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://2sbxr25hfoco"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/villager_entity.tscn
+; Description: 3D Scene representing the common civilian Villager entity.
+;              Fully cleaned of all legacy/orphan UIDs for stable loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://cl8exwos1iv74" path="res://src/Infrastructure/Life/VillagerEntity.gd" id="1_villager"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://dgpqnmbday33x" path="res://assets/models/mobs/villager/villager_base.fbx" id="4_fbx"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/VillagerEntity.gd" id="1_villager"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/villager/villager_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_villager"]
 radius = 0.4897461
@@ -27,5 +34,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1003189423]
 
-[node name="villager_base" parent="Visuals/BodyBobJoint" unique_id=1733097190 instance=ExtResource("4_fbx")]
+[node name="villager_base" parent="Visuals/BodyBobJoint" unique_id=1733097190 instance=ExtResource("4_glb")]
 transform = Transform3D(1.25, 0, 0, 0, 1.25, 0, 0, 0, 1.25, 0, 0, 0)

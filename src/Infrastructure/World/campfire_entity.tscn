@@ -1,4 +1,11 @@
 [gd_scene load_steps=18 format=3]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/World/campfire_entity.tscn
+; Description: 3D Scene representing the interactive cozy Campfire prop.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
 [ext_resource type="Script" path="res://src/Infrastructure/World/CampfireEntity.gd" id="1_script"]
 

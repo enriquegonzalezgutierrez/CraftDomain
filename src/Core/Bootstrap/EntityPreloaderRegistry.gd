@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Core/Bootstrap/EntityPreloaderRegistry.gd
 # Description: Static Registry centralizing preloads of scenes, skeletal meshes,
-#              and animations to eliminate runtime disk I/O blocks (SRP / OCP).
+#              and GLB animations to eliminate runtime disk I/O blocks (SRP / OCP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -122,14 +122,14 @@ static func _preload_vegetation_props() -> void:
 
 
 static func _preload_skeletal_meshes_cache() -> void:
-	_skeletal_models["res://assets/models/mobs/cyber/cyber_base.fbx"] = preload("res://assets/models/mobs/cyber/cyber_base.fbx")
-	_skeletal_models["res://assets/models/mobs/druid/druid_base.fbx"] = preload("res://assets/models/mobs/druid/druid_base.fbx")
-	_skeletal_models["res://assets/models/mobs/farmer/farmer_base.fbx"] = preload("res://assets/models/mobs/farmer/farmer_base.fbx")
-	_skeletal_models["res://assets/models/mobs/guard/guard_base.fbx"] = preload("res://assets/models/mobs/guard/guard_base.fbx")
-	_skeletal_models["res://assets/models/mobs/merchant/merchant_base.fbx"] = preload("res://assets/models/mobs/merchant/merchant_base.fbx")
-	_skeletal_models["res://assets/models/mobs/miner/miner_base.fbx"] = preload("res://assets/models/mobs/miner/miner_base.fbx")
-	_skeletal_models["res://assets/models/mobs/villager/villager_base.fbx"] = preload("res://assets/models/mobs/villager/villager_base.fbx")
-	_skeletal_models["res://assets/models/mobs/zombie/zombie_base.fbx"] = preload("res://assets/models/mobs/zombie/zombie_base.fbx")
+	_skeletal_models["res://assets/models/mobs/cyber/cyber_base.glb"] = preload("res://assets/models/mobs/cyber/cyber_base.glb")
+	_skeletal_models["res://assets/models/mobs/druid/druid_base.glb"] = preload("res://assets/models/mobs/druid/druid_base.glb")
+	_skeletal_models["res://assets/models/mobs/farmer/farmer_base.glb"] = preload("res://assets/models/mobs/farmer/farmer_base.glb")
+	_skeletal_models["res://assets/models/mobs/guard/guard_base.glb"] = preload("res://assets/models/mobs/guard/guard_base.glb")
+	_skeletal_models["res://assets/models/mobs/merchant/merchant_base.glb"] = preload("res://assets/models/mobs/merchant/merchant_base.glb")
+	_skeletal_models["res://assets/models/mobs/miner/miner_base.glb"] = preload("res://assets/models/mobs/miner/miner_base.glb")
+	_skeletal_models["res://assets/models/mobs/villager/villager_base.glb"] = preload("res://assets/models/mobs/villager/villager_base.glb")
+	_skeletal_models["res://assets/models/mobs/zombie/zombie_base.glb"] = preload("res://assets/models/mobs/zombie/zombie_base.glb")
 
 
 static func _preload_skeletal_animations_cache() -> void:
@@ -145,62 +145,62 @@ static func _preload_skeletal_animations_cache() -> void:
 
 static func _preload_cyber_anims() -> void:
 	var prefix := "res://assets/models/mobs/cyber/cyber_"
-	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/cyber/cyber_idle.fbx")
-	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/cyber/cyber_walk.fbx")
-	_skeletal_anims[prefix + "panic.fbx"] = preload("res://assets/models/mobs/cyber/cyber_panic.fbx")
-	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/cyber/cyber_jump.fbx")
+	_skeletal_anims[prefix + "idle.glb"] = preload("res://assets/models/mobs/cyber/cyber_idle.glb")
+	_skeletal_anims[prefix + "walk.glb"] = preload("res://assets/models/mobs/cyber/cyber_walk.glb")
+	_skeletal_anims[prefix + "panic.glb"] = preload("res://assets/models/mobs/cyber/cyber_panic.glb")
+	_skeletal_anims[prefix + "jump.glb"] = preload("res://assets/models/mobs/cyber/cyber_jump.glb")
 
 
 static func _preload_druid_anims() -> void:
 	var prefix := "res://assets/models/mobs/druid/druid_"
-	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/druid/druid_idle.fbx")
-	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/druid/druid_walk.fbx")
-	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/druid/druid_jump.fbx")
+	_skeletal_anims[prefix + "idle.glb"] = preload("res://assets/models/mobs/druid/druid_idle.glb")
+	_skeletal_anims[prefix + "walk.glb"] = preload("res://assets/models/mobs/druid/druid_walk.glb")
+	_skeletal_anims[prefix + "jump.glb"] = preload("res://assets/models/mobs/druid/druid_jump.glb")
 
 
 static func _preload_farmer_anims() -> void:
 	var prefix := "res://assets/models/mobs/farmer/farmer_"
-	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/farmer/farmer_idle.fbx")
-	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/farmer/farmer_walk.fbx")
-	_skeletal_anims[prefix + "harvest.fbx"] = preload("res://assets/models/mobs/farmer/farmer_harvest.fbx")
-	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/farmer/farmer_jump.fbx")
+	_skeletal_anims[prefix + "idle.glb"] = preload("res://assets/models/mobs/farmer/farmer_idle.glb")
+	_skeletal_anims[prefix + "walk.glb"] = preload("res://assets/models/mobs/farmer/farmer_walk.glb")
+	_skeletal_anims[prefix + "harvest.glb"] = preload("res://assets/models/mobs/farmer/farmer_harvest.glb")
+	_skeletal_anims[prefix + "jump.glb"] = preload("res://assets/models/mobs/farmer/farmer_jump.glb")
 
 
 static func _preload_guard_anims() -> void:
 	var prefix := "res://assets/models/mobs/guard/guard_"
-	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/guard/guard_idle.fbx")
-	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/guard/guard_walk.fbx")
-	_skeletal_anims[prefix + "attack.fbx"] = preload("res://assets/models/mobs/guard/guard_attack.fbx")
-	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/guard/guard_jump.fbx")
+	_skeletal_anims[prefix + "idle.glb"] = preload("res://assets/models/mobs/guard/guard_idle.glb")
+	_skeletal_anims[prefix + "walk.glb"] = preload("res://assets/models/mobs/guard/guard_walk.glb")
+	_skeletal_anims[prefix + "attack.glb"] = preload("res://assets/models/mobs/guard/guard_attack.glb")
+	_skeletal_anims[prefix + "jump.glb"] = preload("res://assets/models/mobs/guard/guard_jump.glb")
 
 
 static func _preload_merchant_anims() -> void:
 	var prefix := "res://assets/models/mobs/merchant/merchant_"
-	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/merchant/merchant_idle.fbx")
-	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/merchant/merchant_walk.fbx")
-	_skeletal_anims[prefix + "panic.fbx"] = preload("res://assets/models/mobs/merchant/merchant_panic.fbx")
-	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/merchant/merchant_jump.fbx")
+	_skeletal_anims[prefix + "idle.glb"] = preload("res://assets/models/mobs/merchant/merchant_idle.glb")
+	_skeletal_anims[prefix + "walk.glb"] = preload("res://assets/models/mobs/merchant/merchant_walk.glb")
+	_skeletal_anims[prefix + "panic.glb"] = preload("res://assets/models/mobs/merchant/merchant_panic.glb")
+	_skeletal_anims[prefix + "jump.glb"] = preload("res://assets/models/mobs/merchant/merchant_jump.glb")
 
 
 static func _preload_miner_anims() -> void:
 	var prefix := "res://assets/models/mobs/miner/miner_"
-	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/miner/miner_idle.fbx")
-	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/miner/miner_walk.fbx")
-	_skeletal_anims[prefix + "attack.fbx"] = preload("res://assets/models/mobs/miner/miner_attack.fbx")
-	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/miner/miner_jump.fbx")
+	_skeletal_anims[prefix + "idle.glb"] = preload("res://assets/models/mobs/miner/miner_idle.glb")
+	_skeletal_anims[prefix + "walk.glb"] = preload("res://assets/models/mobs/miner/miner_walk.glb")
+	_skeletal_anims[prefix + "attack.glb"] = preload("res://assets/models/mobs/miner/miner_attack.glb")
+	_skeletal_anims[prefix + "jump.glb"] = preload("res://assets/models/mobs/miner/miner_jump.glb")
 
 
 static func _preload_villager_anims() -> void:
 	var prefix := "res://assets/models/mobs/villager/villager_"
-	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/villager/villager_idle.fbx")
-	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/villager/villager_walk.fbx")
-	_skeletal_anims[prefix + "panic.fbx"] = preload("res://assets/models/mobs/villager/villager_panic.fbx")
-	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/villager/villager_jump.fbx")
+	_skeletal_anims[prefix + "idle.glb"] = preload("res://assets/models/mobs/villager/villager_idle.glb")
+	_skeletal_anims[prefix + "walk.glb"] = preload("res://assets/models/mobs/villager/villager_walk.glb")
+	_skeletal_anims[prefix + "panic.glb"] = preload("res://assets/models/mobs/villager/villager_panic.glb")
+	_skeletal_anims[prefix + "jump.glb"] = preload("res://assets/models/mobs/villager/villager_jump.glb")
 
 
 static func _preload_zombie_anims() -> void:
 	var prefix := "res://assets/models/mobs/zombie/zombie_"
-	_skeletal_anims[prefix + "idle.fbx"] = preload("res://assets/models/mobs/zombie/zombie_idle.fbx")
-	_skeletal_anims[prefix + "walk.fbx"] = preload("res://assets/models/mobs/zombie/zombie_walk.fbx")
-	_skeletal_anims[prefix + "attack.fbx"] = preload("res://assets/models/mobs/zombie/zombie_attack.fbx")
-	_skeletal_anims[prefix + "jump.fbx"] = preload("res://assets/models/mobs/zombie/zombie_jump.fbx")
+	_skeletal_anims[prefix + "idle.glb"] = preload("res://assets/models/mobs/zombie/zombie_idle.glb")
+	_skeletal_anims[prefix + "walk.glb"] = preload("res://assets/models/mobs/zombie/zombie_walk.glb")
+	_skeletal_anims[prefix + "attack.glb"] = preload("res://assets/models/mobs/zombie/zombie_attack.glb")
+	_skeletal_anims[prefix + "jump.glb"] = preload("res://assets/models/mobs/zombie/zombie_jump.glb")

@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://crvvj1ncwwchg"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/pig_entity.tscn
+; Description: 3D Scene representing the passive prairie Pig entity.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://cflb4l3wmu1kq" path="res://src/Infrastructure/Life/PigEntity.gd" id="1_pig"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://cnm3uflhds0ij" path="res://assets/models/mobs/pig.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/PigEntity.gd" id="1_pig"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/pig.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_pig"]
 radius = 0.3642578

@@ -1,9 +1,16 @@
 [gd_scene format=3 uid="uid://orgjdemqokw5"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/crab_entity.tscn
+; Description: 3D Scene representing the passive amphibious Crab entity.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://8dq8wlil6f5s" path="res://src/Infrastructure/Life/CrabEntity.gd" id="1_crab"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://bs2hvcuq7ab65" path="res://assets/models/mobs/crab.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/CrabEntity.gd" id="1_crab"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/crab.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_crab"]
 radius = 0.28686523

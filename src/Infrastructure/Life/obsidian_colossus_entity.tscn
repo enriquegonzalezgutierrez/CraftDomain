@@ -1,8 +1,15 @@
 [gd_scene format=3 uid="uid://luc77tot7ie0"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/obsidian_colossus_entity.tscn
+; Description: 3D Scene representing the Act III Boss Obsidian Colossus entity.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://bdx102kj4bbrb" path="res://src/Infrastructure/Life/ObsidianColossusEntity.gd" id="1_colossus"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/ObsidianColossusEntity.gd" id="1_colossus"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_colossus"]
 size = Vector3(2.2, 3.5, 1.8)

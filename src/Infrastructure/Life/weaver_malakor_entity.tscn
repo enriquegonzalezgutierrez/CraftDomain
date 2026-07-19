@@ -1,8 +1,15 @@
 [gd_scene format=3 uid="uid://bsnwstphbigs0"]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/Life/weaver_malakor_entity.tscn
+; Description: 3D Scene representing the Act IV Final Boss Weaver Malakor entity.
+;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
-[ext_resource type="Script" uid="uid://dcs34nfqysaoa" path="res://src/Infrastructure/Life/WeaverMalakorEntity.gd" id="1_malakor"]
-[ext_resource type="Script" uid="uid://dcnnmmisu1fp8" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://xlo2t2nfquri" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/WeaverMalakorEntity.gd" id="1_malakor"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_malakor"]
 radius = 0.35

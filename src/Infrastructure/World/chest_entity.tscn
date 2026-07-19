@@ -1,4 +1,11 @@
 [gd_scene load_steps=5 format=3]
+; ==============================================================================
+; Pathfile: res://src/Infrastructure/World/chest_entity.tscn
+; Description: 3D Scene representing the interactive loot Chest prop.
+;              Updated to reference native, highly-portable .glb skeletal meshes.
+; Author: Enrique González Gutiérrez
+; Email: enrique.gonzalez.gutierrez@gmail.com
+; ==============================================================================
 
 [ext_resource type="Script" path="res://src/Infrastructure/World/ChestEntity.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://assets/models/decorations/chest.glb" id="2_glb"]
