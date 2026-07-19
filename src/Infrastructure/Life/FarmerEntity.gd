@@ -1,14 +1,14 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/FarmerEntity.gd
 # Description: Physical character controller representing an agricultural Farmer NPC.
-#              DRY biome detection is delegated strictly to BiomeService (DRY).
+#              Updated to use native, highly-portable .glb skeletal animations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name FarmerEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/farmer/farmer_base.fbx"
+const BASE_MODEL_PATH := "res://assets/models/mobs/farmer/farmer_base.glb"
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
 
@@ -42,10 +42,10 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("anim_idle_path", ANIM_DIR + "farmer/farmer_idle.fbx")
-	strategy.set("anim_walk_path", ANIM_DIR + "farmer/farmer_walk.fbx")
-	strategy.set("anim_attack_path", ANIM_DIR + "farmer/farmer_harvest.fbx")
-	strategy.set("anim_jump_path", ANIM_DIR + "farmer/farmer_jump.fbx")
+	strategy.set("anim_idle_path", ANIM_DIR + "farmer/farmer_idle.glb")
+	strategy.set("anim_walk_path", ANIM_DIR + "farmer/farmer_walk.glb")
+	strategy.set("anim_attack_path", ANIM_DIR + "farmer/farmer_harvest.glb")
+	strategy.set("anim_jump_path", ANIM_DIR + "farmer/farmer_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
@@ -96,7 +96,6 @@ func _select_procedural_greeting_key() -> String:
 	if is_night:
 		return "DIALOGUE_FARMER_NIGHT"
 		
-	# Centralized DRY Biome Sensing
 	var biome_id := BiomeService.get_biome_id_at_position(global_position, get_parent())
 	match biome_id:
 		4: return "DIALOGUE_FARMER_GLACIERS"   

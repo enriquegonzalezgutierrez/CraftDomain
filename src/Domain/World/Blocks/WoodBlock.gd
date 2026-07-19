@@ -1,15 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: WoodBlock
+# Pathfile: res://src/Domain/World/Blocks/WoodBlock.gd
 # Description: Concrete Domain Definition for the solid structural Oak Wood Log.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   procedural coloring, and texture configurations for the Oak Wood Block.
-# - Open-Closed Principle (OCP): Extends BlockDefinition. Configures its 
-#   mining resistance locally to restore gameplay balance.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/Blocks/WoodBlock.gd
+#              Declares polymorphic spawn penetration rules.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name WoodBlock
 extends BlockDefinition
@@ -26,6 +20,10 @@ func _init() -> void:
 	
 	# OCP/SOLID Compliance: Enforce 3 impacts resistance for sturdy Oak logs
 	mining_resistance = 3
+	
+	# SOLID OCP Spawning properties configuration
+	is_spawn_surface = false # No spawning on top of wooden structures
+	is_spawn_penetrable = true # Spawner can search through wooden roofs/ceilings
 	
 	# Procedural wood-brown colors for unshaded fallback rendering
 	color_top = Color(0.72, 0.55, 0.35)

@@ -1,13 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: MudBlock
+# Pathfile: res://src/Domain/World/Blocks/MudBlock.gd
 # Description: Concrete Domain Definition for the dark rotting swamp Mud.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   procedural coloring, and texture configurations for the Mud Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
-#   its local drop and spawn variables within the constructor.
+#              Declares polymorphic spawn surface rules.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MudBlock
 extends BlockDefinition
@@ -27,16 +23,17 @@ func _init() -> void:
 	drop_item_id = 6
 	drop_quantity = 1
 	
-	# OCP/SOLID Compliance: Mobs can spawn on mud swamp banks
-	is_spawnable_soil = true
+	# SOLID OCP Spawning properties configuration
+	is_spawn_surface = true # Mobs can stand on mud swamp banks
+	is_spawn_penetrable = false # Spawner stops searching here
 	
 	# Procedural dark-brown colors for unshaded fallback rendering
 	color_top = Color(0.32, 0.25, 0.18)
 	color_side = Color(0.28, 0.22, 0.15)
 	color_bottom = Color(0.22, 0.18, 0.12)
 	
-	# High-fidelity visual descriptions for Infrastructure PBR compilation
+	# High-fidelity visual descriptions for PBR texture mapping
 	texture_file_name = "mud.png"
-	roughness = 0.9 # High matte finish for a viscous organic look
+	roughness = 0.9 # High roughness for a viscous organic look
 	metallic = 0.0
 	rendering_type = "default"

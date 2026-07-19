@@ -22,7 +22,6 @@ func _init() -> void:
 	is_solid = false
 	is_transparent = true 
 	mining_resistance = 1
-	is_spawnable_soil = false
 	
 	color_top = Color(0.95, 0.90, 0.15)
 	color_side = Color(0.85, 0.80, 0.10)

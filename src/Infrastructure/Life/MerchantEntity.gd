@@ -1,14 +1,14 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MerchantEntity.gd
-# Description: Physical character controller for the Village Merchant NPC.
-#              Sanitization is delegated strictly to GLBModelSanitizer (DRY).
+# Description: Physical character controller for the passive village Merchant.
+#              Updated to use native, highly-portable .glb skeletal animations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MerchantEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/merchant/merchant_base.fbx"
+const BASE_MODEL_PATH := "res://assets/models/mobs/merchant/merchant_base.glb"
 var gaze_rotation_offset: float = PI
 
 
@@ -40,10 +40,10 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("anim_idle_path", ANIM_DIR + "merchant/merchant_idle.fbx")
-	strategy.set("anim_walk_path", ANIM_DIR + "merchant/merchant_walk.fbx")
-	strategy.set("anim_panic_path", ANIM_DIR + "merchant/merchant_panic.fbx")
-	strategy.set("anim_jump_path", ANIM_DIR + "merchant/merchant_jump.fbx")
+	strategy.set("anim_idle_path", ANIM_DIR + "merchant/merchant_idle.glb")
+	strategy.set("anim_walk_path", ANIM_DIR + "merchant/merchant_walk.glb")
+	strategy.set("anim_panic_path", ANIM_DIR + "merchant/merchant_panic.glb")
+	strategy.set("anim_jump_path", ANIM_DIR + "merchant/merchant_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)

@@ -1,12 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/BlockLibrary.gd
 # Description: Pure Domain registry managing the definitions, physical traits, 
-#              and visual attributes of all block types in the game world.
-# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 20 lines.
-#              Corrected: Purged all print logs for silent and fast initialization.
-#              Thread Safety: Replaced static compile-time initialization (_static_init)
-#              with lazy, on-demand runtime loading to prevent editor deadlocks.
+#              and spawning behaviors of all block types in the game world.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -18,6 +13,7 @@ const BLOCKS_DIR := "res://src/Domain/World/Blocks/"
 static var _definitions: Dictionary = {}
 
 
+## Public Reader API: Retrieves the block definition strategy for a given ID.
 static func get_definition(type: int) -> BlockDefinition:
 	_ensure_initialized()
 	if _definitions.has(type):
@@ -29,6 +25,7 @@ static func get_definition(type: int) -> BlockDefinition:
 	return null
 
 
+## Public Writer API: Registers a custom block definition dynamically.
 static func register_definition(definition: BlockDefinition) -> void:
 	if definition != null:
 		_definitions[definition.type] = definition
@@ -84,7 +81,13 @@ static func _register_air_fallback() -> void:
 	air.translation_key = "BLOCK_AIR"
 	air.is_solid = false
 	air.is_transparent = true
+	
+	# SOLID OCP Spawning properties configuration
+	air.is_spawn_surface = false
+	air.is_spawn_penetrable = true # Spawner searches straight through air
+	
 	air.color_top = Color(0, 0, 0, 0)
 	air.color_side = Color(0, 0, 0, 0)
 	air.color_bottom = Color(0, 0, 0, 0)
+	
 	_definitions[0] = air

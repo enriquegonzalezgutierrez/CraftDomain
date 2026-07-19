@@ -1,20 +1,18 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
-# Description: Infrastructure Service responsible for managing dynamic herd
-#              spawning, local chunk populating, and mission objective targets.
+# Description: Infrastructure Service managing dynamic herd spawning, local chunk 
+#              population, and active campaign quest targets.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively dynamic 
-#   animal herds and quest target placements, decoupling rosters from blueprints.
-# - Dependency Inversion Principle (DIP): Depends on the abstract domain
-#   interface of StructurePopulationService instead of untyped dictionaries.
-# - Method Size Limits (Rule 4.2): All helper methods strictly remain < 20 lines.
+# - Single Responsibility Principle (SRP): Coordinates exclusively mob lifecycle.
+# - Dependency Inversion Principle (DIP): Resolves coordinates through the pure 
+#   domain SpawnCoordinateSolver instead of carrying low-level voxel loops.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MobSpawningService
 extends RefCounted
 
-# --- SOLID OCP CONFIGURATIONS (Section 3.2 / 5.3) ---
+# Spawning registries mapping quest IDs to target mob IDs
 const QUEST_TARGET_MOBS: Dictionary = {
 	"lost_bazaar": 100,       # Villager Entity ID (Act I)
 	"fuel_fryer": 101,        # Merchant Entity ID (Act I)
@@ -22,7 +20,6 @@ const QUEST_TARGET_MOBS: Dictionary = {
 	"bazaar_return": 100      # Villager Entity ID (Act IV Epilogue)
 }
 
-# --- STATIC CONSTANTS FOR ELIMINATING MAGIC NUMBERS (Section 5.3) ---
 const MOB_ID_PIG: int = 0
 const MOB_ID_CHICKEN: int = 1
 const MOB_ID_SHEEP: int = 2
@@ -31,24 +28,18 @@ const MOB_ID_ZOMBIE: int = 10
 const MOB_ID_SHARK: int = 11
 const MOB_ID_VILLAGER: int = 100
 const MOB_ID_MERCHANT: int = 101
-const MOB_ID_GUARD: int = 102
 const MOB_ID_GOLEM: int = 107
 const MOB_ID_TURTLE: int = 201
 const MOB_ID_OCTOPUS: int = 210
 
-# Spawn coordinate offsets inside 16x16 chunk spaces
 const OFFSET_A: float = 7.5
 const OFFSET_B: float = 5.5
 const OFFSET_C: float = 8.5
 const OFFSET_D: float = 11.5
-const OFFSET_E: float = 6.5
 const OFFSET_HALF_CHUNK: float = 8.0
 
-# Probability bounds and heights
-const WILD_SPAWN_PROBABILITY_THRESHOLD: float = 0.25
 const DEFAULT_WILDERNESS_SPAWN_CHANCE: float = 0.28
 const HEIGHT_MAX_TERRAIN_LIMIT: int = 31
-const VERTICAL_SENSORY_LIMIT: float = 12.0
 const STRAY_PROBABILITY_THRESHOLD: float = 0.25
 
 
@@ -83,16 +74,16 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 
 
 func _spawn_village_mobs(chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
-	_spawn_and_register_entity(MOB_ID_VILLAGER, chunk_offset, OFFSET_A, OFFSET_B, world_state, world_node, spawned_nodes, true)
-	_spawn_and_register_entity(MOB_ID_MERCHANT, chunk_offset, OFFSET_B, OFFSET_A, world_state, world_node, spawned_nodes, true)
-	_spawn_and_register_entity(MOB_ID_GOLEM, chunk_offset, OFFSET_C, OFFSET_B, world_state, world_node, spawned_nodes, true)
+	_spawn_and_register_entity(MOB_ID_VILLAGER, chunk_offset, OFFSET_A, OFFSET_B, world_state, world_node, spawned_nodes)
+	_spawn_and_register_entity(MOB_ID_MERCHANT, chunk_offset, OFFSET_B, OFFSET_A, world_state, world_node, spawned_nodes)
+	_spawn_and_register_entity(MOB_ID_GOLEM, chunk_offset, OFFSET_C, OFFSET_B, world_state, world_node, spawned_nodes)
 
 
 func _spawn_village_stray_animals(chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
 	if randf() < STRAY_PROBABILITY_THRESHOLD:
 		var stray_ids: Array[int] = [MOB_ID_PIG, MOB_ID_CHICKEN, MOB_ID_SHEEP, MOB_ID_COW] 
 		var spawn_id: int = stray_ids[randi() % stray_ids.size()]
-		_spawn_and_register_entity(spawn_id, chunk_offset, OFFSET_D, OFFSET_D, world_state, world_node, spawned_nodes, false)
+		_spawn_and_register_entity(spawn_id, chunk_offset, OFFSET_D, OFFSET_D, world_state, world_node, spawned_nodes)
 
 
 func _spawn_wilderness_wildlife(chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
@@ -129,11 +120,10 @@ func _spawn_wildlife_group(wildlife_ids: Array[int], chunk_offset: Vector3, worl
 	for i: int in range(group_size):
 		var rx := randf_range(2.0, 14.0)
 		var rz := randf_range(2.0, 14.0)
-		_spawn_and_register_entity(spawn_id, chunk_offset, rx, rz, world_state, world_node, spawned_nodes, false)
+		_spawn_and_register_entity(spawn_id, chunk_offset, rx, rz, world_state, world_node, spawned_nodes)
 
 
 func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
-	# Centralized Spawning Registry (SOLID Compliant)
 	var pop_points := StructurePopulationService.get_population_for_chunk(chunk_pos)
 	
 	for point: StructurePopulationService.PopulationPoint in pop_points:
@@ -143,8 +133,6 @@ func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState
 
 func _spawn_decoupled_landmark_mob(point: StructurePopulationService.PopulationPoint, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
 	var spawn_pos := point.global_pos
-	
-	# FIXED: Spawns exactly at predefined room Y, preventing roof snapping
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var spawn_node := MobRegistry.create_mob(point.spawn_id, spawn_pos)
 		if spawn_node != null:
@@ -182,8 +170,6 @@ func _find_eligible_entity_in_list(nodes: Array[Node], mob_id: int) -> Character
 
 func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node], quest_id: String) -> void:
 	var spawn_pos := target_pos
-	
-	# FIXED: Spawns exactly at predefined target Y, preventing roof snapping
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var mob := MobRegistry.create_mob(mob_id, spawn_pos)
 		if mob != null:
@@ -192,17 +178,17 @@ func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vect
 			world_node.add_child(mob)
 			spawned_nodes.append(mob)
 	else:
-		_spawn_and_register_entity(mob_id, chunk_offset, OFFSET_HALF_CHUNK, OFFSET_HALF_CHUNK, world_state, world_node, spawned_nodes, true)
+		_spawn_and_register_entity(mob_id, chunk_offset, OFFSET_HALF_CHUNK, OFFSET_HALF_CHUNK, world_state, world_node, spawned_nodes)
 
 
-func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node], allow_any_solid: bool = false) -> void:
+func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
 	if not MobRegistry.has_mob(spawn_id): return
 		
 	var global_x := int(offset.x + lx)
 	var global_z := int(offset.z + lz)
 	var habitat := MobRegistry.get_mob_habitat(spawn_id)
-	var gy := _resolve_habitat_ground_y(world_state, global_x, global_z, habitat, allow_any_solid)
 	
+	var gy := _resolve_habitat_ground_y(world_state, global_x, global_z, habitat, spawn_id)
 	if gy < 0.0: return 
 		
 	var pos := Vector3(offset.x + lx, gy, offset.z + lz)
@@ -214,65 +200,20 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 			list.append(mob)
 
 
-func _resolve_habitat_ground_y(world_state_ref: WorldState, global_x: int, global_z: int, habitat: int, allow_any_solid: bool) -> float:
-	var gy := -1.0
-	if habitat == MobRegistry.Habitat.TERRESTRIAL:
-		gy = _get_ground_surface_y(world_state_ref, global_x, global_z, allow_any_solid)
-	elif habitat == MobRegistry.Habitat.AQUATIC:
-		gy = _get_water_surface_y(world_state_ref, global_x, global_z)
-	else:
-		gy = _get_water_surface_y(world_state_ref, global_x, global_z)
-		if gy < 0.0:
-			gy = _get_ground_surface_y(world_state_ref, global_x, global_z, allow_any_solid)
-	return gy
-
-
-func _get_ground_surface_y(world_state_ref: WorldState, global_x: int, global_z: int, allow_any_solid: bool) -> float:
-	var top_block_type := BlockType.Type.AIR
-	var top_y := -1
-	
-	for y: int in range(HEIGHT_MAX_TERRAIN_LIMIT, -1, -1):
-		var check_pos := Vector3i(global_x, y, global_z)
-		var block_type := world_state_ref.get_block(check_pos)
-		if block_type != BlockType.Type.AIR:
-			top_block_type = block_type
-			top_y = y
-			break
-			
-	if top_y == -1 or top_block_type == BlockType.Type.WATER or top_block_type == BlockType.Type.LAVA:
-		return -1.0 
-	
-	return _solve_solid_ground_height(world_state_ref, global_x, global_z, top_y, allow_any_solid)
-
-
-func _solve_solid_ground_height(world_state_ref: WorldState, global_x: int, global_z: int, top_y: int, allow_any_solid: bool) -> float:
-	var hit_y := -1
-	for y: int in range(top_y, -1, -1):
-		var check_pos := Vector3i(global_x, y, global_z)
-		var block_type := world_state_ref.get_block(check_pos)
-		if block_type != BlockType.Type.AIR and block_type != BlockType.Type.WATER:
-			hit_y = y
-			break
-			
-	if hit_y == -1: return -1.0
+func _resolve_habitat_ground_y(world_state_ref: WorldState, global_x: int, global_z: int, habitat: int, spawn_id: int) -> float:
+	if habitat == MobRegistry.Habitat.AQUATIC:
+		return _get_water_surface_y(world_state_ref, global_x, global_z)
 		
-	var surface_block := world_state_ref.get_block(Vector3i(global_x, hit_y, global_z))
-	var def := BlockLibrary.get_definition(surface_block) as BlockDefinition
-	
-	if def == null or (not allow_any_solid and not def.is_spawnable_soil) or (allow_any_solid and not def.is_solid):
-		return -1.0
+	# Goblins (ID 13) and Cave Zombies (ID 10) spawn in subterranean cave layers
+	if spawn_id == MOB_ID_ZOMBIE or spawn_id == 13:
+		return SpawnCoordinateSolver.solve_cave_y(world_state_ref, global_x, global_z)
 		
-	var space_above_1 := world_state_ref.get_block(Vector3i(global_x, hit_y + 1, global_z))
-	var space_above_2 := world_state_ref.get_block(Vector3i(global_x, hit_y + 2, global_z))
-	if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
-		return float(hit_y) + 1.0
-		
-	return -1.0
+	# Everyone else spawns on the true biological surface
+	return SpawnCoordinateSolver.solve_surface_y(world_state_ref, global_x, global_z)
 
 
 func _get_water_surface_y(world_state_ref: WorldState, global_x: int, global_z: int) -> float:
 	var hit_y := -1
-	
 	for y: int in range(HEIGHT_MAX_TERRAIN_LIMIT, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
 		var block_type := world_state_ref.get_block(check_pos)

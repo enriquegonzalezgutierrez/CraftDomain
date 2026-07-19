@@ -1,21 +1,21 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MinerEntity.gd
 # Description: Physical character controller for the cave Miner NPC.
-#              Corrected: Implemented missing _get_entity_name_key virtual contract.
+#              Updated to use native, highly-portable .glb skeletal animations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MinerEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/miner/miner_base.fbx"
+const BASE_MODEL_PATH := "res://assets/models/mobs/miner/miner_base.glb"
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 8)
-	entity_habitat = 0 # Terrestrial
+	entity_habitat = 0 
 	name = "Entity_MINER"
 
 
@@ -28,8 +28,6 @@ func _ready() -> void:
 	_setup_graphics_representation()
 	_locate_player()
 	_setup_nameplate_height()
-	
-	# Symmetrical lifecycle initialization call (Resolves missing nameplate)
 	_execute_lifecycle_initialization()
 	
 	if is_instance_valid(ai_component):
@@ -43,25 +41,21 @@ func _setup_graphics_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("anim_idle_path", ANIM_DIR + "miner/miner_idle.fbx")
-	strategy.set("anim_walk_path", ANIM_DIR + "miner/miner_walk.fbx")
-	strategy.set("anim_attack_path", ANIM_DIR + "miner/miner_attack.fbx")
-	strategy.set("anim_jump_path", ANIM_DIR + "miner/miner_jump.fbx")
+	strategy.set("anim_idle_path", ANIM_DIR + "miner/miner_idle.glb")
+	strategy.set("anim_walk_path", ANIM_DIR + "miner/miner_walk.glb")
+	strategy.set("anim_attack_path", ANIM_DIR + "miner/miner_attack.glb")
+	strategy.set("anim_jump_path", ANIM_DIR + "miner/miner_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
-
-# ==============================================================================
-# SOLID POLYMORPHIC CONTRACTS (LSP / OCP COMPLIANCE)
-# ==============================================================================
 
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_MINER"
 
 
 func _get_nameplate_color() -> Color:
-	return Color(0.2, 0.85, 0.2) # Friendly/Passive Green (LSP Compliant)
+	return Color(0.2, 0.85, 0.2) 
 
 
 func _get_humanoid_role() -> int:
@@ -88,7 +82,6 @@ func _select_procedural_greeting_key() -> String:
 	if is_night: 
 		return "DIALOGUE_MINER_NIGHT"
 		
-	# Centralized DRY Biome Sensing
 	var _biome_id := BiomeService.get_biome_id_at_position(global_position, get_parent())
 	var variety_index := npc_seed % 2
 	if variety_index == 0:

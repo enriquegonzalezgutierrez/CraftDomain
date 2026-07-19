@@ -1,13 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: DirtBlock
+# Pathfile: res://src/Domain/World/Blocks/DirtBlock.gd
 # Description: Concrete Domain Definition for the loose organic Dirt Block.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   procedural coloring, and texture configurations for the Dirt Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
-#   its local spawn variables within the constructor.
+#              Declares polymorphic spawn surface rules.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name DirtBlock
 extends BlockDefinition
@@ -22,8 +18,9 @@ func _init() -> void:
 	is_solid = true
 	is_transparent = false
 	
-	# OCP/SOLID Compliance: Mobs can spawn on fertile dirt soil
-	is_spawnable_soil = true
+	# SOLID OCP Spawning properties configuration
+	is_spawn_surface = true # Mobs can stand on fertile dirt soil
+	is_spawn_penetrable = false # Spawner stops searching here
 	
 	# Procedural organic brown colors for unshaded fallback rendering
 	color_top = Color(0.55, 0.38, 0.25)

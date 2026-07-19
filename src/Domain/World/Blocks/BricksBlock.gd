@@ -1,14 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: BricksBlock
+# Pathfile: res://src/Domain/World/Blocks/BricksBlock.gd
 # Description: Concrete Domain Definition for the fortress red Bricks.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   procedural coloring, and texture configurations for the Brick Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Supports 
-#   dynamic independent loading from the /Blocks/ directory.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+#              Declares polymorphic spawn penetration rules.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name BricksBlock
 extends BlockDefinition
@@ -23,6 +18,10 @@ func _init() -> void:
 	translation_key = "BLOCK_BRICKS"
 	is_solid = true
 	is_transparent = false
+	
+	# SOLID OCP Spawning properties configuration
+	is_spawn_surface = false # No spawning on top of fortress brick roofs
+	is_spawn_penetrable = true # Spawner can search through brick ceilings
 	
 	# Procedural baked-clay colors for unshaded fallback rendering
 	color_top = Color(0.65, 0.28, 0.22)

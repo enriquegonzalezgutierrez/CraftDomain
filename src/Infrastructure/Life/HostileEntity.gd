@@ -1,20 +1,14 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/HostileEntity.gd
 # Description: Physical character controller representing a hostile Cave Zombie.
-#              Manages high-frequency physics ticks, glitched warning roars, 
-#              unshaded static trail particles, and corruptive damage impacts.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
-#   sound triggers, and particle emissions, delegating state decisions to ZombieAIBehavior.
-# - 120 FPS Guardrail: Computes procedural material glow scales and alert freezes
-#   at 120Hz inside the physics thread to guarantee ultra-smooth movements.
+#              Updated to use native, highly-portable .glb skeletal animations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name HostileEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/zombie/zombie_base.fbx"
+const BASE_MODEL_PATH := "res://assets/models/mobs/zombie/zombie_base.glb"
 
 var player: CharacterBody3D
 var _quest_bubble: Node3D
@@ -33,7 +27,6 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 
 
 func _ready() -> void:
-	# High Performance: register in hostile group for O(1) targeting sweeps
 	add_to_group("hostiles")
 	if is_in_group("passives"):
 		remove_from_group("passives") 
@@ -56,7 +49,7 @@ func _ready() -> void:
 
 
 func _setup_graphics_representation() -> void:
-	if FileAccess.file_exists(BASE_MODEL_PATH):
+	if ResourceLoader.exists(BASE_MODEL_PATH):
 		_build_glb_representation()
 	else:
 		_build_procedural_representation()
@@ -71,10 +64,10 @@ func _build_glb_representation() -> void:
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
 	
-	strategy.set("anim_idle_path", ANIM_DIR + "zombie/zombie_idle.fbx")
-	strategy.set("anim_walk_path", ANIM_DIR + "zombie/zombie_walk.fbx")
-	strategy.set("anim_attack_path", ANIM_DIR + "zombie/zombie_attack.fbx")
-	strategy.set("anim_jump_path", ANIM_DIR + "zombie/zombie_jump.fbx")
+	strategy.set("anim_idle_path", ANIM_DIR + "zombie/zombie_idle.glb")
+	strategy.set("anim_walk_path", ANIM_DIR + "zombie/zombie_walk.glb")
+	strategy.set("anim_attack_path", ANIM_DIR + "zombie/zombie_attack.glb")
+	strategy.set("anim_jump_path", ANIM_DIR + "zombie/zombie_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	
@@ -152,22 +145,18 @@ func _play_zombie_groan() -> void:
 	AudioService.play_sfx_static("zombie_groan", global_position)
 
 
-## Triggered by ZombieAIBehavior upon spotting the player
 func _play_spotted_roar(player_node: CharacterBody3D) -> void:
 	if not is_instance_valid(player_node):
 		return
 		
-	# Look directly at the player during the initial alert freeze
 	var look_dir := (player_node.global_position - global_position).normalized()
 	look_dir.y = 0.0
 	if is_instance_valid(ai_component):
 		ai_component.wander_direction = look_dir
 		
-	# High-impact glitched roar sound
 	AudioService.play_sfx_static("zombie_groan", global_position)
 
 
-## High-Frequency Physics Loop (Runs at 120Hz on the physics thread)
 func _physics_tick(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
@@ -176,23 +165,20 @@ func _physics_tick(delta: float) -> void:
 
 
 func _process_zombie_combat_physics(_delta: float) -> void:
-	var state := 0 # 0 = WANDERING, 1 = ALERTED, 2 = CHASING, 3 = ATTACKING
+	var state := 0 
 	if has_meta(ZombieAIBehavior.META_ZOMBIE_STATE):
 		state = get_meta(ZombieAIBehavior.META_ZOMBIE_STATE) as int
 		
 	match state:
-		1: # STATE_ALERTED
-			# Freeze physical coordinates and flare glitched purple scars
+		1: 
 			velocity.x = 0.0
 			velocity.z = 0.0
 			_set_scars_emission(2.8)
-		2: # STATE_CHASING
-			# Restore normal scar emission and spawn static glitch particles behind heels
+		2: 
 			_set_scars_emission(0.0)
 			if Engine.get_physics_frames() % 12 == 0:
 				_spawn_static_glitch_particles()
-		3: # STATE_ATTACKING
-			# Lock position and execute bite
+		3: 
 			velocity.x = 0.0
 			velocity.z = 0.0
 			_set_scars_emission(0.0)
@@ -211,7 +197,7 @@ func _traverse_and_apply_scars_emission(node: Node, energy: float) -> void:
 			var mat := node.get_surface_override_material(i) as BaseMaterial3D
 			if is_instance_valid(mat):
 				mat.emission_enabled = energy > 0.01
-				mat.emission = Color(0.95, 0.0, 0.95) # Glitch purple/magenta glow
+				mat.emission = Color(0.95, 0.0, 0.95) 
 				mat.emission_energy_multiplier = energy
 				
 	for child in node.get_children():
@@ -231,12 +217,12 @@ func _spawn_static_glitch_particles() -> void:
 	particles.spread = 30.0
 	particles.initial_velocity_min = 1.0
 	particles.initial_velocity_max = 2.2
-	particles.gravity = Vector3(0.0, -4.0, 0.0) # Slower drift gravity
+	particles.gravity = Vector3(0.0, -4.0, 0.0) 
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.05, 0.05, 0.05)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.95, 0.0, 0.95) # Static purple
+	mat.albedo_color = Color(0.95, 0.0, 0.95) 
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mesh.material = mat
 	
@@ -259,10 +245,8 @@ func _bite_player() -> void:
 
 func _apply_corruptive_impact_vignette() -> void:
 	if is_instance_valid(player):
-		# Apply camera shake trauma
 		player.set("_shake_intensity", 0.35)
 		
-		# Flash HUD damage vignette
 		var hud := player.get("hud") as PlayerHUD
 		if is_instance_valid(hud):
 			hud.flash_damage_screen()

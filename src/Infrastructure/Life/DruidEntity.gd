@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/DruidEntity.gd
 # Description: Physical character controller for the forest guardian Druid.
-#              Provides specialized state behaviors and mystical visual triggers.
+#              Provides specialized state behaviors and conversational dialogs.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -43,9 +43,6 @@ func _build_visual_representation() -> void:
 	strategy.set("anim_idle_path", ANIM_DIR + "druid/druid_idle.glb")
 	strategy.set("anim_walk_path", ANIM_DIR + "druid/druid_walk.glb")
 	strategy.set("anim_jump_path", ANIM_DIR + "druid/druid_jump.glb")
-	
-	# Usamos la animación de salto como pose de canalización/hechizo místico
-	strategy.set("anim_attack_path", ANIM_DIR + "druid/druid_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	if is_instance_valid(visual_component) and is_instance_valid(visual_component.body_bob_node):

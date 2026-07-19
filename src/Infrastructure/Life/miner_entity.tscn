@@ -1,16 +1,9 @@
 [gd_scene format=3 uid="uid://dyfquy5j8fw4y"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/miner_entity.tscn
-; Description: 3D Scene representing the passive cavern Miner entity.
-;              Updated to reference native, highly-portable .glb skeletal meshes.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/MinerEntity.gd" id="1_miner"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/miner/miner_base.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://k1nhvvj5wapt" path="res://src/Infrastructure/Life/MinerEntity.gd" id="1_miner"]
+[ext_resource type="Script" uid="uid://e8a8j3la320c" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://cqrb0s0ukoune" path="res://assets/models/mobs/miner/miner_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_miner"]
 radius = 0.33691406
@@ -35,6 +28,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=200487864]
 
 [node name="miner_base" parent="Visuals/BodyBobJoint" unique_id=1684504717 instance=ExtResource("4_glb")]
+transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)
 
 [node name="HeadlampBeam" type="SpotLight3D" parent="Visuals/BodyBobJoint" unique_id=2072787664]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.868641, -0.22)

@@ -1,16 +1,9 @@
 [gd_scene format=3 uid="uid://ctaayiertktbu"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/guard_entity.tscn
-; Description: 3D Scene representing the defensive village Guard entity.
-;              Updated to reference native, highly-portable .glb skeletal meshes.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/GuardEntity.gd" id="1_guard"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/guard/guard_base.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://bkihkull6c2un" path="res://src/Infrastructure/Life/GuardEntity.gd" id="1_guard"]
+[ext_resource type="Script" uid="uid://e8a8j3la320c" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://xlus7rvgbri8" path="res://assets/models/mobs/guard/guard_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_guard"]
 radius = 0.3305664
@@ -35,3 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1082663266]
 
 [node name="guard_base" parent="Visuals/BodyBobJoint" unique_id=1898178525 instance=ExtResource("4_glb")]
+transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)

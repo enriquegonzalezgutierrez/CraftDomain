@@ -1,20 +1,21 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/PropSpawningService.gd
-# Description: Infrastructure Service responsible for calculating and spawning
-#              inert scenery props and interactive decorations inside loaded chunks.
+# Description: Infrastructure Service managing the registration, coordinates, 
+#              and spawning of inert scenery props and interactive decorations.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates all static prop instantiations
-#   in the loaded chunks, completely isolated from coordinate terrain sculpting.
-# - Dependency Inversion Principle (DIP): Resolves Landmark prop configurations
-#   through the typesafe PopulationPoint value object.
-# - Method Size Limits (Rule 4.2): All helper methods strictly remain < 20 lines.
+# - Single Responsibility Principle (SRP): Coordinates exclusively static props.
+# - Dependency Inversion Principle (DIP): Resolves coordinates through the pure 
+#   domain SpawnCoordinateSolver instead of carrying custom duplicate voxel loops.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PropSpawningService
 extends RefCounted
 
+const CAMPFIRE_PROP_ID: int = 203
 
+
+## Spawns inert vegetation and village props inside a newly loaded chunk.
 func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
 	var entities_list: Array[Node] = []
 	var chunk_pos := chunk.position
@@ -83,7 +84,6 @@ func _spawn_random_vegetation_prop(chunk_offset: Vector3, world_state: WorldStat
 
 
 func _spawn_megastructure_props(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, entities_list: Array[Node]) -> void:
-	# Centralized Spawning Registry (SOLID Compliant)
 	var pop_points := StructurePopulationService.get_population_for_chunk(chunk_pos)
 	
 	for point: StructurePopulationService.PopulationPoint in pop_points:
@@ -95,8 +95,11 @@ func _spawn_decoupled_landmark_prop(point: StructurePopulationService.Population
 	var spawn_pos := point.global_pos
 	var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
 	
+	# If the target coordinate is inside a solid block (slope/hill adjust), find the true surface Y
 	if BlockType.is_solid(block_at_pos):
-		spawn_pos.y = _get_structural_ground_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
+		var gy := SpawnCoordinateSolver.solve_surface_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
+		if gy > 0.0:
+			spawn_pos.y = gy
 		
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var prop := PropRegistry.create_prop(point.spawn_id, spawn_pos)
@@ -115,7 +118,7 @@ func _evaluate_and_spawn_streetlight(lamp_pos: Vector3, chunk_pos: Vector3i, wor
 	var gx := floori(lamp_pos.x)
 	var gz := floori(lamp_pos.z)
 	
-	var gy := _get_structural_ground_y(world_state, gx, gz)
+	var gy := SpawnCoordinateSolver.solve_surface_y(world_state, gx, gz)
 	if gy <= 0.0: 
 		return
 	
@@ -147,47 +150,24 @@ func _apply_streetlight_theme(prop: Node, chunk_pos: Vector3i, world_node: Node)
 func _spawn_and_register_prop(prop_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
 	if not PropRegistry.has_prop(prop_id): return
 		
-	var gy := _get_biological_ground_y(world_state, int(offset.x + lx), int(offset.z + lz))
+	var global_x := int(offset.x + lx)
+	var global_z := int(offset.z + lz)
+	
+	var gy := SpawnCoordinateSolver.solve_surface_y(world_state, global_x, global_z)
 	if gy < 0.0: return 
 		
 	var pos := Vector3(offset.x + lx, gy, offset.z + lz)
-	var prop := PropRegistry.create_prop(prop_id, pos)
-	if prop != null:
-		world_node.add_child(prop)
-		list.append(prop)
+	if _is_voxel_spawn_space_free(world_state, pos):
+		var prop := PropRegistry.create_prop(prop_id, pos)
+		if prop != null:
+			world_node.add_child(prop)
+			list.append(prop)
 
 
-func _get_structural_ground_y(world_state: WorldState, global_x: int, global_z: int) -> float:
-	for y in range(31, -1, -1):
-		var check_pos := Vector3i(global_x, y, global_z)
-		if BlockType.is_solid(world_state.get_block(check_pos)):
-			var above1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
-			var above2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
-			if not BlockType.is_solid(above1) and not BlockType.is_solid(above2):
-				return float(y) + 1.0
-	return -1.0
-
-
-func _get_biological_ground_y(world_state: WorldState, global_x: int, global_z: int) -> float:
-	for y in range(31, -1, -1):
-		var check_pos := Vector3i(global_x, y, global_z)
-		var block_type := world_state.get_block(check_pos)
-		
-		var def := BlockLibrary.get_definition(block_type) as BlockDefinition
-		if def != null and def.is_spawnable_soil:
-			var space_above_1 := world_state.get_block(check_pos + Vector3i(0, 1, 0))
-			var space_above_2 := world_state.get_block(check_pos + Vector3i(0, 2, 0))
-			
-			if space_above_1 == BlockType.Type.AIR and space_above_2 == BlockType.Type.AIR:
-				return float(y) + 1.0
-				
-	return -1.0
-
-
-func _is_voxel_spawn_space_free(world_state: WorldState, spawn_pos: Vector3) -> bool:
+func _is_voxel_spawn_space_free(world_state_ref: WorldState, spawn_pos: Vector3) -> bool:
 	var base_coord := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
-	var feet_block := world_state.get_block(base_coord)
-	var chest_block := world_state.get_block(base_coord + Vector3i(0, 1, 0))
+	var feet_block := world_state_ref.get_block(base_coord)
+	var chest_block := world_state_ref.get_block(base_coord + Vector3i(0, 1, 0))
 	return not BlockType.is_solid(feet_block) and not BlockType.is_solid(chest_block)
 
 

@@ -1,26 +1,19 @@
 [gd_scene format=3 uid="uid://c5xq6y8vu5j4u"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/octopus_entity.tscn
-; Description: 3D Scene representing the passive aquatic Octopus entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/OctopusEntity.gd" id="1_octopus"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/octopus.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://bek4vtreb4uoo" path="res://src/Infrastructure/Life/OctopusEntity.gd" id="1_octopus"]
+[ext_resource type="Script" uid="uid://e8a8j3la320c" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://mjivyxea8pdd" path="res://assets/models/mobs/octopus.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_octopus"]
-radius = 0.34375
-height = 0.814209
+radius = 0.24511719
+height = 0.69866943
 
 [node name="OctopusEntity" type="CharacterBody3D" unique_id=1089576940]
 script = ExtResource("1_octopus")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=827724159]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4232483, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45031738, 0)
 shape = SubResource("CapsuleShape3D_octopus")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1698191959]

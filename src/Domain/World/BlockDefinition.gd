@@ -1,21 +1,10 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Value Objects)
-# Class: BlockDefinition
+# Pathfile: res://src/Domain/World/BlockDefinition.gd
 # Description: Pure Domain Base Class describing the physical attributes, 
-#              geographical properties, and decoupled visual characteristics 
-#              of a voxel block.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively encapsulates block metadata.
-# - Open-Closed Principle (OCP): Designed as an abstract template. Subclasses 
-#   override this class to define customized block properties in separate files, 
-#   ensuring no parent code is ever modified to append new voxel materials.
-# - Liskov Substitution Principle (LSP): Subclasses inherit this contract, 
-#   ensuring they can be polymorphically processed by meshing and loading engines.
-# OCP SPAWNING UPGRADE:
-# - Added `is_spawnable_soil` property. Blocks now natively decide if they are 
-#   organic/natural enough to support spawning life on top of them, removing
-#   hardcoded block-type lists from MobSpawningService.
+#              geographical properties, spawning behaviors, and decoupled 
+#              visual characteristics of a voxel block.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name BlockDefinition
 extends RefCounted
@@ -30,23 +19,32 @@ var type: int
 ## Translation localization key (e.g., "BLOCK_STONE")
 var translation_key: String
 
-## Physical collision property: true if block is solid
+## Physical collision property: true if block is solid.
 var is_solid: bool = true
 
-## Occlusion calculation property: true if block allows light rays or is partially clear
+## Occlusion calculation property: true if block allows light rays or is partially clear.
 var is_transparent: bool = false
 
 ## The number of hits required by the player to break this block type.
-## Default is 1 (instant break). Harder materials should override this in constructors.
+## Default is 1 (instant break). Harder materials override this in constructors.
 var mining_resistance: int = 1
 
-## Procedural flat fallback colors for mesh-generation without graphics card support
+## Procedural flat fallback colors for mesh-generation without graphics card support.
 var color_top: Color = Color.WHITE
 var color_side: Color = Color.WHITE
 var color_bottom: Color = Color.WHITE
 
-## Geometry strategy representation determining custom winding boundaries (Slabs, Steps, Fences)
+## Geometry strategy representation determining custom winding boundaries (Slabs, Steps, Fences).
 var geometry: IVoxelGeometry
+
+# ==============================================================================
+# SOLID OCP SPAWNING ATTRIBUTES (DIP / OCP Compliance)
+# ==============================================================================
+## True if entities can stand on top of this block as their ground surface (Grass, Sand, Snow, Dirt).
+var is_spawn_surface: bool = false
+
+## True if the Spawning Solver can penetrate/pass through this block (e.g. Air, Roofs, Leaves).
+var is_spawn_penetrable: bool = false
 
 # ==============================================================================
 # OCP GATHERING PROPERTIES (SOLID OCP Compliance)
@@ -59,13 +57,6 @@ var drop_item_id: int = -1
 var drop_quantity: int = 1
 
 # ==============================================================================
-# OCP SPAWNING PROPERTIES (SOLID OCP Compliance)
-# ==============================================================================
-## Physical spawning property: true if life/mobs can spawn on top of this block type.
-## Defaults to false. Natural ground blocks (Grass, Sand, Snow) override this to true.
-var is_spawnable_soil: bool = false
-
-# ==============================================================================
 # DECOUPLED VISUAL ATTRIBUTES (DDD Pure Data)
 # Evaluated polymorphically by Infrastructure layers to assemble PBR materials automatically.
 # ==============================================================================
@@ -75,16 +66,16 @@ var texture_file_name: String = ""
 ## Base file name for the associated normal map (e.g. "stone_normal.png")
 var normal_file_name: String = ""
 
-## Surface micro-roughness value [0.0 - 1.0] for light scattering calculations
+## Surface micro-roughness value [0.0 - 1.0] for light scattering calculations.
 var roughness: float = 0.85
 
-## Surface metallic reflection value [0.0 - 1.0]
+## Surface metallic reflection value [0.0 - 1.0].
 var metallic: float = 0.0
 
 ## Maps material processing groups: "default", "foliage" (wind sway), "liquid_water", "liquid_lava"
 var rendering_type: String = "default"
 
-## High-fidelity cyber glow properties
+## High-fidelity cyber glow properties.
 var is_emissive: bool = false
 var emission_color: Color = Color.BLACK
 var emission_energy: float = 0.0
@@ -95,14 +86,10 @@ func _init() -> void:
 	geometry = FullCubeGeometry.new()
 
 
-## Returns the dynamically translated block name string based on the active OS locale
+## Returns the dynamically translated block name string based on the active OS locale.
 func get_localized_name() -> String:
 	return tr(translation_key)
 
-
-# ==============================================================================
-# OCP GATHERING GETTERS
-# ==============================================================================
 
 ## Returns the Item ID dropped by this block.
 ## If drop_item_id is left at -1, it defaults to the block's own type.

@@ -1,13 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: RedSandBlock
+# Pathfile: res://src/Domain/World/Blocks/RedSandBlock.gd
 # Description: Concrete Domain Definition for the Terracotta Red Sand.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   procedural coloring, and texture configurations for the Red Sand Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
-#   its local drop and spawn variables within the constructor.
+#              Declares polymorphic spawn surface rules.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name RedSandBlock
 extends BlockDefinition
@@ -26,8 +22,9 @@ func _init() -> void:
 	drop_item_id = 2
 	drop_quantity = 1
 	
-	# OCP/SOLID Compliance: Mobs can spawn on badlands sand steps
-	is_spawnable_soil = true
+	# SOLID OCP Spawning properties configuration
+	is_spawn_surface = true # Mobs can stand on badlands sand steps
+	is_spawn_penetrable = false # Spawner stops searching here
 	
 	# Procedural terracotta orange colors for unshaded fallback rendering
 	color_top = Color(0.88, 0.42, 0.25)

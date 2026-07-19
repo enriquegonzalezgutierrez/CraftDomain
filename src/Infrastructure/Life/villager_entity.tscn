@@ -1,26 +1,19 @@
 [gd_scene format=3 uid="uid://2sbxr25hfoco"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/villager_entity.tscn
-; Description: 3D Scene representing the common civilian Villager entity.
-;              Fully cleaned of all legacy/orphan UIDs for stable loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/VillagerEntity.gd" id="1_villager"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/villager/villager_base.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://dskwcjmfhl0e4" path="res://src/Infrastructure/Life/VillagerEntity.gd" id="1_villager"]
+[ext_resource type="Script" uid="uid://e8a8j3la320c" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://bhpx58nn0dwd3" path="res://assets/models/mobs/villager/villager_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_villager"]
-radius = 0.4897461
-height = 2.5357423
+radius = 0.18457031
+height = 1.988916
 
 [node name="VillagerEntity" type="CharacterBody3D" unique_id=1452590235]
 script = ExtResource("1_villager")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1324781141]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2678711, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.994458, 0)
 shape = SubResource("CapsuleShape3D_villager")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
@@ -35,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1003189423]
 
 [node name="villager_base" parent="Visuals/BodyBobJoint" unique_id=1733097190 instance=ExtResource("4_glb")]
-transform = Transform3D(1.25, 0, 0, 0, 1.25, 0, 0, 0, 1.25, 0, 0, 0)
+transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)

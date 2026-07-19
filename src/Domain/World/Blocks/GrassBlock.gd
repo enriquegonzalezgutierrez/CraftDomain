@@ -1,13 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: GrassBlock
+# Pathfile: res://src/Domain/World/Blocks/GrassBlock.gd
 # Description: Concrete Domain Definition for the vibrant Grass Block.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   procedural coloring, and texture configurations for the Grass Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
-#   its local spawn variables within the constructor.
+#              Declares polymorphic spawn surface rules.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GrassBlock
 extends BlockDefinition
@@ -23,8 +19,9 @@ func _init() -> void:
 	is_solid = true
 	is_transparent = false
 	
-	# OCP/SOLID Compliance: Mobs can spawn on grassy plains
-	is_spawnable_soil = true
+	# SOLID OCP Spawning properties configuration
+	is_spawn_surface = true # Mobs can stand on grassy plains
+	is_spawn_penetrable = false # Spawner stops searching here
 	
 	# ==========================================================================
 	# PROCEDURAL COLOR PALETTE:

@@ -1,13 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/Blocks/AlliumBlock.gd
 # Description: Concrete Domain Definition for the purple wild Allium flower.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   translucency, and wind-sway configurations for the Allium flower block.
-# - Open-Closed Principle (OCP): Extends BlockDefinition. Registers as Type 100
-#   (ALLIUM_FLOWER) to consume "allium.png" from the assets database.
-# - Liskov Substitution Principle (LSP): Injects the custom CrossQuadGeometry
-#   to render intersecting diagonal quads instead of full solid cubes.
+#              Declares polymorphic spawn penetration rules.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -27,7 +21,10 @@ func _init() -> void:
 	is_solid = false
 	is_transparent = true
 	mining_resistance = 1
-	is_spawnable_soil = false
+	
+	# SOLID OCP Spawning properties configuration
+	is_spawn_surface = false # Entities cannot stand on top of flower petals
+	is_spawn_penetrable = true # Spawner can search through the flower to find the soil below
 	
 	# Procedural purple pom-pom flower colors for unshaded fallback rendering
 	color_top = Color(0.85, 0.25, 0.95)

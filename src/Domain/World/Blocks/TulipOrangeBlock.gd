@@ -27,7 +27,6 @@ func _init() -> void:
 	is_solid = false
 	is_transparent = true
 	mining_resistance = 1
-	is_spawnable_soil = false
 	
 	# Procedural bright-orange colors for unshaded fallback rendering
 	color_top = Color(0.95, 0.55, 0.12)

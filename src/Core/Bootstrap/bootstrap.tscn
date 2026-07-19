@@ -1,13 +1,6 @@
 [gd_scene format=3 uid="uid://cmkhu12vax4nw"]
-; ==============================================================================
-; Pathfile: res://src/Core/Bootstrap/bootstrap.tscn
-; Description: Composition Root entry-point scene for the Dolores game engine.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
 
-[ext_resource type="Script" path="res://src/Core/Bootstrap/Bootstrap.gd" id="1_bootstrap"]
+[ext_resource type="Script" uid="uid://58esp4w5kx4q" path="res://src/Core/Bootstrap/Bootstrap.gd" id="1_bootstrap"]
 
 [node name="Bootstrap" type="Node" unique_id=1111121625]
 script = ExtResource("1_bootstrap")

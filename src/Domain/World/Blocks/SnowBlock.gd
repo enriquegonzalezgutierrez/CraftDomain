@@ -1,13 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: SnowBlock
+# Pathfile: res://src/Domain/World/Blocks/SnowBlock.gd
 # Description: Concrete Domain Definition for the fluffy powder Snow.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   procedural coloring, and texture configurations for the Snow Block.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Overrides 
-#   its local drop and spawn variables within the constructor.
+#              Declares polymorphic spawn surface rules.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SnowBlock
 extends BlockDefinition
@@ -26,8 +22,9 @@ func _init() -> void:
 	drop_item_id = 1
 	drop_quantity = 1
 	
-	# OCP/SOLID Compliance: Mobs can spawn on snowy cap shelves
-	is_spawnable_soil = true
+	# SOLID OCP Spawning properties configuration
+	is_spawn_surface = true # Mobs can stand on snowy cap shelves
+	is_spawn_penetrable = false # Spawner stops searching here
 	
 	# Procedural pristine white colors for unshaded fallback rendering
 	color_top = Color(0.98, 0.98, 0.98)

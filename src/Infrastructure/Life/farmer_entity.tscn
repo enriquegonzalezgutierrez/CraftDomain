@@ -1,26 +1,19 @@
 [gd_scene format=3 uid="uid://bv3tgrreqa875"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/farmer_entity.tscn
-; Description: 3D Scene representing the agricultural Farmer entity.
-;              Updated to reference native, highly-portable .glb skeletal meshes.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/FarmerEntity.gd" id="1_farmer"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/farmer/farmer_base.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://bxkw3p4glet04" path="res://src/Infrastructure/Life/FarmerEntity.gd" id="1_farmer"]
+[ext_resource type="Script" uid="uid://e8a8j3la320c" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://bkf4idxibw58u" path="res://assets/models/mobs/farmer/farmer_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_farmer"]
-radius = 0.3154297
-height = 2.0910156
+radius = 0.25927734
+height = 1.9702637
 
 [node name="FarmerEntity" type="CharacterBody3D" unique_id=1948003766]
 script = ExtResource("1_farmer")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1432043359]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0568359, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.99645984, 0)
 shape = SubResource("CapsuleShape3D_farmer")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
@@ -35,3 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1480662787]
 
 [node name="farmer_base" parent="Visuals/BodyBobJoint" unique_id=129441276 instance=ExtResource("4_glb")]
+transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)

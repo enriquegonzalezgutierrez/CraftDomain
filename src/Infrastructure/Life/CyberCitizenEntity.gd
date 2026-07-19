@@ -1,14 +1,14 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/CyberCitizenEntity.gd
 # Description: Physical character controller for the tech-noir Cyber Citizen Android.
-#              DRY biome detection is delegated strictly to BiomeService (DRY).
+#              Updated to use native, highly-portable .glb skeletal animations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name CyberCitizenEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/cyber/cyber_base.fbx"
+const BASE_MODEL_PATH := "res://assets/models/mobs/cyber/cyber_base.glb"
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
 
@@ -42,10 +42,10 @@ func _setup_graphics_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("anim_idle_path", ANIM_DIR + "cyber/cyber_idle.fbx")
-	strategy.set("anim_walk_path", ANIM_DIR + "cyber/cyber_walk.fbx")
-	strategy.set("anim_panic_path", ANIM_DIR + "cyber/cyber_panic.fbx")
-	strategy.set("anim_jump_path", ANIM_DIR + "cyber/cyber_jump.fbx")
+	strategy.set("anim_idle_path", ANIM_DIR + "cyber/cyber_idle.glb")
+	strategy.set("anim_walk_path", ANIM_DIR + "cyber/cyber_walk.glb")
+	strategy.set("anim_panic_path", ANIM_DIR + "cyber/cyber_panic.glb")
+	strategy.set("anim_jump_path", ANIM_DIR + "cyber/cyber_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
@@ -83,7 +83,6 @@ func _select_procedural_greeting_key() -> String:
 	if is_night: 
 		return "DIALOGUE_CYBER_NIGHT"
 		
-	# Centralized DRY Biome Sensing
 	var _biome_id := BiomeService.get_biome_id_at_position(global_position, get_parent())
 	var variety_index := npc_seed % 2
 	if variety_index == 0:
