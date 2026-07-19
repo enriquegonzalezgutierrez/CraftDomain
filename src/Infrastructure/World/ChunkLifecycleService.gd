@@ -6,8 +6,8 @@
 #              budget to amortize chunk injections, eliminating main-thread stutters.
 #              MILESTONE 2 (DIRECT ARCHITECTURE): Purged ChunkNode instantiations.
 #              Delegates to DirectChunkRenderingService for SceneTree bypassing.
-#              THREAD FIX: Resolves the collision lock race condition by running 
-#              unconditional thread cleanups on obsolete task discards.
+#              STARTUP SHIELD: Defers entity spawning during player loading phases 
+#              to prevent collision depenetration launch bugs on game reload.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -17,8 +17,8 @@ extends RefCounted
 const CHUNK_MASK: int = 15
 
 # Time-Slicing Budgets (Microseconds)
-const TIME_BUDGET_ACTIVE_USEC: int = 2000  # 2.0ms budget for active 120FPS gameplay
-const TIME_BUDGET_LOADING_USEC: int = 40000 # 40.0ms budget during loading screens
+const TIME_BUDGET_ACTIVE_USEC: int = 2000  
+const TIME_BUDGET_LOADING_USEC: int = 40000 
 
 var controller: Node3D 
 var world_state: WorldState
@@ -50,7 +50,7 @@ func is_chunk_rendered(chunk_pos: Vector3i) -> bool:
 
 
 func get_active_nodes() -> Dictionary:
-	return _chunk_lod_states # Used by other services as an active chunk ledger
+	return _chunk_lod_states 
 
 
 func queue_loads(chunk_positions: Array[Vector3i]) -> void:
@@ -119,9 +119,10 @@ func _unload_chunk_direct(chunk_pos: Vector3i) -> void:
 
 ## Synchronous channel: Intended for responsive, zero-latency player block edits
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
+	# Write the block modifications directly to the database first!
 	world_state.set_block(global_pos, type)
-	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	
+	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
 	_rebuild_chunk_instantly(chunk_pos)
 	
@@ -131,9 +132,10 @@ func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 
 ## Asynchronous channel: Intended for high-performance automated systems
 func set_block_globally_async(global_pos: Vector3i, type: BlockType.Type) -> void:
+	# Write the block modifications directly to the database first!
 	world_state.set_block(global_pos, type)
-	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	
+	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
 	_request_chunk_rebuild(chunk_pos) 
 	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos, true)
@@ -165,7 +167,7 @@ func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
 	
 	var task_result := _compile_instant_rebuild_task(chunk)
 	_render_single_completed_task(task_result)
-	_request_chunk_rebuild(chunk_pos) # Background physics compilation
+	_request_chunk_rebuild(chunk_pos) 
 
 
 func _compile_instant_rebuild_task(chunk: Chunk) -> GeneratedChunkTask:
@@ -193,7 +195,7 @@ func _render_completed_chunks_from_queue(player_active: bool) -> void:
 	while task_scheduler.has_completed_tasks():
 		var elapsed := Time.get_ticks_usec() - start_time
 		if elapsed > time_budget:
-			break # Strict time-slice budget reached. Defer to next frame to preserve 120 FPS.
+			break 
 			
 		var task := task_scheduler.pop_completed_task()
 		if task != null:
@@ -203,8 +205,6 @@ func _render_completed_chunks_from_queue(player_active: bool) -> void:
 func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	var chunk_pos: Vector3i = task.chunk.position
 	
-	# Symmetrical Thread Guardrail: Even if the task is obsolete, we must still clean 
-	# up its thread-state lock and trigger the new rebuild, but skip rendering old frames.
 	if _is_task_version_obsolete(task, chunk_pos):
 		_cleanup_task_states(chunk_pos)
 		return
@@ -253,7 +253,6 @@ func _apply_visuals_direct(task: GeneratedChunkTask, chunk_pos: Vector3i) -> voi
 	var collision_shape := task.collision_shape
 	
 	if task.is_rebuild and collision_shape == null:
-		# Extract the previously cached shape on instant rebuilds if absent
 		var record: DirectChunkRenderingService.ChunkRIDRecord = direct_renderer._active_chunks.get(chunk_pos) as DirectChunkRenderingService.ChunkRIDRecord
 		if record != null:
 			collision_shape = record.collision_shape_ref
@@ -285,6 +284,12 @@ func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int =
 
 
 func _evaluate_entity_spawn_for_chunk(center: Vector3i, offset_x: int, offset_z: int) -> void:
+	# Symmetrical Startup Shield: Do not spawn any entities while the player is inactive/loading!
+	if is_instance_valid(controller):
+		var player_node := controller.get("player") as CharacterBody3D
+		if is_instance_valid(player_node) and not player_node.get("is_active"):
+			return
+
 	var target_chunk_pos := Vector3i(center.x + offset_x, 0, center.z + offset_z)
 	if not _chunk_lod_states.has(target_chunk_pos) or not direct_renderer.has_collision_body(target_chunk_pos):
 		return

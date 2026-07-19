@@ -52,7 +52,7 @@ var _is_startup_phase: bool = true
 var is_teleport_spawn: bool = false
 var _loaded_inventory_data: Array = []
 
-# High-Performance Spatial Cache to avoid O(N) get_children() loops
+# High-Performance Spatial Cache
 var _interactive_props: Array[Node3D] = []
 
 
@@ -87,7 +87,6 @@ func _initialize_shadows_and_terrain_smoothing() -> void:
 	_agriculture_service = AgricultureService.new(self, world_state)
 	_fluid_service = FluidSimulationService.new(self, world_state)
 	
-	# Connect reactive world simulation services (Observer Pattern)
 	block_modified.connect(_fluid_service._on_block_modified)
 	block_modified.connect(_on_block_modified_navigation)
 	
@@ -115,7 +114,7 @@ func _initialize_shadows_and_terrain_smoothing() -> void:
 
 func _load_and_restore_global_save() -> void:
 	var saved_global: Dictionary = repository.load_global_state() as Dictionary
-	var active_seed := 42 # Locks default un-saved world generation to seed 42
+	var active_seed := 42 
 	var spawn_pos := Vector3(8.5, 14.0, 8.5)
 	var spawn_rot := Vector3.ZERO
 	var current_time := 0.5
@@ -148,7 +147,7 @@ func _load_and_restore_global_save() -> void:
 
 func _process(delta: float) -> void:
 	if not is_instance_valid(player): return
-	if not player.get("is_active") and (_is_startup_phase or is_teleport_spawn):
+	if not player.get("is_active") as bool and (_is_startup_phase or is_teleport_spawn):
 		check_player_spawn_activation()
 		
 	if is_instance_valid(_agriculture_service): _agriculture_service.process_agriculture_ticks(delta)
@@ -291,7 +290,7 @@ func check_player_spawn_activation() -> void:
 	if not (_is_startup_phase or is_teleport_spawn):
 		return
 		
-	if is_instance_valid(player) and not player.get("is_active"):
+	if is_instance_valid(player) and not player.get("is_active") as bool:
 		if is_instance_valid(chunk_lifecycle):
 			var _all_rendered := true
 			for x in range(-1, 2):

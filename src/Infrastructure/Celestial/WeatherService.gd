@@ -1,12 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Celestial/WeatherService.gd
 # Description: Infrastructure Weather Service managing dynamic regional meteorological cycles.
-#              SOLID COMPLIANCE: Fully integrated with the segregated 'IClimateProfile'
-#              domain interface. Purged local enums and string comparisons (LSP / DIP).
-#              PHYSICS UPGRADE: Implemented CPU-side continuous integration of 
-#              wind offsets and wave timers to prevent dynamic time-multiplication 
-#              jitters in GPU vertex shaders.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly weather processes.
+# - Indoor Rain Safety: Pauses GPU particle emissions when the player is indoors 
+#   using the CelestialService sensor, preventing rain from falling inside rooms.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name WeatherService
 extends Node
@@ -35,7 +35,7 @@ var _mesh_material: ORMMaterial3D
 var _current_wind_strength: float = 0.4
 var _current_wind_vector: Vector2 = Vector2.ZERO
 
-# Symmetrical CPU Accumulators (Section 5.3 / 7.2)
+# Symmetrical CPU Accumulators
 var _wind_accum_offset: Vector2 = Vector2.ZERO
 var _wind_wave_time: float = 0.0
 
@@ -54,12 +54,13 @@ func _physics_process(delta: float) -> void:
 		return
 		
 	# Follow player head exactly (floats 12 meters above) to maintain fillrate budget
-	if is_instance_valid(_particles) and _particles.emitting:
+	if is_instance_valid(_particles):
 		_particles.global_position = player.global_position + Vector3(0.0, 12.0, 0.0)
+		_process_indoor_rain_safety()
 		
 	_process_wind_gusts(delta)
 	
-	# Symmetrical Profile Fetching (OCP Compliant)
+	# Symmetrical Profile Fetching
 	var biome_id := _detect_player_biome_id()
 	var profile := BiomeService.get_biome(biome_id).get_climate_profile()
 	_process_dynamic_wind_simulation(delta, profile)
@@ -139,19 +140,15 @@ func _process_dynamic_wind_simulation(delta: float, profile: IClimateProfile) ->
 			base_dir = Vector2(-1.2, -0.2).normalized()
 			target_strength = 1.25
 			
-	# Limit target wind strength dynamically based on the active biome's profile limits
 	var max_allowed_wind := profile.get_max_wind_strength()
 	var final_target_strength := clampf(target_strength * _gust_multiplier, 0.1, max_allowed_wind * _gust_multiplier)
 	
-	# Smoothly interpolate direction and strength to prevent sudden jumps
 	_current_wind_strength = lerp(_current_wind_strength, final_target_strength, delta * 0.4)
 	_current_wind_vector = _current_wind_vector.lerp(base_dir, delta * 0.3)
 	
-	# Accumulate continuous, non-jittering offsets on the CPU
 	_wind_accum_offset += _current_wind_vector * _current_wind_strength * delta
 	_wind_wave_time += (1.0 + _current_wind_strength * 0.8) * delta
 	
-	# Write-only push to Godot's Rendering Server
 	RenderingServer.global_shader_parameter_set("wind_strength", _current_wind_strength)
 	RenderingServer.global_shader_parameter_set("wind_vector", _current_wind_vector)
 	RenderingServer.global_shader_parameter_set("wind_offset", _wind_accum_offset)
@@ -190,7 +187,6 @@ func _roll_climate_by_weights(weights: Dictionary) -> IClimateProfile.ClimateTyp
 		current_sum += weights[key] as float
 		if roll <= current_sum:
 			return key
-			
 			
 	return IClimateProfile.ClimateType.SUNNY
 
@@ -244,3 +240,17 @@ func _apply_sandstorm_parameters() -> void:
 	_particles_material.initial_velocity_min = 22.0
 	_particles_material.initial_velocity_max = 30.0 
 	_particles_material.gravity = Vector3(-20.0, -1.8, -8.0)
+
+
+func _process_indoor_rain_safety() -> void:
+	var is_indoors := false
+	if is_instance_valid(CelestialService.instance):
+		is_indoors = CelestialService.instance._is_player_indoors()
+		
+	if is_indoors:
+		if _particles.emitting:
+			_particles.emitting = false
+	else:
+		if current_weather != IClimateProfile.ClimateType.SUNNY and current_weather != IClimateProfile.ClimateType.FOGGY:
+			if not _particles.emitting:
+				_particles.emitting = true
