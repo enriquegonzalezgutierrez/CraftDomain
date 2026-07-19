@@ -1,10 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/CloudKingdomBiome.gd
-# Description: Concrete Biome Strategy implementing the geographic and visual 
-#              rules for the celestial floating clouds region (Cloud Kingdom).
-#              WEATHER UPGRADE: Configured high-altitude jet stream wind limits,
-#              eternal clear sun weights, and minimal stratospheric fog.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# Description: Concrete Biome Strategy implementing geographical, geological,
+#              meteorological, and scaled population parameters for the 
+#              celestial floating Cloud Kingdom.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name CloudKingdomBiome
 extends IBiome
@@ -35,29 +35,40 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 
 
 func get_wilderness_wildlife_ids() -> Array[int]:
-	var local_wildlife: Array[int] = [205, 207]
-	return local_wildlife
-
-
-func is_coordinate_inside(_pos_flat: Vector2, _distance: float, _angle_rad: float) -> bool:
-	return false
-
-
-func requires_terrain_smoothing() -> bool:
-	return false 
-
-
-func get_water_level() -> int:
-	return -1
+	# Primarily flying fauna for the stratospheric islands
+	var celestial_wildlife: Array[int] = [205, 207]
+	return celestial_wildlife
 
 
 # ==============================================================================
-# CLIMATOLOGICAL OVERRIDES (OCP / SOLID Compliance)
+# SOLID OCP SCALED POPULATION CONFIGURATION (OCP Compliance)
+# ==============================================================================
+
+func get_spawn_probability() -> float:
+	return 0.40 # High altitude birds are common in the clouds
+
+
+func get_max_group_size() -> int:
+	return 6 # Large, beautiful flocks of birds
+
+
+func get_village_civilian_ids() -> Array[int]:
+	# Sky travelers and watchers
+	var sky_outpost_roster: Array[int] = [100, 102]
+	return sky_outpost_roster
+
+
+func get_village_population_density() -> int:
+	return 4 # Small celestial observation posts
+
+
+# ==============================================================================
+# METEOROLOGICAL & CLIMATE CONFIGURATION
 # ==============================================================================
 
 func get_climate_weights() -> Dictionary:
 	return {
-		"sunny": 1.0,      # Floating above the storm deck, the sky is eternally clear
+		"sunny": 1.0,      
 		"rainy": 0.0,
 		"snowy": 0.0,
 		"sandstorm": 0.0,
@@ -66,8 +77,16 @@ func get_climate_weights() -> Dictionary:
 
 
 func get_max_wind_strength() -> float:
-	return 1.6 # Mighty stratospheric jet stream wind speeds
+	return 1.6
 
 
 func get_fog_density_multiplier() -> float:
-	return 0.15 # Thin, dry, and crystal-clear air at high altitudes
+	return 0.15
+
+
+func requires_terrain_smoothing() -> bool:
+	return false 
+
+
+func get_water_level() -> int:
+	return -1

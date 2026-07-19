@@ -1,10 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/SwampOfSighsBiome.gd
-# Description: Concrete Biome Strategy implementing the geographical, block-depth,
-#              and vegetation scatter rules for the murky swamp region (Swamp of Sighs).
-#              SOLID CLEANUP: Replaced climate inheritance methods with a single
-#              composition bridge returning the segregated 'SwampClimateProfile'.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# Description: Concrete Biome Strategy implementing geographical, geological,
+#              meteorological, and scaled population parameters for the 
+#              murky, humid Swamp of Sighs.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SwampOfSighsBiome
 extends IBiome
@@ -36,26 +36,48 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 	return 0
 
 
-## Concrete Override (OCP): Dynamically returns swamp vegetation prop IDs
 func get_wilderness_prop_id(scatter_hash: int) -> int:
 	var type_roll: int = scatter_hash % 10
 	if type_roll < 4:
-		return 228 # Swamp Fern Prop (.tscn)
+		return 228 # Swamp Fern
 	elif type_roll < 7:
-		return 229 # Sugar Cane Prop (.tscn)
+		return 229 # Sugar Cane
 	elif type_roll < 9:
-		return 222 # Blue Orchid Prop (.tscn)
-	return 224     # Dead Bush Prop (.tscn)
+		return 222 # Blue Orchid
+	return 224     # Dead Bush
+
+
+# ==============================================================================
+# SOLID OCP SCALED POPULATION CONFIGURATION (OCP Compliance)
+# ==============================================================================
+
+func get_spawn_probability() -> float:
+	return 0.55 # Teeming wetland environment, high spawning rate
+
+
+func get_max_group_size() -> int:
+	return 4 # Balanced groups for both land and water predators
 
 
 func get_wilderness_wildlife_ids() -> Array[int]:
-	var local_wildlife: Array[int] = [0, 1, 3, 201]
-	return local_wildlife
+	# Specialized amphibious fauna: Turtles, Crabs, Pigs, and murky-water Sharks!
+	var swamp_wildlife_roster: Array[int] = [0, 3, 11, 201, 208]
+	return swamp_wildlife_roster
 
 
-func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
-	return angle_rad >= 2.748 or angle_rad < -2.748
+func get_village_civilian_ids() -> Array[int]:
+	# Swamp research outpost roster: Apothecary Druids, Villagers, and Clay Miners
+	var swamp_outpost_roster: Array[int] = [100, 104, 105]
+	return swamp_outpost_roster
 
+
+func get_village_population_density() -> int:
+	return 5 # Compact and busy investigation settlement
+
+
+# ==============================================================================
+# METEOROLOGICAL & CLIMATE CONFIGURATION
+# ==============================================================================
 
 func get_streetlight_theme() -> Dictionary:
 	return {
@@ -72,18 +94,9 @@ func requires_terrain_smoothing() -> bool:
 	return false 
 
 
-func decline_gargoyle_flight() -> bool:
-	return true 
-
-
 func get_water_level() -> int:
 	return 4
 
 
-# ==============================================================================
-# SOLID COMPOSITION BRIDGE (OCP / ISP Compliant)
-# ==============================================================================
-
-## Returns the decoupled swamp climatological profile.
 func get_climate_profile() -> IClimateProfile:
 	return SwampClimateProfile.new()

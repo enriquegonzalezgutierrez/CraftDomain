@@ -4,8 +4,8 @@
 #              population, and active campaign quest targets.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates exclusively mob lifecycle.
-# - Dependency Inversion Principle (DIP): Resolves coordinates through the pure 
-#   domain SpawnCoordinateSolver instead of carrying low-level voxel loops.
+# - Open-Closed Principle (OCP): Integrates dynamically with the custom population 
+#   densities and rosters declared by the active biome.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -32,13 +32,9 @@ const MOB_ID_GOLEM: int = 107
 const MOB_ID_TURTLE: int = 201
 const MOB_ID_OCTOPUS: int = 210
 
-const OFFSET_A: float = 7.5
-const OFFSET_B: float = 5.5
-const OFFSET_C: float = 8.5
 const OFFSET_D: float = 11.5
 const OFFSET_HALF_CHUNK: float = 8.0
 
-const DEFAULT_WILDERNESS_SPAWN_CHANCE: float = 0.28
 const HEIGHT_MAX_TERRAIN_LIMIT: int = 31
 const STRAY_PROBABILITY_THRESHOLD: float = 0.25
 
@@ -64,7 +60,7 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 	var is_real_village := _is_village_chunk(chunk.position, world_node)
 
 	if is_real_village:
-		_spawn_village_mobs(chunk_offset, world_state, world_node, spawned_nodes)
+		_spawn_village_mobs(chunk_offset, world_state, world_node, biome, spawned_nodes)
 		_spawn_village_stray_animals(chunk_offset, world_state, world_node, spawned_nodes)
 	else:
 		_spawn_wilderness_wildlife(chunk_offset, world_state, world_node, biome, spawned_nodes)
@@ -73,10 +69,19 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 	_spawn_active_quest_objectives(chunk, chunk_offset, world_state, world_node, spawned_nodes)
 
 
-func _spawn_village_mobs(chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
-	_spawn_and_register_entity(MOB_ID_VILLAGER, chunk_offset, OFFSET_A, OFFSET_B, world_state, world_node, spawned_nodes)
-	_spawn_and_register_entity(MOB_ID_MERCHANT, chunk_offset, OFFSET_B, OFFSET_A, world_state, world_node, spawned_nodes)
-	_spawn_and_register_entity(MOB_ID_GOLEM, chunk_offset, OFFSET_C, OFFSET_B, world_state, world_node, spawned_nodes)
+func _spawn_village_mobs(chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
+	var density := biome.get_village_population_density()
+	var civilian_ids := biome.get_village_civilian_ids()
+	
+	if civilian_ids.is_empty():
+		return
+		
+	# Dynamic Village Spawning: Instantiates the exact biome density with randomized positions
+	for i: int in range(density):
+		var spawn_id: int = civilian_ids[randi() % civilian_ids.size()]
+		var rx := randf_range(2.0, 14.0)
+		var rz := randf_range(2.0, 14.0)
+		_spawn_and_register_entity(spawn_id, chunk_offset, rx, rz, world_state, world_node, spawned_nodes)
 
 
 func _spawn_village_stray_animals(chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
@@ -88,14 +93,12 @@ func _spawn_village_stray_animals(chunk_offset: Vector3, world_state: WorldState
 
 func _spawn_wilderness_wildlife(chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
 	var roll := randf()
-	var spawn_chance := DEFAULT_WILDERNESS_SPAWN_CHANCE
-	if is_instance_valid(biome) and biome.has_method("get_spawn_chance"):
-		spawn_chance = biome.call("get_spawn_chance") as float
+	var spawn_chance := biome.get_spawn_probability()
 		
-	if roll < spawn_chance and is_instance_valid(biome):
+	if roll < spawn_chance:
 		var wildlife_ids := _get_dynamic_wildlife_table(biome, chunk_offset, world_state)
 		if wildlife_ids.size() > 0:
-			_spawn_wildlife_group(wildlife_ids, chunk_offset, world_state, world_node, spawned_nodes)
+			_spawn_wildlife_group(wildlife_ids, chunk_offset, world_state, world_node, biome, spawned_nodes)
 
 
 func _get_dynamic_wildlife_table(biome: IBiome, chunk_offset: Vector3, world_state: WorldState) -> Array[int]:
@@ -112,10 +115,13 @@ func _get_dynamic_wildlife_table(biome: IBiome, chunk_offset: Vector3, world_sta
 	return list
 
 
-func _spawn_wildlife_group(wildlife_ids: Array[int], chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
+func _spawn_wildlife_group(wildlife_ids: Array[int], chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
 	var rand_idx := randi() % wildlife_ids.size()
 	var spawn_id := int(wildlife_ids[rand_idx])
-	var group_size := randi_range(2, 4)
+	
+	# Dynamic Herd Spawning: Multiplies size based on biome constraints
+	var max_group_size := biome.get_max_group_size()
+	var group_size := randi_range(2, max_group_size)
 	
 	for i: int in range(group_size):
 		var rx := randf_range(2.0, 14.0)
@@ -204,11 +210,9 @@ func _resolve_habitat_ground_y(world_state_ref: WorldState, global_x: int, globa
 	if habitat == MobRegistry.Habitat.AQUATIC:
 		return _get_water_surface_y(world_state_ref, global_x, global_z)
 		
-	# Goblins (ID 13) and Cave Zombies (ID 10) spawn in subterranean cave layers
 	if spawn_id == MOB_ID_ZOMBIE or spawn_id == 13:
 		return SpawnCoordinateSolver.solve_cave_y(world_state_ref, global_x, global_z)
 		
-	# Everyone else spawns on the true biological surface
 	return SpawnCoordinateSolver.solve_surface_y(world_state_ref, global_x, global_z)
 
 

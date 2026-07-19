@@ -1,10 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/RedBadlandsBiome.gd
-# Description: Concrete Biome Strategy implementing the geographical, block-depth,
-#              and vegetation scatter rules for the Red Terracotta Canyons.
-#              SOLID CLEANUP: Replaced climate inheritance methods with a single
-#              composition bridge returning the segregated 'DesertClimateProfile'.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# Description: Concrete Biome Strategy implementing geographical, geological,
+#              meteorological, and scaled population parameters for the 
+#              arid Red Badlands sandstone canyons.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name RedBadlandsBiome
 extends IBiome
@@ -39,26 +39,48 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 
 func get_scatter_blueprint_id(scatter_hash: int) -> int:
 	if scatter_hash % 50 == 4:
-		return 14 
+		return 14 # Dead Shrub
 	return 0
 
 
-## Concrete Override (OCP): Dynamically returns desert vegetation prop IDs
 func get_wilderness_prop_id(scatter_hash: int) -> int:
 	var type_roll: int = scatter_hash % 10
 	if type_roll < 7:
-		return 224 # Dead Bush Prop (.tscn)
-	return 225     # Cactus Prop (.tscn)
+		return 224 # Dead Bush
+	return 225     # Cactus
+
+
+# ==============================================================================
+# SOLID OCP SCALED POPULATION CONFIGURATION (OCP Compliance)
+# ==============================================================================
+
+func get_spawn_probability() -> float:
+	return 0.30 # Arid sandstone environment, balanced spawning rate
+
+
+func get_max_group_size() -> int:
+	return 4 # Moderate animal herd sizes
 
 
 func get_wilderness_wildlife_ids() -> Array[int]:
-	var local_wildlife: Array[int] = [0, 1, 3, 209]
-	return local_wildlife
+	# Specialized desert fauna: Wild Pigs, Clay Cattle, Colossal Elephants, and Fiery Growlithes!
+	var desert_wildlife_roster: Array[int] = [0, 3, 209, 212]
+	return desert_wildlife_roster
 
 
-func is_coordinate_inside(_pos_flat: Vector2, _distance: float, angle_rad: float) -> bool:
-	return angle_rad >= 1.963 and angle_rad < 2.748
+func get_village_civilian_ids() -> Array[int]:
+	# Sun-baked desert bazaar roster: Rugged Villagers, Spice Merchants, and Shield Guards!
+	var desert_bazaar_roster: Array[int] = [100, 101, 102]
+	return desert_bazaar_roster
 
+
+func get_village_population_density() -> int:
+	return 5 # Busy desert bazaar outpost
+
+
+# ==============================================================================
+# METEOROLOGICAL & CLIMATE CONFIGURATION
+# ==============================================================================
 
 func get_streetlight_theme() -> Dictionary:
 	return {
@@ -79,10 +101,5 @@ func get_water_level() -> int:
 	return -1
 
 
-# ==============================================================================
-# SOLID COMPOSITION BRIDGE (OCP / ISP Compliant)
-# ==============================================================================
-
-## Returns the decoupled desert climatological profile.
 func get_climate_profile() -> IClimateProfile:
 	return DesertClimateProfile.new()

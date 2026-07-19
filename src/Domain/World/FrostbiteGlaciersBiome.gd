@@ -1,10 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/FrostbiteGlaciersBiome.gd
-# Description: Concrete Biome Strategy implementing the geographic, block-depth,
-#              and visual rules for the frozen polar glaciers region (Frostbite Glaciers).
-#              SOLID CLEANUP: Replaced climate inheritance methods with a single
-#              composition bridge returning the segregated 'GlacialClimateProfile'.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# Description: Concrete Biome Strategy implementing geographical, geological,
+#              meteorological, and scaled population parameters for the 
+#              frozen polar Frostbite Glaciers.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name FrostbiteGlaciersBiome
 extends IBiome
@@ -36,7 +36,7 @@ func get_block_for_depth(y: int, base_height: int) -> BlockType.Type:
 
 func get_landmark_type(spawn_hash: int, _base_height: int) -> int:
 	if spawn_hash % 220 == 9:
-		return 5
+		return 5 # Ice Temple
 	return 0
 
 
@@ -45,6 +45,38 @@ func is_coordinate_inside(pos_flat: Vector2, _distance: float, angle_rad: float)
 	var is_north_glacial_shelf: bool = angle_rad >= -1.963 and angle_rad < -1.178
 	return is_north_polar_cap or is_north_glacial_shelf
 
+
+# ==============================================================================
+# SOLID OCP SCALED POPULATION CONFIGURATION (OCP Compliance)
+# ==============================================================================
+
+func get_spawn_probability() -> float:
+	return 0.20 # Desolate, harsh environment, lower spawning rate
+
+
+func get_max_group_size() -> int:
+	return 3 # Smaller, scattered animal clusters
+
+
+func get_wilderness_wildlife_ids() -> Array[int]:
+	# Specialized polar fauna: Heavy-wool Sheep, Arctic Foxes, Snowy Birds, and Frozen Zombies
+	var polar_wildlife_roster: Array[int] = [2, 10, 204, 205]
+	return polar_wildlife_roster
+
+
+func get_village_civilian_ids() -> Array[int]:
+	# Winter survival outpost roster: Parka Villagers, Armored Guards, and Ice Miners!
+	var winter_outpost_roster: Array[int] = [100, 102, 105]
+	return winter_outpost_roster
+
+
+func get_village_population_density() -> int:
+	return 4 # Small, tight survival outpost
+
+
+# ==============================================================================
+# METEOROLOGICAL & CLIMATE CONFIGURATION
+# ==============================================================================
 
 func get_streetlight_theme() -> Dictionary:
 	return {
@@ -65,10 +97,5 @@ func get_water_level() -> int:
 	return -1
 
 
-# ==============================================================================
-# SOLID COMPOSITION BRIDGE (OCP / ISP Compliant)
-# ==============================================================================
-
-## Returns the decoupled glacial climatological profile.
 func get_climate_profile() -> IClimateProfile:
 	return GlacialClimateProfile.new()
