@@ -5,6 +5,7 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Decoupled hotbar and equipment logic 
 #   entirely into PlayerEquipmentComponent, keeping physics limits clean (< 250 lines).
+# - Developer Comfort: Added F10 debug key to dynamically toggle storm environments.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -169,6 +170,20 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		_handle_pause_trigger()
 		return
+		
+	# Symmetrical Debugger: Press F10 in development to trigger a real storm instantly
+	if event is InputEventKey and event.pressed:
+		var key_event := event as InputEventKey
+		if key_event.keycode == KEY_F10:
+			var bootstrap := get_node_or_null("/root/Bootstrap")
+			if is_instance_valid(bootstrap):
+				var ws := bootstrap.get("weather_service") as Node
+				if is_instance_valid(ws):
+					var current: int = ws.get("current_weather") as int
+					var target := 1 if current == 0 else 0
+					ws.set("current_weather", target)
+					ws.call("_trigger_climatological_overcast")
+					print("[Developer Debug] Forced weather state to: ", "RAINY" if target == 1 else "SUNNY")
 		
 	if is_active and event is InputEventKey and event.pressed:
 		var key_event := event as InputEventKey

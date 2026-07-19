@@ -13,6 +13,7 @@ extends Node
 
 const MAIN_MENU_SCENE := preload("res://src/Infrastructure/UI/main_menu.tscn")
 const LOADING_SCREEN_SCENE := preload("res://src/Infrastructure/UI/loading_screen.tscn")
+const LIGHT_RECOVERY_SECTOR_Y: float = 12.0
 const VEGETATION_PROP_SCRIPT := preload("res://src/Infrastructure/World/VegetationProp.gd")
 
 var main_menu: MainMenu
@@ -244,6 +245,10 @@ func _register_prop(prop_id: int, _prop_class: Variant) -> void:
 
 
 func _load_and_apply_user_settings() -> void:
+	# Symmetrical Guardrail: Guarantee that core audio buses are compiled on first boot
+	_get_or_create_bus("Music")
+	_get_or_create_bus("SFX")
+	
 	var settings := SettingsRepository.load_settings()
 	if settings.is_empty(): return
 	_apply_locale_and_buses(settings)
@@ -402,6 +407,12 @@ func _execute_showcase_start(canvas_layer: CanvasLayer, splash: LoadingScreen) -
 	fade_tween.chain().tween_callback(canvas_layer.queue_free)
 
 
+func _cleanup_showcase_room_if_exists() -> void:
+	var room := get_node_or_null("AIShowcaseRoom")
+	if is_instance_valid(room):
+		room.queue_free()
+
+
 func _inject_dependencies() -> void:
 	if is_instance_valid(world_controller) and is_instance_valid(player_controller):
 		world_controller.repository = world_repository
@@ -448,28 +459,17 @@ func _cleanup_and_load_menu(unload_canvas: CanvasLayer) -> void:
 	fade_tween.chain().tween_callback(unload_canvas.queue_free)
 
 
-func _cleanup_showcase_room_if_exists() -> void:
-	var room := get_node_or_null("AIShowcaseRoom")
-	if is_instance_valid(room):
-		room.queue_free()
-
-
 func _handle_safe_exit_isolation() -> void:
 	print("[Bootstrap] Intercepted close request. Executing secure thread-joining shutdown...")
-	
-	# 1. Stop rendering processes to freeze any further Vulkan shader/draw queries
 	set_process(false)
 	set_physics_process(false)
 	
-	# 2. Save progress and force background threads to safely join synchronously
 	if is_instance_valid(world_controller):
 		world_controller.save_all()
 		if "chunk_lifecycle" in world_controller and is_instance_valid(world_controller.chunk_lifecycle):
 			world_controller.chunk_lifecycle.shutdown()
 			
-	# 3. Stop and free active audio streams
 	if is_instance_valid(audio_service):
 		audio_service.stop_all()
 		
-	# 4. Safely terminate the C++ process now that all threads are fully joined
 	get_tree().quit()

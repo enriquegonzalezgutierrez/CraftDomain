@@ -5,11 +5,14 @@
 #              and sky material shader parameter syncing.
 #              WEATHER UPGRADE: Added real-time atmospheric dimming, dynamic
 #              fog density scale syncing, and procedural double-flash lightning.
-#              GRAPHICAL UPGRADE: Implemented CPU-calculated Height-Based Fog 
-#              to pull fog close in valleys and push it away at mountain peaks.
 #              FOG SOFTENING: Re-calibrated altitude remapping factor from 3.0 
 #              to 1.2 to extend standard ground horizon visual clearance.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+#              INDOOR SAFETY: Added a fast 3D block-casting sensor to suppress 
+#              and dampen lightning flashes and fog color leaks inside houses.
+#              SOUND FEEDBACK: Calibrated to trigger instantaneous thunder 
+#              impacts upon lightning flashes, optimizing arcade feedback.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name CelestialService
 extends Node
@@ -73,6 +76,12 @@ func _setup_dynamic_moon_light() -> void:
 
 
 func _locate_weather_service_if_missing() -> void:
+	# Symmetrical lookup: check if we are currently inside the Showcase Room
+	var showcase := get_tree().root.find_child("AIShowcaseRoom", true, false)
+	if is_instance_valid(showcase):
+		_weather_service = showcase.get_node_or_null("WeatherService") as WeatherService
+		return
+		
 	if _weather_service == null:
 		var parent_node := get_parent()
 		if is_instance_valid(parent_node):
@@ -112,18 +121,11 @@ func _process_lightning_strikes(delta: float) -> void:
 func _trigger_new_lightning() -> void:
 	_is_flashing = true
 	_lightning_flash_phase = 1
-	_lightning_energy_boost = 6.5 # Direct overexposure energy
-	_flash_duration = 0.08 # First flash is extremely brief
+	_lightning_energy_boost = 6.5 
+	_flash_duration = 0.08 
 	
-	# Simulate physical distance in kilometers
-	var distance_km: float = randf_range(0.6, 4.5)
-	var sound_delay: float = distance_km / 0.343
-	
-	get_tree().create_timer(sound_delay).timeout.connect(func() -> void:
-		if is_instance_valid(instance) and is_instance_valid(instance._weather_service):
-			if instance._weather_service.current_weather == IClimateProfile.ClimateType.RAINY:
-				AudioService.play_sfx_static("thunder_strike", Vector3.ZERO)
-	)
+	print("[CelestialService] Lightning Flash! Triggering instantaneous Thunder strike sound.")
+	AudioService.play_sfx_static("thunder_strike", Vector3.ZERO)
 
 
 func _advance_lightning_phase() -> void:
@@ -131,10 +133,10 @@ func _advance_lightning_phase() -> void:
 		1:
 			_lightning_flash_phase = 2
 			_lightning_energy_boost = 0.0
-			_flash_duration = 0.12 # Brief dark interval
+			_flash_duration = 0.12 
 		2:
 			_lightning_flash_phase = 3
-			_lightning_energy_boost = 4.0 # Second longer flash
+			_lightning_energy_boost = 4.0 
 			_flash_duration = 0.22
 		3:
 			_is_flashing = false
@@ -169,7 +171,10 @@ func _calculate_sun_light_intensity() -> float:
 	var final_intensity: float = intensity * storm_dim
 	
 	if _is_flashing and _lightning_energy_boost > 0.1:
-		final_intensity += _lightning_energy_boost
+		var boost := _lightning_energy_boost
+		if _is_player_indoors():
+			boost *= 0.15 # 85% light flash mitigation inside houses
+		final_intensity += boost
 		
 	return clampf(final_intensity, 0.0, 10.0)
 
@@ -254,7 +259,10 @@ func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
 	var target_fog: Color = base_fog_color.lerp(storm_fog_color, _current_storm_weight * 0.72)
 	
 	if _is_flashing and _lightning_energy_boost > 0.0:
-		env.fog_light_color = lightning_color
+		if _is_player_indoors():
+			env.fog_light_color = target_fog # Suppress screen-space fog flash indoors
+		else:
+			env.fog_light_color = lightning_color
 	else:
 		env.fog_light_color = target_fog
 
@@ -266,25 +274,19 @@ func _sync_fog_density_multiplier(env: Environment) -> void:
 		
 	var fog_mult: float = 1.0
 	if is_instance_valid(_weather_service):
-		box_mult_check_safeguard()
 		fog_mult = _weather_service.active_fog_multiplier
 		
 	var player_y := _get_player_altitude()
 	
 	# FOG SOFTENING LIMITS: Slashed baseline density factor from 3.0 to 1.2.
-	# The valley fog is now completely clear, extending ground views up to 250+ meters.
 	var height_factor := remap(clampf(player_y, 5.0, 22.0), 5.0, 22.0, 1.2, 0.15)
 	var final_multiplier := fog_mult * height_factor
 	
 	_apply_environment_fog_limits(env, final_multiplier)
 
 
-func box_mult_check_safeguard() -> void:
-	pass # Structural internal check
-
-
 func _get_player_altitude() -> float:
-	var player_y: float = 12.0 # Default safe valley altitude
+	var player_y: float = 12.0 
 	var bootstrap := get_node_or_null("/root/Bootstrap")
 	if is_instance_valid(bootstrap):
 		var player_node := bootstrap.get("player_controller") as CharacterBody3D
@@ -300,9 +302,31 @@ func _apply_environment_fog_limits(env: Environment, final_multiplier: float) ->
 	var base_begin := 40.0 if is_low_end else 65.0
 	var base_end := 80.0 if is_low_end else 120.0
 	
-	# Symmetrical scaling: Pull fog close as final multiplier rises.
 	env.fog_depth_begin = clampf(base_begin / final_multiplier, 8.0, base_begin * 5.0)
 	env.fog_depth_end = clampf(base_end / final_multiplier, 20.0, base_end * 5.0)
+
+
+## Voxel Raycaster: Detects if there is any solid block above the player's head
+func _is_player_indoors() -> bool:
+	var bootstrap := get_node_or_null("/root/Bootstrap")
+	if not is_instance_valid(bootstrap):
+		return false
+		
+	var player_node := bootstrap.get("player_controller") as CharacterBody3D
+	var world_ctrl := bootstrap.get("world_controller") as Node3D
+	
+	if is_instance_valid(player_node) and is_instance_valid(world_ctrl):
+		var ws := world_ctrl.get("world_state") as WorldState
+		if is_instance_valid(ws) and player_node.get("is_active") == true:
+			var p_pos := player_node.global_position
+			var feet_coord := Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z))
+			
+			# Scan upwards from head level to world ceiling height limit (31)
+			for y in range(feet_coord.y + 2, 32):
+				var block := ws.get_block(Vector3i(feet_coord.x, y, feet_coord.z))
+				if BlockType.is_solid(block):
+					return true
+	return false
 
 
 func is_night_time() -> bool:

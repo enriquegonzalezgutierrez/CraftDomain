@@ -2,6 +2,9 @@
 # Pathfile: res://src/Infrastructure/Audio/AudioService.gd
 # Description: Infrastructure Audio Service managing double-buffered crossfades,
 #              soundtrack allocations, and 3D spatial sound effects (SRP).
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles exclusively audio playing.
+# - Dynamic Solver: Uses FileAccess checks to prevent filesystem import lag.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -12,7 +15,6 @@ static var instance: AudioService = null
 
 enum TrackType { NONE, MENU, WORLD, COMBAT, CYBER, POLAR }
 
-# EXTENSION UPDATE: Updated from .mp3 to .ogg for seamless, lossless BGM loops
 const MENU_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/menu_music.mp3"
 const WORLD_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/world_music.mp3"
 const COMBAT_MUSIC_PATH := "res://src/Infrastructure/UI/Assets/combat_music.mp3"
@@ -203,6 +205,7 @@ func play_sfx_local(sfx_name: String, global_pos: Vector3 = Vector3.ZERO, max_di
 	if stream == null: return
 	
 	if global_pos == Vector3.ZERO:
+		print("[AudioService] Playing 2D SFX Stream: '%s'" % sfx_name)
 		var player_2d := AudioStreamPlayer.new()
 		player_2d.stream = stream
 		player_2d.volume_db = -3.0
@@ -242,7 +245,9 @@ func _scan_sfx_directories(sfx_name: String) -> AudioStream:
 	var extensions: Array[String] = [".ogg", ".mp3", ".wav"]
 	for ext: String in extensions:
 		var path := SFX_BASE_DIR + sfx_name + ext
-		if ResourceLoader.exists(path):
+		# SOLID OCP FIX: Symmetrical safety fallback checking file physical availability
+		if FileAccess.file_exists(path) or ResourceLoader.exists(path):
+			print("[AudioService] Discovered SFX on disk: '%s'" % path)
 			return load(path) as AudioStream
 	return null
 
