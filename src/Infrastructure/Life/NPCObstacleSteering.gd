@@ -5,8 +5,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates exclusively physical 
 #   whisker raycasts and steering, fully decoupled from high-level state decisions.
-# - Voxel Navigation Integration: Allows step-climbing and stuck-resolving to
-#   execute during active A* paths, preventing NPCs from blocking on block lips.
+# - Liskov Substitution (LSP): Dynamically scales raycast vertical origins based 
+#   on the host species' actual collision height, allowing small fauna to detect walls.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -63,12 +63,12 @@ func _perform_proactive_whisker_avoidance(delta: float) -> void:
 	if space_state == null:
 		return
 		
-	var r_origin := host.global_position + Vector3(0.0, 0.9, 0.0) 
-	
-	var col: CollisionShape3D = host.get_node_or_null("EntityCollider") as CollisionShape3D
-	if is_instance_valid(col) and col.position.y > 0.1:
-		r_origin = host.global_position + Vector3(0.0, col.position.y, 0.0)
+	# LSP Dynamic Height Solver: Scale the raycast origin dynamically based on 45% of the entity's real height
+	var height_offset: float = 0.8
+	if "_collision_height" in host:
+		height_offset = (host.get("_collision_height") as float) * 0.45
 		
+	var r_origin := host.global_position + Vector3(0.0, height_offset, 0.0)
 	var center_dir := wander_direction.normalized()
 	var left_dir := center_dir.rotated(Vector3.UP, deg_to_rad(30.0))
 	var right_dir := center_dir.rotated(Vector3.UP, deg_to_rad(-30.0))

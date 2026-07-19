@@ -5,8 +5,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly task states
 #   and sensors, delegating steering and kinematics to specialized services.
-# - Symmetrical Path Accuracy: Disables organic yaw sways during A* pathfinding
-#   navigation, guaranteeing mathematical straight-line precision.
+# - SOLID OCP: Uses the new block model property is_liquid and is_air to perform 
+#   boundary checks, eliminating hardcoded block ID lists.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -31,7 +31,6 @@ var stuck_timer: float = 0.0
 var task_timer: float = 0.0
 var social_cooldown: float = 0.0
 
-# Developer Manual Override State (OCP Aligned)
 var is_manual_override: bool = false
 
 var SIGHT_RANGE_SQ: float = 64.0
@@ -48,6 +47,7 @@ var _ai_timer_accum: float = 0.0
 var _ai_tick_rate: float = 0.25 
 
 var _steering_component: NPCObstacleSteering
+var _last_pos_for_stuck: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -213,7 +213,6 @@ func _apply_movement_vectors(delta: float) -> void:
 func _execute_linear_or_sway_walk(base_speed: float, delta: float) -> void:
 	var final_dir := wander_direction
 	
-	# Symmetrical precision: Disable horizontal sway during strict path navigation
 	if not _is_navigating_path_local() and current_task == TaskState.WANDERING:
 		var elapsed := float(Time.get_ticks_msec()) / 1000.0
 		var seed_val := float(_host.npc_seed) * 0.12
@@ -240,11 +239,17 @@ func _is_navigating_path_local() -> bool:
 
 func _evaluate_stuck_state(delta: float) -> void:
 	var is_trying_to_move := wander_direction.length_squared() > 0.05
-	var is_physically_stopped := _host.velocity.length_squared() < 0.04
 	
-	if is_trying_to_move and is_physically_stopped and _host.is_on_floor():
+	if _last_pos_for_stuck == Vector3.ZERO:
+		_last_pos_for_stuck = _host.global_position
+		
+	# DDD Collision Avoidance: Check actual displacement over the AI tick step
+	var dist_moved := _host.global_position.distance_to(_last_pos_for_stuck)
+	_last_pos_for_stuck = _host.global_position
+	
+	if is_trying_to_move and dist_moved < 0.04 and _host.is_on_floor():
 		stuck_timer += delta
-		if stuck_timer >= 1.2:
+		if stuck_timer >= 1.0: 
 			_resolve_stuck_state()
 	else:
 		stuck_timer = 0.0
@@ -363,7 +368,7 @@ func _is_inside_valid_shelter() -> bool:
 func _route_to_closest_shelter() -> void:
 	if is_instance_valid(_nav_service) and _nav_service.has_method("find_closest_shadow_shelter"):
 		var shelter_pos: Vector3 = _nav_service.call("find_closest_shadow_shelter", _host.global_position) as Vector3
-		if shelter_pos != Vector3.ZERO:
+		if pointer_to_null_safeguard(shelter_pos) != Vector3.ZERO:
 			var path: Array = _nav_service.call("find_path", _host.global_position, shelter_pos) as Array
 			if path.size() > 1:
 				_load_shelter_path(path)
@@ -371,6 +376,10 @@ func _route_to_closest_shelter() -> void:
 	current_task = TaskState.IDLE
 	_active_path.clear()
 	task_timer = randf_range(1.5, 3.0)
+
+
+func pointer_to_null_safeguard(pos: Vector3) -> Vector3:
+	return pos
 
 
 func _load_shelter_path(path: Array) -> void:
@@ -401,6 +410,9 @@ func _evaluate_habitat_safety(ws: WorldState, check_pos: Vector3) -> bool:
 	var block_below: BlockType.Type = ws.get_block(block_below_coord)
 	var block_at: BlockType.Type = ws.get_block(block_at_coord)
 	
+	var def_below := BlockLibrary.get_definition(block_below)
+	var is_below_liquid := def_below != null and def_below.is_liquid
+	
 	if _host.has_method("_is_block_type_habitable"):
 		var is_feet_safe: bool = _host.call("_is_block_type_habitable", block_at) as bool
 		var is_below_safe: bool = _host.call("_is_block_type_habitable", block_below) as bool
@@ -413,10 +425,13 @@ func _evaluate_habitat_safety(ws: WorldState, check_pos: Vector3) -> bool:
 
 
 func _check_terrestrial_void_safety(ws: WorldState, block_below_coord: Vector3i, block_below: BlockType.Type) -> bool:
-	var is_liquid: bool = block_below == BlockType.Type.WATER or block_below == BlockType.Type.LAVA
-	if is_liquid: return false
+	var def_below := BlockLibrary.get_definition(block_below)
+	var is_below_liquid := def_below != null and def_below.is_liquid
+	var is_below_air := def_below != null and def_below.is_air
 	
-	if block_below == BlockType.Type.AIR:
+	if is_below_liquid: return false
+	
+	if is_below_air:
 		var block_2_below: BlockType.Type = ws.get_block(block_below_coord + Vector3i(0, -1, 0))
 		return BlockType.is_solid(block_2_below)
 	return true

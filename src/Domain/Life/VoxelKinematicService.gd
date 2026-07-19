@@ -4,9 +4,9 @@
 #              3D path navigation, and strict voxel boundary safety checks 
 #              for all mobile entities (NPCs and Wildlife).
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   kinematic translations and boundary calculations, DRY-ing behavioral classes.
-# - Method Size Limits (Rule 4.2): All methods strictly refactored to remain < 20 lines.
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical translations.
+# - SOLID OCP: Uses the new block model property is_liquid and is_air to perform 
+#   boundary checks, eliminating hardcoded block ID lists.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -45,7 +45,7 @@ static func halt_movement(host: CharacterBody3D, ai: Object) -> void:
 static func navigate_along_path(host: CharacterBody3D, ai: Object, path: Array, path_index: int, speed: float, meta_index_key: String) -> int:
 	if path_index >= path.size():
 		halt_movement(host, ai)
-		host.set_meta("nav_stuck_ticks", 0.0)
+		host.set_meta("nav_stuck_time", 0.0)
 		return path_index
 		
 	var target_node: Vector3 = path[path_index]
@@ -65,7 +65,7 @@ static func navigate_along_path(host: CharacterBody3D, ai: Object, path: Array, 
 static func _advance_path_node(host: CharacterBody3D, current_index: int, meta_index_key: String, trigger_hop: bool = false) -> int:
 	var next_idx := current_index + 1
 	host.set_meta(meta_index_key, next_idx)
-	host.set_meta("nav_stuck_ticks", 0.0)
+	host.set_meta("nav_stuck_time", 0.0)
 	
 	if trigger_hop:
 		var velocity := host.velocity
@@ -77,18 +77,25 @@ static func _advance_path_node(host: CharacterBody3D, current_index: int, meta_i
 
 static func _evaluate_stuck_state(host: CharacterBody3D, speed: float) -> bool:
 	var last_pos: Vector3 = host.get_meta("nav_last_pos") if host.has_meta("nav_last_pos") else host.global_position
-	var stuck_ticks: float = host.get_meta("nav_stuck_ticks") if host.has_meta("nav_stuck_ticks") else 0.0
+	var stuck_time: float = host.get_meta("nav_stuck_time") if host.has_meta("nav_stuck_time") else 0.0
 	
+	var delta := host.get_physics_process_delta_time()
 	var dist_moved := host.global_position.distance_to(last_pos)
-	if dist_moved < 0.02 and speed > 0.1:
-		stuck_ticks += 1.0
+	
+	# Symmetrical Displacement: Check if movement is less than 10% of expected distance
+	var expected_dist := speed * delta
+	var is_stopped := dist_moved < (expected_dist * 0.1)
+	
+	if is_stopped and speed > 0.1:
+		stuck_time += delta
 	else:
-		stuck_ticks = move_toward(stuck_ticks, 0.0, 0.5)
+		stuck_time = move_toward(stuck_time, 0.0, delta * 2.0)
 		
 	host.set_meta("nav_last_pos", host.global_position)
-	host.set_meta("nav_stuck_ticks", stuck_ticks)
+	host.set_meta("nav_stuck_time", stuck_time)
 	
-	return stuck_ticks >= 4.0
+	# If physically blocked for 0.8 seconds continuously, trigger escape jump
+	return stuck_time >= 0.8
 
 
 ## Verifies if moving in the candidate direction is safe under voxel and habitat rules.
@@ -114,12 +121,19 @@ static func _evaluate_habitat_safety(host: CharacterBody3D, ws: WorldState, b_be
 	var block_below := ws.get_block(b_below)
 	var block_feet := ws.get_block(b_feet)
 	
+	var def_below := BlockLibrary.get_definition(block_below)
+	var def_feet := BlockLibrary.get_definition(block_feet)
+	
+	var is_below_liquid := def_below != null and def_below.is_liquid
+	var is_feet_liquid := def_feet != null and def_feet.is_liquid
+	var is_below_air := def_below != null and def_below.is_air
+	
 	var habitat: int = host.get("entity_habitat") if "entity_habitat" in host else 0
 	if habitat == 2: # AQUATIC
-		return block_below == BlockType.Type.WATER or block_feet == BlockType.Type.WATER
+		return is_below_liquid or is_feet_liquid
 		
 	# Terrestrial/Amphibious safety: avoid falling into deep voids, lava or deep oceans
-	var is_liquid := block_below == BlockType.Type.WATER or block_below == BlockType.Type.LAVA or block_feet == BlockType.Type.WATER
-	var is_void := block_below == BlockType.Type.AIR
+	var is_liquid := is_below_liquid or is_feet_liquid
+	var is_void := is_below_air
 	
 	return not is_liquid and not is_void

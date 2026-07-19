@@ -6,6 +6,8 @@
 # - Single Responsibility Principle (SRP): Coordinates exclusively mob lifecycle.
 # - Open-Closed Principle (OCP): Integrates dynamically with the custom population 
 #   densities and rosters declared by the active biome.
+# - Overlap Shield: Prevents depenetration launch bugs on game reload by applying 
+#   dynamic spawn offsets to landmark NPCs if they overlap with the player.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,7 +18,7 @@ extends RefCounted
 const QUEST_TARGET_MOBS: Dictionary = {
 	"lost_bazaar": 100,       # Villager Entity ID (Act I)
 	"fuel_fryer": 101,        # Merchant Entity ID (Act I)
-	"plains_defender": 10,    # Cave Zombie ID (The plains threat!)
+	"plains_defender": 10,    # Cave Zombie ID
 	"bazaar_return": 100      # Villager Entity ID (Act IV Epilogue)
 }
 
@@ -76,7 +78,6 @@ func _spawn_village_mobs(chunk_offset: Vector3, world_state: WorldState, world_n
 	if civilian_ids.is_empty():
 		return
 		
-	# Dynamic Village Spawning: Instantiates the exact biome density with randomized positions
 	for i: int in range(density):
 		var spawn_id: int = civilian_ids[randi() % civilian_ids.size()]
 		var rx := randf_range(2.0, 14.0)
@@ -118,8 +119,6 @@ func _get_dynamic_wildlife_table(biome: IBiome, chunk_offset: Vector3, world_sta
 func _spawn_wildlife_group(wildlife_ids: Array[int], chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
 	var rand_idx := randi() % wildlife_ids.size()
 	var spawn_id := int(wildlife_ids[rand_idx])
-	
-	# Dynamic Herd Spawning: Multiplies size based on biome constraints
 	var max_group_size := biome.get_max_group_size()
 	var group_size := randi_range(2, max_group_size)
 	
@@ -139,6 +138,12 @@ func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState
 
 func _spawn_decoupled_landmark_mob(point: StructurePopulationService.PopulationPoint, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
 	var spawn_pos := point.global_pos
+	
+	# Symmetrical Overlap Shield: Avoid launching NPCs due to player collision on reload
+	var player_node := world_node.get("player") as CharacterBody3D if is_instance_valid(world_node) else null
+	if is_instance_valid(player_node) and spawn_pos.distance_to(player_node.global_position) < 1.2:
+		spawn_pos += Vector3(1.2, 0.0, 1.2) # Shift slightly to prevent clipping
+		
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var spawn_node := MobRegistry.create_mob(point.spawn_id, spawn_pos)
 		if spawn_node != null:

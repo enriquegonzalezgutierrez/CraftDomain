@@ -25,6 +25,12 @@ var is_solid: bool = true
 ## Occlusion calculation property: true if block allows light rays or is partially clear.
 var is_transparent: bool = false
 
+## Physical property: true if the block behaves as a liquid volume (e.g., Water, Lava)
+var is_liquid: bool = false
+
+## Physical property: true if the block behaves as an empty gaseous void (e.g., Air)
+var is_air: bool = false
+
 ## The number of hits required by the player to break this block type.
 ## Default is 1 (instant break). Harder materials override this in constructors.
 var mining_resistance: int = 1

@@ -1,26 +1,19 @@
 [gd_scene format=3 uid="uid://dt0jpaycy35ec"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/parrot_entity.tscn
-; Description: 3D Scene representing the passive flying Parrot entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/ParrotEntity.gd" id="1_parrot"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/parrot.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://tadtwtbc2x6j" path="res://src/Infrastructure/Life/ParrotEntity.gd" id="1_parrot"]
+[ext_resource type="Script" uid="uid://e8a8j3la320c" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://cvvu6bn0jy1s8" path="res://assets/models/mobs/parrot.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_parrot"]
-radius = 1.0014648
-height = 2.0029297
+radius = 0.31103516
+height = 1.4387207
 
 [node name="ParrotEntity" type="CharacterBody3D" unique_id=1846676830]
 script = ExtResource("1_parrot")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1500928181]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8245996, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7119287, 0)
 shape = SubResource("CapsuleShape3D_parrot")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=2025960289]

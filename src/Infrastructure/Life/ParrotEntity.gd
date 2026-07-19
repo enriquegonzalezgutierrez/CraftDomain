@@ -1,7 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/ParrotEntity.gd
 # Description: Physical character controller for the flying Tropical Parrot.
-#              Sanitization is delegated strictly to GLBModelSanitizer (DRY).
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates first-person visual bobs 
+#   and flight physics, delegating decisions to AvianAIBehavior.
+# - OCP Alignment: Reads model base heights dynamically from the editor-defined 
+#   TSCN transforms, eliminating hardcoded sink bugs.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -10,8 +14,8 @@ extends PassiveEntity
 
 var _animation_time: float = 0.0
 var _model_node: Node3D
+var _model_base_y: float = 0.0
 
-const MODEL_BASE_Y: float = 0.0
 const COOLDOWN_CHAT_MIN_SEC: float = 15.0
 const COOLDOWN_CHAT_MAX_SEC: float = 25.0
 
@@ -32,6 +36,8 @@ func _ready() -> void:
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/parrot") as Node3D
 	
 	if is_instance_valid(_model_node):
+		# SOLID OCP: Resolve baseline height dynamically from editor TSCN transforms
+		_model_base_y = _model_node.position.y
 		GLBModelSanitizer.sanitize_model(_model_node)
 	
 	_setup_nameplate_height()
@@ -77,7 +83,7 @@ func _process(delta: float) -> void:
 			flight_state = get_meta(AvianAIBehavior.META_STATE) as int
 			
 		if flight_state == 2: 
-			_model_node.position.y = MODEL_BASE_Y
+			_model_node.position.y = _model_base_y
 			_model_node.rotation.z = 0.0
 			_model_node.rotation.x = 0.0
 		else:
@@ -95,9 +101,9 @@ func _process(delta: float) -> void:
 				current_node = current_node.get_parent()
 				
 			if is_showcase:
-				_model_node.position.y = MODEL_BASE_Y 
+				_model_node.position.y = _model_base_y 
 			else:
-				_model_node.position.y = MODEL_BASE_Y + hover_bob
+				_model_node.position.y = _model_base_y + hover_bob
 			
 			if is_moving:
 				_model_node.rotation.z = sin(_animation_time * 16.0) * 0.22
@@ -107,5 +113,5 @@ func _process(delta: float) -> void:
 				_model_node.rotation.x = 0.0
 				
 		if is_instance_valid(_nameplate):
-			var relative_offset := _model_node.position.y - MODEL_BASE_Y
+			var relative_offset := _model_node.position.y - _model_base_y
 			_nameplate.position.y = _collision_height + 0.35 + relative_offset

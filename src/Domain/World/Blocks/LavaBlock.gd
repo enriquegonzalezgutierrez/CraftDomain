@@ -1,15 +1,12 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: LavaBlock
+# Pathfile: res://src/Domain/World/Blocks/LavaBlock.gd
 # Description: Concrete Domain Definition for the volatile high-viscosity Magma.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Defines exclusively the physical,
 #   emissive, and fluid rendering parameters for Lava.
-# - Open-Closed Principle (OCP): Extends BlockDefinition. Uses 'is_emissive' 
-#   and 'liquid_lava' metadata to trigger specialized light-emitting shaders 
-#   in Infrastructure without hardcoded logic.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+# - SOLID OCP: Explicitly declares is_liquid as true at domain level.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name LavaBlock
 extends BlockDefinition
@@ -23,6 +20,7 @@ func _init() -> void:
 	translation_key = "BLOCK_LAVA"
 	is_solid = false # Entities can pass through (and take damage)
 	is_transparent = true
+	is_liquid = true # SOLID OOP definition
 	
 	# Procedural glowing orange colors for unshaded fallback rendering
 	color_top = Color(1.0, 0.45, 0.0)
@@ -31,14 +29,9 @@ func _init() -> void:
 	
 	# Visual descriptions for PBR rendering
 	texture_file_name = "lava.png"
-	roughness = 0.95 # Highly viscous matte fluid
-	
-	# ==========================================================================
-	# OCP EMISSIVE & RENDERING CONFIGURATION:
-	# Flags used by the Infrastructure layer to instantiate real-time lights
-	# and apply the liquid flow shader.
-	# ==========================================================================
+	roughness = 0.95 
 	rendering_type = "liquid_lava"
+	
 	is_emissive = true
 	emission_color = Color(1.0, 0.35, 0.0)
 	emission_energy = 1.8

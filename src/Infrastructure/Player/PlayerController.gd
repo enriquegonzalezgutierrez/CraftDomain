@@ -4,8 +4,9 @@
 #              LOD views, and stable gravity-free startup phases.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Decoupled hotbar and equipment logic 
-#   entirely into PlayerEquipmentComponent, keeping physics limits clean (< 250 lines).
-# - Developer Comfort: Added F10 debug key to dynamically toggle storm environments.
+#   entirely into PlayerEquipmentComponent.
+# - SOLID OCP: Replaced hardcoded block ID lists in _check_in_liquid_state with 
+#   the new polymorphic BlockDefinition is_liquid check.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -425,5 +426,11 @@ func _check_in_liquid_state() -> bool:
 			var f_block := ws.get_block(Vector3i(px, feet_y, pz))
 			var c_block := ws.get_block(Vector3i(px, chest_y, pz))
 			
-			return f_block == 6 or f_block == 15 or c_block == 6 or c_block == 15
+			var def_f := BlockLibrary.get_definition(f_block) as BlockDefinition
+			var def_c := BlockLibrary.get_definition(c_block) as BlockDefinition
+			
+			var is_f_liquid := def_f != null and def_f.is_liquid
+			var is_c_liquid := def_c != null and def_c.is_liquid
+			
+			return is_f_liquid or is_c_liquid
 	return false

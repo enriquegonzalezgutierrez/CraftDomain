@@ -9,8 +9,10 @@
 #              to 1.2 to extend standard ground horizon visual clearance.
 #              INDOOR SAFETY: Added a fast 3D block-casting sensor to suppress 
 #              and dampen lightning flashes and fog color leaks inside houses.
-#              SOUND FEEDBACK: Calibrated to trigger instantaneous thunder 
-#              impacts upon lightning flashes, optimizing arcade feedback.
+#              STARTUP SHIELD: Blocks lightning processing during loading screens 
+#              and CPU thread stalls to prevent silent, glitchy flashes on spawn.
+#              STABILITY: Implemented Defensive Delta Clamping to protect simulation 
+#              timers and color interpolations from main thread loading lag-spikes.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -54,12 +56,15 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# Defensive Delta Clamping: Prevents simulation and timer blowout during loading stalls
+	var safe_delta := clampf(delta, 0.0, 0.1)
+	
 	_locate_weather_service_if_missing()
-	_update_orbital_timers(delta)
-	_process_lightning_strikes(delta)
+	_update_orbital_timers(safe_delta)
+	_process_lightning_strikes(safe_delta)
 	_update_sun_rotation()
 	_update_moon_rotation()
-	_process_weather_transitions(delta)
+	_process_weather_transitions(safe_delta)
 	_update_sky_atmosphere()
 
 
@@ -103,19 +108,30 @@ func _update_orbital_timers(delta: float) -> void:
 
 ## Procedural Lightning engine: Coordinates double-flash lightning in storms
 func _process_lightning_strikes(delta: float) -> void:
+	# Symmetrical Startup Shield: Prevent lightning during loading screen frames
+	if not _is_world_fully_active():
+		_is_flashing = false
+		_lightning_energy_boost = 0.0
+		_lightning_timer = 8.0 # Reset timer to prevent instant post-load flashes
+		return
+		
 	if _weather_service == null or _weather_service.current_weather != IClimateProfile.ClimateType.RAINY:
 		_is_flashing = false
 		_lightning_energy_boost = 0.0
 		return
 		
 	if _is_flashing:
-		_flash_duration -= delta
-		if _flash_duration <= 0.0:
-			_advance_lightning_phase()
+		_ghost_flee_safeguard(delta)
 	else:
 		_lightning_timer -= delta
 		if _lightning_timer <= 0.0:
 			_trigger_new_lightning()
+
+
+func _ghost_flee_safeguard(delta: float) -> void:
+	_flash_duration -= delta
+	if _flash_duration <= 0.0:
+		_advance_lightning_phase()
 
 
 func _trigger_new_lightning() -> void:
@@ -260,7 +276,7 @@ func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
 	
 	if _is_flashing and _lightning_energy_boost > 0.0:
 		if _is_player_indoors():
-			env.fog_light_color = target_fog # Suppress screen-space fog flash indoors
+			env.fog_light_color = target_fog 
 		else:
 			env.fog_light_color = lightning_color
 	else:
@@ -326,6 +342,15 @@ func _is_player_indoors() -> bool:
 				var block := ws.get_block(Vector3i(feet_coord.x, y, feet_coord.z))
 				if BlockType.is_solid(block):
 					return true
+	return false
+
+
+func _is_world_fully_active() -> bool:
+	var bootstrap := get_node_or_null("/root/Bootstrap")
+	if is_instance_valid(bootstrap):
+		var player_node := bootstrap.get("player_controller") as CharacterBody3D
+		if is_instance_valid(player_node):
+			return player_node.get("is_active") == true
 	return false
 
 
