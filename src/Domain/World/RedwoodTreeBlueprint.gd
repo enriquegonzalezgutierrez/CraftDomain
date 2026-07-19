@@ -5,10 +5,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively manages the growth ratios, 
 #   height parameters, and radial layered foliage specific to the Redwood species.
-# - Open-Closed Principle (OCP): Inherits from IStructureBlueprint. Integrated 
-#   Type-safe BlockType.Type.REDWOOD_LOG enum member to permanently silence warnings.
 # - Dependency Inversion Principle (DIP): Delegates heavy geometry drawing to 
-#   the decoupled static utility class 'ProceduralTools'.
+#   the decoupled static utility class 'VoxelGeometricSculptor'.
 # Author: Enrique González Gutiérrez 
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,7 +14,7 @@ class_name RedwoodTreeBlueprint
 extends IStructureBlueprint
 
 # Redwood Biological Constants
-const TRUNK_BLOCK := BlockType.Type.REDWOOD_LOG # INTEGRATED: Type-safe RedwoodLogBlock enum member
+const TRUNK_BLOCK := BlockType.Type.REDWOOD_LOG
 const LEAVES_BLOCK := BlockType.Type.LEAVES
 
 const MIN_HEIGHT: int = 10
@@ -53,7 +51,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 			
 		var node := Vector3i(int(round(current_pos.x)), int(round(current_pos.y)), int(round(current_pos.z)))
 		trunk_nodes.append(node)
-		ProceduralTools.set_block_safe(chunk, node, TRUNK_BLOCK)
+		VoxelGeometricSculptor.set_block_safe(chunk, node, TRUNK_BLOCK)
 		
 	# Create Conifer Radial Skirts (Occurs along the upper 70% height segment of the trunk)
 	var canopy_start_y := int(float(height) * 0.3)
@@ -66,9 +64,9 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 		var current_skirt_radius := lerp(MAX_FOLIAGE_RADIUS, 1.0, t)
 		
 		# Sculpt flat conifer radial leaves plate
-		ProceduralTools.sculpt_conifer_flat_ring(chunk, node, current_skirt_radius)
+		VoxelGeometricSculptor.sculpt_conifer_flat_ring(chunk, node, current_skirt_radius)
 		
 	# Mount High-Density Pinnacle Needle on top of the spire
 	var tip := trunk_nodes.back()
-	ProceduralTools.set_block_safe(chunk, tip + Vector3i(0, 1, 0), LEAVES_BLOCK)
-	ProceduralTools.set_block_safe(chunk, tip + Vector3i(0, 2, 0), LEAVES_BLOCK)
+	VoxelGeometricSculptor.set_block_safe(chunk, tip + Vector3i(0, 1, 0), LEAVES_BLOCK)
+	VoxelGeometricSculptor.set_block_safe(chunk, tip + Vector3i(0, 2, 0), LEAVES_BLOCK)

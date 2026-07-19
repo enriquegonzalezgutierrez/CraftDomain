@@ -3,16 +3,16 @@
 # Description: Infrastructure Component managing floating UI decorations for 
 #              NPCs (Nameplates, Speech Bubbles, and Quest Indicator Arrows).
 #              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Only manages visual labels 
-#                and decorations overlays.
-#              - VM Direct Access Fix: Replaced all slow C++ ClassDB 'get()' and 
-#                'call()' methods with direct GDScript VM member access to resolve 
-#                the uninitialized active_behavior bug.
+#              - Single Responsibility Principle (SRP): Only manages visual labels.
+#              - Rule 7.1: Now instantiates the declarative SpeechBubble scene 
+#                instead of generating it procedurally via script.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name EntityUIComponent
 extends Node
+
+const SPEECH_BUBBLE_SCENE := preload("res://src/Infrastructure/UI/speech_bubble.tscn")
 
 var host: CharacterBody3D
 
@@ -108,13 +108,11 @@ func _setup_floating_bubble() -> void:
 	if not can_socialize or is_instance_valid(_bubble):
 		return
 		
-	var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
-	if sb_script != null:
-		_bubble = sb_script.new() as Node3D
-		host.add_child(_bubble)
-		host.set("_bubble", _bubble)
-		_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
-		_apply_uniform_ui_scaling(_bubble)
+	_bubble = SPEECH_BUBBLE_SCENE.instantiate() as Node3D
+	host.add_child(_bubble)
+	host.set("_bubble", _bubble)
+	_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
+	_apply_uniform_ui_scaling(_bubble)
 
 
 func _update_quest_arrow(is_target: bool) -> void:
@@ -126,7 +124,7 @@ func _update_nameplate(is_target: bool) -> void:
 	if not is_instance_valid(_nameplate):
 		return
 		
-	var base_name: String = tr(host.get("entity_name_key")).to_upper()
+	var base_name: String = tr(host.get("entity_name_key") as String).to_upper()
 	var task_subtitle := _get_task_subtitle()
 	
 	if is_target:
@@ -135,7 +133,7 @@ func _update_nameplate(is_target: bool) -> void:
 		_nameplate.no_depth_test = true
 	else:
 		_nameplate.text = base_name + task_subtitle
-		_nameplate.modulate = host.call("_get_nameplate_color") if host.has_method("_get_nameplate_color") else Color.WHITE
+		_nameplate.modulate = host.call("_get_nameplate_color") as Color if host.has_method("_get_nameplate_color") else Color.WHITE
 		_nameplate.no_depth_test = false
 		
 	_apply_uniform_ui_scaling(_nameplate)
@@ -148,7 +146,7 @@ func _update_bubble(is_target: bool) -> void:
 	if is_target:
 		_bubble.call("set_text", "⭐ [ " + tr("BUBBLE_ACTIVE_MISSION").to_upper() + " ] ⭐")
 	else:
-		var key: String = host.get("entity_name_key")
+		var key: String = host.get("entity_name_key") as String
 		if key == "NPC_NAME_MERCHANT":
 			_bubble.call("set_text", tr("BUBBLE_TRADE"))
 		elif key == "NPC_NAME_FARMER":
@@ -160,21 +158,19 @@ func _update_bubble(is_target: bool) -> void:
 
 
 func _get_task_subtitle() -> String:
-	var ai: NPCAIComponent = host.ai_component if "ai_component" in host else null
+	var ai: NPCAIComponent = host.get("ai_component") as NPCAIComponent if "ai_component" in host else null
 	if not is_instance_valid(ai):
 		return ""
 		
 	var task_name := "IDLE"
-	var is_manual: bool = ai.is_manual_override if "is_manual_override" in ai else false
-	var active_behavior: Resource = ai.active_behavior if "active_behavior" in ai else null
+	var is_manual: bool = ai.get("is_manual_override") as bool if "is_manual_override" in ai else false
+	var active_behavior: Resource = ai.get("active_behavior") as Resource if "active_behavior" in ai else null
 	
-	# VM Direct Member Access: Bypasses C++ ClassDB completely to query the active 
-	# task state and dynamic strategy polimorphically through the GDScript Virtual Machine.
 	if not is_manual and active_behavior != null and active_behavior.has_method("get_active_state_name"):
-		task_name = str(active_behavior.get_active_state_name(host))
+		task_name = str(active_behavior.call("get_active_state_name", host))
 	else:
-		var task_val: int = ai.current_task if "current_task" in ai else 0
-		task_name = ai._get_task_state_name(task_val) if ai.has_method("_get_task_state_name") else "IDLE"
+		var task_val: int = ai.get("current_task") as int if "current_task" in ai else 0
+		task_name = ai.call("_get_task_state_name", task_val) as String if ai.has_method("_get_task_state_name") else "IDLE"
 		
 	var lookup_key := task_name
 	if lookup_key == "WANDERING":

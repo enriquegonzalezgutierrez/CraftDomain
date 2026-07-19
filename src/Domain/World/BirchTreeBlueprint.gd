@@ -1,16 +1,14 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/World/BirchTreeBlueprint.gd
 # Description: Concrete Structure Blueprint implementing the 3D procedural growth 
 #              algorithm for a slender, silver-barked Birch Tree.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively manages the growth ratios, 
 #   height parameters, and branching coordinates specific to the Birch tree species.
-# - Open-Closed Principle (OCP): Inherits from IStructureBlueprint. Birch-specific 
-#   growth parameters are closed to modifications from other trees.
 # - Dependency Inversion Principle (DIP): Delegates heavy geometry drawing to 
-#   the decoupled static utility class 'ProceduralTools'.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/BirchTreeBlueprint.gd
+#   the decoupled static utility class 'VoxelGeometricSculptor'.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name BirchTreeBlueprint
 extends IStructureBlueprint
@@ -55,7 +53,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 			
 		var node := Vector3i(int(round(current_pos.x)), int(round(current_pos.y)), int(round(current_pos.z)))
 		trunk_nodes.append(node)
-		ProceduralTools.set_block_safe(chunk, node, TRUNK_BLOCK)
+		VoxelGeometricSculptor.set_block_safe(chunk, node, TRUNK_BLOCK)
 		
 	# 3. High-Height Branching (Occurs only in the upper 30% segment of the trunk)
 	var split_index := int(float(trunk_nodes.size()) * 0.7)
@@ -81,7 +79,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 			for b in range(branch_length):
 				branch_pos += direction_vector
 				var b_node := Vector3i(int(round(branch_pos.x)), int(round(branch_pos.y)), int(round(branch_pos.z)))
-				ProceduralTools.set_block_safe(chunk, b_node, TRUNK_BLOCK)
+				VoxelGeometricSculptor.set_block_safe(chunk, b_node, TRUNK_BLOCK)
 				
 				if b == branch_length - 1:
 					leaf_hubs.append(b_node)
@@ -90,4 +88,4 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 			
 	# 4. Sculpt Compact Leaf Clouds
 	for hub in leaf_hubs:
-		ProceduralTools.sculpt_leaf_sphere(chunk, hub, LEAF_RADIUS, rng)
+		VoxelGeometricSculptor.sculpt_leaf_sphere(chunk, hub, LEAF_RADIUS, rng)

@@ -5,10 +5,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively manages the growth ratios, 
 #   height parameters, and branching coordinates specific to the Sakura species.
-# - Open-Closed Principle (OCP): Inherits from IStructureBlueprint. Integrated 
-#   Type-safe BlockType.Type.CHERRY_LOG enum member to permanently silence warnings.
-# - Scope Correction (LSP): Renamed loop counters to lx, ly, and lz to prevent 
-#   3D parser namespace collisions.
+# - Dependency Inversion Principle (DIP): Delegates heavy geometry drawing to 
+#   the decoupled static utility class 'VoxelGeometricSculptor'.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,7 +14,7 @@ class_name SakuraTreeBlueprint
 extends IStructureBlueprint
 
 # Sakura Biological Constants
-const TRUNK_BLOCK := BlockType.Type.CHERRY_LOG # INTEGRATED: Type-safe CherryLogBlock enum member
+const TRUNK_BLOCK := BlockType.Type.CHERRY_LOG 
 const LEAVES_BLOCK := BlockType.Type.NEON_MAGENTA # Glowing pink blossom foliage proxy
 
 const MIN_HEIGHT: int = 5
@@ -55,7 +53,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 			
 		var node := Vector3i(int(round(current_pos.x)), int(round(current_pos.y)), int(round(current_pos.z)))
 		trunk_nodes.append(node)
-		ProceduralTools.set_block_safe(chunk, node, TRUNK_BLOCK)
+		VoxelGeometricSculptor.set_block_safe(chunk, node, TRUNK_BLOCK)
 		
 	# Sprout Wide Branches (Bifurcation begins at 50% height)
 	var split_index := int(float(trunk_nodes.size()) * 0.5)
@@ -81,7 +79,7 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 			for b in range(branch_length):
 				branch_pos += direction_vector
 				var b_node := Vector3i(int(round(branch_pos.x)), int(round(branch_pos.y)), int(round(branch_pos.z)))
-				ProceduralTools.set_block_safe(chunk, b_node, TRUNK_BLOCK)
+				VoxelGeometricSculptor.set_block_safe(chunk, b_node, TRUNK_BLOCK)
 				
 				# Record endpoints as pink foliage clouds hubs
 				if b == branch_length - 1:
@@ -113,4 +111,4 @@ static func _sculpt_sakura_pink_sphere(chunk: Chunk, hub: Vector3i, radius: floa
 					var existing := chunk.get_block(target_pos.x, target_pos.y, target_pos.z)
 					# Do not overwrite solid trunk wood with sakura blossom leaves
 					if existing != BlockType.Type.WOOD and existing != BlockType.Type.CHERRY_LOG:
-						ProceduralTools.set_block_safe(chunk, target_pos, LEAVES_BLOCK)
+						VoxelGeometricSculptor.set_block_safe(chunk, target_pos, LEAVES_BLOCK)

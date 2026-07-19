@@ -1,16 +1,12 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/World/GiantMushroomBlueprint.gd
 # Description: Concrete Structure Blueprint implementing the 3D procedural growth 
 #              algorithm for a massive, red-spotted Mario-style Giant Mushroom.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively manages the height ratios,
-#   cap diameter, and geometric white spots specific to the Red Mushroom species.
-# - Open-Closed Principle (OCP): Inherits from IStructureBlueprint. Mushroom-specific 
-#   growth parameters are closed to modifications from other flora.
 # - Dependency Inversion Principle (DIP): Delegates heavy geometry drawing to 
-#   the decoupled static utility class 'ProceduralTools'.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/GiantMushroomBlueprint.gd
+#   the decoupled static utility class 'VoxelGeometricSculptor'.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GiantMushroomBlueprint
 extends IStructureBlueprint
@@ -31,17 +27,15 @@ func get_structure_id() -> int:
 
 ## Concrete Implementation: Grows a giant spotted red umbrella mushroom
 func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) -> void:
-	# Seed RNG deterministically based on coordinates to guarantee reload stability
 	var coordinate_hash := int(abs(start_x * 73856093 ^ start_z * 19349663))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = coordinate_hash
 	
-	# Determine height for this specific instance
 	var height := rng.randi_range(MIN_HEIGHT, MAX_HEIGHT)
 	
 	# 1. Grow Solid White Stalk
 	for y in range(1, height + 1):
-		ProceduralTools.set_block_safe(chunk, Vector3i(start_x, ground_y + y, start_z), STALK_BLOCK)
+		VoxelGeometricSculptor.set_block_safe(chunk, Vector3i(start_x, ground_y + y, start_z), STALK_BLOCK)
 		
 	# 2. Grow Majestic Spotted Red Cap (Wide flat dome)
 	var cap_y := ground_y + height + 1
@@ -49,7 +43,6 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 	
 	for lx in range(-cap_radius_clamp(cap_r_int), cap_radius_clamp(cap_r_int) + 1):
 		for lz in range(-cap_radius_clamp(cap_r_int), cap_radius_clamp(cap_r_int) + 1):
-			# Standard flat distance squared to form a circle
 			var dist_sq := lx * lx + lz * lz
 			
 			if dist_sq <= CAP_RADIUS * CAP_RADIUS:
@@ -57,16 +50,15 @@ func build_structure(chunk: Chunk, start_x: int, start_z: int, ground_y: int) ->
 				var pz := start_z + lz
 				
 				# Base single layer of red skin
-				ProceduralTools.set_block_safe(chunk, Vector3i(px, cap_y, pz), CAP_BLOCK)
+				VoxelGeometricSculptor.set_block_safe(chunk, Vector3i(px, cap_y, pz), CAP_BLOCK)
 				
 				# Symmetrical double layer thickness towards center for dome volume depth
 				if dist_sq < (CAP_RADIUS - 0.8) * (CAP_RADIUS - 0.8):
-					ProceduralTools.set_block_safe(chunk, Vector3i(px, cap_y + 1, pz), CAP_BLOCK)
+					VoxelGeometricSculptor.set_block_safe(chunk, Vector3i(px, cap_y + 1, pz), CAP_BLOCK)
 					
 					# SPECIAL: Dot the red cap with white spots (represented by STALK_BLOCK)
-					# Deterministic grid pattern to create pixel-art spots
 					if (lx + lz) % 2 == 0 and (abs(lx) == 1 or abs(lz) == 1):
-						ProceduralTools.set_block_safe(chunk, Vector3i(px, cap_y + 1, pz), STALK_BLOCK)
+						VoxelGeometricSculptor.set_block_safe(chunk, Vector3i(px, cap_y + 1, pz), STALK_BLOCK)
 
 
 ## Inline clamping helper ensuring bounds calculations stay safe

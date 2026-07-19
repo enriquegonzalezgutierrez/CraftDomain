@@ -2,6 +2,9 @@
 # Pathfile: res://src/Infrastructure/Life/HostileEntity.gd
 # Description: Physical character controller representing a hostile Cave Zombie.
 #              Updated to use native, highly-portable .glb skeletal animations.
+#              SOLID COMPLIANCE:
+#              - Rule 7.1: Now instantiates the declarative SpeechBubble scene 
+#                instead of generating it procedurally via script.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -9,6 +12,7 @@ class_name HostileEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/zombie/zombie_base.glb"
+const SPEECH_BUBBLE_SCENE := preload("res://src/Infrastructure/UI/speech_bubble.tscn")
 
 var player: CharacterBody3D
 var _quest_bubble: Node3D
@@ -94,15 +98,13 @@ func _build_procedural_representation() -> void:
 
 
 func _setup_quest_bubble() -> void:
-	var active_q := QuestService.get_active_quest()
+	var active_q := QuestService.get_active_quest() as Quest
 	if active_q != null and active_q.quest_id == "plains_defender":
-		var sb_script := load("res://src/Infrastructure/UI/SpeechBubble.gd") as Script
-		if sb_script != null:
-			_quest_bubble = sb_script.new() as Node3D
-			_quest_bubble.name = "QuestBubble"
-			add_child(_quest_bubble)
-			_quest_bubble.call("set_text", tr("BUBBLE_TARGET_MONSTER"))
-			_quest_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
+		_quest_bubble = SPEECH_BUBBLE_SCENE.instantiate() as Node3D
+		_quest_bubble.name = "QuestBubble"
+		add_child(_quest_bubble)
+		_quest_bubble.call("set_text", tr("BUBBLE_TARGET_MONSTER"))
+		_quest_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
 
 
 func _get_entity_name_key() -> String:
@@ -134,7 +136,7 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 func _drop_loot(inv: IInventory) -> void:
 	inv.consume_item(15, 1) 
 	
-	var active_q := QuestService.get_active_quest()
+	var active_q := QuestService.get_active_quest() as Quest
 	if active_q != null and active_q.quest_id == "plains_defender":
 		var _un := inv.add_item(active_q.reward_item_index, active_q.reward_quantity)
 		if is_instance_valid(player):
@@ -248,8 +250,8 @@ func _apply_corruptive_impact_vignette() -> void:
 		player.set("_shake_intensity", 0.35)
 		
 		var hud := player.get("hud") as PlayerHUD
-		if is_instance_valid(hud):
-			hud.flash_damage_screen()
+		if is_instance_valid(hud) and hud.has_method("flash_damage_screen"):
+			hud.call("flash_damage_screen")
 
 
 func _process(delta: float) -> void:

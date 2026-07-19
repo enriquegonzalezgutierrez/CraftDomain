@@ -1,10 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/PlayerController.gd
 # Description: First-person player physics controller managing movements,
-#              hotbar bindings, and stable gravity-free startup phases.
-#              GRAPHICAL UPGRADE: Integrated real-time player position uploading 
-#              to the RenderingServer, and loaded typesafe CameraAttributesPractical
-#              for robust eye adaptation across all Godot 4 versions.
+#              LOD views, and stable gravity-free startup phases.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Decoupled hotbar and equipment logic 
+#   entirely into PlayerEquipmentComponent, keeping physics limits clean (< 250 lines).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -41,9 +41,18 @@ var viewmodel: PlayerViewModel
 var interaction_component: Node3D 
 var visual_component: PlayerVisualComponent
 
-var active_slot_index: int = 0
-var active_build_type: BlockType.Type = BlockType.Type.STONE
-var is_item_selected: bool = true 
+# Proxies connected to PlayerEquipmentComponent (SRP Compliance)
+var equipment_component: PlayerEquipmentComponent
+
+var active_slot_index: int:
+	get: return equipment_component.active_slot_index if is_instance_valid(equipment_component) else 0
+	set(val): if is_instance_valid(equipment_component): equipment_component.apply_hotbar_selection(val)
+
+var active_build_type: BlockType.Type:
+	get: return equipment_component.active_build_type if is_instance_valid(equipment_component) else BlockType.Type.STONE
+
+var is_item_selected: bool:
+	get: return equipment_component.is_item_selected if is_instance_valid(equipment_component) else false
 
 var is_glider_deployed: bool = false
 var _glider_physics: GliderPhysicsStrategy
@@ -74,7 +83,8 @@ func _ready() -> void:
 		var inv_comp := inventory as InventoryComponent
 		if is_instance_valid(inv_comp):
 			inv_comp.inventory_changed.connect(_on_inventory_changed)
-		_apply_hotbar_selection(0)
+		if is_instance_valid(equipment_component):
+			equipment_component.apply_hotbar_selection(0)
 
 
 func swing_sword() -> void:
@@ -102,12 +112,10 @@ func _setup_player_geometry() -> void:
 		camera.position = Vector3(0, 1.6, 0) 
 		camera.current = true
 		
-		# CAMERA UPGRADE: Apply Eye Adaptation / Auto Exposure directly to the player lens!
-		# Fully compatible across all Godot 4.x versions (from 4.0 up to 4.7+).
 		var camera_attrs := CameraAttributesPractical.new()
 		camera_attrs.auto_exposure_enabled = true
-		camera_attrs.auto_exposure_scale = 0.35 # Exposure sensitivity balance
-		camera_attrs.auto_exposure_speed = 1.2  # Fluid transition speed (seconds)
+		camera_attrs.auto_exposure_scale = 0.35 
+		camera_attrs.auto_exposure_speed = 1.2  
 		camera.attributes = camera_attrs
 		
 		add_child(camera)
@@ -151,6 +159,10 @@ func _setup_decoupled_components() -> void:
 	add_child(_footstep_player)
 	_footstep_player.initialize(self, world_controller)
 
+	equipment_component = PlayerEquipmentComponent.new()
+	add_child(equipment_component)
+	equipment_component.initialize(self)
+
 
 func _input(event: InputEvent) -> void:
 	if not is_multiplayer_authority(): return
@@ -189,8 +201,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
 		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
 	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP: _scroll_hotbar(-1)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: _scroll_hotbar(1)
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP: 
+			equipment_component.scroll_hotbar(-1)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: 
+			equipment_component.scroll_hotbar(1)
 
 
 func _physics_process(delta: float) -> void:
@@ -210,7 +224,9 @@ func _process_local_player(delta: float) -> void:
 		_process_frozen_physics_movement(delta)
 		return
 
-	_process_hotbar_keys()
+	if is_instance_valid(equipment_component):
+		equipment_component.process_hotbar_inputs(_input_component)
+		
 	_update_interactions_and_gamepad(delta)
 	_evaluate_glider_deployment()
 
@@ -222,7 +238,6 @@ func _process_local_player(delta: float) -> void:
 	move_and_slide()
 	_apply_physics_effects(delta)
 	
-	# PUSH COORDINATES TO GPU (120Hz Guardrail for Player-Grass Turbulence)
 	RenderingServer.global_shader_parameter_set("player_position", global_position)
 
 
@@ -327,54 +342,6 @@ func _apply_horizontal_movement(delta: float, is_in_liquid: bool) -> void:
 	velocity.z = current_flat_velocity.y
 
 
-func _scroll_hotbar(direction: int) -> void:
-	var new_slot := active_slot_index + direction
-	if new_slot > 7: new_slot = 0
-	elif new_slot < 0: new_slot = 7
-	_apply_hotbar_selection(new_slot)
-
-
-func _process_hotbar_keys() -> void:
-	if not is_instance_valid(_input_component): return
-	var selection := _input_component.get_active_hotkey_selection()
-	if selection != -1: _apply_hotbar_selection(selection)
-
-
-func _apply_hotbar_selection(slot: int) -> void:
-	active_slot_index = slot
-	if is_instance_valid(hud): hud.update_active_slot(slot)
-	
-	var inv_comp := inventory as InventoryComponent
-	if not is_instance_valid(inv_comp): return
-	
-	var slot_data := inv_comp.get_slot_data(slot)
-	if slot_data == null or slot_data.item_id == -1 or slot_data.quantity == 0:
-		_clear_held_tool()
-		return
-		
-	var item_id := slot_data.item_id
-	if is_instance_valid(visual_component): visual_component.update_held_tool(item_id)
-		
-	var tool_type: PlayerViewModel.ToolType = PlayerViewModel.get_tool_type_for_item(item_id)
-	_set_viewmodel_tool(tool_type)
-	
-	var block_def := BlockDefinition.new() # Default fallback
-	if is_instance_valid(BlockLibrary):
-		var fetched_def := BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
-		if fetched_def != null:
-			block_def = fetched_def
-			
-	is_item_selected = (block_def != null and block_def.type != 0)
-	active_build_type = (item_id as BlockType.Type) if is_item_selected else BlockType.Type.AIR
-
-
-func _clear_held_tool() -> void:
-	is_item_selected = false
-	active_build_type = BlockType.Type.AIR
-	_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
-	if is_instance_valid(visual_component): visual_component.update_held_tool(-1)
-
-
 func _set_viewmodel_tool(tool_id: PlayerViewModel.ToolType) -> void:
 	if is_instance_valid(viewmodel): viewmodel.switch_to_tool(tool_id)
 
@@ -406,7 +373,8 @@ func _on_domain_entity_died() -> void:
 
 
 func _on_inventory_changed() -> void:
-	_apply_hotbar_selection(active_slot_index)
+	if is_instance_valid(equipment_component):
+		equipment_component.apply_hotbar_selection(active_slot_index)
 
 
 func _rescue_player_from_void() -> void:
