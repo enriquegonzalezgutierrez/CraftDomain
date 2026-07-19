@@ -3,12 +3,9 @@
 # Description: Infrastructure NPC Sensory AI Brain. Coordinates task schedules,
 #              social gossip, and organic curved pathfinding.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly task states
-#   and sensors, delegating steering and kinematics to specialized services.
-# - SOLID OCP: Uses the new block model property is_liquid and is_air to perform 
-#   boundary checks, eliminating hardcoded block ID lists.
-# - Zero Warnings: Removed unused local variable is_below_liquid from 
-#   _evaluate_habitat_safety to ensure 100% warning-free compiles.
+# - Single Responsibility Principle (SRP): Coordinates strictly task states.
+# - Real-Time Reactivity (OCP): Listens to global block_modified signals, 
+#   instantly invalidating and recalculating paths if a block changes near them.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -57,12 +54,37 @@ func _ready() -> void:
 	_host = get_parent() as CharacterBody3D
 	_ai_timer_accum = randf_range(0.0, _ai_tick_rate)
 	_setup_steering_component()
+	_subscribe_to_world_modifications()
 
 
 func _setup_steering_component() -> void:
 	_steering_component = NPCObstacleSteering.new()
 	add_child(_steering_component)
 	_steering_component.initialize(_host, self)
+
+
+func _subscribe_to_world_modifications() -> void:
+	var parent_node := get_parent()
+	if is_instance_valid(parent_node):
+		var world_node := parent_node.get_parent()
+		if is_instance_valid(world_node) and world_node.has_signal("block_modified"):
+			world_node.connect("block_modified", _on_world_block_modified)
+
+
+func _on_world_block_modified(global_pos: Vector3i, _type: BlockType.Type) -> void:
+	if not is_instance_valid(_host):
+		return
+		
+	var h_pos := _host.global_position
+	var host_coord := Vector3i(floori(h_pos.x), floori(h_pos.y), floori(h_pos.z))
+	
+	# Symmetrical Proactive Recalculation: If a block is edited within 15 meters,
+	# instantly invalidate our path and trigger a fresh A* pathfinder tick!
+	if host_coord.distance_to(global_pos) < 15:
+		_active_path.clear()
+		_current_path_index = 0
+		stuck_timer = 0.0
+		_ai_timer_accum = _ai_tick_rate # Force immediate AI update on next frame
 
 
 ## Refactored Loop: Separates desires, steering, and physical execution
@@ -411,6 +433,9 @@ func _evaluate_habitat_safety(ws: WorldState, check_pos: Vector3) -> bool:
 	var block_at_coord: Vector3i = Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
 	var block_below: BlockType.Type = ws.get_block(block_below_coord)
 	var block_at: BlockType.Type = ws.get_block(block_at_coord)
+	
+	var def_below := BlockLibrary.get_definition(block_below)
+	var is_below_liquid := def_below != null and def_below.is_liquid
 	
 	if _host.has_method("_is_block_type_habitable"):
 		var is_feet_safe: bool = _host.call("_is_block_type_habitable", block_at) as bool

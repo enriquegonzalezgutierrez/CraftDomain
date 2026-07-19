@@ -11,8 +11,8 @@
 #              and dampen lightning flashes and fog color leaks inside houses.
 #              STARTUP SHIELD: Blocks lightning processing during loading screens 
 #              and CPU thread stalls to prevent silent, glitchy flashes on spawn.
-#              STABILITY: Implemented Defensive Delta Clamping to protect simulation 
-#              timers and color interpolations from main thread loading lag-spikes.
+#              STABILITY: Implemented Defensive Delta Clamping and safe lerp factor 
+#              limits to prevent color overshoots and gradient oscillations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -53,6 +53,9 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	name = "CelestialService"
 	_setup_dynamic_moon_light()
+	
+	# Randomize first natural lightning to prevent spawn illusions
+	_lightning_timer = randf_range(15.0, 30.0)
 
 
 func _process(delta: float) -> void:
@@ -112,7 +115,7 @@ func _process_lightning_strikes(delta: float) -> void:
 	if not _is_world_fully_active():
 		_is_flashing = false
 		_lightning_energy_boost = 0.0
-		_lightning_timer = 8.0 # Reset timer to prevent instant post-load flashes
+		_lightning_timer = randf_range(15.0, 30.0) # Reset timer to prevent instant post-load flashes
 		return
 		
 	if _weather_service == null or _weather_service.current_weather != IClimateProfile.ClimateType.RAINY:
@@ -183,7 +186,8 @@ func _calculate_sun_light_intensity() -> float:
 	elif _current_time > 0.68: 
 		intensity = remap(_current_time, 0.68, 0.76, 1.2, 0.0)
 		
-	var storm_dim: float = lerp(1.0, 0.22, _current_storm_weight)
+	# Symmetrical Lerp Factor Clamping: prevents overshoots during first frame load stalls
+	var storm_dim: float = lerp(1.0, 0.22, clampf(_current_storm_weight, 0.0, 1.0))
 	var final_intensity: float = intensity * storm_dim
 	
 	if _is_flashing and _lightning_energy_boost > 0.1:
@@ -213,7 +217,7 @@ func _calculate_moon_light_intensity() -> float:
 	elif _current_time < 0.24 and _current_time > 0.16: 
 		intensity = remap(_current_time, 0.16, 0.24, max_intensity, 0.0)
 		
-	var storm_dim: float = lerp(1.0, 0.3, _current_storm_weight)
+	var storm_dim: float = lerp(1.0, 0.3, clampf(_current_storm_weight, 0.0, 1.0))
 	return clampf(intensity * storm_dim, 0.0, 0.06)
 
 
@@ -224,7 +228,8 @@ func _process_weather_transitions(delta: float) -> void:
 		if w_type != IClimateProfile.ClimateType.SUNNY and w_type != IClimateProfile.ClimateType.FOGGY:
 			target_storm = 1.0
 			
-	_current_storm_weight = lerp(_current_storm_weight, target_storm, delta * 0.4)
+	# Symmetrical Lerp Factor Clamping: prevents overshoots during first frame load stalls
+	_current_storm_weight = lerp(_current_storm_weight, target_storm, clampf(delta * 0.4, 0.0, 1.0))
 
 
 func _update_sky_atmosphere() -> void:
@@ -271,8 +276,9 @@ func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
 	var storm_fog_color: Color = Color(0.12, 0.13, 0.15)
 	var lightning_color: Color = Color(0.85, 0.9, 1.0)
 	
-	var base_fog_color: Color = night_fog_color.lerp(day_fog_color, day_weight)
-	var target_fog: Color = base_fog_color.lerp(storm_fog_color, _current_storm_weight * 0.72)
+	# Symmetrical Lerp Factor Clamping: prevents overshoots during first frame load stalls
+	var base_fog_color: Color = night_fog_color.lerp(day_fog_color, clampf(day_weight, 0.0, 1.0))
+	var target_fog: Color = base_fog_color.lerp(storm_fog_color, clampf(_current_storm_weight * 0.72, 0.0, 1.0))
 	
 	if _is_flashing and _lightning_energy_boost > 0.0:
 		if _is_player_indoors():
