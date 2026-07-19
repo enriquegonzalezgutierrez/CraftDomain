@@ -1,0 +1,59 @@
+# ==============================================================================
+# Pathfile: .gitattributes
+# Description: Global Git configuration enforcing LF line endings and binary 
+#              file definitions. Prevents Godot 4 MD5 hash mismatches and 
+#              infinite import loops across Windows and WSL/Linux environments.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. DEFAULT BEHAVIOR
+# ------------------------------------------------------------------------------
+# Auto-detect text files, always normalize to LF (Linux) on checkout and commit.
+* text=auto eol=lf
+
+# ------------------------------------------------------------------------------
+# 2. GODOT ENGINE SPECIFIC FILES
+# ------------------------------------------------------------------------------
+# Force LF on all Godot engine configuration and scene files to prevent 
+# cache invalidation and re-import loops in the editor.
+*.gd text eol=lf
+*.gdshader text eol=lf
+*.tscn text eol=lf
+*.tres text eol=lf
+*.import text eol=lf
+*.cfg text eol=lf
+project.godot text eol=lf
+
+# ------------------------------------------------------------------------------
+# 3. DOMAIN DATA & DOCUMENTATION
+# ------------------------------------------------------------------------------
+# Enforce LF on JSON databases (quests, recipes, dialogues) and Markdown files.
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+# ------------------------------------------------------------------------------
+# 4. BINARY ASSETS (ABSOLUTE SAFEGUARD)
+# ------------------------------------------------------------------------------
+# Strictly mark assets as binary so Git NEVER attempts line-ending conversions 
+# or text diffing, which would permanently corrupt the files.
+
+# 3D Models
+*.glb binary
+*.gltf binary
+*.fbx binary
+*.bin binary
+
+# Textures & Images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.svg binary
+
+# Audio & Video
+*.ogg binary
+*.wav binary
+*.mp3 binary
+*.ogv binary
