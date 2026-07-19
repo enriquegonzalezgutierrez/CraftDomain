@@ -1,10 +1,14 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/HostileEntity.gd
 # Description: Physical character controller representing a hostile Cave Zombie.
-#              Updated to use native, highly-portable .glb skeletal animations.
-#              SOLID COMPLIANCE:
-#              - Rule 7.1: Now instantiates the declarative SpeechBubble scene 
-#                instead of generating it procedurally via script.
+#              Manages high-frequency physics ticks, glitched spotted roars, 
+#              unshaded static glitch particles, and item thievery.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
+#   sound triggers, and particle emissions, delegating state decisions to ZombieAIBehavior.
+# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
+#   to break Godot 4's cyclic preloader compile locks with its behavior script.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -13,6 +17,9 @@ extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/zombie/zombie_base.glb"
 const SPEECH_BUBBLE_SCENE := preload("res://src/Infrastructure/UI/speech_bubble.tscn")
+
+## Decoupled local metadata key to prevent cyclic compile locks with ZombieAIBehavior
+const META_ZOMBIE_STATE = "zombie_local_state"
 
 var player: CharacterBody3D
 var _quest_bubble: Node3D
@@ -168,8 +175,8 @@ func _physics_tick(delta: float) -> void:
 
 func _process_zombie_combat_physics(_delta: float) -> void:
 	var state := 0 
-	if has_meta(ZombieAIBehavior.META_ZOMBIE_STATE):
-		state = get_meta(ZombieAIBehavior.META_ZOMBIE_STATE) as int
+	if has_meta(META_ZOMBIE_STATE):
+		state = get_meta(META_ZOMBIE_STATE) as int
 		
 	match state:
 		1: 
@@ -178,7 +185,7 @@ func _process_zombie_combat_physics(_delta: float) -> void:
 			_set_scars_emission(2.8)
 		2: 
 			_set_scars_emission(0.0)
-			if Engine.get_physics_frames() % 12 == 0:
+			if Engine.get_physics_frames() % 10 == 0:
 				_spawn_static_glitch_particles()
 		3: 
 			velocity.x = 0.0
@@ -208,18 +215,7 @@ func _traverse_and_apply_scars_emission(node: Node, energy: float) -> void:
 
 func _spawn_static_glitch_particles() -> void:
 	var particles := CPUParticles3D.new()
-	particles.amount = 4
-	particles.one_shot = true
-	particles.explosiveness = 0.9
-	particles.lifetime = 0.4
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	particles.emission_box_extents = Vector3(0.2, 0.05, 0.2)
-	particles.direction = Vector3.UP
-	particles.spread = 30.0
-	particles.initial_velocity_min = 1.0
-	particles.initial_velocity_max = 2.2
-	particles.gravity = Vector3(0.0, -4.0, 0.0) 
+	_configure_glitch_particle_properties(particles)
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.05, 0.05, 0.05)
@@ -234,6 +230,20 @@ func _spawn_static_glitch_particles() -> void:
 	
 	particles.global_position = global_position + Vector3(0.0, 0.05, 0.0)
 	particles.emitting = true
+
+
+func _configure_glitch_particle_properties(particles: CPUParticles3D) -> void:
+	particles.amount = 4
+	particles.one_shot = true
+	particles.explosiveness = 0.9
+	particles.lifetime = 0.4
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	particles.emission_box_extents = Vector3(0.2, 0.05, 0.2)
+	particles.direction = Vector3.UP
+	particles.spread = 30.0
+	particles.initial_velocity_min = 1.0
+	particles.initial_velocity_max = 2.2
+	particles.gravity = Vector3(0.0, -4.0, 0.0)
 
 
 func _bite_player() -> void:

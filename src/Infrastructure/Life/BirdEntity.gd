@@ -5,8 +5,9 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates first-person visual bobs 
 #   and high-frequency flight physics, delegating decisions to AvianAIBehavior.
-# - 120 FPS Guardrail: Computes aerodynamic flight paths at 120Hz inside the
-#   physics thread to guarantee ultra-smooth movement under high framerates.
+# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
+#   to break Godot 4's cyclic preloader compile locks with its behavior script.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -19,6 +20,12 @@ const COOLDOWN_CHAT_MAX_SEC: float = 25.0
 
 const FLIGHT_SPEED_SOAR: float = 1.6
 const FLIGHT_SPEED_GLIDE: float = 2.4
+const PERCH_DURATION_SEC: float = 5.0
+
+## Decoupled local metadata keys to prevent cyclic compile locks with AvianAIBehavior
+const META_STATE = "avian_flight_state"
+const META_TARGET_LEAF = "avian_leaf_target"
+const META_REST_TIMER = "avian_rest_timer"
 
 var _animation_time: float = 0.0
 var _model_node: Node3D
@@ -70,8 +77,8 @@ func _physics_tick(delta: float) -> void:
 		return
 		
 	var flight_state := 0 # 0 = SOARING, 1 = LANDING, 2 = PERCHED
-	if has_meta(AvianAIBehavior.META_STATE):
-		flight_state = get_meta(AvianAIBehavior.META_STATE) as int
+	if has_meta(META_STATE):
+		flight_state = get_meta(META_STATE) as int
 		
 	match flight_state:
 		2: # STATE_PERCHED
@@ -92,7 +99,7 @@ func _process_perched_physics(delta: float) -> void:
 
 
 func _process_landing_physics(delta: float) -> void:
-	var target_leaf: Vector3i = get_meta(AvianAIBehavior.META_TARGET_LEAF) if has_meta(AvianAIBehavior.META_TARGET_LEAF) else Vector3i(0, -999, 0)
+	var target_leaf: Vector3i = get_meta(META_TARGET_LEAF) if has_meta(META_TARGET_LEAF) else Vector3i(0, -999, 0)
 	if target_leaf.y == -999:
 		return
 		
@@ -105,10 +112,9 @@ func _process_landing_physics(delta: float) -> void:
 		velocity.z = glide_dir.z * FLIGHT_SPEED_GLIDE
 		velocity.y = lerp(velocity.y, glide_dir.y * FLIGHT_SPEED_GLIDE, delta * 6.0)
 	else:
-		# Landing completed: halt and switch to perched state
-		velocity = Vector3.ZERO
-		set_meta(AvianAIBehavior.META_STATE, 2)
-		set_meta(AvianAIBehavior.META_REST_TIMER, AvianAIBehavior.PERCH_DURATION_SEC)
+		velocity.x = 0.0; velocity.z = 0.0; velocity.y = 0.0
+		set_meta(META_STATE, 2)
+		set_meta(META_REST_TIMER, PERCH_DURATION_SEC)
 
 
 func _process_soaring_physics(delta: float) -> void:
@@ -118,12 +124,10 @@ func _process_soaring_physics(delta: float) -> void:
 	var is_panicking := ai.get("current_task") as int == 5 # TASK_PANIC
 	var time_sec := float(Time.get_ticks_msec()) / 1000.0
 	
-	# Circular thermal-glide path calculations
 	var speed := FLIGHT_SPEED_SOAR * (2.2 if is_panicking else 1.0)
 	var freq := 0.8 if is_panicking else 0.45
 	var soar_dir := Vector3(sin(time_sec * freq), 0.0, cos(time_sec * freq)).normalized()
 	
-	# Glide up and down gently using a thermal wave pattern
 	var target_y := 22.0 if is_panicking else 18.0
 	var vertical_drift := (target_y - global_position.y) * 0.15
 	var wave_offset := sin(time_sec * 2.5) * 0.25
@@ -135,10 +139,20 @@ func _process_soaring_physics(delta: float) -> void:
 	ai.set("wander_direction", soar_dir)
 
 
-func _process(delta: float) -> void:
-	if domain_entity.is_dead: 
-		return
+# ==============================================================================
+# HUMAN BEHAVIOR: RENDERING ANIMATION LOOPS (SRP Compliant)
+# ==============================================================================
 
+func _process(delta: float) -> void:
+	if domain_entity.is_dead:
+		return
+		
+	_process_ambient_chatter(delta)
+	_animate_flight_node(delta)
+	_update_nameplate_position()
+
+
+func _process_ambient_chatter(delta: float) -> void:
 	var is_panicking := false
 	if is_instance_valid(ai_component) and ai_component.get("current_task") as int == 5:
 		is_panicking = true
@@ -148,42 +162,52 @@ func _process(delta: float) -> void:
 		if _chat_timer <= 0.0:
 			_chat_timer = randf_range(COOLDOWN_CHAT_MIN_SEC, COOLDOWN_CHAT_MAX_SEC)
 			AudioService.play_sfx_static("bird_chatter", global_position, 60.0)
-			
-	if is_instance_valid(_model_node):
-		var flight_state := 0 
-		if has_meta(AvianAIBehavior.META_STATE):
-			flight_state = get_meta(AvianAIBehavior.META_STATE) as int
-			
-		if flight_state == 2: 
-			_model_node.position.y = MODEL_BASE_Y
-			_model_node.rotation.z = 0.0
-			_model_node.rotation.x = 0.0
-		else:
-			_animation_time += delta
-			var flat_velocity := Vector2(velocity.x, velocity.z)
-			var is_moving := flat_velocity.length_squared() > 0.1
-			var hover_bob := sin(_animation_time * 4.0) * 0.18
-			
-			var is_showcase := false
-			var current_node := get_parent()
-			while current_node != null:
-				if current_node is SubViewport and current_node.name != "root":
-					is_showcase = true
-					break
-				current_node = current_node.get_parent()
-				
-			if is_showcase:
-				_model_node.position.y = MODEL_BASE_Y 
-			else:
-				_model_node.position.y = MODEL_BASE_Y + hover_bob
-			
-			if is_moving:
-				_model_node.rotation.z = sin(_animation_time * 16.0) * 0.22
-				_model_node.rotation.x = deg_to_rad(10.0) 
-			else:
-				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
-				_model_node.rotation.x = 0.0
-				
-		if is_instance_valid(_nameplate):
-			var relative_offset := _model_node.position.y - MODEL_BASE_Y
-			_nameplate.position.y = _collision_height + 0.35 + relative_offset
+
+
+func _animate_flight_node(delta: float) -> void:
+	if not is_instance_valid(_model_node):
+		return
+		
+	var flight_state := 0 
+	if has_meta(META_STATE):
+		flight_state = get_meta(META_STATE) as int
+		
+	if flight_state == 2: # STATE_PERCHED
+		_model_node.position.y = MODEL_BASE_Y
+		_model_node.rotation = Vector3.ZERO
+	else:
+		_animate_soaring_model(delta)
+
+
+func _animate_soaring_model(_delta: float) -> void:
+	_animation_time += _delta
+	var flat_velocity := Vector2(velocity.x, velocity.z)
+	var is_moving := flat_velocity.length_squared() > 0.1
+	var hover_bob := sin(_animation_time * 4.0) * 0.18
+	
+	if _is_in_showcase_viewport():
+		_model_node.position.y = MODEL_BASE_Y 
+	else:
+		_model_node.position.y = MODEL_BASE_Y + hover_bob
+		
+	if is_moving:
+		_model_node.rotation.z = sin(_animation_time * 16.0) * 0.22
+		_model_node.rotation.x = deg_to_rad(10.0) 
+	else:
+		_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
+		_model_node.rotation.x = 0.0
+
+
+func _is_in_showcase_viewport() -> bool:
+	var current_node := get_parent()
+	while current_node != null:
+		if current_node is SubViewport and current_node.name != "root":
+			return true
+		current_node = current_node.get_parent()
+	return false
+
+
+func _update_nameplate_position() -> void:
+	if is_instance_valid(_nameplate) and is_instance_valid(_model_node):
+		var relative_offset := _model_node.position.y - MODEL_BASE_Y
+		_nameplate.position.y = _collision_height + 0.35 + relative_offset

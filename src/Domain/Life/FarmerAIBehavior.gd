@@ -1,215 +1,232 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Life & Entities / AI Strategies)
-# Class: FarmerAIBehavior
+# Pathfile: res://src/Domain/Life/FarmerAIBehavior.gd
+# Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
+#              Planning (GOAP) for the Farmer NPC.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Replaces rigid FSM loops with dynamic
+#   action planners.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports dynamic 
+#   goal injections without altering execution loops.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
-# Description: Concrete AI behavior strategy implementing agricultural routines 
-#              including local crop scanning, path navigation, and harvesting.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): EXTREME REFACTOR. Declares and manages 
-#   its own local state machine (IDLE, SCANNING, HARVESTING) and telemetry reporting,
-#   completely independent of monolithic global enums.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. New agricultural 
-#   states (like watering, planting seeds, or resting) can be added locally 
-#   without modifying any other system.
-# - Liskov Substitution Principle (LSP): Fully compatible with the base contract.
 # ==============================================================================
 class_name FarmerAIBehavior
 extends IAIBehavior
 
-# Localized State Machine (SRP / OCP Compliant)
-enum State {
-	IDLE,       # resting/sleeping between tasks
-	SCANNING,   # looking around the fields for mature crops
-	HARVESTING  # walking to or actively reaping the wheat
-}
-
-const SCAN_INTERVAL_SEC: float = 3.0
-const HARVEST_DURATION_SEC: float = 1.8
-
-# Decoupled task enums mirroring NPCAIComponent.TaskState
 const TASK_IDLE = 0
+const TASK_WANDERING = 1
 const TASK_WORKING = 6
 
-# Decoupled metadata keys to store state variables safely on the host node
-const META_SCAN_TIMER := "farmer_scan_timer"
-const META_TARGET_CROP := "farmer_target_crop"
-const META_HARVEST_TIMER := "farmer_harvest_timer"
-const META_FARMER_STATE := "farmer_local_state"
+var _blackboard: AIBlackboard
+var _goals: Array[GOAPGoal] = []
+var _actions: Array[GOAPAction] = []
+var _active_plan: Array[GOAPAction] = []
 
 
-## Concrete Implementation: Drives the farmer's agricultural state machine
+func _init() -> void:
+	overrides_wandering = true
+	_setup_goap_profile()
+
+
+func _setup_goap_profile() -> void:
+	var harvest_goal := GOAPGoal.new("KeepFarmHarvested", 1.0)
+	harvest_goal.add_desired_state("did_harvest", true)
+	_goals.append(harvest_goal)
+	
+	_actions.append(ScanCropsAction.new())
+	_actions.append(MoveToCropAction.new())
+	_actions.append(HarvestCropAction.new())
+
+
+## Main Execution Loop: Drives the GOAP planner and steps through actions
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
 		
-	# Skip routines if the farmer is currently in dialog with the player
+	_initialize_agent(host)
+	
 	if host.get("is_talking") == true:
-		_reset_farmer_state(host)
+		_handle_conversation_interrupt(host)
 		return
 		
-	# Get or initialize state parameters on the host metadata container
-	_initialize_metadata_if_missing(host)
-	
-	var scan_timer: float = host.get_meta(META_SCAN_TIMER)
-	var target_crop: Vector3i = host.get_meta(META_TARGET_CROP)
-	var harvest_timer: float = host.get_meta(META_HARVEST_TIMER)
-	
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai):
-		return
-		
-	var current_task: int = ai.get("current_task")
-	
-	if current_task != TASK_WORKING:
-		host.set_meta(META_FARMER_STATE, State.SCANNING)
-		
-		# 1. SCANNING STATE: Look for mature wheat blocks nearby
-		scan_timer -= delta
-		if scan_timer <= 0.0:
-			scan_timer = SCAN_INTERVAL_SEC
-			var found_crop := _scan_for_ripe_crops(host)
-			if found_crop != Vector3i(0, -999, 0):
-				target_crop = found_crop
-				harvest_timer = HARVEST_DURATION_SEC
-				ai.set("current_task", TASK_WORKING)
-				host.set_meta(META_FARMER_STATE, State.HARVESTING)
-				
-		host.set_meta(META_SCAN_TIMER, scan_timer)
-		host.set_meta(META_TARGET_CROP, target_crop)
-		host.set_meta(META_HARVEST_TIMER, harvest_timer)
-	else:
-		host.set_meta(META_FARMER_STATE, State.HARVESTING)
-		# 2. EXECUTION STATE: Move to target, play animations, and harvest
-		_execute_crop_harvesting(host, ai, delta)
+	_evaluate_active_plan(host)
+	_execute_current_action(delta)
 
 
-func _initialize_metadata_if_missing(host: Object) -> void:
-	if not host.has_meta(META_SCAN_TIMER):
-		host.set_meta(META_SCAN_TIMER, SCAN_INTERVAL_SEC)
-	if not host.has_meta(META_TARGET_CROP):
-		host.set_meta(META_TARGET_CROP, Vector3i(0, -999, 0))
-	if not host.has_meta(META_HARVEST_TIMER):
-		host.set_meta(META_HARVEST_TIMER, 0.0)
-	if not host.has_meta(META_FARMER_STATE):
-		host.set_meta(META_FARMER_STATE, State.IDLE)
+func _initialize_agent(host: Object) -> void:
+	if _blackboard == null:
+		_blackboard = AIBlackboard.new()
+		_blackboard.set_memory("host", host)
+		_blackboard.set_memory("wander_timer", 0.0)
 
 
-func _reset_farmer_state(host: Object) -> void:
+func _handle_conversation_interrupt(host: Object) -> void:
+	_active_plan.clear()
 	var ai: Object = host.get("ai_component")
 	if is_instance_valid(ai):
 		ai.set("current_task", TASK_IDLE)
 		ai.set("wander_direction", Vector3.ZERO)
-	host.set_meta(META_TARGET_CROP, Vector3i(0, -999, 0))
-	host.set_meta(META_HARVEST_TIMER, 0.0)
-	host.set_meta(META_FARMER_STATE, State.IDLE)
 
 
-## Proximity Scanner: Identifies mature wheat blocks within 3 meters
-func _scan_for_ripe_crops(host: Object) -> Vector3i:
-	var world_node: Node = null
-	if host.has_method("get_parent"):
-		world_node = host.call("get_parent") as Node
+func _evaluate_active_plan(host: Object) -> void:
+	if _active_plan.is_empty():
+		var initial_state: Dictionary = {}
+		_active_plan = GOAPPlanner.plan(_goals[0], _actions, initial_state)
 		
-	if world_node == null or not "world_state" in world_node:
-		return Vector3i(0, -999, 0)
-		
-	var ws: WorldState = world_node.world_state
-	if ws == null:
-		return Vector3i(0, -999, 0)
-		
-	var host_pos: Vector3 = host.get("global_position")
-	var my_coord := Vector3i(floori(host_pos.x), floori(host_pos.y), floori(host_pos.z))
-	
-	for x in range(-3, 4):
-		for y in range(-1, 2):
-			for z in range(-3, 4):
-				var check_coord := my_coord + Vector3i(x, y, z)
-				# 20 corresponds to BlockType.Type.CROP_RIPE
-				if ws.get_block(check_coord) == 20:
-					return check_coord
-					
-	return Vector3i(0, -999, 0)
+		if not _active_plan.is_empty():
+			_active_plan[0].on_enter(_blackboard)
+		else:
+			# Fallback if no plan is found
+			var ai: Object = host.get("ai_component")
+			if is_instance_valid(ai): ai.set("current_task", TASK_IDLE)
 
 
-## Direct Path Routing: Moves to coordinates and triggers visual swing strikes
-func _execute_crop_harvesting(host: Object, ai: Object, delta: float) -> void:
-	var target_crop: Vector3i = host.get_meta(META_TARGET_CROP)
-	if target_crop.y == -999:
-		ai.set("current_task", TASK_IDLE)
-		host.set_meta(META_FARMER_STATE, State.IDLE)
+func _execute_current_action(delta: float) -> void:
+	if _active_plan.is_empty():
 		return
 		
-	var target_pos := Vector3(target_crop) + Vector3(0.5, 0.0, 0.5)
-	var host_pos: Vector3 = host.get("global_position")
-	var diff := target_pos - host_pos
-	diff.y = 0.0
+	var current_action: GOAPAction = _active_plan[0]
 	
-	var base_speed: float = 1.3
-	if "BASE_SPEED" in host:
-		base_speed = host.get("BASE_SPEED")
+	if not current_action.is_contextually_valid(_blackboard):
+		current_action.on_exit(_blackboard)
+		_active_plan.clear()
+		return
 		
-	var velocity: Vector3 = host.get("velocity")
+	var is_finished := current_action.execute_step(_blackboard, delta)
+	
+	if is_finished:
+		current_action.on_exit(_blackboard)
+		_active_plan.pop_front()
 		
-	if diff.length() > 1.1:
-		# Chase Target: Translate physical position
-		var wander_dir := diff.normalized()
-		velocity.x = wander_dir.x * base_speed
-		velocity.z = wander_dir.z * base_speed
-		host.set("velocity", velocity)
-		ai.set("wander_direction", wander_dir)
-	else:
-		# Target Reached: Halt coordinates and execute swing timers
-		velocity.x = 0.0
-		velocity.z = 0.0
-		host.set("velocity", velocity)
-		ai.set("wander_direction", diff.normalized())
-		
-		var vis_rep: Resource = host.get("visual_representation")
-		if is_instance_valid(vis_rep) and vis_rep.has_method("trigger_attack_visuals"):
-			vis_rep.call("trigger_attack_visuals")
-			
-		var harvest_timer: float = host.get_meta(META_HARVEST_TIMER)
-		harvest_timer -= delta
-		
-		if harvest_timer <= 0.0:
-			var world_node: Node = null
-			if host.has_method("get_parent"):
-				world_node = host.call("get_parent") as Node
-				
-			if is_instance_valid(world_node) and world_node.has_method("set_block_globally"):
-				world_node.call("set_block_globally", target_crop, 0)
-				world_node.call("set_block_globally", target_crop, 18)
-				
-				if world_node.has_method("spawn_replant_particles"):
-					world_node.call("spawn_replant_particles", Vector3(target_crop))
-				
-			velocity.y = 5.0 # Hop with joy
-			host.set("velocity", velocity)
-			
-			target_crop = Vector3i(0, -999, 0)
-			ai.set("current_task", TASK_IDLE)
-			host.set_meta(META_FARMER_STATE, State.IDLE)
-			ai.set("task_timer", 2.0)
-			
-		host.set_meta(META_TARGET_CROP, target_crop)
-		host.set_meta(META_HARVEST_TIMER, harvest_timer)
+		if not _active_plan.is_empty():
+			_active_plan[0].on_enter(_blackboard)
 
 
-# ==============================================================================
-# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
-# ==============================================================================
-
-## Symmetrical Override: Maps the localized, private State enum to 
-## human-readable telemetry strings.
 func get_active_state_name(host: Object) -> String:
-	if not host.has_meta(META_FARMER_STATE):
-		return "IDLE"
+	var _h := host
+	if _active_plan.size() > 0:
+		var action_name := _active_plan[0].action_name
+		if action_name == "ScanCrops": return "SCANNING_CROPS"
+		elif action_name == "MoveToCrop": return "WANDERING"
+		elif action_name == "Harvest": return "HARVESTING"
+	return "IDLE"
+
+
+# ==============================================================================
+# INNER CLASSES: GOAP ACTIONS (Decoupled atomic behaviors)
+# ==============================================================================
+
+class ScanCropsAction extends GOAPAction:
+	func _init() -> void:
+		super("ScanCrops", 1.0)
+		add_effect("has_target", true)
 		
-	var state_val: int = host.get_meta(META_FARMER_STATE) as int
-	match state_val:
-		State.IDLE:       return "IDLE"
-		State.SCANNING:   return "SCANNING_CROPS"
-		State.HARVESTING: return "HARVESTING"
-		_: return "IDLE"
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", 1) # WANDERING
+		
+		var crop_coord := _scan_for_ripe_crops(host)
+		if crop_coord != Vector3i(0, -999, 0):
+			if JobReservationService.instance.claim_job(crop_coord, host.get_instance_id()):
+				bb.set_memory("target_crop", crop_coord)
+				return true
+				
+		_wander_randomly(host, ai, bb, delta)
+		return false
+		
+	func _scan_for_ripe_crops(host: CharacterBody3D) -> Vector3i:
+		var parent: Node = host.get_parent() as Node
+		if not is_instance_valid(parent) or not "world_state" in parent: return Vector3i(0, -999, 0)
+		var ws: WorldState = parent.get("world_state") as WorldState
+		if ws == null: return Vector3i(0, -999, 0)
+			
+		var my_coord := Vector3i(floori(host.global_position.x), floori(host.global_position.y), floori(host.global_position.z))
+		var job_service := JobReservationService.instance
+		
+		for x in range(-5, 6):
+			for y in range(-2, 3):
+				for z in range(-5, 6):
+					var c := my_coord + Vector3i(x, y, z)
+					if ws.get_block(c) == 20: # 20 = BlockType.Type.CROP_RIPE
+						if not job_service.is_job_claimed(c): return c
+		return Vector3i(0, -999, 0)
+		
+	func _wander_randomly(_host: CharacterBody3D, ai: Object, bb: AIBlackboard, delta: float) -> void:
+		var timer := bb.get_float("wander_timer") - delta
+		if timer <= 0.0:
+			timer = randf_range(2.0, 4.0)
+			var angle := randf() * TAU
+			if is_instance_valid(ai): ai.set("wander_direction", Vector3(cos(angle), 0.0, sin(angle)))
+		bb.set_memory("wander_timer", timer)
+
+
+class MoveToCropAction extends GOAPAction:
+	func _init() -> void:
+		super("MoveToCrop", 1.0)
+		add_precondition("has_target", true)
+		add_effect("is_at_target", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.has_memory("target_crop")
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		var target: Vector3i = bb.get_vector3i("target_crop")
+		
+		var target_pos := Vector3(target) + Vector3(0.5, 0.0, 0.5)
+		var diff := target_pos - host.global_position
+		diff.y = 0.0
+		
+		if diff.length() < 1.1:
+			if is_instance_valid(ai): ai.set("wander_direction", diff.normalized())
+			host.velocity.x = 0.0; host.velocity.z = 0.0
+			return true
+			
+		if is_instance_valid(ai): 
+			ai.set("current_task", 1) # WANDERING
+			ai.set("wander_direction", diff.normalized())
+		return false
+
+
+class HarvestCropAction extends GOAPAction:
+	func _init() -> void:
+		super("Harvest", 1.0)
+		add_precondition("is_at_target", true)
+		add_effect("did_harvest", true)
+		
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("harvest_timer", 1.8)
+		var host := bb.get_object("host") as Node3D
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", 6) # WORKING
+		
+		var vis: Resource = host.get("visual_representation") as Resource
+		if is_instance_valid(vis) and vis.has_method("trigger_attack_visuals"):
+			vis.call("trigger_attack_visuals")
+			
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var timer := bb.get_float("harvest_timer") - delta
+		bb.set_memory("harvest_timer", timer)
+		
+		if timer <= 0.0:
+			_execute_harvest(bb)
+			return true
+		return false
+		
+	func _execute_harvest(bb: AIBlackboard) -> void:
+		var host := bb.get_object("host") as CharacterBody3D
+		var target: Vector3i = bb.get_vector3i("target_crop")
+		
+		JobReservationService.instance.release_job(target, host.get_instance_id())
+		var parent := host.get_parent() as Node
+		
+		if is_instance_valid(parent) and parent.has_method("set_block_globally"):
+			parent.call("set_block_globally", target, 0) # AIR
+			parent.call("set_block_globally", target, 18) # CROP_SEED
+			
+		host.velocity.y = 4.5 # Joy Hop
+		AudioService.play_sfx_static("block_break", host.global_position)
+		
+		bb.erase_memory("target_crop")

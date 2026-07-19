@@ -1,31 +1,31 @@
-[gd_scene format=3 uid="uid://dxvcf5v12tgjq"]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" uid="uid://07ysmov0j1u6" path="res://src/Infrastructure/Life/CowEntity.gd" id="1_cow"]
-[ext_resource type="Script" uid="uid://e8a8j3la320c" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://etl641prqja5" path="res://assets/models/mobs/cow/scene.gltf" id="4_gltf"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/CowEntity.gd" id="1_cow"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/cow/scene.gltf" id="4_gltf"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_cow"]
-radius = 1.2623291
-height = 2.5246582
+radius = 1.26233
+height = 2.52466
 
-[node name="CowEntity" type="CharacterBody3D" unique_id=1737124295]
+[node name="CowEntity" type="CharacterBody3D"]
 script = ExtResource("1_cow")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1040020833]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.9100647e-05, 1.3262522, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000039, 1.32625, 0)
 shape = SubResource("CapsuleShape3D_cow")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=987654321]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=808695711]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=424287536]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=2131553087]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="cow" parent="Visuals/BodyBobJoint" unique_id=1179583981 instance=ExtResource("4_gltf")]
+[node name="cow" parent="Visuals/BodyBobJoint" instance=ExtResource("4_gltf")]
 transform = Transform3D(0.025, 0, 0, 0, 0.025, 0, 0, 0, 0.025, 0, 0, 0)

@@ -1,222 +1,282 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/RaccoonAIBehavior.gd
-# Description: Specialized AI behavior strategy implementing nighttime scavenging 
-#              routines for the Forest Raccoon. Decomposed into short methods (SRP).
+# Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
+#              Planning (GOAP) for the Forest Raccoon.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Segregates daytime sleep, nighttime 
+#   scanning, and interactive barrel breakout behaviors into independent actions.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows new lootable 
+#   props (such as food crates) to be registered without code rewrites.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name RaccoonAIBehavior
 extends IAIBehavior
 
-const SPEED_SNEAK: float = 1.1
-const SPEED_RUN: float = 2.4
-const SCAVENGE_DURATION_SEC: float = 3.0
-const RANGE_SENSORY_SQ: float = 225.0 
-
-# Decoupled task enums
 const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-# Decoupled metadata keys
-const META_WANDER_TIMER := "raccoon_wander_timer"
-const META_WANDER_DIR := "raccoon_wander_dir"
-const META_TARGET_PROP := "raccoon_target_prop"
-const META_MINE_TIMER := "raccoon_mine_timer"
+const SPEED_SNEAK: float = 1.1
+const SPEED_RUN: float = 2.4
+const SCAVENGE_DURATION_SEC: float = 3.0
+const RANGE_SENSORY_SQ: float = 225.0
+
+var _blackboard: AIBlackboard
+var _goals: Array[GOAPGoal] = []
+var _actions: Array[GOAPAction] = []
+var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
 	overrides_wandering = true
+	_setup_goap_profile()
 
 
-## Concrete Contract: Drives day sleep cycles and nighttime barrel breakouts
+func _setup_goap_profile() -> void:
+	_setup_goals()
+	_actions.append(DaySleepAction.new())
+	_actions.append(ScanBarrelsAction.new())
+	_actions.append(SneakToBarrelAction.new())
+	_actions.append(ScratchBarrelAction.new())
+	_actions.append(RaccoonWanderAction.new())
+
+
+func _setup_goals() -> void:
+	var sleep_goal := GOAPGoal.new("DaytimeSleep", 10.0)
+	sleep_goal.add_desired_state("is_sleeping", true)
+	
+	var scavenge_goal := GOAPGoal.new("ScavengeBarrels", 2.0)
+	scavenge_goal.add_desired_state("barrel_depleted", true)
+	
+	var wander_goal := GOAPGoal.new("SimpleRoam", 0.5)
+	wander_goal.add_desired_state("is_wandering", true)
+	
+	_goals.append_array([sleep_goal, scavenge_goal, wander_goal])
+
+
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
 		
-	_initialize_metadata_if_missing(host)
+	_initialize_agent(host)
+	_update_blackboard_timers(delta)
 	
+	_evaluate_active_plan(host)
+	_execute_current_action(delta)
+
+
+func _initialize_agent(host: Object) -> void:
+	if _blackboard == null:
+		_blackboard = AIBlackboard.new()
+		_blackboard.set_memory("host", host)
+		_blackboard.set_memory("wander_timer", 0.0)
+
+
+func _update_blackboard_timers(_delta: float) -> void:
 	var is_night := CelestialService.is_night_time_static()
-	if not is_night:
-		_process_daytime_sleep(host)
+	_blackboard.set_memory("is_night", is_night)
+
+
+func _evaluate_active_plan(host: Object) -> void:
+	if _active_plan.is_empty():
+		var initial_state := _build_initial_state()
+		var sorted_goals := _get_sorted_goals()
+		
+		for goal in sorted_goals:
+			if goal.is_valid(_blackboard):
+				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
+				if not _active_plan.is_empty():
+					_active_plan[0].on_enter(_blackboard)
+					break
+
+
+func _build_initial_state() -> Dictionary:
+	var state: Dictionary = {}
+	state["is_sleeping"] = not _blackboard.get_bool("is_night")
+	state["barrel_depleted"] = false
+	state["is_wandering"] = false
+	return state
+
+
+func _get_sorted_goals() -> Array[GOAPGoal]:
+	var sorted := _goals.duplicate()
+	sorted.sort_custom(func(a: GOAPGoal, b: GOAPGoal) -> bool:
+		return a.get_priority(_blackboard) > b.get_priority(_blackboard)
+	)
+	return sorted
+
+
+func _execute_current_action(delta: float) -> void:
+	if _active_plan.is_empty():
 		return
 		
-	var parent: Node = host.call("get_parent") as Node
-	var is_scavenging := _process_nighttime_scavenge(host, parent, delta)
-	
-	if not is_scavenging:
-		_process_default_roam(host, delta)
-
-
-func _process_daytime_sleep(host: Object) -> void:
-	_reset_raccoon_state(host)
-	
-	var ai: Object = host.get("ai_component")
-	if is_instance_valid(ai):
-		ai.set("current_task", TASK_IDLE)
-		
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	velocity.x = 0.0; velocity.z = 0.0
-	host.set("velocity", velocity)
-	
-	if is_instance_valid(ai):
-		ai.set("wander_direction", Vector3.ZERO)
-
-
-func _process_nighttime_scavenge(host: Object, parent: Node, delta: float) -> bool:
-	var target_ref: Object = null
-	if host.has_meta(META_TARGET_PROP):
-		var val: Variant = host.get_meta(META_TARGET_PROP)
-		if typeof(val) == TYPE_OBJECT and is_instance_valid(val as Object):
-			target_ref = val as Object
-			
-	var host_pos: Vector3 = host.get("global_position")
-	if target_ref == null:
-		var closest_barrel := _detect_closest_village_barrel(host_pos, parent)
-		if closest_barrel != null:
-			target_ref = closest_barrel
-			host.set_meta(META_TARGET_PROP, target_ref)
-			host.set_meta(META_MINE_TIMER, SCAVENGE_DURATION_SEC)
-			
-	if is_instance_valid(target_ref):
-		_execute_barrel_breakout(host, target_ref, delta)
-		return true
-		
-	return false
-
-
-func _execute_barrel_breakout(host: Object, target_ref: Object, delta: float) -> void:
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return
-	
-	ai.set("current_task", TASK_WORKING)
-	var target_node := target_ref as Node3D
-	var host_node := host as Node3D
-	
-	if not is_instance_valid(target_node) or not is_instance_valid(host_node):
+	var current_action := _active_plan[0]
+	if not current_action.is_contextually_valid(_blackboard):
+		current_action.on_exit(_blackboard)
+		_active_plan.clear()
 		return
 		
-	var diff: Vector3 = target_node.global_position - host_node.global_position
-	diff.y = 0.0
-	
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	if diff.length() > 1.2:
-		var sneak_dir: Vector3 = diff.normalized()
-		velocity.x = sneak_dir.x * SPEED_SNEAK
-		velocity.z = sneak_dir.z * SPEED_SNEAK
-		host.set("velocity", velocity)
-		ai.set("wander_direction", sneak_dir)
-	else:
-		_scratch_and_deplete_barrel(host, ai, target_node, diff, delta)
+	var is_finished := current_action.execute_step(_blackboard, delta)
+	if is_finished:
+		current_action.on_exit(_blackboard)
+		_active_plan.pop_front()
+		if not _active_plan.is_empty():
+			_active_plan[0].on_enter(_blackboard)
 
 
-func _scratch_and_deplete_barrel(host: Object, ai: Object, target_node: Node3D, diff: Vector3, delta: float) -> void:
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	velocity.x = 0.0; velocity.z = 0.0
-	host.set("velocity", velocity)
-	ai.set("wander_direction", diff.normalized())
-	
-	if host.has_method("_play_scratching_effect"):
-		host.call("_play_scratching_effect", target_node)
+func get_active_state_name(host: Object) -> String:
+	var _h := host
+	if _active_plan.size() > 0:
+		var action_name := _active_plan[0].action_name
+		if action_name == "SneakToBarrel": return "WANDERING"
+		elif action_name == "ScratchBarrel": return "WORKING"
+	return "IDLE"
+
+
+# ==============================================================================
+# INNER CLASSES: GOAP ACTIONS (Decoupled nocturnal scavenger behaviors)
+# ==============================================================================
+
+class DaySleepAction extends GOAPAction:
+	func _init() -> void:
+		super("DaySleep", 1.0)
+		add_effect("is_sleeping", true)
 		
-	var mine_timer: float = host.get_meta(META_MINE_TIMER) as float
-	mine_timer -= delta
-	if mine_timer <= 0.0:
-		_complete_barrel_break(host, ai, target_node)
-	else:
-		host.set_meta(META_MINE_TIMER, mine_timer)
-
-
-func _complete_barrel_break(host: Object, _ai: Object, target_node: Node3D) -> void:
-	if target_node.has_method("interact"):
-		target_node.call("interact", host) 
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return not bb.get_bool("is_night")
 		
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	velocity.y = 5.0
-	host.set("velocity", velocity)
-	
-	_reset_raccoon_state(host)
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai := host.get("ai_component")
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("current_task", TASK_IDLE)
+		return bb.get_bool("is_night") # Awake when night falls
 
 
-func _process_default_roam(host: Object, delta: float) -> void:
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return
-	
-	ai.set("current_task", TASK_WANDERING)
-	
-	var wander_timer: float = host.get_meta(META_WANDER_TIMER) as float
-	var wander_dir: Vector3 = host.get_meta(META_WANDER_DIR) as Vector3
-	
-	wander_timer -= delta
-	if wander_timer <= 0.0:
-		wander_timer = randf_range(1.5, 4.0)
-		var angle := randf() * TAU
-		var parent: Node = host.call("get_parent") as Node
-		var candidate_dir := Vector3(cos(angle), 0.0, sin(angle))
-		wander_dir = candidate_dir if _is_direction_safe_raccoon(host, candidate_dir, parent) else Vector3.ZERO
-		host.set_meta(META_WANDER_DIR, wander_dir)
-		host.set_meta(META_WANDER_TIMER, wander_timer)
+class ScanBarrelsAction extends GOAPAction:
+	func _init() -> void:
+		super("ScanBarrels", 1.0)
+		add_effect("has_scavenge_target", true)
 		
-	_apply_computed_movement_vectors(host, wander_dir)
-
-
-func _apply_computed_movement_vectors(host: Object, wander_dir: Vector3) -> void:
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return
-	
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	if wander_dir != Vector3.ZERO:
-		velocity.x = wander_dir.x * SPEED_SNEAK * 1.3
-		velocity.z = wander_dir.z * SPEED_SNEAK * 1.3
-		ai.set("wander_direction", wander_dir)
-	else:
-		velocity.x = move_toward(velocity.x, 0.0, SPEED_SNEAK)
-		velocity.z = move_toward(velocity.z, 0.0, SPEED_SNEAK)
-		ai.set("wander_direction", Vector3.ZERO)
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_bool("is_night")
 		
-	host.set("velocity", velocity)
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var parent := host.get_parent() as Node
+		
+		if is_instance_valid(parent):
+			var closest := _detect_closest_barrel(host.global_position, parent)
+			if is_instance_valid(closest):
+				bb.set_memory("scavenge_target", closest)
+				return true
+				
+		return false
+		
+	func _detect_closest_barrel(host_pos: Vector3, world_node: Node) -> Node3D:
+		var closest: Node3D = null
+		var min_dist_sq := RANGE_SENSORY_SQ
+		for child in world_node.get_children():
+			if is_instance_valid(child) and (child.name.begins_with("Prop_BARREL") or child.name.begins_with("Prop_CHEST")):
+				var dist_sq := host_pos.distance_squared_to(child.global_position)
+				if dist_sq < min_dist_sq:
+					min_dist_sq = dist_sq
+					closest = child as Node3D
+		return closest
 
 
-func _initialize_metadata_if_missing(host: Object) -> void:
-	if not host.has_meta(META_WANDER_TIMER): host.set_meta(META_WANDER_TIMER, 0.0)
-	if not host.has_meta(META_WANDER_DIR): host.set_meta(META_WANDER_DIR, Vector3.ZERO)
-	if not host.has_meta(META_TARGET_PROP): host.set_meta(META_TARGET_PROP, "")
-	if not host.has_meta(META_MINE_TIMER): host.set_meta(META_MINE_TIMER, 0.0)
+class SneakToBarrelAction extends GOAPAction:
+	func _init() -> void:
+		super("SneakToBarrel", 1.0)
+		add_precondition("has_scavenge_target", true)
+		add_effect("is_at_barrel", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var target := bb.get_object("scavenge_target") as Node3D
+		return is_instance_valid(target)
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := bb.get_object("scavenge_target") as Node3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := target.global_position - host.global_position
+		diff.y = 0.0
+		
+		if diff.length_squared() <= 1.44: # 1.2m range
+			VoxelKinematicService.halt_movement(host, ai)
+			return true
+			
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_SNEAK)
+		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
+		return false
 
 
-func _reset_raccoon_state(host: Object) -> void:
-	var ai: Object = host.get("ai_component")
-	if is_instance_valid(ai):
-		ai.set("current_task", TASK_IDLE)
-		ai.set("wander_direction", Vector3.ZERO)
-	host.set_meta(META_TARGET_PROP, "")
-	host.set_meta(META_MINE_TIMER, 0.0)
-	host.set_meta(META_WANDER_TIMER, 1.0)
+class ScratchBarrelAction extends GOAPAction:
+	func _init() -> void:
+		super("ScratchBarrel", 1.0)
+		add_precondition("is_at_barrel", true)
+		add_effect("barrel_depleted", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var target := bb.get_object("scavenge_target") as Node3D
+		return is_instance_valid(target)
+		
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("scratch_timer", SCAVENGE_DURATION_SEC)
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai := host.get("ai_component")
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var timer := bb.get_float("scratch_timer") - delta
+		bb.set_memory("scratch_timer", timer)
+		
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := bb.get_object("scavenge_target") as Node3D
+		if not is_instance_valid(target) or not is_instance_valid(host): return true
+			
+		if host.has_method("_play_scratching_effect"):
+			host.call("_play_scratching_effect", target)
+			
+		if timer <= 0.0:
+			_shatter_barrel(bb, host, target)
+			return true
+		return false
+		
+	func _shatter_barrel(bb: AIBlackboard, host: CharacterBody3D, target: Node3D) -> void:
+		if target.has_method("interact"):
+			target.call("interact", host) # Interacting shatters barrel & gives loot
+			
+		host.velocity.y = 5.0 # Joy Hop
+		bb.erase_memory("scavenge_target")
+		bb.erase_memory("has_scavenge_target")
+		bb.erase_memory("is_at_barrel")
 
 
-func _detect_closest_village_barrel(host_pos: Vector3, world_node: Node) -> Object:
-	if not is_instance_valid(world_node): return null
-	var closest_prop: Object = null
-	var min_dist_sq: float = RANGE_SENSORY_SQ
-	
-	for child in world_node.get_children():
-		if is_instance_valid(child) and (child.name.begins_with("Prop_BARREL") or child.name.begins_with("Prop_CHEST")):
-			var dist_sq: float = host_pos.distance_squared_to(child.global_position)
-			if dist_sq < min_dist_sq:
-				min_dist_sq = dist_sq
-				closest_prop = child
-	return closest_prop
-
-
-func _is_direction_safe_raccoon(host: Object, dir: Vector3, world_node: Node) -> bool:
-	if not is_instance_valid(world_node) or not "world_state" in world_node: return true
-	var ws: WorldState = world_node.get("world_state") as WorldState
-	if ws == null: return true
-	
-	var host_pos: Vector3 = host.get("global_position")
-	var check_pos := host_pos + dir * 1.5
-	var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
-	var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
-	
-	return ws.get_block(block_below_coord) != 6 and ws.get_block(block_at_coord) != 6 and ws.get_block(block_below_coord) != 0
+class RaccoonWanderAction extends GOAPAction:
+	func _init() -> void:
+		super("Wander", 1.0)
+		add_effect("is_wandering", true)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+		
+		var timer := bb.get_float("wander_timer") - delta
+		var wander_dir := bb.get_vector3("wander_direction")
+		
+		if timer <= 0.0:
+			timer = randf_range(1.5, 4.0)
+			var angle := randf() * TAU
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.4 else Vector3.ZERO
+			bb.set_memory("wander_direction", wander_dir)
+			
+		bb.set_memory("wander_timer", timer)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_SNEAK)
+		return false

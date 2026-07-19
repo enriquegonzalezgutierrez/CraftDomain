@@ -2,8 +2,12 @@
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical base class representing NPCs and Wildlife.
 #              Coordinates physical movements, gravity slides, and fluid states.
-#              AI TASK FIX: Forces unconditional 2Hz visual updates to prevent
-#              quest early returns from freezing action subtitles to IDLE.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
+#   translations, physical structures, and sensory nameplates.
+# - Liskov Substitution Principle (LSP): Serves as a robust base class contract; 
+#   its API conforms perfectly across humans and quadruped species.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -248,6 +252,14 @@ func _cleanup_physics_shapes() -> void:
 		
 	var alert_net := AlertNetworkService.instance
 	if is_instance_valid(alert_net): alert_net.unregister_defender(self)
+	
+	# ==========================================================================
+	# RELEASE JOB RESERVATION HOOK (SRP/OCP Integration)
+	# Safely release any claimed voxel coordinate before freeing Node RIDs
+	# ==========================================================================
+	var job_service := JobReservationService.instance
+	if is_instance_valid(job_service):
+		job_service.release_all_jobs_for_worker(get_instance_id())
 		
 	_deduct_reputation_on_murder()
 
@@ -272,18 +284,7 @@ func _apply_death_animations_and_free() -> void:
 
 func _spawn_death_particles() -> void:
 	var particles := CPUParticles3D.new()
-	particles.amount = 15
-	particles.one_shot = true
-	particles.explosiveness = 0.95
-	particles.lifetime = 0.6
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 0.4
-	particles.direction = Vector3.UP
-	particles.spread = 180.0
-	particles.initial_velocity_min = 2.0
-	particles.initial_velocity_max = 4.0
-	particles.gravity = Vector3(0, 2.0, 0)
+	_configure_death_particle_properties(particles)
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.15, 0.15, 0.15)
@@ -300,6 +301,20 @@ func _spawn_death_particles() -> void:
 		world_node.add_child(particles)
 		particles.global_position = global_position + Vector3(0, 0.5, 0)
 		particles.emitting = true
+
+
+func _configure_death_particle_properties(particles: CPUParticles3D) -> void:
+	particles.amount = 15
+	particles.one_shot = true
+	particles.explosiveness = 0.95
+	particles.lifetime = 0.6
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	particles.emission_sphere_radius = 0.4
+	particles.direction = Vector3.UP
+	particles.spread = 180.0
+	particles.initial_velocity_min = 2.0
+	particles.initial_velocity_max = 4.0
+	particles.gravity = Vector3(0, 2.0, 0)
 
 
 func _try_drop_player_loot() -> void:
@@ -412,38 +427,65 @@ func _update_floating_nameplate_unconditional() -> void:
 		_ui_component.update_ui_state(active_quest, quest_target_id)
 
 
-## Unique Subscription Selector: Guarantees exactly one unique entity is gold and tracks GPS
+# ==============================================================================
+# DECOUPLED QUEST SELECTION SYSTEMS (SRP Compliant)
+# ==============================================================================
+
 func _update_quest_bubble_state() -> void:
 	if not is_instance_valid(_ui_component):
 		return
 		
 	var active_quest := QuestService.get_active_quest() as Quest
-	var world_controller_ref := get_parent()
-	var ws: WorldState = world_controller_ref.world_state if is_instance_valid(world_controller_ref) and "world_state" in world_controller_ref else null
+	var ws := _get_world_state_ref()
 	
 	if active_quest == null or ws == null:
-		quest_target_id = ""
-		_ui_component.update_ui_state(null, "")
+		_reset_quest_ui_state()
 		return
 		
-	# If we are already the unique target, lock our GPS focus and keep the gold star
 	if ws.active_quest_target_node == self:
-		active_quest.target_position = global_position
-		_ui_component.update_ui_state(active_quest, active_quest.quest_id)
+		_maintain_active_quest_focus(active_quest)
 		return
 		
-	# If another valid entity is already the active target, we CANNOT claim it (Eliminates double arrows)
-	if is_instance_valid(ws.active_quest_target_node) and not ws.active_quest_target_node.domain_entity.is_dead:
-		quest_target_id = ""
-		_ui_component.update_ui_state(active_quest, "")
+	if _is_another_node_tracking_quest(ws):
+		_deny_quest_claiming(active_quest)
 		return
 		
-	# Symmetrical Proximity Claiming: If we are close and eligible, we claim the mission exclusively!
+	_evaluate_new_quest_claiming(active_quest, ws)
+
+
+func _get_world_state_ref() -> WorldState:
+	var parent := get_parent()
+	if is_instance_valid(parent) and "world_state" in parent:
+		return parent.world_state as WorldState
+	return null
+
+
+func _reset_quest_ui_state() -> void:
+	quest_target_id = ""
+	_ui_component.update_ui_state(null, "")
+
+
+func _maintain_active_quest_focus(active_quest: Quest) -> void:
+	active_quest.target_position = global_position
+	_ui_component.update_ui_state(active_quest, active_quest.quest_id)
+
+
+func _is_another_node_tracking_quest(ws: WorldState) -> bool:
+	var target_node := ws.active_quest_target_node
+	return is_instance_valid(target_node) and not target_node.domain_entity.is_dead
+
+
+func _deny_quest_claiming(active_quest: Quest) -> void:
+	quest_target_id = ""
+	_ui_component.update_ui_state(active_quest, "")
+
+
+func _evaluate_new_quest_claiming(active_quest: Quest, ws: WorldState) -> void:
 	var dist := global_position.distance_to(active_quest.target_position)
 	if dist <= 25.0 and _is_eligible_for_quest(active_quest.quest_id):
 		quest_target_id = active_quest.quest_id
 		ws.active_quest_target_node = self
-		active_quest.target_position = global_position # Anchor GPS to our position
+		active_quest.target_position = global_position
 		_ui_component.update_ui_state(active_quest, active_quest.quest_id)
 	else:
 		quest_target_id = ""
@@ -479,11 +521,6 @@ func _enforce_habitat_boundary(ws: WorldState, feet_coord: Vector3i) -> void:
 		velocity.y = -2.5
 
 
-# ==============================================================================
-# SOLID MOVEMENT & SLOP TILT ANIMATIONS (Rule 4.2 Compliant)
-# ==============================================================================
-
-## Slope Tilt Solver: Rotates body X and Z axes based on normal vector dot products (SRP)
 func _apply_procedural_slope_tilt(delta: float) -> void:
 	if humanoid_role != -1 or not is_instance_valid(visual_component) or not is_instance_valid(visual_component.body_bob_node):
 		return
@@ -498,13 +535,12 @@ func _apply_procedural_slope_tilt(delta: float) -> void:
 			var forward := -visual_root.global_transform.basis.z.normalized()
 			var right := visual_root.global_transform.basis.x.normalized()
 			
-			target_pitch = -forward.dot(normal) * 0.95 # Pitch angle coefficient
-			target_roll = right.dot(normal) * 0.95 # Roll angle coefficient
+			target_pitch = -forward.dot(normal) * 0.95
+			target_roll = right.dot(normal) * 0.95
 			
 	_slope_pitch = lerp(_slope_pitch, target_pitch, delta * 12.0)
 	_slope_roll = lerp(_slope_roll, target_roll, delta * 12.0)
 	
-	# Apply directly to the vertical bobbing joint to prevent gaze conflicts
 	var bob_node := visual_component.body_bob_node
 	bob_node.rotation.x = _slope_pitch
 	bob_node.rotation.z = _slope_roll

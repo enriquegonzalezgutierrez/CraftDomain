@@ -1,37 +1,37 @@
-[gd_scene format=3 uid="uid://dyfquy5j8fw4y"]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" uid="uid://k1nhvvj5wapt" path="res://src/Infrastructure/Life/MinerEntity.gd" id="1_miner"]
-[ext_resource type="Script" uid="uid://e8a8j3la320c" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://cqrb0s0ukoune" path="res://assets/models/mobs/miner/miner_base.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/MinerEntity.gd" id="1_miner"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/miner/miner_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_miner"]
-radius = 0.33691406
-height = 1.7993653
+radius = 0.336914
+height = 1.79937
 
-[node name="MinerEntity" type="CharacterBody3D" unique_id=1567317944]
+[node name="MinerEntity" type="CharacterBody3D"]
 script = ExtResource("1_miner")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=679311854]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.89968264, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.899683, 0)
 shape = SubResource("CapsuleShape3D_miner")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=523509985]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=391590748]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=200487864]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="miner_base" parent="Visuals/BodyBobJoint" unique_id=1684504717 instance=ExtResource("4_glb")]
+[node name="miner_base" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)
 
-[node name="HeadlampBeam" type="SpotLight3D" parent="Visuals/BodyBobJoint" unique_id=2072787664]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.868641, -0.22)
+[node name="HeadlampBeam" type="SpotLight3D" parent="Visuals/BodyBobJoint"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.86864, -0.22)
 light_color = Color(0.921569, 0.94902, 1, 1)
 light_energy = 2.4
 shadow_enabled = true

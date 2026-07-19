@@ -1,233 +1,312 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/GolemAIBehavior.gd
-# Description: Specialized AI behavior strategy implementing protective military 
-#              overwatch routines for the colossus Iron Golem. Decomposed into short methods (SRP).
+# Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
+#              Planning (GOAP) for the Colossus Iron Golem.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Segregates defensive threat scans, 
+#   sprint interceptions, and colossal slam attacks into distinct actions.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
+#   ranged throw or area-of-effect abilities without code rewrites.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GolemAIBehavior
 extends IAIBehavior
 
-# Localized State Machine
-enum State {
-	IDLE,        
-	OVERWATCH,   
-	SPRINTING,   
-	SLAM_ATTACK  
-}
-
-const SPEED_CHASE_MULT: float = 1.3
-const SPEED_PATROL: float = 1.0
-
-const RANGE_SIGHT_SQ: float = 144.0 
-const RANGE_ATTACK_SQ: float = 4.84  
-const COOLDOWN_ATTACK_SEC: float = 1.8
-const SCAN_INTERVAL_SEC: float = 0.25
-
-# Decoupled task enums
 const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_WORKING = 6
 
-# Decoupled metadata keys
-const META_COOLDOWN := "golem_attack_cooldown"
-const META_TARGET := "golem_combat_target"
-const META_SCAN_TIMER := "golem_scan_timer"
-const META_GOLEM_STATE := "golem_local_state"
+const SPEED_CHASE_MULT: float = 1.3
+const SPEED_PATROL: float = 1.0
+
+const RANGE_SIGHT_SQ: float = 144.0
+const RANGE_ATTACK_SQ: float = 4.84
+const COOLDOWN_ATTACK_SEC: float = 1.8
+const SCAN_INTERVAL_SEC: float = 0.25
+
+var _blackboard: AIBlackboard
+var _goals: Array[GOAPGoal] = []
+var _actions: Array[GOAPAction] = []
+var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
-	overrides_wandering = false
+	overrides_wandering = false # Overwatch Golems follow village paths natively
+	_setup_goap_profile()
 
 
-## Concrete Contract: Drives overwatch sweeps, chasing vectors, and slam triggers
+func _setup_goap_profile() -> void:
+	_setup_goals()
+	_actions.append(ScanForThreatsAction.new())
+	_actions.append(SprintToThreatAction.new())
+	_actions.append(SlamAttackAction.new())
+	_actions.append(OverwatchPatrolAction.new())
+
+
+func _setup_goals() -> void:
+	var protect_goal := GOAPGoal.new("ProtectVillage", 2.0)
+	protect_goal.add_desired_state("village_secured", true)
+	
+	var overwatch_goal := GOAPGoal.new("OverwatchPatrol", 0.5)
+	overwatch_goal.add_desired_state("is_patrolling", true)
+	
+	_goals.append_array([protect_goal, overwatch_goal])
+
+
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
 		
+	_initialize_agent(host)
+	_update_blackboard_timers(delta)
+	
 	if host.get("is_talking") == true:
-		_reset_golem_state(host)
+		_handle_conversation_interrupt(host)
 		return
 		
-	_initialize_metadata_if_missing(host)
-	_update_attack_cooldown(host, delta)
+	_evaluate_active_plan(host)
+	_execute_current_action(delta)
+
+
+func _initialize_agent(host: Object) -> void:
+	if _blackboard == null:
+		_blackboard = AIBlackboard.new()
+		_blackboard.set_memory("host", host)
+		_blackboard.set_memory("attack_cooldown", 0.0)
+		_blackboard.set_memory("scan_timer", SCAN_INTERVAL_SEC)
+		_blackboard.set_memory("wander_timer", 0.0)
+
+
+func _update_blackboard_timers(delta: float) -> void:
+	var cd := _blackboard.get_float("attack_cooldown") - delta
+	_blackboard.set_memory("attack_cooldown", maxf(0.0, cd))
 	
-	_process_active_scanning(host, delta)
-	
-	var combat_target: Object = null
-	if host.has_meta(META_TARGET):
-		var val: Variant = host.get_meta(META_TARGET)
-		if typeof(val) == TYPE_OBJECT and is_instance_valid(val as Object):
-			combat_target = val as Object
-			
-	var is_tracking := false
-	if is_instance_valid(combat_target):
-		is_tracking = _process_threat_pursuit(host, combat_target, delta)
-		
-	if not is_tracking:
-		_process_golem_patrol(host)
+	var scan := _blackboard.get_float("scan_timer") - delta
+	_blackboard.set_memory("scan_timer", maxf(0.0, scan))
 
 
-func _update_attack_cooldown(host: Object, delta: float) -> void:
-	var cooldown: float = host.get_meta(META_COOLDOWN) as float
-	if cooldown > 0.0:
-		cooldown -= delta
-		host.set_meta(META_COOLDOWN, cooldown)
-
-
-func _process_active_scanning(host: Object, delta: float) -> void:
-	var scan_timer: float = host.get_meta(META_SCAN_TIMER) as float
-	scan_timer -= delta
-	if scan_timer <= 0.0:
-		scan_timer = SCAN_INTERVAL_SEC
-		var combat_target := _scan_for_active_hostile_target(host)
-		if combat_target != null:
-			host.set_meta(META_TARGET, combat_target)
-		else:
-			host.set_meta(META_TARGET, "")
-	host.set_meta(META_SCAN_TIMER, scan_timer)
-
-
-func _process_threat_pursuit(host: Object, combat_target: Object, delta: float) -> bool:
-	var target_node := combat_target as Node3D
-	var target_domain: Object = target_node.get("domain_entity") if is_instance_valid(target_node) else null
-	
-	if target_domain == null or target_domain.get("is_dead") == true:
-		_reset_golem_state(host)
-		return false
-		
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return false
-	
-	ai.set("current_task", TASK_WORKING)
-	var host_pos: Vector3 = host.get("global_position")
-	var target_pos: Vector3 = target_node.global_position
-	var diff := target_pos - host_pos
-	diff.y = 0.0
-	var dist_sq := diff.length_squared()
-	
-	if dist_sq > RANGE_ATTACK_SQ:
-		_apply_sprint_locomotion(host, ai, diff)
-	else:
-		_execute_golem_slam(host, ai, target_node, diff, delta)
-		
-	return true
-
-
-func _execute_golem_slam(host: Object, ai: Object, target_node: Node3D, diff: Vector3, delta: float) -> void:
-	# Avoid unused parameters warning in the contract
-	var _d := delta
-	
-	host.set_meta(META_GOLEM_STATE, State.SLAM_ATTACK)
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	velocity.x = 0.0; velocity.z = 0.0
-	host.set("velocity", velocity)
-	ai.set("wander_direction", diff.normalized())
-	
-	var cooldown: float = host.get_meta(META_COOLDOWN) as float
-	if cooldown <= 0.0:
-		host.set_meta(META_COOLDOWN, COOLDOWN_ATTACK_SEC)
-		if host.has_method("_execute_heavy_combat_strike"):
-			host.call("_execute_heavy_combat_strike", target_node)
-			
-		var vis_rep: Object = host.get("visual_representation")
-		if is_instance_valid(vis_rep) and vis_rep.has_method("trigger_attack_visuals"):
-			vis_rep.call("trigger_attack_visuals")
-
-
-func _apply_sprint_locomotion(host: Object, ai: Object, diff: Vector3) -> void:
-	host.set_meta(META_GOLEM_STATE, State.SPRINTING)
-	
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	var base_speed: float = 1.3
-	if "BASE_SPEED" in host:
-		base_speed = host.get("BASE_SPEED") as float
-		
-	var chase_dir := diff.normalized()
-	velocity.x = chase_dir.x * base_speed * SPEED_CHASE_MULT
-	velocity.z = chase_dir.z * base_speed * SPEED_CHASE_MULT
-	host.set("velocity", velocity)
-	ai.set("wander_direction", chase_dir)
-
-
-func _process_golem_patrol(host: Object) -> void:
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return
-	
-	var current_task: int = ai.get("current_task") as int
-	if current_task == TASK_WORKING:
-		ai.set("current_task", TASK_IDLE)
-		host.set_meta(META_GOLEM_STATE, State.IDLE)
-		ai.set("task_timer", 1.0)
-	else:
-		var is_moving := Vector2(host.velocity.x, host.velocity.z).length_squared() > 0.05
-		host.set_meta(META_GOLEM_STATE, State.OVERWATCH if is_moving else State.IDLE)
-
-
-func _initialize_metadata_if_missing(host: Object) -> void:
-	if not host.has_meta(META_COOLDOWN): host.set_meta(META_COOLDOWN, 0.0)
-	if not host.has_meta(META_TARGET): host.set_meta(META_TARGET, "")
-	if not host.has_meta(META_SCAN_TIMER): host.set_meta(META_SCAN_TIMER, SCAN_INTERVAL_SEC)
-	if not host.has_meta(META_GOLEM_STATE): host.set_meta(META_GOLEM_STATE, State.IDLE)
-
-
-func _reset_golem_state(host: Object) -> void:
+func _handle_conversation_interrupt(host: Object) -> void:
+	_active_plan.clear()
 	var ai: Object = host.get("ai_component")
 	if is_instance_valid(ai):
 		ai.set("current_task", TASK_IDLE)
 		ai.set("wander_direction", Vector3.ZERO)
-	host.set_meta(META_TARGET, "")
-	host.set_meta(META_GOLEM_STATE, State.IDLE)
 
 
-func _scan_for_active_hostile_target(host: Object) -> Node3D:
-	if not host.call("is_inside_tree"): return null
-	var closest_target: Node3D = null
-	var min_dist_sq := RANGE_SIGHT_SQ
-	var host_pos: Vector3 = host.get("global_position")
-	
-	var rep := VillageReputationService.instance
-	if is_instance_valid(rep) and rep.call("is_player_wanted") == true:
-		var parent_node: Node = host.call("get_parent") as Node
-		if is_instance_valid(parent_node):
-			var player_node: Node3D = parent_node.call("get_node_or_null", "Player") as Node3D
-			if is_instance_valid(player_node):
-				var p_domain := player_node.get("domain_entity") as VoxelEntity
-				if p_domain != null and p_domain.is_dead != true:
-					var dist_sq_p := host_pos.distance_squared_to(player_node.global_position)
-					if dist_sq_p < min_dist_sq:
-						min_dist_sq = dist_sq_p
-						closest_target = player_node
-						
-	var hostiles: Array = []
-	if host.has_method("get_tree"):
-		var tree: Object = host.call("get_tree")
-		if is_instance_valid(tree):
-			hostiles = tree.call("get_nodes_in_group", "hostiles")
-			
-	for child: Object in hostiles:
-		if is_instance_valid(child) and child is Node3D:
-			var domain: Object = child.get("domain_entity")
-			if domain != null and domain.get("is_dead") != true:
-				var child_pos: Vector3 = child.global_position
-				var dist_sq_z := host_pos.distance_squared_to(child_pos)
-				if dist_sq_z < min_dist_sq:
-					min_dist_sq = dist_sq_z
-					closest_target = child as Node3D
-	return closest_target
+func _evaluate_active_plan(host: Object) -> void:
+	if _active_plan.is_empty():
+		var initial_state := _build_initial_state()
+		var sorted_goals := _get_sorted_goals()
+		
+		for goal in sorted_goals:
+			if goal.is_valid(_blackboard):
+				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
+				if not _active_plan.is_empty():
+					_active_plan[0].on_enter(_blackboard)
+					break
 
 
-# ==============================================================================
-# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
-# ==============================================================================
+func _build_initial_state() -> Dictionary:
+	var state: Dictionary = {}
+	state["village_secured"] = not _is_threat_active()
+	state["is_patrolling"] = false
+	return state
+
+
+func _is_threat_active() -> bool:
+	var target := _blackboard.get_object("combat_target") as Node3D
+	if is_instance_valid(target):
+		var domain := target.get("domain_entity") as VoxelEntity
+		return is_instance_valid(domain) and not domain.is_dead
+	return false
+
+
+func _get_sorted_goals() -> Array[GOAPGoal]:
+	var sorted := _goals.duplicate()
+	sorted.sort_custom(func(a: GOAPGoal, b: GOAPGoal) -> bool:
+		return a.get_priority(_blackboard) > b.get_priority(_blackboard)
+	)
+	return sorted
+
+
+func _execute_current_action(delta: float) -> void:
+	if _active_plan.is_empty():
+		return
+		
+	var current_action := _active_plan[0]
+	if not current_action.is_contextually_valid(_blackboard):
+		current_action.on_exit(_blackboard)
+		_active_plan.clear()
+		return
+		
+	var is_finished := current_action.execute_step(_blackboard, delta)
+	if is_finished:
+		current_action.on_exit(_blackboard)
+		_active_plan.pop_front()
+		if not _active_plan.is_empty():
+			_active_plan[0].on_enter(_blackboard)
+
 
 func get_active_state_name(host: Object) -> String:
-	if not host.has_meta(META_GOLEM_STATE):
-		return "IDLE"
-	var state_val: int = host.get_meta(META_GOLEM_STATE) as int
-	match state_val:
-		State.IDLE: return "IDLE"
-		State.OVERWATCH: return "OVERWATCH_PATROL"
-		State.SPRINTING: return "CHARGE_TO_TARGET"
-		State.SLAM_ATTACK: return "LAUNCH_ATTACK"
-		_: return "IDLE"
+	var _h := host
+	if _active_plan.size() > 0:
+		var action_name := _active_plan[0].action_name
+		if action_name == "SprintToThreat": return "CHARGE_TO_TARGET"
+		elif action_name == "SlamAttack": return "LAUNCH_ATTACK"
+		elif action_name == "OverwatchPatrol": return "OVERWATCH_PATROL"
+	return "IDLE"
+
+
+# ==============================================================================
+# INNER CLASSES: GOAP ACTIONS (Golem combat and defense mechanics)
+# ==============================================================================
+
+class ScanForThreatsAction extends GOAPAction:
+	func _init() -> void:
+		super("ScanForThreats", 1.0)
+		add_effect("has_threat_target", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("scan_timer") <= 0.0
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		bb.set_memory("scan_timer", SCAN_INTERVAL_SEC)
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := _scan_for_active_hostile_target(host)
+		
+		if is_instance_valid(target):
+			bb.set_memory("combat_target", target)
+			return true
+		return false
+		
+	func _scan_for_active_hostile_target(host: CharacterBody3D) -> Node3D:
+		var host_pos := host.global_position
+		var closest: Node3D = null
+		var min_dist_sq := RANGE_SIGHT_SQ
+		
+		var rep := VillageReputationService.instance
+		if is_instance_valid(rep) and rep.is_player_wanted():
+			closest = _get_player_target(host)
+			if is_instance_valid(closest):
+				min_dist_sq = host_pos.distance_squared_to(closest.global_position)
+				
+		return _scan_for_zombies(host, closest, min_dist_sq)
+		
+	func _get_player_target(host: CharacterBody3D) -> Node3D:
+		var parent := host.get_parent()
+		if is_instance_valid(parent):
+			var player := parent.get_node_or_null("Player") as Node3D
+			if is_instance_valid(player):
+				var p_domain := player.get("domain_entity") as VoxelEntity
+				if is_instance_valid(p_domain) and not p_domain.is_dead:
+					return player
+		return null
+		
+	func _scan_for_zombies(host: CharacterBody3D, current_closest: Node3D, min_dist_sq: float) -> Node3D:
+		var closest := current_closest
+		var hostiles := host.get_tree().get_nodes_in_group("hostiles")
+		
+		for child in hostiles:
+			if is_instance_valid(child) and child is Node3D:
+				var domain := child.get("domain_entity") as VoxelEntity
+				if is_instance_valid(domain) and not domain.is_dead:
+					var dist_sq := host.global_position.distance_squared_to(child.global_position)
+					if dist_sq < min_dist_sq:
+						min_dist_sq = dist_sq
+						closest = child as Node3D
+		return closest
+
+
+class SprintToThreatAction extends GOAPAction:
+	func _init() -> void:
+		super("SprintToThreat", 1.0)
+		add_precondition("has_threat_target", true)
+		add_effect("is_at_threat", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var target := bb.get_object("combat_target") as Node3D
+		if is_instance_valid(target):
+			var domain := target.get("domain_entity") as VoxelEntity
+			return is_instance_valid(domain) and not domain.is_dead
+		return false
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := bb.get_object("combat_target") as Node3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := target.global_position - host.global_position
+		diff.y = 0.0
+		
+		if diff.length_squared() <= RANGE_ATTACK_SQ:
+			VoxelKinematicService.halt_movement(host, ai)
+			return true
+			
+		var base_speed: float = host.get("BASE_SPEED") as float if "BASE_SPEED" in host else 1.3
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), base_speed * SPEED_CHASE_MULT)
+		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
+		return false
+
+
+class SlamAttackAction extends GOAPAction:
+	func _init() -> void:
+		super("SlamAttack", 1.0)
+		add_precondition("is_at_threat", true)
+		add_effect("village_secured", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var target := bb.get_object("combat_target") as Node3D
+		if is_instance_valid(target):
+			var domain := target.get("domain_entity") as VoxelEntity
+			return is_instance_valid(domain) and not domain.is_dead
+		return false
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := bb.get_object("combat_target") as Node3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := target.global_position - host.global_position
+		diff.y = 0.0
+		
+		if diff.length_squared() > RANGE_ATTACK_SQ:
+			return true # Target escaped; re-plan to sprint
+			
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("wander_direction", diff.normalized())
+			
+		var cooldown := bb.get_float("attack_cooldown")
+		if cooldown <= 0.0:
+			bb.set_memory("attack_cooldown", COOLDOWN_ATTACK_SEC)
+			if host.has_method("_execute_heavy_combat_strike"):
+				host.call("_execute_heavy_combat_strike", target)
+				
+			var vis := host.get("visual_representation") as IEntityVisualRepresentation
+			if is_instance_valid(vis): vis.trigger_attack_visuals()
+		return false
+
+
+class OverwatchPatrolAction extends GOAPAction:
+	func _init() -> void:
+		super("OverwatchPatrol", 1.0)
+		add_effect("is_patrolling", true)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+			
+		var timer := bb.get_float("wander_timer") - delta
+		var wander_dir := bb.get_vector3("wander_direction")
+		
+		if timer <= 0.0:
+			timer = randf_range(3.0, 7.0)
+			var angle := randf() * TAU
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() > 0.3 else Vector3.ZERO
+			bb.set_memory("wander_direction", wander_dir)
+			
+		bb.set_memory("wander_timer", timer)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
+		return false

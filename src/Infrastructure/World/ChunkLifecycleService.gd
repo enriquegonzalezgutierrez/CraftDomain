@@ -2,12 +2,12 @@
 # Pathfile: res://src/Infrastructure/World/ChunkLifecycleService.gd
 # Description: High-Performance Infrastructure Service managing background tasks,
 #              LODs, and asynchronous edits.
-#              MILESTONE 1 (TIME-SLICING): Incorporates a strict 2.0ms execution
-#              budget to amortize chunk injections, eliminating main-thread stutters.
-#              MILESTONE 2 (DIRECT ARCHITECTURE): Purged ChunkNode instantiations.
-#              Delegates to DirectChunkRenderingService for SceneTree bypassing.
-#              STARTUP SHIELD: Defers entity spawning during player loading phases 
-#              to prevent collision depenetration launch bugs on game reload.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates chunk lifecycle,
+#   LOD transitions, and threaded task resolutions, delegating physics to servers.
+# - Open-Closed Principle (OCP): Dynamically registers newly loaded chunks into
+#   the hierarchical navigation service, closing the core graph to manual edits.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -87,7 +87,6 @@ func _update_viewer_chunk_position() -> void:
 			_last_known_viewer_chunk_pos = active_pos
 
 
-## Time-Sliced Unload Queue: Prevents bulk memory deallocation stutters
 func _process_unload_queue(player_active: bool) -> void:
 	var start_time := Time.get_ticks_usec()
 	var time_budget := 500 if player_active else 10000 
@@ -104,6 +103,9 @@ func _process_unload_queue(player_active: bool) -> void:
 func _unload_chunk_direct(chunk_pos: Vector3i) -> void:
 	direct_renderer.free_chunk(chunk_pos)
 	
+	# Unregister chunk from high-level Hierarchical Pathfinding graph
+	HierarchicalPathingService.unregister_chunk(chunk_pos)
+	
 	if _chunk_lod_states.has(chunk_pos):
 		_chunk_lod_states.erase(chunk_pos)
 		
@@ -117,22 +119,17 @@ func _unload_chunk_direct(chunk_pos: Vector3i) -> void:
 	world_state.remove_chunk(chunk_pos)
 
 
-## Synchronous channel: Intended for responsive, zero-latency player block edits
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
-	# Write the block modifications directly to the database first!
 	world_state.set_block(global_pos, type)
 	
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
 	_rebuild_chunk_instantly(chunk_pos)
 	
-	# Adjacent neighbor chunks MUST always be rebuilt asynchronously
 	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos, true)
 
 
-## Asynchronous channel: Intended for high-performance automated systems
 func set_block_globally_async(global_pos: Vector3i, type: BlockType.Type) -> void:
-	# Write the block modifications directly to the database first!
 	world_state.set_block(global_pos, type)
 	
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
@@ -187,7 +184,6 @@ func _request_chunk_rebuild(chunk_pos: Vector3i) -> void:
 	task_scheduler.request_chunk_rebuild(chunk_pos, _chunk_versions.get(chunk_pos, 0))
 
 
-## TIME-SLICING ALGORITHM: Restricts extraction from WorkerThreadPool to 2.0ms max.
 func _render_completed_chunks_from_queue(player_active: bool) -> void:
 	var start_time := Time.get_ticks_usec()
 	var time_budget := TIME_BUDGET_ACTIVE_USEC if player_active else TIME_BUDGET_LOADING_USEC
@@ -211,6 +207,10 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 		
 	_cleanup_task_states(chunk_pos)
 	_register_completed_chunk_state(task, chunk_pos)
+	
+	# Register loaded chunk into the high-level Hierarchical Pathfinding graph
+	HierarchicalPathingService.register_chunk(chunk_pos)
+	
 	_register_navigation_nodes(task)
 	_apply_visuals_direct(task, chunk_pos)
 
@@ -247,7 +247,6 @@ func _register_navigation_nodes(task: GeneratedChunkTask) -> void:
 			ChunkNavigationBuilder.register_compiled_nodes_synchronous(nav_nodes, world_state, nav_service)
 
 
-## Direct Server-Side Integration (Bypasses SceneTree instantiation)
 func _apply_visuals_direct(task: GeneratedChunkTask, chunk_pos: Vector3i) -> void:
 	var is_distant := _calculate_is_chunk_distant(chunk_pos)
 	var collision_shape := task.collision_shape
@@ -284,7 +283,6 @@ func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int =
 
 
 func _evaluate_entity_spawn_for_chunk(center: Vector3i, offset_x: int, offset_z: int) -> void:
-	# Symmetrical Startup Shield: Do not spawn any entities while the player is inactive/loading!
 	if is_instance_valid(controller):
 		var player_node := controller.get("player") as CharacterBody3D
 		if is_instance_valid(player_node) and not player_node.get("is_active"):

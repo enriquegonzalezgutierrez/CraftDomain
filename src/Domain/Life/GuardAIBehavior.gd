@@ -1,294 +1,351 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/GuardAIBehavior.gd
-# Description: Specialized AI behavior strategy implementing protective village 
-#              overwatch, A* pathfinding pursuit, and smart obstacle avoidance.
+# Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
+#              Planning (GOAP) for the Armored Guard Knight.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly defensive sweeps, 
-#   throttled A* path recalculations, and state machine decisions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior, delegating all physical 
-#   kinematics to VoxelKinematicService to keep this class closed to motion changes.
+# - Single Responsibility Principle (SRP): Decouples weapon strikes, threat 
+#   scanning, and path chasing into independent, testable actions.
+# - Open-Closed Principle (OCP): Extends IAIBehavior. Supports dynamic military
+#   tactics without modifying the core physical movement loops.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GuardAIBehavior
 extends IAIBehavior
 
-# Localized State Machine (SRP / OCP Compliant)
-enum State {
-	IDLE,       # Standing on guard posts / resting
-	PATROLLING, # Walking around the village borders using safe A* paths
-	SPRINTING,  # Running to intercept a detected threat using pathfinding
-	ENGAGING    # Actively striking and knocking back hostiles
-}
-
-const SPEED_CHASE: float = 2.3
-const SPEED_PATROL: float = 1.3
-
-const RANGE_SIGHT_SQ: float = 100.0 # 10.0 meters squared
-const RANGE_ATTACK_SQ: float = 2.56 # 1.6 meters squared
-const COOLDOWN_ATTACK_SEC: float = 1.2
-const SCAN_INTERVAL_SEC: float = 0.25
-const PATH_RECALC_INTERVAL_SEC: float = 0.4 # Throttles A* path calculations to 2.5Hz
-
-# Decoupled task enums mirroring NPCAIComponent.TaskState
 const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_WORKING = 6
 
-# Decoupled metadata keys
-const META_COOLDOWN := "guard_attack_cooldown"
-const META_TARGET := "guard_combat_target"
-const META_SCAN_TIMER := "guard_scan_timer"
-const META_GUARD_STATE := "guard_local_state"
-const META_PATH_TIMER := "guard_path_recalc_timer"
-const META_ACTIVE_PATH := "guard_active_path"
-const META_PATH_INDEX := "guard_path_index"
+const SPEED_CHASE: float = 2.3
+const SPEED_PATROL: float = 1.3
+
+const RANGE_SIGHT_SQ: float = 100.0
+const RANGE_ATTACK_SQ: float = 2.56
+const COOLDOWN_ATTACK_SEC: float = 1.2
+const PATH_RECALC_INTERVAL_SEC: float = 0.4
+
+var _blackboard: AIBlackboard
+var _goals: Array[GOAPGoal] = []
+var _actions: Array[GOAPAction] = []
+var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
-	# Take complete ownership of the Guard's schedules to bypass raw unsafe straight walks
 	overrides_wandering = true
+	_setup_goap_profile()
 
 
-## Concrete Implementation: Executes defensive threat scanning and tactical A* strikes
+func _setup_goap_profile() -> void:
+	_setup_goals()
+	_actions.append(FindThreatAction.new())
+	_actions.append(ChaseThreatAction.new())
+	_actions.append(EliminateThreatAction.new())
+	_actions.append(GuardPatrolAction.new())
+
+
+func _setup_goals() -> void:
+	var secure_goal := GOAPGoal.new("SecureVillage", 2.0)
+	secure_goal.add_desired_state("is_secure", true)
+	
+	var patrol_goal := GOAPGoal.new("PatrolBorders", 0.5)
+	patrol_goal.add_desired_state("is_patrolling", true)
+	
+	_goals.append_array([secure_goal, patrol_goal])
+
+
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
 		
+	_initialize_agent(host)
+	_update_blackboard_cooldowns(delta)
+	
 	if host.get("is_talking") == true:
-		_reset_guard_state(host)
+		_handle_conversation_interrupt(host)
 		return
 		
-	_initialize_metadata_if_missing(host)
-	_update_guard_timers(host, delta)
-	_process_threat_scanning(host, delta)
+	_evaluate_active_plan(host)
+	_execute_current_action(delta)
+
+
+func _initialize_agent(host: Object) -> void:
+	if _blackboard == null:
+		_blackboard = AIBlackboard.new()
+		_blackboard.set_memory("host", host)
+		_blackboard.set_memory("attack_cooldown", 0.0)
+		_blackboard.set_memory("path_recalc_timer", 0.0)
+		_blackboard.set_memory("active_path", [])
+		_blackboard.set_memory("path_index", 0)
+
+
+func _update_blackboard_cooldowns(delta: float) -> void:
+	var cd := _blackboard.get_float("attack_cooldown") - delta
+	_blackboard.set_memory("attack_cooldown", maxf(0.0, cd))
 	
-	var ai: Object = host.get("ai_component")
-	var combat_target: Object = _get_metadata_object(host, META_TARGET)
-	
-	if is_instance_valid(ai):
-		if is_instance_valid(combat_target) and combat_target.get("domain_entity").get("is_dead") != true:
-			_process_combat_engagement(host, ai, combat_target as Node3D, delta)
-		else:
-			_process_safe_patrol(host, ai, delta)
+	var recalc := _blackboard.get_float("path_recalc_timer") - delta
+	_blackboard.set_memory("path_recalc_timer", maxf(0.0, recalc))
 
 
-func _update_guard_timers(host: Object, delta: float) -> void:
-	var cooldown: float = host.get_meta(META_COOLDOWN) as float
-	if cooldown > 0.0:
-		host.set_meta(META_COOLDOWN, cooldown - delta)
-
-
-func _process_threat_scanning(host: Object, delta: float) -> void:
-	var scan_timer: float = host.get_meta(META_SCAN_TIMER) as float
-	scan_timer -= delta
-	
-	if scan_timer <= 0.0:
-		scan_timer = SCAN_INTERVAL_SEC
-		var combat_target := _get_metadata_object(host, META_TARGET)
-		
-		if not is_instance_valid(combat_target) or combat_target.get("domain_entity").get("is_dead") == true:
-			combat_target = _scan_for_active_zombie_target(host)
-			if combat_target != null:
-				host.set_meta(META_TARGET, combat_target)
-			else:
-				host.set_meta(META_TARGET, "")
-				
-	host.set_meta(META_SCAN_TIMER, scan_timer)
-
-
-func _process_combat_engagement(host: Object, ai: Object, target: Node3D, delta: float) -> void:
-	ai.set("current_task", TASK_WORKING)
-	
-	var host_node := host as CharacterBody3D
-	var host_pos: Vector3 = host_node.global_position
-	var target_pos: Vector3 = target.global_position
-	var diff: Vector3 = target_pos - host_pos
-	var dist_sq := diff.length_squared()
-	
-	if dist_sq > RANGE_ATTACK_SQ:
-		host.set_meta(META_GUARD_STATE, State.SPRINTING)
-		_process_ast_pursuit(host_node, ai, target_pos, delta)
-	else:
-		host.set_meta(META_GUARD_STATE, State.ENGAGING)
-		_execute_proximity_strike(host_node, ai, target, diff.normalized())
-
-
-func _process_ast_pursuit(host: CharacterBody3D, ai: Object, target_pos: Vector3, delta: float) -> void:
-	var path_timer: float = host.get_meta(META_PATH_TIMER) as float
-	path_timer -= delta
-	
-	var path: Array = host.get_meta(META_ACTIVE_PATH) if host.has_meta(META_ACTIVE_PATH) else []
-	var p_idx: int = host.get_meta(META_PATH_INDEX) if host.has_meta(META_PATH_INDEX) else 0
-	
-	if path_timer <= 0.0 or path.is_empty():
-		path_timer = PATH_RECALC_INTERVAL_SEC
-		path = _recalculate_ast_path(host, target_pos)
-		path = _validate_pursuit_path(path, target_pos)
-		p_idx = 0
-		host.set_meta(META_ACTIVE_PATH, path)
-		host.set_meta(META_PATH_INDEX, p_idx)
-		
-	host.set_meta(META_PATH_TIMER, path_timer)
-	_navigate_along_pursuit_path(host, ai, path, p_idx)
-
-
-func _validate_pursuit_path(raw_path: Array, target_pos: Vector3) -> Array:
-	# If the path ends more than 3 meters away from the actual target (different floor glitch), discard it
-	if raw_path.size() > 0 and raw_path.back().distance_squared_to(target_pos) > 9.0:
-		return []
-	return raw_path
-
-
-func _recalculate_ast_path(host: CharacterBody3D, target_pos: Vector3) -> Array:
-	var parent: Node = host.get_parent() as Node
-	if is_instance_valid(parent) and "navigation_service" in parent:
-		var nav: VoxelNavigationService = parent.get("navigation_service") as VoxelNavigationService
-		if is_instance_valid(nav):
-			return nav.find_path(host.global_position, target_pos)
-	return []
-
-
-func _navigate_along_pursuit_path(host: CharacterBody3D, ai: Object, path: Array, p_idx: int) -> void:
-	# Delegate spatial navigation entirely to VoxelKinematicService
-	VoxelKinematicService.navigate_along_path(host, ai, path, p_idx, SPEED_CHASE, META_PATH_INDEX)
-
-
-func _execute_proximity_strike(host: CharacterBody3D, ai: Object, target: Node3D, attack_dir: Vector3) -> void:
-	VoxelKinematicService.halt_movement(host, ai)
-	ai.set("wander_direction", attack_dir)
-	
-	var cooldown: float = host.get_meta(META_COOLDOWN) as float
-	if cooldown <= 0.0:
-		host.set_meta(META_COOLDOWN, COOLDOWN_ATTACK_SEC)
-		_strike_target(host, target)
-		
-		var vis_rep: IEntityVisualRepresentation = host.get("visual_representation") as IEntityVisualRepresentation
-		if is_instance_valid(vis_rep):
-			vis_rep.trigger_attack_visuals()
-
-
-func _process_safe_patrol(host: Object, ai: Object, _delta: float) -> void:
-	ai.set("current_task", TASK_WANDERING)
-	
-	var host_node := host as CharacterBody3D
-	var path: Array = host_node.get_meta(META_ACTIVE_PATH) if host_node.has_meta(META_ACTIVE_PATH) else []
-	var p_idx: int = host_node.get_meta(META_PATH_INDEX) if host_node.has_meta(META_PATH_INDEX) else 0
-	
-	if path.is_empty() or p_idx >= path.size():
-		path = _generate_random_safe_patrol_path(host_node)
-		p_idx = 0
-		host_node.set_meta(META_ACTIVE_PATH, path)
-		host_node.set_meta(META_PATH_INDEX, p_idx)
-		
-	var is_moving := path.size() > 0 and p_idx < path.size()
-	host_node.set_meta(META_GUARD_STATE, State.PATROLLING if is_moving else State.IDLE)
-	_navigate_along_patrol_path(host_node, ai, path, p_idx)
-
-
-func _generate_random_safe_patrol_path(host: CharacterBody3D) -> Array:
-	var parent: Node = host.get_parent() as Node
-	if is_instance_valid(parent) and "navigation_service" in parent:
-		var nav: VoxelNavigationService = parent.get("navigation_service") as VoxelNavigationService
-		if is_instance_valid(nav):
-			var rx := randf_range(-10.0, 10.0)
-			var rz := randf_range(-10.0, 10.0)
-			var target_pos: Vector3 = host.global_position + Vector3(rx, 0.0, rz)
-			return nav.find_path(host.global_position, target_pos)
-	return []
-
-
-func _navigate_along_patrol_path(host: CharacterBody3D, ai: Object, path: Array, p_idx: int) -> void:
-	# Delegate spatial navigation entirely to VoxelKinematicService
-	VoxelKinematicService.navigate_along_path(host, ai, path, p_idx, SPEED_PATROL, META_PATH_INDEX)
-
-
-func _initialize_metadata_if_missing(host: Object) -> void:
-	if not host.has_meta(META_COOLDOWN): host.set_meta(META_COOLDOWN, 0.0)
-	if not host.has_meta(META_TARGET): host.set_meta(META_TARGET, "")
-	if not host.has_meta(META_SCAN_TIMER): host.set_meta(META_SCAN_TIMER, SCAN_INTERVAL_SEC)
-	if not host.has_meta(META_GUARD_STATE): host.set_meta(META_GUARD_STATE, State.IDLE)
-	if not host.has_meta(META_PATH_TIMER): host.set_meta(META_PATH_TIMER, 0.0)
-	if not host.has_meta(META_ACTIVE_PATH): host.set_meta(META_ACTIVE_PATH, [])
-	if not host.has_meta(META_PATH_INDEX): host.set_meta(META_PATH_INDEX, 0)
-
-
-func _reset_guard_state(host: Object) -> void:
+func _handle_conversation_interrupt(host: Object) -> void:
+	_active_plan.clear()
 	var ai: Object = host.get("ai_component")
 	if is_instance_valid(ai):
 		ai.set("current_task", TASK_IDLE)
 		ai.set("wander_direction", Vector3.ZERO)
-	host.set_meta(META_TARGET, "")
-	host.set_meta(META_ACTIVE_PATH, [])
-	host.set_meta(META_PATH_INDEX, 0)
-	host.set_meta(META_GUARD_STATE, State.IDLE)
 
 
-func _scan_for_active_zombie_target(host: Object) -> Object:
-	if not host.call("is_inside_tree"): return null
-	var closest_target: Object = null
-	var min_dist_sq := RANGE_SIGHT_SQ
-	var host_node := host as CharacterBody3D
-	var host_pos: Vector3 = host_node.global_position
-	
-	var rep: Object = VillageReputationService.instance
-	if is_instance_valid(rep) and rep.call("is_player_wanted") == true:
-		var parent_node := host.call("get_parent") as Node
-		if is_instance_valid(parent_node):
-			var player_node := parent_node.call("get_node_or_null", "Player") as Node3D
-			if is_instance_valid(player_node) and player_node.get("is_active"):
-				min_dist_sq = host_pos.distance_squared_to(player_node.global_position)
-				closest_target = player_node
-				
-	var hostiles: Array = []
-	if host.has_method("get_tree"):
-		var tree := host.call("get_tree") as SceneTree
-		if is_instance_valid(tree): hostiles = tree.get_nodes_in_group("hostiles")
-			
-	for child: Object in hostiles:
-		if is_instance_valid(child) and child is Node3D:
-			var zombie_entity := child.get("domain_entity") as VoxelEntity
-			if zombie_entity != null and not zombie_entity.is_dead:
-				var dist_sq := host_pos.distance_squared_to(child.global_position)
-				if dist_sq < min_dist_sq:
-					min_dist_sq = dist_sq
-					closest_target = child as Node3D
-	return closest_target
+func _evaluate_active_plan(_host: Object) -> void:
+	if _active_plan.is_empty():
+		var initial_state := _build_initial_state()
+		var sorted_goals := _get_sorted_goals()
+		
+		for goal in sorted_goals:
+			if goal.is_valid(_blackboard):
+				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
+				if not _active_plan.is_empty():
+					_active_plan[0].on_enter(_blackboard)
+					break
 
 
-func _strike_target(host: CharacterBody3D, target: Object) -> void:
-	var host_pos: Vector3 = host.global_position
-	var target_pos: Vector3 = target.get("global_position")
-	var dir := (target_pos - host_pos).normalized()
-	dir.y = 0.0
-	
-	var knockback := dir * 4.5
-	knockback.y = 2.0
-	
-	if target.has_method("take_damage"):
-		target.call("take_damage", 1, knockback, host)
+func _build_initial_state() -> Dictionary:
+	var state: Dictionary = {}
+	state["is_secure"] = not _is_threat_active()
+	state["is_patrolling"] = false
+	return state
 
 
-func _get_metadata_object(host: Object, key: String) -> Object:
-	if host.has_meta(key):
-		var val: Variant = host.get_meta(key)
-		if typeof(val) == TYPE_OBJECT and is_instance_valid(val as Object):
-			return val as Object
-	return null
+func _is_threat_active() -> bool:
+	var target := _blackboard.get_object("combat_target") as Node3D
+	if is_instance_valid(target):
+		var domain := target.get("domain_entity") as VoxelEntity
+		return is_instance_valid(domain) and not domain.is_dead
+	return false
 
 
-# ==============================================================================
-# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
-# ==============================================================================
+func _get_sorted_goals() -> Array[GOAPGoal]:
+	var sorted := _goals.duplicate()
+	sorted.sort_custom(func(a: GOAPGoal, b: GOAPGoal) -> bool:
+		return a.get_priority(_blackboard) > b.get_priority(_blackboard)
+	)
+	return sorted
+
+
+func _execute_current_action(delta: float) -> void:
+	if _active_plan.is_empty():
+		return
+		
+	var current_action := _active_plan[0]
+	if not current_action.is_contextually_valid(_blackboard):
+		current_action.on_exit(_blackboard)
+		_active_plan.clear()
+		return
+		
+	var is_finished := current_action.execute_step(_blackboard, delta)
+	if is_finished:
+		current_action.on_exit(_blackboard)
+		_active_plan.pop_front()
+		if not _active_plan.is_empty():
+			_active_plan[0].on_enter(_blackboard)
+
 
 func get_active_state_name(host: Object) -> String:
-	if not host.has_meta(META_GUARD_STATE):
-		return "IDLE"
+	var _h := host
+	if _active_plan.size() > 0:
+		var action_name := _active_plan[0].action_name
+		if action_name == "ChaseThreat": return "SPRINTING_TO_THREAT"
+		elif action_name == "EliminateThreat": return "ENGAGING_THREAT"
+		elif action_name == "Patrol": return "OVERWATCH_PATROL"
+	return "IDLE"
+
+
+# ==============================================================================
+# INNER CLASSES: GOAP ACTIONS (Decoupled tactical behaviors)
+# ==============================================================================
+
+class FindThreatAction extends GOAPAction:
+	func _init() -> void:
+		super("FindThreat", 1.0)
+		add_effect("has_threat", true)
 		
-	var state_val: int = host.get_meta(META_GUARD_STATE) as int
-	match state_val:
-		State.IDLE:       return "IDLE"
-		State.PATROLLING: return "PATROLLING"
-		State.SPRINTING:  return "SPRINTING_TO_THREAT"
-		State.ENGAGING:   return "ENGAGING_THREAT"
-		_: return "IDLE"
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var threat := _scan_for_active_targets(host)
+		if is_instance_valid(threat):
+			bb.set_memory("combat_target", threat)
+			return true
+		return false
+		
+	func _scan_for_active_targets(host: CharacterBody3D) -> Node3D:
+		var host_pos := host.global_position
+		var closest: Node3D = null
+		var min_dist_sq := RANGE_SIGHT_SQ
+		
+		var rep := VillageReputationService.instance
+		if is_instance_valid(rep) and rep.is_player_wanted():
+			closest = _get_player_target(host)
+			if is_instance_valid(closest):
+				min_dist_sq = host_pos.distance_squared_to(closest.global_position)
+				
+		return _scan_for_zombies(host, closest, min_dist_sq)
+		
+	func _get_player_target(host: CharacterBody3D) -> Node3D:
+		var parent := host.get_parent()
+		if is_instance_valid(parent):
+			var player := parent.get_node_or_null("Player") as Node3D
+			if is_instance_valid(player):
+				var p_domain := player.get("domain_entity") as VoxelEntity
+				if is_instance_valid(p_domain) and not p_domain.is_dead:
+					return player
+		return null
+		
+	func _scan_for_zombies(host: CharacterBody3D, current_closest: Node3D, min_dist_sq: float) -> Node3D:
+		var closest := current_closest
+		var hostiles := host.get_tree().get_nodes_in_group("hostiles")
+		
+		for child in hostiles:
+			if is_instance_valid(child) and child is Node3D:
+				var domain := child.get("domain_entity") as VoxelEntity
+				if is_instance_valid(domain) and not domain.is_dead:
+					var dist_sq := host.global_position.distance_squared_to(child.global_position)
+					if dist_sq < min_dist_sq:
+						min_dist_sq = dist_sq
+						closest = child as Node3D
+		return closest
+
+
+class ChaseThreatAction extends GOAPAction:
+	func _init() -> void:
+		super("ChaseThreat", 1.0)
+		add_precondition("has_threat", true)
+		add_effect("is_at_threat", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var target := bb.get_object("combat_target") as Node3D
+		if is_instance_valid(target):
+			var domain := target.get("domain_entity") as VoxelEntity
+			return is_instance_valid(domain) and not domain.is_dead
+		return false
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := bb.get_object("combat_target") as Node3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := target.global_position - host.global_position
+		if diff.length_squared() <= RANGE_ATTACK_SQ:
+			_clear_path(bb)
+			return true
+			
+		_execute_astar_navigation(bb, ai, host, target.global_position)
+		return false
+		
+	func _execute_astar_navigation(bb: AIBlackboard, ai: Object, host: CharacterBody3D, target_pos: Vector3) -> void:
+		var path_timer := bb.get_float("path_recalc_timer")
+		var path: Array = bb.get_memory("active_path", []) as Array
+		var p_idx := bb.get_int("path_index")
+		
+		if path_timer <= 0.0 or path.is_empty():
+			bb.set_memory("path_recalc_timer", PATH_RECALC_INTERVAL_SEC)
+			path = _recalculate_path(host, target_pos)
+			p_idx = 0
+			bb.set_memory("active_path", path)
+			bb.set_memory("path_index", p_idx)
+			
+		VoxelKinematicService.navigate_along_path(host, ai, path, p_idx, SPEED_CHASE, "path_index")
+		bb.set_memory("path_index", host.get_meta("path_index"))
+		
+	func _recalculate_path(host: CharacterBody3D, target_pos: Vector3) -> Array:
+		var parent := host.get_parent() as Node
+		if is_instance_valid(parent) and "navigation_service" in parent:
+			var nav := parent.get("navigation_service") as VoxelNavigationService
+			if is_instance_valid(nav):
+				return nav.find_path(host.global_position, target_pos)
+		return []
+		
+	func _clear_path(bb: AIBlackboard) -> void:
+		bb.set_memory("active_path", [])
+		bb.set_memory("path_index", 0)
+
+
+class EliminateThreatAction extends GOAPAction:
+	func _init() -> void:
+		super("EliminateThreat", 1.0)
+		add_precondition("is_at_threat", true)
+		add_effect("is_secure", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var target := bb.get_object("combat_target") as Node3D
+		if is_instance_valid(target):
+			var domain := target.get("domain_entity") as VoxelEntity
+			return is_instance_valid(domain) and not domain.is_dead
+		return false
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := bb.get_object("combat_target") as Node3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := target.global_position - host.global_position
+		if diff.length_squared() > RANGE_ATTACK_SQ:
+			return true # Target escaped; re-plan to chase
+			
+		_execute_proximity_strike(bb, host, ai, target, diff.normalized())
+		return false
+		
+	func _execute_proximity_strike(bb: AIBlackboard, host: CharacterBody3D, ai: Object, target: Node3D, dir: Vector3) -> void:
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("wander_direction", dir)
+			
+		var cooldown := bb.get_float("attack_cooldown")
+		if cooldown <= 0.0:
+			bb.set_memory("attack_cooldown", COOLDOWN_ATTACK_SEC)
+			_strike_target(host, target)
+			
+			var vis := host.get("visual_representation") as IEntityVisualRepresentation
+			if is_instance_valid(vis): vis.trigger_attack_visuals()
+			
+	func _strike_target(host: CharacterBody3D, target: Node3D) -> void:
+		var dir := (target.global_position - host.global_position).normalized()
+		dir.y = 0.0
+		var knockback := dir * 4.5
+		knockback.y = 2.0
+		
+		if target.has_method("take_damage"):
+			target.call("take_damage", 1, knockback, host)
+
+
+class GuardPatrolAction extends GOAPAction:
+	func _init() -> void:
+		super("Patrol", 1.0)
+		add_effect("is_patrolling", true)
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+			
+		var path: Array = bb.get_memory("active_path", []) as Array
+		var p_idx := bb.get_int("path_index")
+		
+		if path.is_empty() or p_idx >= path.size():
+			path = _generate_random_patrol_path(host)
+			p_idx = 0
+			bb.set_memory("active_path", path)
+			bb.set_memory("path_index", p_idx)
+			
+		VoxelKinematicService.navigate_along_path(host, ai, path, p_idx, SPEED_PATROL, "path_index")
+		bb.set_memory("path_index", host.get_meta("path_index"))
+		return false
+		
+	func _generate_random_patrol_path(host: CharacterBody3D) -> Array:
+		var parent := host.get_parent() as Node
+		if is_instance_valid(parent) and "navigation_service" in parent:
+			var nav := parent.get("navigation_service") as VoxelNavigationService
+			if is_instance_valid(nav):
+				var rx := randf_range(-10.0, 10.0)
+				var rz := randf_range(-10.0, 10.0)
+				var target_pos := host.global_position + Vector3(rx, 0.0, rz)
+				return nav.find_path(host.global_position, target_pos)
+		return []

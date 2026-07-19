@@ -2,6 +2,12 @@
 # Pathfile: res://src/Infrastructure/Life/GuardEntity.gd
 # Description: Physical character controller representing a village defender Guard.
 #              Updated to use native, highly-portable .glb skeletal animations.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
+#   sound triggers, and physics sliding, delegating state decisions to GuardAIBehavior.
+# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
+#   to break Godot 4's cyclic preloader compile locks with its behavior script.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -11,6 +17,9 @@ extends PassiveEntity
 const BASE_MODEL_PATH := "res://assets/models/mobs/guard/guard_base.glb"
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
+
+## Decoupled local metadata key to prevent cyclic compile locks with GuardAIBehavior
+const META_TARGET = "guard_combat_target"
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
@@ -68,14 +77,10 @@ func _is_eligible_for_quest(_quest_id: String) -> bool:
 	return false 
 
 
-func _has_ui_decorations() -> bool:
-	return true
-
-
 func _can_socialize() -> bool:
 	var combat_target: CharacterBody3D = null
-	if has_meta(GuardAIBehavior.META_TARGET):
-		var target_val: Variant = get_meta(GuardAIBehavior.META_TARGET)
+	if has_meta(META_TARGET):
+		var target_val: Variant = get_meta(META_TARGET)
 		if typeof(target_val) == TYPE_OBJECT:
 			var target_obj: Object = target_val
 			if is_instance_valid(target_obj) and target_obj is CharacterBody3D:

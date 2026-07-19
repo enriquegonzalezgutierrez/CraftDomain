@@ -1,205 +1,282 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/ObsidianColossusAIBehavior.gd
-# Description: Specialized AI behavior strategy implementing a multi-phase boss 
-#              state machine for the Obsidian Colossus (Act III Boss).
-#              Phases: Sleep -> Walk Chase -> Rage Charge -> Volcanic Stomp.
+# Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
+#              Planning (GOAP) for the Obsidian Colossus (Act III Boss).
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Isolates strictly the mathematical 
-#   decision-making and state transitions. Methods kept under 20 lines.
-# - Open-Closed Principle (OCP): Extends IAIBehavior, supporting modular 
-#   AI expansion.
+# - Single Responsibility Principle (SRP): Isolates sleep dormancy, heavy march, 
+#   rage charge, and volcanic stomp ground-pounds into distinct action classes.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows custom magma
+#   environmental triggers to be registered without modifying core navigation.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ObsidianColossusAIBehavior
 extends IAIBehavior
 
-# Localized Multi-Phase State Machine
-enum State {
-	SLEEPING,    # Standing dormant until the player approaches
-	CHASING,     # Slow, heavy volcanic march
-	CHARGING,    # Fast, rage-fueled charge (active under 50% HP)
-	STOMPING     # Channeling an earthquake volcanic ground-pound
-}
+const TASK_IDLE = 0
+const TASK_WANDERING = 1
+const TASK_WORKING = 6
 
 const SPEED_WALK: float = 1.1
 const SPEED_CHARGE: float = 3.2
-const RANGE_SIGHT_SQ: float = 400.0 # 20m detection range
-const RANGE_STOMP_SQ: float = 16.0  # 4m strike radius
+
+const RANGE_SIGHT_SQ: float = 400.0
+const RANGE_STOMP_SQ: float = 16.0
 const COOLDOWN_STOMP_SEC: float = 4.5
 const DURATION_STOMP_CHANNEL_SEC: float = 1.8
-const THRESHOLD_RAGE_HP: int = 12   # Under 50% of 24 max HP
+const THRESHOLD_RAGE_HP: int = 12
 
-# Decoupled task enums
-const TASK_IDLE = 0
-const TASK_WORKING = 6
-
-# Decoupled metadata keys
-const META_STATE := "colossus_state"
-const META_STOMP_COOLDOWN := "colossus_stomp_cooldown"
+var _blackboard: AIBlackboard
+var _goals: Array[GOAPGoal] = []
+var _actions: Array[GOAPAction] = []
+var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
 	overrides_wandering = true # Colossal bosses remain anchored to their arenas
+	_setup_goap_profile()
 
 
-## Concrete Contract: Drives the multi-phase boss logic and state transitions
+func _setup_goap_profile() -> void:
+	_setup_goals()
+	_actions.append(SleepAction.new())
+	_actions.append(ColossusLocateAction.new())
+	_actions.append(HeavyMarchAction.new())
+	_actions.append(RageChargeAction.new())
+	_actions.append(VolcanicStompAction.new())
+
+
+func _setup_goals() -> void:
+	var sleep_goal := GOAPGoal.new("DormantSleep", 10.0)
+	sleep_goal.add_desired_state("is_sleeping", true)
+	
+	var obliterate_goal := GOAPGoal.new("ObliterateIntruder", 2.0)
+	obliterate_goal.add_desired_state("intruder_obliterated", true)
+	
+	_goals.append_array([sleep_goal, obliterate_goal])
+
+
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
 		
-	_initialize_metadata_if_missing(host)
-	_update_boss_timers(host, delta)
+	_initialize_agent(host)
+	_update_blackboard_timers(host, delta)
 	
-	var player_node := _get_player_node(host)
-	var state: int = host.get_meta(META_STATE) as int
+	_evaluate_active_plan(host)
+	_execute_current_action(delta)
+
+
+func _initialize_agent(host: Object) -> void:
+	if _blackboard == null:
+		_blackboard = AIBlackboard.new()
+		_blackboard.set_memory("host", host)
+		_blackboard.set_memory("stomp_cooldown", 0.0)
+		_blackboard.set_memory("is_dormant", true)
+
+
+func _update_blackboard_timers(host: Object, delta: float) -> void:
+	var cd := _blackboard.get_float("stomp_cooldown") - delta
+	_blackboard.set_memory("stomp_cooldown", maxf(0.0, cd))
 	
-	match state:
-		State.SLEEPING:
-			_process_sleeping(host, player_node)
-		State.CHASING:
-			_process_chasing(host, player_node)
-		State.CHARGING:
-			_process_charging(host, player_node)
-		State.STOMPING:
-			_process_stomping(host)
-
-
-func _update_boss_timers(host: Object, delta: float) -> void:
-	var stomp_cd: float = host.get_meta(META_STOMP_COOLDOWN) as float
-	if stomp_cd > 0.0:
-		host.set_meta(META_STOMP_COOLDOWN, stomp_cd - delta)
-
-
-func _process_sleeping(host: Object, player_node: Object) -> void:
-	_halt_movement(host)
-	if is_instance_valid(player_node) and player_node.get("is_active"):
-		var p_pos: Vector3 = player_node.get("global_position")
-		var host_pos: Vector3 = host.get("global_position")
-		if host_pos.distance_squared_to(p_pos) <= RANGE_SIGHT_SQ:
-			host.set_meta(META_STATE, State.CHASING)
-			if host.has_method("_play_colossus_awaken_growl"):
-				host.call("_play_colossus_awaken_growl")
-
-
-func _process_chasing(host: Object, player_node: Object) -> void:
-	if not is_instance_valid(player_node) or not player_node.get("is_active"):
-		host.set_meta(META_STATE, State.SLEEPING)
-		return
-		
-	var hp := _get_entity_health(host)
-	if hp <= THRESHOLD_RAGE_HP and hp > 0:
-		host.set_meta(META_STATE, State.CHARGING)
-		if host.has_method("_play_rage_ignite_roar"):
-			host.call("_play_rage_ignite_roar")
-		return
-		
-	_navigate_or_stomp(host, player_node, SPEED_WALK)
-
-
-func _process_charging(host: Object, player_node: Object) -> void:
-	if not is_instance_valid(player_node) or not player_node.get("is_active"):
-		host.set_meta(META_STATE, State.SLEEPING)
-		return
-		
-	_navigate_or_stomp(host, player_node, SPEED_CHARGE)
-
-
-func _process_stomping(host: Object) -> void:
-	_halt_movement(host)
-	var stomp_timer: float = host.get_meta(META_STOMP_COOLDOWN) as float
-	
-	# Transition back to active chase after the channeling wind-up expires
-	if stomp_timer <= (COOLDOWN_STOMP_SEC - DURATION_STOMP_CHANNEL_SEC):
-		var hp := _get_entity_health(host)
-		var next_state := State.CHARGING if hp <= THRESHOLD_RAGE_HP else State.CHASING
-		host.set_meta(META_STATE, next_state)
-
-
-func _navigate_or_stomp(host: Object, player_node: Object, speed: float) -> void:
-	var host_pos: Vector3 = host.get("global_position")
-	var p_pos: Vector3 = player_node.get("global_position")
-	var diff := p_pos - host_pos
-	diff.y = 0.0
-	
-	var dist_sq := diff.length_squared()
-	var stomp_cd: float = host.get_meta(META_STOMP_COOLDOWN) as float
-	
-	if dist_sq <= RANGE_STOMP_SQ and stomp_cd <= 0.0:
-		_trigger_volcanic_stomp(host, diff.normalized())
-	else:
-		_apply_movement_vectors(host, diff.normalized(), speed)
-
-
-func _trigger_volcanic_stomp(host: Object, forward_dir: Vector3) -> void:
-	host.set_meta(META_STATE, State.STOMPING)
-	host.set_meta(META_STOMP_COOLDOWN, COOLDOWN_STOMP_SEC)
-	_halt_movement(host)
-	
-	var ai: Object = host.get("ai_component")
-	if is_instance_valid(ai):
-		ai.set("wander_direction", forward_dir)
-		ai.set("current_task", TASK_WORKING)
-		
-	if host.has_method("_execute_lava_stomp_attack"):
-		host.call("_execute_lava_stomp_attack")
-
-
-func _halt_movement(host: Object) -> void:
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	velocity.x = 0.0
-	velocity.z = 0.0
-	host.set("velocity", velocity)
-	
-	var ai: Object = host.get("ai_component")
-	if is_instance_valid(ai):
-		ai.set("wander_direction", Vector3.ZERO)
-
-
-func _apply_movement_vectors(host: Object, chase_dir: Vector3, speed: float) -> void:
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	velocity.x = chase_dir.x * speed
-	velocity.z = chase_dir.z * speed
-	host.set("velocity", velocity)
-	
-	var ai: Object = host.get("ai_component")
-	if is_instance_valid(ai):
-		ai.set("wander_direction", chase_dir)
-		ai.set("current_task", TASK_WORKING)
-
-
-func _get_entity_health(host: Object) -> int:
 	var domain: Object = host.get("domain_entity")
-	if is_instance_valid(domain):
-		return domain.get("health") as int
-	return 0
+	var hp := domain.get("health") as int if is_instance_valid(domain) else 0
+	_blackboard.set_memory("health", hp)
 
 
-func _initialize_metadata_if_missing(host: Object) -> void:
-	if not host.has_meta(META_STATE): host.set_meta(META_STATE, State.SLEEPING)
-	if not host.has_meta(META_STOMP_COOLDOWN): host.set_meta(META_STOMP_COOLDOWN, 0.0)
+func _evaluate_active_plan(_host: Object) -> void:
+	if _active_plan.is_empty():
+		var initial_state := _build_initial_state()
+		var sorted_goals := _get_sorted_goals()
+		
+		for goal in sorted_goals:
+			if goal.is_valid(_blackboard):
+				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
+				if not _active_plan.is_empty():
+					_active_plan[0].on_enter(_blackboard)
+					break
 
 
-func _get_player_node(host: Object) -> Object:
-	if host.has_method("get_parent"):
-		var parent: Node = host.call("get_parent") as Node
-		if is_instance_valid(parent):
-			return parent.call("get_node_or_null", "Player")
-	return null
+func _build_initial_state() -> Dictionary:
+	var state: Dictionary = {}
+	state["is_sleeping"] = _blackboard.get_bool("is_dormant")
+	state["intruder_obliterated"] = false
+	return state
 
 
-# ==============================================================================
-# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
-# ==============================================================================
+func _get_sorted_goals() -> Array[GOAPGoal]:
+	var sorted := _goals.duplicate()
+	sorted.sort_custom(func(a: GOAPGoal, b: GOAPGoal) -> bool:
+		return a.get_priority(_blackboard) > b.get_priority(_blackboard)
+	)
+	return sorted
+
+
+func _execute_current_action(delta: float) -> void:
+	if _active_plan.is_empty():
+		return
+		
+	var current_action := _active_plan[0]
+	if not current_action.is_contextually_valid(_blackboard):
+		current_action.on_exit(_blackboard)
+		_active_plan.clear()
+		return
+		
+	var is_finished := current_action.execute_step(_blackboard, delta)
+	if is_finished:
+		current_action.on_exit(_blackboard)
+		_active_plan.pop_front()
+		if not _active_plan.is_empty():
+			_active_plan[0].on_enter(_blackboard)
+
 
 func get_active_state_name(host: Object) -> String:
-	if not host.has_meta(META_STATE):
-		return "SLEEPING"
+	var _h := host
+	if _active_plan.size() > 0:
+		var action_name := _active_plan[0].action_name
+		if action_name == "HeavyMarch": return "PATROLLING"
+		elif action_name == "RageCharge": return "CHARGE_TO_TARGET"
+		elif action_name == "VolcanicStomp": return "LAUNCH_ATTACK"
+	return "IDLE"
+
+
+# ==============================================================================
+# INNER CLASSES: GOAP ACTIONS (Obsidian Colossus boss mechanics)
+# ==============================================================================
+
+class SleepAction extends GOAPAction:
+	func _init() -> void:
+		super("Sleep", 1.0)
+		add_effect("is_sleeping", true)
 		
-	var state_val: int = host.get_meta(META_STATE) as int
-	match state_val:
-		State.SLEEPING: return "IDLE"
-		State.CHASING:  return "PATROLLING"
-		State.CHARGING: return "CHARGE_TO_TARGET"
-		State.STOMPING: return "LAUNCH_ATTACK" # Maps to a slam attack string on UI
-		_: return "IDLE"
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		host.velocity.x = 0.0; host.velocity.z = 0.0
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai):
+			ai.set("wander_direction", Vector3.ZERO)
+			ai.set("current_task", TASK_IDLE)
+		return true
+
+
+class ColossusLocateAction extends GOAPAction:
+	func _init() -> void:
+		super("ColossusLocate", 1.0)
+		add_effect("has_intruder_target", true)
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var parent := host.get_parent() as Node
+		var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
+		
+		if is_instance_valid(player) and player.get("is_active"):
+			var dist_sq := host.global_position.distance_squared_to(player.global_position)
+			if dist_sq <= RANGE_SIGHT_SQ:
+				bb.set_memory("intruder_player", player)
+				bb.set_memory("is_dormant", false)
+				if host.has_method("_play_colossus_awaken_growl"):
+					host.call("_play_colossus_awaken_growl")
+				return true
+		return false
+
+
+class HeavyMarchAction extends GOAPAction:
+	func _init() -> void:
+		super("HeavyMarch", 1.0)
+		add_precondition("has_intruder_target", true)
+		add_effect("is_at_player", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_int("health") > THRESHOLD_RAGE_HP
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var player := bb.get_object("intruder_player") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := player.global_position - host.global_position
+		diff.y = 0.0
+		var dist_sq := diff.length_squared()
+		
+		if dist_sq <= RANGE_STOMP_SQ and bb.get_float("stomp_cooldown") <= 0.0:
+			return true
+			
+		var vel := host.velocity
+		var chase_dir := diff.normalized()
+		vel.x = chase_dir.x * SPEED_WALK
+		vel.z = chase_dir.z * SPEED_WALK
+		host.velocity = vel
+		
+		if is_instance_valid(ai):
+			ai.set("wander_direction", chase_dir)
+			ai.set("current_task", TASK_WORKING)
+		return false
+
+
+class RageChargeAction extends GOAPAction:
+	func _init() -> void:
+		super("RageCharge", 1.0)
+		add_precondition("has_intruder_target", true)
+		add_effect("is_at_player", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var hp := bb.get_int("health")
+		return hp <= THRESHOLD_RAGE_HP and hp > 0
+		
+	func on_enter(bb: AIBlackboard) -> void:
+		var host := bb.get_object("host") as CharacterBody3D
+		if host.has_method("_play_rage_ignite_roar"):
+			host.call("_play_rage_ignite_roar")
+			
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var player := bb.get_object("intruder_player") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := player.global_position - host.global_position
+		diff.y = 0.0
+		var dist_sq := diff.length_squared()
+		
+		if dist_sq <= RANGE_STOMP_SQ and bb.get_float("stomp_cooldown") <= 0.0:
+			return true
+			
+		var vel := host.velocity
+		var charge_dir := diff.normalized()
+		vel.x = charge_dir.x * SPEED_CHARGE
+		vel.z = charge_dir.z * SPEED_CHARGE
+		host.velocity = vel
+		
+		if is_instance_valid(ai):
+			ai.set("wander_direction", charge_dir)
+			ai.set("current_task", TASK_WORKING)
+		return false
+
+
+class VolcanicStompAction extends GOAPAction:
+	func _init() -> void:
+		super("VolcanicStomp", 1.0)
+		add_precondition("is_at_player", true)
+		add_effect("intruder_obliterated", true)
+		
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("stomp_cooldown", COOLDOWN_STOMP_SEC)
+		
+		var host := bb.get_object("host") as CharacterBody3D
+		var player := bb.get_object("intruder_player") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		
+		host.velocity.x = 0.0; host.velocity.z = 0.0
+		var target_dir := (player.global_position - host.global_position).normalized()
+		target_dir.y = 0.0
+		
+		if is_instance_valid(ai):
+			ai.set("wander_direction", target_dir)
+			ai.set("current_task", TASK_WORKING)
+			
+		if host.has_method("_execute_lava_stomp_attack"):
+			host.call("_execute_lava_stomp_attack")
+			
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var cooldown := bb.get_float("stomp_cooldown")
+		return cooldown <= (COOLDOWN_STOMP_SEC - DURATION_STOMP_CHANNEL_SEC)

@@ -3,237 +3,301 @@
 # Description: Pure Domain AI behavior strategy implementing hostile zombie routines,
 #              including player tracking, glitched spotted roars, and wall flanking.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly zombie state 
-#   transitions, alert roaring periods, and flanking vectors. All methods < 20 lines.
-# - Layered DDD Compliance: Pure logical state calculations with zero framework 
-#   leakage, keeping physics and velocity implementations in Infrastructure.
+# - Single Responsibility Principle (SRP): Isolates sensory spotting, path 
+#   pursuit, and close-proximity attack actions into decoupled inner classes.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows custom zombie 
+#   mutation types (e.g., runners, tanks) to be added without code rewrites.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ZombieAIBehavior
 extends IAIBehavior
 
-# Localized State Machine (SRP / OCP Compliant)
-enum State {
-	WANDERING,  # Standard passive roaming
-	ALERTED,    # Spotted player: freezing and roaring for 0.8s
-	CHASING,    # Aggressive player pursuit
-	ATTACKING   # Executing coordinate bites
-}
+const TASK_IDLE = 0
+const TASK_WANDERING = 1
+const TASK_WORKING = 6
 
 const SPEED_CHASE: float = 2.2
 const SPEED_WANDER: float = 1.1
 
-const RANGE_CHASE_SQ: float = 256.0 # 16.0 meters squared
-const RANGE_ATTACK_SQ: float = 1.44 # 1.2 meters squared
+const RANGE_CHASE_SQ: float = 256.0
+const RANGE_ATTACK_SQ: float = 1.44
 const COOLDOWN_ATTACK_SEC: float = 1.5
 const ALERT_DURATION_SEC: float = 0.8
 
-# Decoupled task enums
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
-
-# Decoupled metadata keys
-const META_WANDER_TIMER := "zombie_wander_timer"
-const META_WANDER_DIR := "zombie_wander_dir"
-const META_COOLDOWN := "zombie_attack_cooldown"
-const META_STUCK_TIMER := "zombie_stuck_timer"
-const META_ZOMBIE_STATE := "zombie_local_state"
-const META_SPOTTED_PLAYER := "zombie_spotted_player"
-const META_ALERT_TIMER := "zombie_alert_timer"
+var _blackboard: AIBlackboard
+var _goals: Array[GOAPGoal] = []
+var _actions: Array[GOAPAction] = []
+var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
 	overrides_wandering = true
+	_setup_goap_profile()
 
 
-## Concrete Contract: Drives scent-tracking alert roars, pursuit, and attack cycles
+func _setup_goap_profile() -> void:
+	_setup_goals()
+	_actions.append(SpotTargetAction.new())
+	_actions.append(ChaseTargetAction.new())
+	_actions.append(AttackTargetAction.new())
+	_actions.append(ZombieWanderAction.new())
+
+
+func _setup_goals() -> void:
+	var hunt_goal := GOAPGoal.new("HuntPrey", 2.0)
+	hunt_goal.add_desired_state("did_eliminate", true)
+	
+	var wander_goal := GOAPGoal.new("IdleWander", 0.5)
+	wander_goal.add_desired_state("is_wandering", true)
+	
+	_goals.append_array([hunt_goal, wander_goal])
+
+
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
 		
-	_initialize_metadata_if_missing(host)
-	_update_cooldowns(host, delta)
+	_initialize_agent(host)
+	_update_blackboard_timers(delta)
 	
-	var state: int = host.get_meta(META_ZOMBIE_STATE) as int
-	if state == State.ALERTED:
-		_process_alert_state(host, delta)
+	_evaluate_active_plan(host)
+	_execute_current_action(delta)
+
+
+func _initialize_agent(host: Object) -> void:
+	if _blackboard == null:
+		_blackboard = AIBlackboard.new()
+		_blackboard.set_memory("host", host)
+		_blackboard.set_memory("attack_cooldown", 0.0)
+		_blackboard.set_memory("alert_timer", 0.0)
+		_blackboard.set_memory("wander_timer", 0.0)
+		_blackboard.set_memory("has_spotted", false)
+
+
+func _update_blackboard_timers(delta: float) -> void:
+	var cd := _blackboard.get_float("attack_cooldown") - delta
+	_blackboard.set_memory("attack_cooldown", maxf(0.0, cd))
+	
+	var alert := _blackboard.get_float("alert_timer") - delta
+	_blackboard.set_memory("alert_timer", maxf(0.0, alert))
+
+
+func _evaluate_active_plan(_host: Object) -> void:
+	if _active_plan.is_empty():
+		var initial_state := _build_initial_state()
+		var sorted_goals := _get_sorted_goals()
+		
+		for goal in sorted_goals:
+			if goal.is_valid(_blackboard):
+				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
+				if not _active_plan.is_empty():
+					_active_plan[0].on_enter(_blackboard)
+					break
+
+
+func _build_initial_state() -> Dictionary:
+	var state: Dictionary = {}
+	state["did_eliminate"] = not _is_target_active()
+	state["is_wandering"] = false
+	return state
+
+
+func _is_target_active() -> bool:
+	var target := _blackboard.get_object("threat_target") as Node3D
+	if is_instance_valid(target):
+		var domain := target.get("domain_entity") as VoxelEntity
+		return is_instance_valid(domain) and not domain.is_dead
+	return false
+
+
+func _get_sorted_goals() -> Array[GOAPGoal]:
+	var sorted := _goals.duplicate()
+	sorted.sort_custom(func(a: GOAPGoal, b: GOAPGoal) -> bool:
+		return a.get_priority(_blackboard) > b.get_priority(_blackboard)
+	)
+	return sorted
+
+
+func _execute_current_action(delta: float) -> void:
+	if _active_plan.is_empty():
 		return
 		
-	var player_node := _get_player_node(host)
-	var is_tracking := false
-	
-	if is_instance_valid(player_node) and player_node.get("is_active") == true:
-		is_tracking = _process_active_combat_decisions(host, player_node, state)
+	var current_action := _active_plan[0]
+	if not current_action.is_contextually_valid(_blackboard):
+		current_action.on_exit(_blackboard)
+		_active_plan.clear()
+		_blackboard.set_memory("has_spotted", false)
+		return
 		
-	if not is_tracking:
-		_process_passive_wandering(host, delta)
+	var is_finished := current_action.execute_step(_blackboard, delta)
+	if is_finished:
+		current_action.on_exit(_blackboard)
+		_active_plan.pop_front()
+		if not _active_plan.is_empty():
+			_active_plan[0].on_enter(_blackboard)
 
-
-func _update_cooldowns(host: Object, delta: float) -> void:
-	var cooldown: float = host.get_meta(META_COOLDOWN) as float
-	if cooldown > 0.0:
-		host.set_meta(META_COOLDOWN, cooldown - delta)
-
-
-func _process_alert_state(host: Object, delta: float) -> void:
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return
-		
-	ai.set("current_task", TASK_WORKING) 
-	ai.set("wander_direction", Vector3.ZERO)
-	
-	var alert_timer: float = host.get_meta(META_ALERT_TIMER) as float
-	alert_timer -= delta
-	
-	if alert_timer <= 0.0:
-		host.set_meta(META_ZOMBIE_STATE, State.CHASING)
-	else:
-		host.set_meta(META_ALERT_TIMER, alert_timer)
-
-
-func _process_active_combat_decisions(host: Object, player_node: Object, current_state: int) -> bool:
-	var host_pos: Vector3 = host.get("global_position")
-	var player_pos: Vector3 = player_node.get("global_position")
-	var dist_sq := host_pos.distance_squared_to(player_pos)
-	
-	if dist_sq >= RANGE_CHASE_SQ:
-		host.set_meta(META_SPOTTED_PLAYER, false)
-		return false
-		
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return false
-	
-	var is_spotted: bool = host.get_meta(META_SPOTTED_PLAYER) as bool
-	if not is_spotted:
-		_trigger_initial_roar(host, ai, player_node)
-		return true
-		
-	_evaluate_chase_and_bite(host, ai, current_state, dist_sq, player_pos, host_pos)
-	return true
-
-
-func _trigger_initial_roar(host: Object, ai: Object, player_node: Object) -> void:
-	host.set_meta(META_SPOTTED_PLAYER, true)
-	host.set_meta(META_ZOMBIE_STATE, State.ALERTED)
-	host.set_meta(META_ALERT_TIMER, ALERT_DURATION_SEC)
-	host.set_meta(META_WANDER_DIR, Vector3.ZERO)
-	
-	# STRICT TYPING FIX: Cast Variants explicitly to Vector3 before performing subtraction
-	var player_pos: Vector3 = player_node.get("global_position")
-	var host_pos: Vector3 = host.get("global_position")
-	var look_dir: Vector3 = (player_pos - host_pos).normalized()
-	look_dir.y = 0.0
-	ai.set("wander_direction", look_dir)
-	
-	if host.has_method("_play_spotted_roar"):
-		host.call("_play_spotted_roar", player_node)
-
-
-func _evaluate_chase_and_bite(host: Object, ai: Object, current_state: int, dist_sq: float, player_pos: Vector3, host_pos: Vector3) -> void:
-	if dist_sq <= RANGE_ATTACK_SQ:
-		host.set_meta(META_ZOMBIE_STATE, State.ATTACKING)
-		host.set_meta(META_WANDER_DIR, Vector3.ZERO)
-		_execute_bite_strike(host, ai, player_pos, host_pos)
-	else:
-		if current_state != State.ALERTED:
-			host.set_meta(META_ZOMBIE_STATE, State.CHASING)
-			var to_player := (player_pos - host_pos).normalized()
-			to_player.y = 0.0
-			host.set_meta(META_WANDER_DIR, to_player)
-			_apply_movement_vectors(host, ai, to_player, SPEED_CHASE)
-
-
-func _execute_bite_strike(host: Object, ai: Object, player_pos: Vector3, host_pos: Vector3) -> void:
-	_apply_movement_vectors(host, ai, Vector3.ZERO, 0.0)
-	var to_player := (player_pos - host_pos).normalized()
-	to_player.y = 0.0
-	ai.set("wander_direction", to_player)
-	
-	var cooldown: float = host.get_meta(META_COOLDOWN) as float
-	if cooldown <= 0.0:
-		host.set_meta(META_COOLDOWN, COOLDOWN_ATTACK_SEC)
-		if host.has_method("_bite_player"):
-			host.call("_bite_player")
-			
-		var vis_rep: Object = host.get("visual_representation")
-		if is_instance_valid(vis_rep) and vis_rep.has_method("trigger_attack_visuals"):
-			vis_rep.call("trigger_attack_visuals")
-
-
-func _process_passive_wandering(host: Object, delta: float) -> void:
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return
-		
-	ai.set("current_task", TASK_WANDERING)
-	host.set_meta(META_ZOMBIE_STATE, State.WANDERING)
-	
-	var wander_timer: float = host.get_meta(META_WANDER_TIMER) as float
-	wander_timer -= delta
-	
-	if wander_timer <= 0.0:
-		_calculate_next_wander_step(host)
-	else:
-		host.set_meta(META_WANDER_TIMER, wander_timer)
-		_apply_movement_vectors(host, ai, host.get_meta(META_WANDER_DIR), SPEED_WANDER)
-
-
-func _calculate_next_wander_step(host: Object) -> void:
-	var is_moving := randf() > 0.4
-	if is_moving:
-		var angle := randf() * TAU
-		host.set_meta(META_WANDER_DIR, Vector3(cos(angle), 0, sin(angle)))
-		host.set_meta(META_WANDER_TIMER, randf_range(2.0, 5.0))
-	else:
-		host.set_meta(META_WANDER_DIR, Vector3.ZERO)
-		host.set_meta(META_WANDER_TIMER, randf_range(1.0, 3.0))
-
-
-func _apply_movement_vectors(host: Object, ai: Object, wander_dir: Vector3, speed: float) -> void:
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	if wander_dir != Vector3.ZERO:
-		velocity.x = wander_dir.x * speed
-		velocity.z = wander_dir.z * speed
-		ai.set("wander_direction", wander_dir)
-	else:
-		velocity.x = move_toward(velocity.x, 0.0, speed)
-		velocity.z = move_toward(velocity.z, 0.0, speed)
-		ai.set("wander_direction", Vector3.ZERO)
-		
-	host.set("velocity", velocity)
-
-
-func _initialize_metadata_if_missing(host: Object) -> void:
-	if not host.has_meta(META_WANDER_TIMER): host.set_meta(META_WANDER_TIMER, 0.0)
-	if not host.has_meta(META_WANDER_DIR): host.set_meta(META_WANDER_DIR, Vector3.ZERO)
-	if not host.has_meta(META_COOLDOWN): host.set_meta(META_COOLDOWN, 0.0)
-	if not host.has_meta(META_STUCK_TIMER): host.set_meta(META_STUCK_TIMER, 0.0)
-	if not host.has_meta(META_ZOMBIE_STATE): host.set_meta(META_ZOMBIE_STATE, State.WANDERING)
-	if not host.has_meta(META_SPOTTED_PLAYER): host.set_meta(META_SPOTTED_PLAYER, false)
-	if not host.has_meta(META_ALERT_TIMER): host.set_meta(META_ALERT_TIMER, 0.0)
-
-
-func _get_player_node(host: Object) -> Object:
-	if host.has_method("get_parent"):
-		var parent: Node = host.call("get_parent") as Node
-		if is_instance_valid(parent):
-			return parent.call("get_node_or_null", "Player")
-	return null
-
-
-# ==============================================================================
-# POLYMORPHIC TELEMETRY EXPOSURE (LSP / OCP Compliant)
-# ==============================================================================
 
 func get_active_state_name(host: Object) -> String:
-	if not host.has_meta(META_ZOMBIE_STATE):
-		return "WANDER"
+	var _h := host
+	if _active_plan.size() > 0:
+		var action_name := _active_plan[0].action_name
+		if action_name == "SpotTarget": return "EXAMINE"
+		elif action_name == "ChaseTarget": return "CHASING"
+		elif action_name == "AttackTarget": return "ATTACKING"
+	return "WANDER"
+
+
+# ==============================================================================
+# INNER CLASSES: GOAP ACTIONS (Decoupled hostile behaviors)
+# ==============================================================================
+
+class SpotTargetAction extends GOAPAction:
+	func _init() -> void:
+		super("SpotTarget", 1.0)
+		add_effect("has_target", true)
 		
-	var state_val: int = host.get_meta(META_ZOMBIE_STATE) as int
-	match state_val:
-		State.ALERTED: return "EXAMINE"  # Maps to "EXAMINING" on the telemetry UI
-		State.CHASING: return "CHASING"  
-		State.ATTACKING: return "ATTACKING"
-		_: return "WANDER"
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := _scan_for_prey(host)
+		if is_instance_valid(target):
+			bb.set_memory("threat_target", target)
+			if not bb.get_bool("has_spotted"):
+				bb.set_memory("has_spotted", true)
+				bb.set_memory("alert_timer", ALERT_DURATION_SEC)
+				if host.has_method("_play_spotted_roar"):
+					host.call("_play_spotted_roar", target)
+			return true
+		return false
+		
+	func _scan_for_prey(host: CharacterBody3D) -> Node3D:
+		var host_pos := host.global_position
+		var closest: Node3D = null
+		var min_dist_sq := RANGE_CHASE_SQ
+		var targets := _gather_prey_population(host)
+		
+		for child in targets:
+			var domain := child.get("domain_entity") as VoxelEntity
+			if is_instance_valid(domain) and not domain.is_dead:
+				var dist_sq := host_pos.distance_squared_to(child.global_position)
+				if dist_sq < min_dist_sq:
+					min_dist_sq = dist_sq
+					closest = child
+		return closest
+		
+	func _gather_prey_population(host: CharacterBody3D) -> Array[Node3D]:
+		var list: Array[Node3D] = []
+		var passives := host.get_tree().get_nodes_in_group("passives")
+		for child in passives:
+			if child is CharacterBody3D and child.name != host.name:
+				list.append(child as Node3D)
+				
+		var parent := host.get_parent()
+		if is_instance_valid(parent):
+			var player := parent.get_node_or_null("Player") as Node3D
+			if is_instance_valid(player) and player.get("is_active"):
+				list.append(player)
+		return list
+
+
+class ChaseTargetAction extends GOAPAction:
+	func _init() -> void:
+		super("ChaseTarget", 1.0)
+		add_precondition("has_target", true)
+		add_effect("is_at_target", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var target := bb.get_object("threat_target") as Node3D
+		if is_instance_valid(target):
+			var domain := target.get("domain_entity") as VoxelEntity
+			return is_instance_valid(domain) and not domain.is_dead
+		return false
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := bb.get_object("threat_target") as Node3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := target.global_position - host.global_position
+		diff.y = 0.0
+		
+		if bb.get_float("alert_timer") > 0.0:
+			_freeze_and_look(host, ai, diff.normalized())
+			return false
+			
+		if diff.length_squared() <= RANGE_ATTACK_SQ:
+			return true
+			
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_CHASE)
+		return false
+		
+	func _freeze_and_look(host: CharacterBody3D, ai: Object, dir: Vector3) -> void:
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai):
+			ai.set("wander_direction", dir)
+			ai.set("current_task", TASK_WORKING)
+
+
+class AttackTargetAction extends GOAPAction:
+	func _init() -> void:
+		super("AttackTarget", 1.0)
+		add_precondition("is_at_target", true)
+		add_effect("did_eliminate", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var target := bb.get_object("threat_target") as Node3D
+		if is_instance_valid(target):
+			var domain := target.get("domain_entity") as VoxelEntity
+			return is_instance_valid(domain) and not domain.is_dead
+		return false
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var target := bb.get_object("threat_target") as Node3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := target.global_position - host.global_position
+		diff.y = 0.0
+		if diff.length_squared() > RANGE_ATTACK_SQ:
+			return true # Target moved; re-plan to chase
+			
+		_execute_bite(bb, host, ai, diff.normalized())
+		return false
+		
+	func _execute_bite(bb: AIBlackboard, host: CharacterBody3D, ai: Object, dir: Vector3) -> void:
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("wander_direction", dir)
+			
+		var cooldown := bb.get_float("attack_cooldown")
+		if cooldown <= 0.0:
+			bb.set_memory("attack_cooldown", COOLDOWN_ATTACK_SEC)
+			if host.has_method("_bite_player"):
+				host.call("_bite_player")
+				
+			var vis := host.get("visual_representation") as IEntityVisualRepresentation
+			if is_instance_valid(vis): vis.trigger_attack_visuals()
+
+
+class ZombieWanderAction extends GOAPAction:
+	func _init() -> void:
+		super("Wander", 1.0)
+		add_effect("is_wandering", true)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+			
+		var timer := bb.get_float("wander_timer") - delta
+		var wander_dir := bb.get_vector3("wander_direction")
+		
+		if timer <= 0.0:
+			timer = randf_range(2.0, 5.0)
+			var angle := randf() * TAU
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() > 0.4 else Vector3.ZERO
+			bb.set_memory("wander_direction", wander_dir)
+			
+		bb.set_memory("wander_timer", timer)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_WANDER)
+		return false

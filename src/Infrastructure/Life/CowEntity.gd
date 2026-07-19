@@ -6,8 +6,9 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
 #   sound triggers, and particle emissions, delegating state decisions to CowAIBehavior.
-# - 120 FPS Guardrail: Computes procedural neck tilts, step shakes, and milking splashes
-#   at 120Hz inside the physics thread to guarantee ultra-smooth movements.
+# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
+#   to break Godot 4's cyclic preloader compile locks with its behavior script.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -17,6 +18,9 @@ extends PassiveEntity
 const COOLDOWN_MOO_MIN_SEC: float = 20.0
 const COOLDOWN_MOO_MAX_SEC: float = 35.0
 const STRIDE_INTERVAL_SEC: float = 1.4
+
+## Decoupled local metadata key to prevent cyclic compile locks with CowAIBehavior
+const META_STATE = "cow_local_state"
 
 var _moo_timer: float = randf_range(5.0, 20.0)
 var _stride_accumulator: float = 0.0
@@ -68,14 +72,12 @@ func interact(player_node: CharacterBody3D) -> void:
 	if has_milk:
 		_execute_milking_transaction(player_node, inventory)
 	else:
-		# Standard passive head shake moo
 		AudioService.play_sfx_static("cow_moo", global_position)
 
 
 func _execute_milking_transaction(player_node: CharacterBody3D, inventory: IInventory) -> void:
 	set_meta(CowAIBehavior.META_HAS_MILK, false)
 	
-	# Give 1x Dairy Rations (Fried Chicken proxy ID 16)
 	inventory.add_item(16, 1)
 	
 	AudioService.play_sfx_static("cow_moo", global_position)
@@ -104,18 +106,16 @@ func _process_grazing_animations(delta: float) -> void:
 		return
 		
 	var state := 0 # 0 = WANDERING, 1 = GRAZING
-	if has_meta(CowAIBehavior.META_STATE):
-		state = get_meta(CowAIBehavior.META_STATE) as int
+	if has_meta(META_STATE):
+		state = get_meta(META_STATE) as int
 		
 	var body := visual_component.body_bob_node
 	var time_sec := float(Time.get_ticks_msec()) / 1000.0
 	
 	if state == 1: # STATE_GRAZING
-		# Tilt the neck down to munch the grass
 		body.rotation.x = lerp_angle(body.rotation.x, deg_to_rad(20.0), delta * 6.0)
 		body.rotation.y = sin(time_sec * 15.0) * 0.04
 		
-		# Spawn grass eating particles periodically
 		if Engine.get_physics_frames() % 10 == 0:
 			_spawn_grazing_grass_particles()
 			AudioService.play_sfx_static("footstep_grass", global_position)
@@ -142,7 +142,6 @@ func _play_ponderous_step_impact() -> void:
 		if is_instance_valid(player_node):
 			var dist := global_position.distance_to(player_node.global_position)
 			if dist < 8.0:
-				# Triggers a subtle camera shake for nearby players to convey the Clay Cow's mass
 				var intensity := remap(dist, 0.0, 8.0, 0.05, 0.0)
 				player_node.set("_shake_intensity", intensity)
 				
@@ -157,20 +156,7 @@ func _play_grazing_joy_hop() -> void:
 
 func _spawn_grazing_grass_particles() -> void:
 	var particles := CPUParticles3D.new()
-	particles.amount = 3
-	particles.one_shot = true
-	particles.explosiveness = 0.9
-	particles.lifetime = 0.3
-	
-	var mouth_offset := -global_transform.basis.z.normalized() * 0.5
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 0.15
-	particles.direction = Vector3.UP + mouth_offset * 0.5
-	particles.spread = 30.0
-	particles.initial_velocity_min = 0.8
-	particles.initial_velocity_max = 1.6
-	particles.gravity = Vector3(0.0, -9.8, 0.0)
+	_configure_grazing_particle_properties(particles)
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.06, 0.06, 0.06)
@@ -183,24 +169,29 @@ func _spawn_grazing_grass_particles() -> void:
 	particles.finished.connect(particles.queue_free)
 	get_parent().add_child(particles)
 	
+	var mouth_offset := -global_transform.basis.z.normalized() * 0.5
 	particles.global_position = global_position + mouth_offset + Vector3(0.0, 0.05, 0.0)
 	particles.emitting = true
 
 
+func _configure_grazing_particle_properties(particles: CPUParticles3D) -> void:
+	var mouth_offset := -global_transform.basis.z.normalized() * 0.5
+	particles.amount = 3
+	particles.one_shot = true
+	particles.explosiveness = 0.9
+	particles.lifetime = 0.3
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	particles.emission_sphere_radius = 0.15
+	particles.direction = Vector3.UP + mouth_offset * 0.5
+	particles.spread = 30.0
+	particles.initial_velocity_min = 0.8
+	particles.initial_velocity_max = 1.6
+	particles.gravity = Vector3(0.0, -9.8, 0.0)
+
+
 func _spawn_milk_splash_particles() -> void:
 	var particles := CPUParticles3D.new()
-	particles.amount = 12
-	particles.one_shot = true
-	particles.explosiveness = 0.95
-	particles.lifetime = 0.45
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 0.2
-	particles.direction = Vector3.UP
-	particles.spread = 180.0
-	particles.initial_velocity_min = 1.5
-	particles.initial_velocity_max = 2.5
-	particles.gravity = Vector3(0.0, -9.8, 0.0)
+	_configure_milk_particle_properties(particles)
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.06, 0.06, 0.06)
@@ -214,9 +205,22 @@ func _spawn_milk_splash_particles() -> void:
 	particles.finished.connect(particles.queue_free)
 	get_parent().add_child(particles)
 	
-	# Spawn under the belly
 	particles.global_position = global_position + Vector3(0.0, 0.3, 0.0)
 	particles.emitting = true
+
+
+func _configure_milk_particle_properties(particles: CPUParticles3D) -> void:
+	particles.amount = 12
+	particles.one_shot = true
+	particles.explosiveness = 0.95
+	particles.lifetime = 0.45
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	particles.emission_sphere_radius = 0.2
+	particles.direction = Vector3.UP
+	particles.spread = 180.0
+	particles.initial_velocity_min = 1.5
+	particles.initial_velocity_max = 2.5
+	particles.gravity = Vector3(0.0, -9.8, 0.0)
 
 
 func _process(delta: float) -> void:

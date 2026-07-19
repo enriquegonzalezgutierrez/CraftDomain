@@ -1,31 +1,31 @@
-[gd_scene format=3 uid="uid://bsp2mlh1xiqja"]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" uid="uid://dl5lmkoqruj7y" path="res://src/Infrastructure/Life/HostileEntity.gd" id="1_zombie"]
-[ext_resource type="Script" uid="uid://e8a8j3la320c" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://gmgc0cwootps" path="res://assets/models/mobs/zombie/zombie_base.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/HostileEntity.gd" id="1_zombie"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/zombie/zombie_base.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_zombie"]
-radius = 0.2890625
-height = 2.0112548
+radius = 0.289063
+height = 2.01125
 
-[node name="HostileEntity" type="CharacterBody3D" unique_id=1711330125]
+[node name="HostileEntity" type="CharacterBody3D"]
 script = ExtResource("1_zombie")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1807752840]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0056274, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.00563, 0)
 shape = SubResource("CapsuleShape3D_zombie")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=420106088]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=1785919255]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=894020813]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="zombie_base" parent="Visuals/BodyBobJoint" unique_id=1951391980 instance=ExtResource("4_glb")]
+[node name="zombie_base" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)

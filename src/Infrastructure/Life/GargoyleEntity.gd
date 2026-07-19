@@ -2,6 +2,12 @@
 # Pathfile: res://src/Infrastructure/Life/GargoyleEntity.gd
 # Description: Physical character controller for the hostile nocturnal Gargoyle.
 #              Manages day/night petrification state transitions and flight physics.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
+#   sound triggers, and particle emissions, delegating state decisions to GargoyleAIBehavior.
+# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
+#   to break Godot 4's cyclic preloader compile locks with its behavior script.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -10,6 +16,9 @@ extends PassiveEntity
 
 const SPEED: float = 3.0
 const MODEL_BASE_Y: float = 0.8982
+
+## Decoupled local metadata key to prevent cyclic compile locks with GargoyleAIBehavior
+const META_STATE = "gargoyle_nocturnal_state"
 
 var player: CharacterBody3D
 var _model_node: Node3D
@@ -59,8 +68,8 @@ func _is_avian() -> bool:
 
 func _can_fly() -> bool:
 	var state := 0
-	if has_meta(GargoyleAIBehavior.META_STATE):
-		state = get_meta(GargoyleAIBehavior.META_STATE) as int
+	if has_meta(META_STATE):
+		state = get_meta(META_STATE) as int
 	return state == 1 
 
 
@@ -112,8 +121,8 @@ func _physics_tick(delta: float) -> void:
 		return
 		
 	var state := 0
-	if has_meta(GargoyleAIBehavior.META_STATE):
-		state = get_meta(GargoyleAIBehavior.META_STATE) as int
+	if has_meta(META_STATE):
+		state = get_meta(META_STATE) as int
 		
 	if state == 1: 
 		_process_gargoyle_flight_physics(delta)
@@ -138,18 +147,7 @@ func _process_gargoyle_flight_physics(delta: float) -> void:
 
 func _spawn_basalt_dust_particles() -> void:
 	var particles := CPUParticles3D.new()
-	particles.amount = 6
-	particles.one_shot = true
-	particles.explosiveness = 0.9
-	particles.lifetime = 0.45
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	particles.emission_box_extents = Vector3(0.6, 0.1, 0.4)
-	particles.direction = Vector3.DOWN
-	particles.spread = 15.0
-	particles.initial_velocity_min = 1.0
-	particles.initial_velocity_max = 2.0
-	particles.gravity = Vector3(0.0, -9.8, 0.0)
+	_configure_basalt_particle_properties(particles)
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.08, 0.08, 0.08)
@@ -167,44 +165,18 @@ func _spawn_basalt_dust_particles() -> void:
 	particles.emitting = true
 
 
-func _process(delta: float) -> void:
-	if domain_entity.is_dead:
-		return
-			
-	if is_instance_valid(_model_node):
-		var state := 0
-		if has_meta(GargoyleAIBehavior.META_STATE):
-			state = get_meta(GargoyleAIBehavior.META_STATE) as int
-		
-		if state == 1: 
-			if is_instance_valid(_anim_player):
-				var anims := _anim_player.get_animation_list()
-				if anims.size() > 0:
-					var target_anim: String = anims[0]
-					if _anim_player.current_animation != target_anim or not _anim_player.is_playing():
-						_anim_player.play(target_anim)
-						
-			var flat_velocity := Vector2(velocity.x, velocity.z)
-			var is_moving := flat_velocity.length_squared() > 0.1
-			var hover_bob := sin(_animation_time * 5.0) * 0.25
-			_model_node.position.y = 2.5 + hover_bob
-			
-			if is_moving:
-				_model_node.rotation.z = sin(_animation_time * 16.0) * 0.18
-				_model_node.rotation.x = deg_to_rad(12.0)
-			else:
-				_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
-				_model_node.rotation.x = 0.0
-		else: 
-			if is_instance_valid(_anim_player):
-				_anim_player.stop()
-				
-			_model_node.position.y = lerp(_model_node.position.y, MODEL_BASE_Y, delta * 5.0)
-			_model_node.rotation = _model_node.rotation.lerp(_model_base_rot, delta * 5.0)
-			
-		if is_instance_valid(_nameplate):
-			var relative_offset := _model_node.position.y - MODEL_BASE_Y
-			_nameplate.position.y = _collision_height + 0.35 + relative_offset
+func _configure_basalt_particle_properties(particles: CPUParticles3D) -> void:
+	particles.amount = 6
+	particles.one_shot = true
+	particles.explosiveness = 0.9
+	particles.lifetime = 0.45
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	particles.emission_box_extents = Vector3(0.6, 0.1, 0.4)
+	particles.direction = Vector3.DOWN
+	particles.spread = 15.0
+	particles.initial_velocity_min = 1.0
+	particles.initial_velocity_max = 2.0
+	particles.gravity = Vector3(0.0, -9.8, 0.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -212,8 +184,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var state := 0
-	if has_meta(GargoyleAIBehavior.META_STATE):
-		state = get_meta(GargoyleAIBehavior.META_STATE) as int
+	if has_meta(META_STATE):
+		state = get_meta(META_STATE) as int
 
 	if state == 0: 
 		_process_petrified_state(delta)
@@ -229,7 +201,6 @@ func _process_petrified_state(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 	else:
-		# Corrected physical solution: Apply the downward snap to the gargoyle physics
 		velocity.y = -1.2
 
 
@@ -244,3 +215,68 @@ func _process_timers_and_gaze(delta: float) -> void:
 	if quest_check_timer <= 0.0:
 		quest_check_timer = 0.5
 		_update_quest_bubble_state()
+
+
+# ==============================================================================
+# HUMAN BEHAVIOR: RENDERING ANIMATION LOOPS (SRP Compliant)
+# ==============================================================================
+
+func _process(delta: float) -> void:
+	if domain_entity.is_dead:
+		return
+		
+	_animate_gargoyle_nocturnal_state(delta)
+	_update_nameplate_y_offset()
+
+
+func _animate_gargoyle_nocturnal_state(delta: float) -> void:
+	if not is_instance_valid(_model_node):
+		return
+		
+	var state := 0
+	if has_meta(META_STATE):
+		state = get_meta(META_STATE) as int
+		
+	if state == 1: # AWAKENED (Night flight)
+		_animate_awakened_flight()
+	else: # PETRIFIED (Day stone)
+		_animate_petrified_dormancy(delta)
+
+
+func _animate_awakened_flight() -> void:
+	_play_flight_skeletal_anim()
+	
+	var flat_velocity := Vector2(velocity.x, velocity.z)
+	var is_moving := flat_velocity.length_squared() > 0.1
+	var hover_bob := sin(_animation_time * 5.0) * 0.25
+	_model_node.position.y = 2.5 + hover_bob
+	
+	if is_moving:
+		_model_node.rotation.z = sin(_animation_time * 16.0) * 0.18
+		_model_node.rotation.x = deg_to_rad(12.0)
+	else:
+		_model_node.rotation.z = sin(_animation_time * 2.0) * 0.05
+		_model_node.rotation.x = 0.0
+
+
+func _play_flight_skeletal_anim() -> void:
+	if is_instance_valid(_anim_player):
+		var anims := _anim_player.get_animation_list()
+		if anims.size() > 0:
+			var target_anim: String = anims[0]
+			if _anim_player.current_animation != target_anim or not _anim_player.is_playing():
+				_anim_player.play(target_anim)
+
+
+func _animate_petrified_dormancy(delta: float) -> void:
+	if is_instance_valid(_anim_player):
+		_anim_player.stop()
+		
+	_model_node.position.y = lerp(_model_node.position.y, MODEL_BASE_Y, delta * 5.0)
+	_model_node.rotation = _model_node.rotation.lerp(_model_base_rot, delta * 5.0)
+
+
+func _update_nameplate_y_offset() -> void:
+	if is_instance_valid(_nameplate) and is_instance_valid(_model_node):
+		var relative_offset := _model_node.position.y - MODEL_BASE_Y
+		_nameplate.position.y = _collision_height + 0.35 + relative_offset

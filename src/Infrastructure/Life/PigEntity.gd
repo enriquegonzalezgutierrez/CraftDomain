@@ -6,8 +6,9 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
 #   sound triggers, and particle emissions, delegating state decisions to PigAIBehavior.
-# - 120 FPS Guardrail: Computes procedural snout tilt translations at 120Hz inside the
-#   physics thread to guarantee ultra-smooth movements.
+# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
+#   to break Godot 4's cyclic preloader compile locks with its behavior script.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,6 +17,9 @@ extends PassiveEntity
 
 const COOLDOWN_OINK_MIN_SEC: float = 18.0
 const COOLDOWN_OINK_MAX_SEC: float = 35.0
+
+## Decoupled local metadata key to prevent cyclic compile locks with PigAIBehavior
+const META_STATE = "pig_local_state"
 
 var _oink_timer: float = randf_range(5.0, 15.0)
 
@@ -64,28 +68,24 @@ func _process_tilling_animations(delta: float) -> void:
 		return
 		
 	var state := 0 # 0 = WANDERING, 1 = SNIFFING, 2 = TILLING
-	if has_meta(PigAIBehavior.META_STATE):
-		state = get_meta(PigAIBehavior.META_STATE) as int
+	if has_meta(META_STATE):
+		state = get_meta(META_STATE) as int
 		
 	var body := visual_component.body_bob_node
 	var time_sec := float(Time.get_ticks_msec()) / 1000.0
 	
 	match state:
 		1: # STATE_SNIFFING
-			# Tilt the snout down slightly and sniff/wobble left and right
 			body.rotation.x = lerp_angle(body.rotation.x, deg_to_rad(15.0), delta * 6.0)
 			body.rotation.y = sin(time_sec * 12.0) * 0.08
 		2: # STATE_TILLING
-			# Tilt the snout down heavily and vibrate frantically
 			body.rotation.x = lerp_angle(body.rotation.x, deg_to_rad(25.0), delta * 8.0)
 			body.rotation.y = sin(time_sec * 24.0) * 0.04
 			
-			# Spawn tilling dirt particles under the snout periodically
 			if Engine.get_physics_frames() % 10 == 0:
 				_spawn_tilling_particles()
 				AudioService.play_sfx_static("footstep_grass", global_position)
 		0: # STATE_WANDERING
-			# Return to flat grazing level
 			body.rotation.x = lerp_angle(body.rotation.x, 0.0, delta * 5.0)
 			body.rotation.y = lerp_angle(body.rotation.y, 0.0, delta * 5.0)
 
@@ -99,21 +99,7 @@ func _play_tilling_joy_hop() -> void:
 
 func _spawn_tilling_particles() -> void:
 	var particles := CPUParticles3D.new()
-	particles.amount = 4
-	particles.one_shot = true
-	particles.explosiveness = 0.9
-	particles.lifetime = 0.35
-	
-	# Project forward offset to spawn exactly beneath the snout
-	var snout_offset := -global_transform.basis.z.normalized() * 0.4
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 0.1
-	particles.direction = Vector3.UP + snout_offset * 0.5
-	particles.spread = 25.0
-	particles.initial_velocity_min = 1.2
-	particles.initial_velocity_max = 2.0
-	particles.gravity = Vector3(0.0, -9.8, 0.0)
+	_configure_tilling_particle_properties(particles)
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.06, 0.06, 0.06)
@@ -126,8 +112,24 @@ func _spawn_tilling_particles() -> void:
 	particles.finished.connect(particles.queue_free)
 	get_parent().add_child(particles)
 	
+	var snout_offset := -global_transform.basis.z.normalized() * 0.4
 	particles.global_position = global_position + snout_offset + Vector3(0.0, 0.05, 0.0)
 	particles.emitting = true
+
+
+func _configure_tilling_particle_properties(particles: CPUParticles3D) -> void:
+	var snout_offset := -global_transform.basis.z.normalized() * 0.4
+	particles.amount = 4
+	particles.one_shot = true
+	particles.explosiveness = 0.9
+	particles.lifetime = 0.35
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	particles.emission_sphere_radius = 0.1
+	particles.direction = Vector3.UP + snout_offset * 0.5
+	particles.spread = 25.0
+	particles.initial_velocity_min = 1.2
+	particles.initial_velocity_max = 2.0
+	particles.gravity = Vector3(0.0, -9.8, 0.0)
 
 
 func _spawn_joy_particles() -> void:

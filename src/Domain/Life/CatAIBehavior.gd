@@ -1,247 +1,335 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/CatAIBehavior.gd
-# Description: Specialized AI behavior strategy implementing cozy domestic routines
-#              for the Domestic Cat. Decomposed into short methods (SRP).
+# Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
+#              Planning (GOAP) for the Domestic Cat.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Isolates predator evasion, food 
+#   luring, and campfire snuggling into distinct, cohesive actions.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows new lures 
+#   (e.g., raw fish) to be added as decoupled actions without code rewrites.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name CatAIBehavior
 extends IAIBehavior
 
-const SPEED_RUN: float = 2.2
-const SPEED_WALK: float = 1.0
-const SPEED_CREEP: float = 0.6
-
-const RANGE_ATTRACTION_SQ: float = 100.0 
-const RANGE_ZOMBIE_SQ: float = 64.0       
-const RANGE_CAMPFIRE_SQ: float = 144.0   
-
-# Decoupled task enums
 const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-# Decoupled metadata keys
-const META_WANDER_TIMER := "cat_wander_timer"
-const META_WANDER_DIR := "cat_wander_dir"
-const META_COOLDOWN := "cat_hiss_cooldown"
+const SPEED_RUN: float = 2.2
+const SPEED_WALK: float = 1.0
+const SPEED_CREEP: float = 0.6
+
+const RANGE_ATTRACTION_SQ: float = 100.0
+const RANGE_ZOMBIE_SQ: float = 64.0
+const RANGE_CAMPFIRE_SQ: float = 144.0
+
+var _blackboard: AIBlackboard
+var _goals: Array[GOAPGoal] = []
+var _actions: Array[GOAPAction] = []
+var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
 	overrides_wandering = true
+	_setup_goap_profile()
 
 
-## Concrete Contract: Drives follow food, campfire cozy, and zombie alarm states
+func _setup_goap_profile() -> void:
+	_setup_goals()
+	_actions.append(CatPanicAction.new())
+	_actions.append(LureFoodAction.new())
+	_actions.append(FollowPlayerAction.new())
+	_actions.append(FindWarmthAction.new())
+	_actions.append(SnuggleAction.new())
+	_actions.append(DefaultWanderAction.new())
+
+
+func _setup_goals() -> void:
+	var survive_goal := GOAPGoal.new("SurviveZombies", 10.0)
+	survive_goal.add_desired_state("is_safe", true)
+	
+	var beg_food_goal := GOAPGoal.new("BegForFood", 2.0)
+	beg_food_goal.add_desired_state("is_fed", true)
+	
+	var cozy_goal := GOAPGoal.new("CozyUp", 1.5)
+	cozy_goal.add_desired_state("is_warm", true)
+	
+	var wander_goal := GOAPGoal.new("LazyStroll", 0.5)
+	wander_goal.add_desired_state("is_wandering", true)
+	
+	_goals.append_array([survive_goal, beg_food_goal, cozy_goal, wander_goal])
+
+
 func evaluate_and_execute(host: Object, delta: float) -> void:
 	if not is_instance_valid(host):
 		return
 		
-	_initialize_metadata_if_missing(host)
+	_initialize_agent(host)
+	_update_blackboard_timers(delta)
 	
-	var hiss_cooldown: float = host.get_meta(META_COOLDOWN) as float
-	if hiss_cooldown > 0.0:
-		hiss_cooldown -= delta
-		host.set_meta(META_COOLDOWN, hiss_cooldown)
+	_evaluate_active_plan(host)
+	_execute_current_action(delta)
+
+
+func _initialize_agent(host: Object) -> void:
+	if _blackboard == null:
+		_blackboard = AIBlackboard.new()
+		_blackboard.set_memory("host", host)
+		_blackboard.set_memory("hiss_cooldown", 0.0)
+		_blackboard.set_memory("wander_timer", 0.0)
+
+
+func _update_blackboard_timers(delta: float) -> void:
+	var cd := _blackboard.get_float("hiss_cooldown") - delta
+	_blackboard.set_memory("hiss_cooldown", maxf(0.0, cd))
+
+
+func _evaluate_active_plan(host: Object) -> void:
+	if _active_plan.is_empty():
+		var initial_state := _build_initial_state()
+		var sorted_goals := _get_sorted_goals()
 		
-	var parent: Node = host.call("get_parent") as Node
-	
-	if _process_zombie_alarm(host, delta):
+		for goal in sorted_goals:
+			if goal.is_valid(_blackboard):
+				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
+				if not _active_plan.is_empty():
+					_active_plan[0].on_enter(_blackboard)
+					break
+
+
+func _build_initial_state() -> Dictionary:
+	var state: Dictionary = {}
+	state["is_safe"] = not _detect_threat_proximity(_blackboard.get_object("host") as CharacterBody3D)
+	state["is_fed"] = false
+	state["is_warm"] = false
+	state["is_wandering"] = false
+	return state
+
+
+func _get_sorted_goals() -> Array[GOAPGoal]:
+	var sorted := _goals.duplicate()
+	sorted.sort_custom(func(a: GOAPGoal, b: GOAPGoal) -> bool:
+		return a.get_priority(_blackboard) > b.get_priority(_blackboard)
+	)
+	return sorted
+
+
+func _execute_current_action(delta: float) -> void:
+	if _active_plan.is_empty():
 		return
-	if _process_food_following(host, parent):
+		
+	var current_action := _active_plan[0]
+	if not current_action.is_contextually_valid(_blackboard):
+		current_action.on_exit(_blackboard)
+		_active_plan.clear()
 		return
-	if _process_campfire_snuggle(host, parent):
-		return
 		
-	_process_default_wandering(host, delta)
+	var is_finished := current_action.execute_step(_blackboard, delta)
+	if is_finished:
+		current_action.on_exit(_blackboard)
+		_active_plan.pop_front()
+		if not _active_plan.is_empty():
+			_active_plan[0].on_enter(_blackboard)
 
 
-func _process_zombie_alarm(host: Object, _delta: float) -> bool:
-	var closest_zombie := _detect_closest_zombie_threat(host)
-	if closest_zombie == null:
+func _detect_threat_proximity(host: CharacterBody3D) -> bool:
+	if not is_instance_valid(host) or not host.is_inside_tree():
 		return false
-		
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return false
-	
-	ai.set("current_task", TASK_PANIC)
-	_handle_hiss_warning(host, closest_zombie)
-	
-	var parent: Node = host.call("get_parent") as Node
-	var nav_service: Object = parent.get("navigation_service") if is_instance_valid(parent) else null
-	var host_pos: Vector3 = host.get("global_position")
-	
-	if is_instance_valid(nav_service) and nav_service.has_method("find_closest_shadow_shelter"):
-		var shelter_pos: Vector3 = nav_service.call("find_closest_shadow_shelter", host_pos)
-		if shelter_pos != Vector3.ZERO:
-			var diff := shelter_pos - host_pos
-			diff.y = 0.0
-			if diff.length() > 0.8:
-				_apply_flee_physics(host, diff.normalized())
-				return true
-				
-	var escape_dir: Vector3 = (host_pos - closest_zombie.global_position).normalized()
-	escape_dir.y = 0.0
-	_apply_flee_physics(host, escape_dir)
-	return true
-
-
-func _handle_hiss_warning(host: Object, closest_zombie: Object) -> void:
-	var hiss_cooldown: float = host.get_meta(META_COOLDOWN) as float
-	if hiss_cooldown <= 0.0:
-		host.set_meta(META_COOLDOWN, 4.0)
-		if host.has_method("_play_alarm_hiss"):
-			host.call("_play_alarm_hiss", closest_zombie)
-
-
-func _apply_flee_physics(host: Object, run_dir: Vector3) -> void:
-	var ai: Object = host.get("ai_component")
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	velocity.x = run_dir.x * SPEED_RUN
-	velocity.z = run_dir.z * SPEED_RUN
-	host.set("velocity", velocity)
-	if is_instance_valid(ai):
-		ai.set("wander_direction", run_dir)
-
-
-func _process_food_following(host: Object, parent: Node) -> bool:
-	var player_node: Object = parent.call("get_node_or_null", "Player") if is_instance_valid(parent) else null
-	if not is_instance_valid(player_node) or not player_node.get("is_active"):
-		return false
-		
-	var host_pos: Vector3 = host.get("global_position")
-	var p_pos: Vector3 = player_node.get("global_position")
-	var dist_sq: float = host_pos.distance_squared_to(p_pos)
-	
-	if dist_sq >= RANGE_ATTRACTION_SQ or not _player_holds_chicken(player_node):
-		return false
-		
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return false
-	
-	ai.set("current_task", TASK_WORKING)
-	var diff := p_pos - host_pos
-	diff.y = 0.0
-	
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	if diff.length() > 1.5:
-		var creep_dir := diff.normalized()
-		velocity.x = creep_dir.x * SPEED_WALK * 1.5
-		velocity.z = creep_dir.z * SPEED_WALK * 1.5
-		host.set("velocity", velocity)
-		ai.set("wander_direction", creep_dir)
-	else:
-		velocity.x = 0.0; velocity.z = 0.0
-		host.set("velocity", velocity)
-		ai.set("wander_direction", diff.normalized())
-	return true
-
-
-func _player_holds_chicken(player_node: Object) -> bool:
-	var inventory := player_node.get("inventory")
-	if is_instance_valid(inventory):
-		var active_slot: int = player_node.get("active_slot_index") as int
-		var slot_data: Object = inventory.call("get_slot_data", active_slot)
-		return is_instance_valid(slot_data) and slot_data.get("item_id") == 16
+	var hostiles := host.get_tree().get_nodes_in_group("hostiles")
+	for child in hostiles:
+		if is_instance_valid(child) and child is Node3D:
+			var domain := child.get("domain_entity") as VoxelEntity
+			if is_instance_valid(domain) and not domain.is_dead:
+				if host.global_position.distance_squared_to(child.global_position) <= RANGE_ZOMBIE_SQ:
+					return true
 	return false
 
 
-func _process_campfire_snuggle(host: Object, parent: Node) -> bool:
-	var host_pos: Vector3 = host.get("global_position")
-	var closest_campfire := _detect_closest_village_campfire(host_pos, parent)
-	if closest_campfire == null:
+func get_active_state_name(host: Object) -> String:
+	var _h := host
+	if _active_plan.size() > 0:
+		var action_name := _active_plan[0].action_name
+		if action_name == "CatPanic": return "PANIC"
+		elif action_name == "FollowPlayer" or action_name == "Snuggle": return "WORKING"
+	return "WANDER"
+
+
+# ==============================================================================
+# INNER CLASSES: GOAP ACTIONS (Decoupled feline behaviors)
+# ==============================================================================
+
+class CatPanicAction extends GOAPAction:
+	func _init() -> void:
+		super("CatPanic", 1.0)
+		add_effect("is_safe", true)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var zombie := _scan_for_zombie(host)
+		if not is_instance_valid(zombie): return true
+			
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", TASK_PANIC)
+			
+		_trigger_hiss_alarm(bb, host, zombie, delta)
+		
+		var diff := host.global_position - zombie.global_position
+		diff.y = 0.0
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_RUN)
 		return false
 		
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return false
-	
-	ai.set("current_task", TASK_WORKING)
-	var fire_pos: Vector3 = closest_campfire.global_position
-	var diff := fire_pos - host_pos
-	diff.y = 0.0
-	
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	if diff.length() > 1.8:
-		var walk_dir := diff.normalized()
-		velocity.x = walk_dir.x * SPEED_CREEP
-		velocity.z = walk_dir.z * SPEED_CREEP
-		host.set("velocity", velocity)
-		ai.set("wander_direction", walk_dir)
-	else:
-		velocity.x = 0.0; velocity.z = 0.0
-		host.set("velocity", velocity)
-		ai.set("wander_direction", diff.normalized())
-	return true
-
-
-func _process_default_wandering(host: Object, delta: float) -> void:
-	var ai: Object = host.get("ai_component")
-	if not is_instance_valid(ai): return
-	
-	ai.set("current_task", TASK_WANDERING)
-	
-	var wander_timer: float = host.get_meta(META_WANDER_TIMER) as float
-	var wander_dir: Vector3 = host.get_meta(META_WANDER_DIR) as Vector3
-	
-	wander_timer -= delta
-	if wander_timer <= 0.0:
-		wander_timer = randf_range(1.5, 4.0)
-		wander_dir = Vector3(cos(randf() * TAU), 0.0, sin(randf() * TAU)) if randf() < 0.4 else Vector3.ZERO
-		host.set_meta(META_WANDER_DIR, wander_dir)
+	func _scan_for_zombie(host: CharacterBody3D) -> Node3D:
+		var hostiles := host.get_tree().get_nodes_in_group("hostiles")
+		for child in hostiles:
+			if is_instance_valid(child) and child is Node3D:
+				var domain := child.get("domain_entity") as VoxelEntity
+				if is_instance_valid(domain) and not domain.is_dead:
+					if host.global_position.distance_squared_to(child.global_position) <= RANGE_ZOMBIE_SQ:
+						return child as Node3D
+		return null
 		
-	host.set_meta(META_WANDER_TIMER, wander_timer)
-	
-	var velocity: Vector3 = host.get("velocity") as Vector3
-	if wander_dir != Vector3.ZERO:
-		velocity.x = wander_dir.x * SPEED_WALK
-		velocity.z = wander_dir.z * SPEED_WALK
-		ai.set("wander_direction", wander_dir)
-	else:
-		velocity.x = move_toward(velocity.x, 0.0, SPEED_WALK)
-		velocity.z = move_toward(velocity.z, 0.0, SPEED_WALK)
-		ai.set("wander_direction", Vector3.ZERO)
+	func _trigger_hiss_alarm(bb: AIBlackboard, host: CharacterBody3D, zombie: Node3D, delta: float) -> void:
+		var cd := bb.get_float("hiss_cooldown") - delta
+		bb.set_memory("hiss_cooldown", cd)
+		if cd <= 0.0:
+			bb.set_memory("hiss_cooldown", 4.0)
+			if host.has_method("_play_alarm_hiss"):
+				host.call("_play_alarm_hiss", zombie)
+
+
+class LureFoodAction extends GOAPAction:
+	func _init() -> void:
+		super("LureFood", 1.0)
+		add_effect("has_food_target", true)
 		
-	host.set("velocity", velocity)
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var parent := host.get_parent() as Node
+		var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
+		
+		if is_instance_valid(player) and player.get("is_active"):
+			var dist_sq := host.global_position.distance_squared_to(player.global_position)
+			if dist_sq <= RANGE_ATTRACTION_SQ and _is_player_holding_chicken(player):
+				bb.set_memory("food_lure_player", player)
+				return true
+				
+		return false
+		
+	func _is_player_holding_chicken(player_node: CharacterBody3D) -> bool:
+		var inventory := player_node.get("inventory") as InventoryComponent
+		if is_instance_valid(inventory):
+			var active_slot: int = player_node.get("active_slot_index") as int
+			var slot := inventory.get_slot_data(active_slot)
+			return slot != null and slot.item_id == 16 # 16 = Fried Chicken
+		return false
 
 
-func _initialize_metadata_if_missing(host: Object) -> void:
-	if not host.has_meta(META_WANDER_TIMER): host.set_meta(META_WANDER_TIMER, 0.0)
-	if not host.has_meta(META_WANDER_DIR): host.set_meta(META_WANDER_DIR, Vector3.ZERO)
-	if not host.has_meta(META_COOLDOWN): host.set_meta(META_COOLDOWN, 0.0)
-
-
-func _detect_closest_village_campfire(host_pos: Vector3, world_node: Node) -> Object:
-	if not is_instance_valid(world_node): return null
-	var closest_fire: Object = null
-	var min_dist_sq: float = RANGE_CAMPFIRE_SQ
-	
-	for child in world_node.get_children():
-		if is_instance_valid(child) and child.name.begins_with("Prop_CAMPFIRE"):
-			var dist_sq: float = host_pos.distance_squared_to(child.global_position)
-			if dist_sq < min_dist_sq:
-				min_dist_sq = dist_sq
-				closest_fire = child
-	return closest_fire
-
-
-func _detect_closest_zombie_threat(host: Object) -> Object:
-	if not host.call("is_inside_tree"): return null
-	var closest_threat: Object = null
-	var min_dist_sq: float = RANGE_ZOMBIE_SQ
-	var hostiles: Array = []
-	if host.has_method("get_tree"):
-		var tree: Object = host.call("get_tree")
-		if is_instance_valid(tree):
-			hostiles = tree.call("get_nodes_in_group", "hostiles")
+class FollowPlayerAction extends GOAPAction:
+	func _init() -> void:
+		super("FollowPlayer", 1.0)
+		add_precondition("has_food_target", true)
+		add_effect("is_fed", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		var player := bb.get_object("food_lure_player") as CharacterBody3D
+		return is_instance_valid(player) and player.get("is_active")
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var player := bb.get_object("food_lure_player") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := player.global_position - host.global_position
+		diff.y = 0.0
+		
+		if diff.length_squared() <= 2.25:
+			VoxelKinematicService.halt_movement(host, ai)
+			return true # Reached player, begging complete!
 			
-	var host_pos: Vector3 = host.get("global_position")
-	for child: Object in hostiles:
-		if is_instance_valid(child):
-			var zombie_domain: Object = child.get("domain_entity")
-			if zombie_domain != null and not zombie_domain.get("is_dead"):
-				var child_pos: Vector3 = child.get("global_position")
-				var dist_sq := host_pos.distance_squared_to(child_pos)
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_WALK * 1.5)
+		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
+		return false
+
+
+class FindWarmthAction extends GOAPAction:
+	func _init() -> void:
+		super("FindWarmth", 1.0)
+		add_effect("has_warmth_target", true)
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var parent := host.get_parent() as Node
+		
+		if is_instance_valid(parent):
+			var fire := _detect_closest_campfire(host.global_position, parent)
+			if is_instance_valid(fire):
+				bb.set_memory("campfire_target", fire)
+				return true
+				
+		return false
+		
+	func _detect_closest_campfire(host_pos: Vector3, world_node: Node) -> Node3D:
+		var closest: Node3D = null
+		var min_dist_sq := RANGE_CAMPFIRE_SQ
+		for child in world_node.get_children():
+			if is_instance_valid(child) and child.name.begins_with("Prop_CAMPFIRE"):
+				var dist_sq := host_pos.distance_squared_to(child.global_position)
 				if dist_sq < min_dist_sq:
 					min_dist_sq = dist_sq
-					closest_threat = child
-	return closest_threat
+					closest = child as Node3D
+		return closest
+
+
+class SnuggleAction extends GOAPAction:
+	func _init() -> void:
+		super("Snuggle", 1.0)
+		add_precondition("has_warmth_target", true)
+		add_effect("is_warm", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return is_instance_valid(bb.get_object("campfire_target"))
+		
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var fire := bb.get_object("campfire_target") as Node3D
+		var ai: Object = host.get("ai_component")
+		
+		var diff := fire.global_position - host.global_position
+		diff.y = 0.0
+		
+		if diff.length_squared() <= 3.24: # Sits comfortably at ~1.8m
+			VoxelKinematicService.halt_movement(host, ai)
+			if is_instance_valid(ai): ai.set("current_task", TASK_IDLE) # Sits
+			return true
+			
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_CREEP)
+		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
+		return false
+
+
+class DefaultWanderAction extends GOAPAction:
+	func _init() -> void:
+		super("Wander", 1.0)
+		add_effect("is_wandering", true)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+		
+		var timer := bb.get_float("wander_timer") - delta
+		var wander_dir := bb.get_vector3("wander_direction")
+		
+		if timer <= 0.0:
+			timer = randf_range(1.5, 4.0)
+			var angle := randf() * TAU
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.4 else Vector3.ZERO
+			bb.set_memory("wander_direction", wander_dir)
+			
+		bb.set_memory("wander_timer", timer)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_WALK)
+		return false
