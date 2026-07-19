@@ -84,9 +84,11 @@ func get_bool(key: String, default_val: bool = false) -> bool:
 	return default_val
 
 
+## Dynamic Object Unpacker: Defensively checks pointer validity at C++ 
+## engine level to prevent virtual machine crashes on freed RIDs/nodes.
 func get_object(key: String) -> Object:
 	if _memories.has(key):
 		var val: Variant = _memories[key]
-		if typeof(val) == TYPE_OBJECT and is_instance_valid(val as Object):
-			return val as Object
+		if typeof(val) == TYPE_OBJECT and is_instance_valid(val):
+			return val
 	return null

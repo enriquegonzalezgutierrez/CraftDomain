@@ -171,6 +171,9 @@ class FaunaPanicAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
+		if not is_instance_valid(host):
+			return true # Abort safely if host was freed mid-simulation
+			
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_PANIC)
 			
@@ -187,7 +190,6 @@ class FaunaPanicAction extends GOAPAction:
 			
 		bb.set_memory("wander_timer", timer)
 		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PANIC)
-		
 		return bb.get_float("panic_timer") <= 0.0
 
 
@@ -198,6 +200,9 @@ class FaunaGrazeAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
+		if not is_instance_valid(host):
+			return true # Abort safely if host was freed mid-simulation
+			
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
 			

@@ -1,13 +1,14 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCObstacleSteering.gd
-# Description: Infrastructure Component managing Context-Based Steering. 
-#              Implements human-like anticipation, dynamic yielding, smooth 
-#              deceleration before drops, and 3D whisker obstacle avoidance.
+# Description: Context-Based Steering Component managing local dynamic 
+#              avoidance, human-like deceleration, edge anticipation, 
+#              and cooperative yielding.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively physical 
+# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   kinematics and spatial raycasts, completely decoupled from GOAP goal planning.
 # - Open-Closed Principle (OCP): Works polymorphically across all NPC shapes
 #   and sizes by dynamically querying their collision boundaries.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -68,7 +69,6 @@ func _enforce_turn_before_walk() -> void:
 			var current_facing := -visual_root.global_transform.basis.z.normalized()
 			var alignment := current_facing.dot(dir.normalized())
 			
-			# If looking away from target (e.g., turning around), throttle velocity
 			if alignment < 0.6:
 				var throttle := clampf((alignment + 1.0) / 1.6, 0.15, 1.0)
 				host.velocity.x *= throttle
@@ -82,9 +82,8 @@ func _process_edge_anticipation(space_state: PhysicsDirectSpaceState3D, delta: f
 		return
 		
 	var habitat: int = host.get("entity_habitat") if "entity_habitat" in host else 0
-	if habitat == 2: return # Aquatic entities ignore drop checks
+	if habitat == 2: return 
 		
-	# Look 0.4 seconds ahead into the future based on current velocity
 	var look_ahead := host.global_position + host.velocity * 0.4
 	var start_pos := look_ahead + Vector3(0.0, 0.5, 0.0)
 	var end_pos := look_ahead + Vector3(0.0, -2.5, 0.0)
@@ -93,8 +92,6 @@ func _process_edge_anticipation(space_state: PhysicsDirectSpaceState3D, delta: f
 	query.exclude = [host.get_rid()]
 	
 	var result := space_state.intersect_ray(query)
-	
-	# If there is no floor ahead, or the floor is a steep drop (> 1.2m), decelerate
 	if result.is_empty() or (start_pos.y - float(result["position"].y) > 1.2):
 		host.velocity.x = lerp(host.velocity.x, 0.0, delta * 5.0)
 		host.velocity.z = lerp(host.velocity.z, 0.0, delta * 5.0)
@@ -130,12 +127,10 @@ func _execute_yield_wait_logic(delta: float) -> bool:
 	_yield_timer += delta
 	
 	if _yield_timer < YIELD_WAIT_TIME_SEC:
-		# Politely brake and wait for the entity to move out of the way
 		host.velocity.x = lerp(host.velocity.x, 0.0, delta * 8.0)
 		host.velocity.z = lerp(host.velocity.z, 0.0, delta * 8.0)
-		return true # Yielding active; bypass whisker avoidance
+		return true 
 		
-	# Patience expired! Return false to allow the whisker system to sidestep the entity.
 	return false
 
 
@@ -145,7 +140,7 @@ func _execute_yield_wait_logic(delta: float) -> bool:
 
 func _perform_proactive_whisker_avoidance(space_state: PhysicsDirectSpaceState3D, delta: float) -> void:
 	if _is_navigating_macro_path():
-		return # Let the abstract pathfinder handle macro-routing
+		return 
 		
 	var wander_direction: Vector3 = ai_component.get("wander_direction") as Vector3
 	if wander_direction == Vector3.ZERO:
@@ -165,7 +160,7 @@ func _cast_whisker_rays(space_state: PhysicsDirectSpaceState3D, r_origin: Vector
 	
 	for dir: Vector3 in scan_dirs:
 		var query := PhysicsRayQueryParameters3D.create(r_origin, r_origin + dir * SCAN_DISTANCE)
-		query.collision_mask = 1 # Static geometry
+		query.collision_mask = 1 
 		query.exclude = [host.get_rid()]
 		
 		var result := space_state.intersect_ray(query)
@@ -187,12 +182,32 @@ func _handle_step_climbing_and_unsticking(delta: float) -> void:
 	if wander_direction == Vector3.ZERO:
 		return
 		
-	if host.is_on_wall():
+	# Symmetrical Block Check: Only attempt step-climbing if colliding with static terrain
+	if _is_touching_solid_block():
 		var stuck_timer: float = ai_component.get("stuck_timer") as float
 		ai_component.set("stuck_timer", stuck_timer + delta)
 		_evaluate_step_climbing()
 	else:
 		ai_component.set("stuck_timer", 0.0)
+
+
+## Physics Solver: Returns true if colliding with static world geometry or low-level Chunk RIDs
+func _is_touching_solid_block() -> bool:
+	if not host.is_on_wall():
+		return false
+		
+	for i in range(host.get_slide_collision_count()):
+		var collision := host.get_slide_collision(i)
+		var collider := collision.get_collider()
+		
+		# Server-side direct rendering RIDs have valid collision RIDs but no Node representation
+		if collider == null and collision.get_collider_rid().is_valid():
+			return true
+			
+		if is_instance_valid(collider) and collider is StaticBody3D:
+			return true
+			
+	return false
 
 
 func _evaluate_step_climbing() -> void:
@@ -227,7 +242,7 @@ func _execute_jump_to_step(target_coord: Vector3i, world_node: Node) -> void:
 	if is_instance_valid(world_node) and "world_state" in world_node:
 		var ws: WorldState = world_node.get("world_state") as WorldState
 		if BlockType.is_solid(ws.get_block(head_coord)):
-			return # Solid ceiling above! Cannot jump.
+			return 
 			
 	var is_jump_capable := host.call("_can_jump_to", target_coord) as bool if host.has_method("_can_jump_to") else true
 	if is_jump_capable:

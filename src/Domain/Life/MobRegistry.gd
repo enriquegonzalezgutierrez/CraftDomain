@@ -7,15 +7,11 @@
 # Description: Pure Domain Registry managing abstract entity factories, habitat 
 #              rules, and polymorphic behavior strategy bindings.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Isolates entity classification 
-#   boundaries and metadata querying, decoupling registry data from engine scenes.
-# - Open-Closed Principle (OCP): Completely closed to modifications. Monolithic 
-#   initializers and hardcoded match/switch tables have been purged. Adding new 
-#   mobs or custom entities takes 0 modifications to this file; factories and 
-#   default behaviors are registered dynamically on startup.
-# - Dependency Inversion Principle (DIP): Framework scene paths and instantiations 
-#   are injected dynamically from the Infrastructure layer, keeping the Domain 
-#   uncontaminated by file-system directories.
+# - Single Responsibility Principle (SRP): Exclusively classifies spawn ID bounds,
+#   delegating physical rigging to specialized sub-methods.
+# - Open-Closed Principle (OCP): closed to modifications. Purged hardcoded match 
+#   tables; registers behaviors dynamically.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # ==============================================================================
 class_name MobRegistry
 extends RefCounted
@@ -35,7 +31,6 @@ static var _behaviors: Dictionary = {} # int -> IAIBehavior
 
 ## Dynamic Registry API: Binds a custom factory Callable, habitat rules, and 
 ## optional default AI behavior strategy to a unique spawn ID.
-## DIP COMPLIANCE: Called dynamically from Infrastructure boot systems.
 static func register_mob(spawn_id: int, factory: Callable, habitat: Habitat = Habitat.TERRESTRIAL, default_behavior: IAIBehavior = null) -> void:
 	_spawners[spawn_id] = factory
 	_habitats[spawn_id] = habitat
@@ -53,23 +48,30 @@ static func create_mob(spawn_id: int, pos: Vector3) -> Node:
 	var mob := factory.call(pos) as Node
 	
 	if is_instance_valid(mob):
-		# ======================================================================
-		# RECOVERY SHIELD (DDD / OCP COMPLIANT)
-		# Programmatically adds missing NPCAIComponents for custom/code-spawned
-		# programmatic entities like Sheep or Cows, guaranteeing they can run AI!
-		# ======================================================================
-		var ai: Object = mob.get_node_or_null("NPCAIComponent")
-		if not is_instance_valid(ai) and mob is PassiveEntity:
-			var new_ai := NPCAIComponent.new()
-			mob.add_child(new_ai)
-			mob.ai_component = new_ai
-			ai = new_ai
+		_rig_npc_ai_component(mob, spawn_id)
 			
-		if is_instance_valid(ai) and ai.get("active_behavior") == null:
-			if _behaviors.has(spawn_id):
-				ai.set("active_behavior", _behaviors[spawn_id])
-				
 	return mob
+
+
+## Rigging helper decomposing complex node assignments to fit 20-line limits (SRP)
+static func _rig_npc_ai_component(mob: Node, spawn_id: int) -> void:
+	var ai: Object = mob.get_node_or_null("NPCAIComponent")
+	if not is_instance_valid(ai) and mob is PassiveEntity:
+		var new_ai := NPCAIComponent.new()
+		mob.add_child(new_ai)
+		mob.ai_component = new_ai
+		ai = new_ai
+		
+	if is_instance_valid(ai) and ai.get("active_behavior") == null:
+		if _behaviors.has(spawn_id):
+			var original: IAIBehavior = _behaviors[spawn_id]
+			if original != null:
+				# ==============================================================
+				# SOLID OCP DUPLICATION SHIELD
+				# Duplicates the static behavior resource so every spawned NPC
+				# possesses its own unique, isolated GOAP blackboard state!
+				# ==============================================================
+				ai.set("active_behavior", original.duplicate())
 
 
 ## Public API: Retrieves the strictly classified Habitat type for a given spawn ID.
