@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bkgv30xht1cel"
-path="res://.godot/imported/wishing_well_odyssey_0.jpg-e0a7a1515dc1f578332628df5133f875.ctex"
+path.s3tc="res://.godot/imported/wishing_well_odyssey_0.jpg-e0a7a1515dc1f578332628df5133f875.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/decorations/wishing_well_odyssey_0.jpg"
-dest_files=["res://.godot/imported/wishing_well_odyssey_0.jpg-e0a7a1515dc1f578332628df5133f875.ctex"]
+dest_files=["res://.godot/imported/wishing_well_odyssey_0.jpg-e0a7a1515dc1f578332628df5133f875.s3tc.ctex"]
 
 [params]
 

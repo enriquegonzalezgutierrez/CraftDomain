@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ieoke00e0ski"
-path="res://.godot/imported/streetlight_2.jpg-8dea73b0e3416f41ed0de195af1cf1b0.ctex"
+path.s3tc="res://.godot/imported/streetlight_2.jpg-8dea73b0e3416f41ed0de195af1cf1b0.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/decorations/streetlight_2.jpg"
-dest_files=["res://.godot/imported/streetlight_2.jpg-8dea73b0e3416f41ed0de195af1cf1b0.ctex"]
+dest_files=["res://.godot/imported/streetlight_2.jpg-8dea73b0e3416f41ed0de195af1cf1b0.s3tc.ctex"]
 
 [params]
 
