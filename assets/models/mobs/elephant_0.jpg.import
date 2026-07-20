@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ckuif3unnja18"
+uid="uid://dplhstrenl60t"
 path.s3tc="res://.godot/imported/elephant_0.jpg-236895273c3d472c89427c8bcb37cd2e.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "aece493c869c0eee76c9a6571b7e6f50"
+"md5": "b0d3b763539c71b2909aed6ac603a44e"
 }
 
 [deps]

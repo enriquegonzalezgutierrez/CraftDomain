@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bkmyayjpb2g15"
+uid="uid://dslya13ymfxuj"
 path.s3tc="res://.godot/imported/crab_0.jpg-fb9e96046bde1d6045c7a0ca75e9928d.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "2f04e49018e9f6e8f06ac9d3b4de8803"
+"md5": "1f19941b5c890e668bf0ab2ad0f1458d"
 }
 
 [deps]

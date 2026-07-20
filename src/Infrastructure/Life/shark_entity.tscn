@@ -3,17 +3,17 @@
 [ext_resource type="Script" uid="uid://gpm0siukp8i1" path="res://src/Infrastructure/Life/SharkEntity.gd" id="1_shark"]
 [ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://daa028fop7afo" path="res://assets/models/mobs/shark.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://cupcwb0ni0ylh" path="res://assets/models/mobs/shark.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_shark"]
-radius = 0.43066406
-height = 0.8613281
+radius = 0.5258789
+height = 1.0517578
 
 [node name="SharkEntity" type="CharacterBody3D" unique_id=488531436]
 script = ExtResource("1_shark")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=260183118]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.47879386, 0.9518685)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.68448234, 0.9518685)
 shape = SubResource("CapsuleShape3D_shark")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1950622680]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1908002885]
 
 [node name="shark" parent="Visuals/BodyBobJoint" unique_id=1752866633 instance=ExtResource("4_glb")]
-transform = Transform3D(4, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0.6214881, 0)
+transform = Transform3D(4, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0.8331604, 0)

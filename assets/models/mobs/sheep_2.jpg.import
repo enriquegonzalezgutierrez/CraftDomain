@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dmpjonrov06xm"
+uid="uid://gevrwruottch"
 path.s3tc="res://.godot/imported/sheep_2.jpg-8ccdee14ffd932dc96eb0db76d07064e.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "239553ab3101dbabae1f8622127f5f59"
+"md5": "548dfa601ce559f1adf6fa37a4ee3a6a"
 }
 
 [deps]

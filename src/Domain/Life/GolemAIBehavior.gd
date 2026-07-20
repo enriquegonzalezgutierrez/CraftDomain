@@ -19,7 +19,9 @@ const TASK_WANDERING = 1
 const TASK_WORKING = 6
 
 const SPEED_CHASE_MULT: float = 1.3
-const SPEED_PATROL: float = 1.0
+
+# VELOCIDAD DE PATRULLA ABSOLUTA ESCALADA AL DOBLE PARA RONDAS EFECTIVAS
+const SPEED_PATROL: float = 2.0
 
 const RANGE_SIGHT_SQ: float = 144.0
 const RANGE_ATTACK_SQ: float = 4.84
@@ -197,11 +199,11 @@ class ScanForThreatsAction extends GOAPAction:
 	func _get_player_target(host: CharacterBody3D) -> Node3D:
 		var parent := host.get_parent()
 		if is_instance_valid(parent):
-			var player := parent.get_node_or_null("Player") as Node3D
-			if is_instance_valid(player):
-				var p_domain := player.get("domain_entity") as VoxelEntity
+			var player_node := parent.get_node_or_null("Player") as Node3D
+			if is_instance_valid(player_node):
+				var p_domain := player_node.get("domain_entity") as VoxelEntity
 				if is_instance_valid(p_domain) and not p_domain.is_dead:
-					return player
+					return player_node
 		return null
 		
 	func _scan_for_zombies(host: CharacterBody3D, current_closest: Node3D, min_dist_sq: float) -> Node3D:

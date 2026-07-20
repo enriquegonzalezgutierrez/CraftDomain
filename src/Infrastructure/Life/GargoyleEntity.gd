@@ -9,7 +9,8 @@
 class_name GargoyleEntity
 extends PassiveEntity
 
-const SPEED: float = 3.0
+# VELOCIDAD ESCALADA AL DOBLE PARA SINCRONIZACIÓN CON EL DOMINIO
+const SPEED: float = 6.0
 const MODEL_BASE_Y: float = 0.8982
 
 ## Decoupled local metadata key to prevent cyclic compile locks with GargoyleAIBehavior

@@ -23,8 +23,9 @@ const STATE_SOARING = 0
 const STATE_LANDING = 1
 const STATE_PERCHED = 2
 
-const FLIGHT_SPEED_SOAR: float = 1.6
-const FLIGHT_SPEED_GLIDE: float = 2.4
+# VELOCIDADES ESCALADAS AL DOBLE PARA UN VUELO DINÁMICO Y FLUIDO
+const FLIGHT_SPEED_SOAR: float = 3.2
+const FLIGHT_SPEED_GLIDE: float = 4.8
 const PERCH_DURATION_SEC: float = 5.0
 
 var _blackboard: AIBlackboard

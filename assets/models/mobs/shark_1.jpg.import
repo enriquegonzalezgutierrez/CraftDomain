@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d3galfmjwbygl"
+uid="uid://cf6er4l8dx1q1"
 path.s3tc="res://.godot/imported/shark_1.jpg-ab2ee0255076564693436fefaf3614f8.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "3945379a8ecc2756c0344063ec2b917e"
+"md5": "f63eb1e5d4238f612c3cf657e21dc9e4"
 }
 
 [deps]

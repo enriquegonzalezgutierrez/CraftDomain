@@ -1,9 +1,9 @@
 [gd_scene format=3 uid="uid://bqua77f1hbnqe"]
 
-[ext_resource type="Script" uid="uid://qd41pbiccfor" path="res://src/Infrastructure/Life/MerchantEntity.gd" id="1_merchant"]
+[ext_resource type="Script" uid="uid://bwut70l24xm74" path="res://src/Infrastructure/Life/MerchantEntity.gd" id="1_merchant"]
 [ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://ba8j7agkt3rpj" path="res://assets/models/mobs/merchant.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://dvccsc74jit40" path="res://assets/models/mobs/merchant.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_merchant"]
 radius = 0.28466797
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=924156618]
 
 [node name="merchant" parent="Visuals/BodyBobJoint" unique_id=1790854121 instance=ExtResource("4_glb")]
-transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0.015826702, 0.9898225, 0)
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0.015826702, 0.9898225, 0)

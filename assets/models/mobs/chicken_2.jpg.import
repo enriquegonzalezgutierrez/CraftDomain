@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b0wmmn61ifpkn"
+uid="uid://c88vwfoavkxk8"
 path.s3tc="res://.godot/imported/chicken_2.jpg-3a7f9405c51c8d22b739d4196f80f84a.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "84083f31f21dc6566e804a353795a0fe"
+"md5": "2d117004869cc82f8188a648220de469"
 }
 
 [deps]

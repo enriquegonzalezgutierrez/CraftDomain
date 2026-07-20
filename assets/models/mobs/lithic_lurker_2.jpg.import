@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ba30r3kme6lhx"
+uid="uid://lid6w62ipdh5"
 path.s3tc="res://.godot/imported/lithic_lurker_2.jpg-18ebb07c7c8af57ecd89142fee716381.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "e269cc06972bdadb7a1fdb0085857064"
+"md5": "c42f09f65bf66ff496b03ea713ed8782"
 }
 
 [deps]

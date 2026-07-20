@@ -8,7 +8,6 @@
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
 #   heavy-impact triggers (such as trunk slaps) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - BUG FIX: Correctly routed inner classes static calls to the outer scope namespace.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -19,8 +18,9 @@ const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_PANIC = 5
 
-const SPEED_WALK: float = 0.6
-const STRIDE_INTERVAL_SEC: float = 1.8
+# VELOCIDADES ESCALADAS AL DOBLE Y RITMO DE PASO SINCRONIZADO
+const SPEED_WALK: float = 1.2
+const STRIDE_INTERVAL_SEC: float = 0.9
 const RANGE_SIGHT_SQ: float = 144.0
 
 var _blackboard: AIBlackboard
@@ -168,7 +168,7 @@ class ElephantPanicAction extends GOAPAction:
 		vel.z = wander_dir.z * SPEED_WALK * 1.6
 		host.velocity = vel
 		if is_instance_valid(ai): ai.set("wander_direction", wander_dir)
-		ElephantAIBehavior._process_stride_impacts(bb, host, delta) # FIXED: Explicit outer class namespace
+		ElephantAIBehavior._process_stride_impacts(bb, host, delta)
 
 
 class HeavyStrollAction extends GOAPAction:
@@ -202,7 +202,7 @@ class HeavyStrollAction extends GOAPAction:
 		if wander_dir != Vector3.ZERO:
 			vel.x = wander_dir.x * SPEED_WALK
 			vel.z = wander_dir.z * SPEED_WALK
-			ElephantAIBehavior._process_stride_impacts(bb, host, delta) # FIXED: Explicit outer class namespace
+			ElephantAIBehavior._process_stride_impacts(bb, host, delta)
 			_apply_heavy_wall_rebound(bb, host, wander_dir)
 		else:
 			vel.x = move_toward(vel.x, 0.0, SPEED_WALK)

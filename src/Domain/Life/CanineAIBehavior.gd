@@ -19,8 +19,9 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_WALK: float = 1.0
-const SPEED_TROT: float = 1.6
+# VELOCIDADES ESCALADAS AL DOBLE PARA COMPORTAMIENTO CANINO ÁGIL
+const SPEED_WALK: float = 2.0
+const SPEED_TROT: float = 3.2
 const COOLDOWN_BARK_SEC: float = 4.0
 
 var _blackboard: AIBlackboard

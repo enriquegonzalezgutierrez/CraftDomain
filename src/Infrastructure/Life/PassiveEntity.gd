@@ -23,7 +23,8 @@ var entity_name_key: String = ""
 @export var humanoid_role: int = -1
 @export var entity_habitat: int = 0
 
-const BASE_SPEED: float = 1.3
+# INCREMENTO DE VELOCIDAD BASE AL DOBLE (Antes: 1.3)
+const BASE_SPEED: float = 2.6
 const JUMP_VELOCITY: float = 5.0
 const ANIM_DIR := "res://assets/models/mobs/"
 

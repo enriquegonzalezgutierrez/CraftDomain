@@ -18,9 +18,10 @@ const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_WORKING = 6
 
-const SPEED_CHASE: float = 3.5
-const SPEED_WANDER: float = 1.6
-const SPEED_RETREAT: float = 4.5
+# VELOCIDADES ESCALADAS AL DOBLE PARA GUERRILLAS DINÁMICAS Y ÁGILES
+const SPEED_CHASE: float = 7.0
+const SPEED_WANDER: float = 3.2
+const SPEED_RETREAT: float = 9.0
 
 const RANGE_CHASE_SQ: float = 256.0
 const RANGE_ATTACK_SQ: float = 1.44

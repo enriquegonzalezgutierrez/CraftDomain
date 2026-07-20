@@ -18,8 +18,9 @@ const MODEL_BASE_Y: float = 0.0
 const COOLDOWN_CHAT_MIN_SEC: float = 15.0
 const COOLDOWN_CHAT_MAX_SEC: float = 25.0
 
-const FLIGHT_SPEED_SOAR: float = 1.6
-const FLIGHT_SPEED_GLIDE: float = 2.4
+# CONSTANTES DE VUELO ESCALADAS AL DOBLE PARA SINCRONIZACIÓN CON EL DOMINIO
+const FLIGHT_SPEED_SOAR: float = 3.2
+const FLIGHT_SPEED_GLIDE: float = 4.8
 const PERCH_DURATION_SEC: float = 5.0
 
 ## Decoupled local metadata keys to prevent cyclic compile locks with AvianAIBehavior

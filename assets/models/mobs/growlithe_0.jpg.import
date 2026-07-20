@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bxqrvbcivp42o"
+uid="uid://bevapv6wkc7df"
 path.s3tc="res://.godot/imported/growlithe_0.jpg-578836e9d0e4b1c286f70336b174e528.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "493278f0e24abf8779cf1cfc3309082a"
+"md5": "00ba5ea1b269f01d340889197801be6f"
 }
 
 [deps]

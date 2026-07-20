@@ -19,9 +19,10 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_PATROL: float = 1.0
-const SPEED_RETREAT: float = 1.6
-const SPEED_PANIC: float = 2.4
+# VELOCIDADES ESCALADAS AL DOBLE PARA FLUIDEZ DE TRASLACIÓN
+const SPEED_PATROL: float = 2.0
+const SPEED_RETREAT: float = 3.2
+const SPEED_PANIC: float = 4.8
 
 const COOLDOWN_CHAT_SEC: float = 8.0
 const CHAT_DURATION_SEC: float = 4.0

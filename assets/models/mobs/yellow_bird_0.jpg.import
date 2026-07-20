@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b4j1y87u1fsu4"
+uid="uid://bsfmu5asjj1ay"
 path.s3tc="res://.godot/imported/yellow_bird_0.jpg-66503e14712ecb524b458670d924b7b2.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "9529b743198371f93f87c1f1051250f0"
+"md5": "2ab0bd474559fff40e393135215cf826"
 }
 
 [deps]

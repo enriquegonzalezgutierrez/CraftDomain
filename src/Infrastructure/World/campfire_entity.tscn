@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://dnsvnh32oeph2"]
 
-[ext_resource type="Script" uid="uid://ct1b1tmvol6oe" path="res://src/Infrastructure/World/CampfireEntity.gd" id="1_script"]
+[ext_resource type="Script" path="res://src/Infrastructure/World/CampfireEntity.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://bmtcg6kb1mttc" path="res://assets/models/decorations/campfire.glb" id="2_glb"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_col"]

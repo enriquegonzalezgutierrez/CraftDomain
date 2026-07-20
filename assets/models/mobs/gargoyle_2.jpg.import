@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bqx0dqj3kcjcd"
+uid="uid://cyo6oppg0e0hf"
 path.s3tc="res://.godot/imported/gargoyle_2.jpg-732a85b4f9b285d1bba07dad970982d9.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "54d327f83f7e5f8a69f2af280c93678f"
+"md5": "40887471fa84045f5b7588badae74968"
 }
 
 [deps]

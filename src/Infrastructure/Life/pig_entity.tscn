@@ -1,19 +1,19 @@
 [gd_scene format=3 uid="uid://cftc64w8vqn6x"]
 
-[ext_resource type="Script" uid="uid://ck50by02lj6pr" path="res://src/Infrastructure/Life/PigEntity.gd" id="1_pig"]
+[ext_resource type="Script" uid="uid://bbqhvbwb5v3pc" path="res://src/Infrastructure/Life/PigEntity.gd" id="1_pig"]
 [ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://c0j1fvixp2kcj" path="res://assets/models/mobs/pig.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://i2gpswiny4h" path="res://assets/models/mobs/pig.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_pig"]
 radius = 0.35498047
-height = 1.2767334
+height = 1.3659058
 
 [node name="PigEntity" type="CharacterBody3D" unique_id=1258418544]
 script = ExtResource("1_pig")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=643806755]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6383667, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6829529, 0)
 shape = SubResource("CapsuleShape3D_pig")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1316071675]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1183732275]
 
 [node name="pig" parent="Visuals/BodyBobJoint" unique_id=6793954 instance=ExtResource("4_glb")]
-transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0, 0.6348294, 0)
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0.73405075, 0)

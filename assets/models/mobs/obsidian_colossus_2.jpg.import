@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cgbb01iq2yk6x"
+uid="uid://cap0aul66m46f"
 path.s3tc="res://.godot/imported/obsidian_colossus_2.jpg-3dad4a607773906ec629ff9d57210dd8.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "1513f00aa253ef92c53d78d4a0815cf0"
+"md5": "ece6b9edcc231663007ebfd4ebfbbeac"
 }
 
 [deps]

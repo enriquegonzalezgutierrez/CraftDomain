@@ -19,9 +19,10 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_RUN: float = 2.2
-const SPEED_WALK: float = 1.0
-const SPEED_CREEP: float = 0.6
+# VELOCIDADES ESCALADAS AL DOBLE PARA COMPORTAMIENTO FELINO VELOZ
+const SPEED_RUN: float = 4.4
+const SPEED_WALK: float = 2.0
+const SPEED_CREEP: float = 1.2
 
 const RANGE_ATTRACTION_SQ: float = 100.0
 const RANGE_ZOMBIE_SQ: float = 64.0
@@ -327,7 +328,7 @@ class DefaultWanderAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(1.5, 4.0)
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.4 else Vector3.ZERO
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.45 else Vector3.ZERO
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)

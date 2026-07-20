@@ -17,7 +17,8 @@ extends IAIBehavior
 const TASK_IDLE = 0
 const TASK_WORKING = 6
 
-const SPEED_CHASE: float = 2.6
+# VELOCIDAD DEL JEFE ESCALADA AL DOBLE PARA UN RETO EXIGENTE
+const SPEED_CHASE: float = 5.2
 const RANGE_SIGHT_SQ: float = 400.0
 const RANGE_POUND_SQ: float = 25.0
 

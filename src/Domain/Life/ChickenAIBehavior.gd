@@ -19,9 +19,10 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_WANDER: float = 0.9
-const SPEED_FOLLOW: float = 1.4
-const SPEED_PANIC: float = 2.4
+# VELOCIDADES ESCALADAS AL DOBLE PARA COMPORTAMIENTO AVÍCOLA ÁGIL
+const SPEED_WANDER: float = 1.8
+const SPEED_FOLLOW: float = 2.8
+const SPEED_PANIC: float = 4.8
 
 const SENSORY_RANGE_SQ: float = 64.0
 const LURE_RANGE_SQ: float = 100.0

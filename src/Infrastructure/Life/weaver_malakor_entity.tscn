@@ -1,19 +1,19 @@
 [gd_scene format=3 uid="uid://cfschd84u23aq"]
 
-[ext_resource type="Script" uid="uid://b24o7ogubwiic" path="res://src/Infrastructure/Life/WeaverMalakorEntity.gd" id="1_malakor"]
+[ext_resource type="Script" uid="uid://b58vojs4lo7p2" path="res://src/Infrastructure/Life/WeaverMalakorEntity.gd" id="1_malakor"]
 [ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://csuaxcdtlmcmi" path="res://assets/models/mobs/weaver_malakor.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://y1t53m6nyvnt" path="res://assets/models/mobs/weaver_malakor.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_malakor"]
-radius = 1.3686523
-height = 2.7373047
+radius = 0.56152344
+height = 3.9152832
 
 [node name="WeaverMalakorEntity" type="CharacterBody3D" unique_id=1007614837]
 script = ExtResource("1_malakor")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1825359313]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.3468568, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0151918, 0)
 shape = SubResource("CapsuleShape3D_malakor")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1032170930]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=418189353]
 
 [node name="weaver_malakor" parent="Visuals/BodyBobJoint" unique_id=642386299 instance=ExtResource("4_glb")]
-transform = Transform3D(-1.7484555e-07, 0, -4, 0, 4, 0, 4, 0, -1.7484555e-07, 0, 1.3296623, 0)
+transform = Transform3D(4, 0, 0, 0, 4, 0, 0, 0, 4, 0, 2.0119538, 0)

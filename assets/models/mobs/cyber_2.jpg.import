@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dahunmtrmmtwx"
+uid="uid://bt7nhrilvaa40"
 path.s3tc="res://.godot/imported/cyber_2.jpg-1497a692673884594f051c6c307db1bf.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "19527d827445cdaf801d2fc1c9b9142b"
+"md5": "6566940214f948feddcbf9e1d95d7506"
 }
 
 [deps]

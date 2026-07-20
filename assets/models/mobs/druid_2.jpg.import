@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://7p2drhfvef6i"
+uid="uid://cih14j4coiaj8"
 path.s3tc="res://.godot/imported/druid_2.jpg-6429f913525622742941e5fba04249d3.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "d7ec0c54c8fea68caaf109e01be63670"
+"md5": "32ba830824ff859f9e3814e864508d85"
 }
 
 [deps]

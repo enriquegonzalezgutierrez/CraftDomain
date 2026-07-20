@@ -19,9 +19,10 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_WALK: float = 0.8
-const SPEED_PANIC: float = 2.4
-const SPEED_TROT: float = 1.3
+# VELOCIDADES ESCALADAS AL DOBLE PARA COMPORTAMIENTO PORCINO VELOZ
+const SPEED_WALK: float = 1.6
+const SPEED_PANIC: float = 4.8
+const SPEED_TROT: float = 2.6
 const SENSORY_RANGE_SQ: float = 64.0
 
 const SNIFF_DURATION_SEC: float = 1.5

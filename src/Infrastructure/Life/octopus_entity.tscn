@@ -3,17 +3,17 @@
 [ext_resource type="Script" uid="uid://bek4vtreb4uoo" path="res://src/Infrastructure/Life/OctopusEntity.gd" id="1_octopus"]
 [ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://bdib51u2i2wc3" path="res://assets/models/mobs/octopus.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://d3dn0nphasjp3" path="res://assets/models/mobs/octopus.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_octopus"]
-radius = 0.30419922
-height = 0.7480469
+radius = 0.41992188
+height = 1.9118652
 
 [node name="OctopusEntity" type="CharacterBody3D" unique_id=1478358037]
 script = ExtResource("1_octopus")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=367905656]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.37193602, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0121949, 0)
 shape = SubResource("CapsuleShape3D_octopus")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1357359705]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=2090005723]
 
 [node name="octopus" parent="Visuals/BodyBobJoint" unique_id=710772864 instance=ExtResource("4_glb")]
-transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0, 0.35647807, 0)
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0.9981097, 0)

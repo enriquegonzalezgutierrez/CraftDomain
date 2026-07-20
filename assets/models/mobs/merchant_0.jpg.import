@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bxmnajakywhf5"
+uid="uid://3idibyyeao4r"
 path.s3tc="res://.godot/imported/merchant_0.jpg-5226b648d6f635641cf05a75ce9e7878.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "c0572d51352c50822747c232d2080aed"
+"md5": "e5d9e67dc96b08e6577ccd51b73bd8ba"
 }
 
 [deps]

@@ -3,17 +3,17 @@
 [ext_resource type="Script" uid="uid://il5wppvn4oq" path="res://src/Infrastructure/Life/LithicLurkerEntity.gd" id="1_lurker"]
 [ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://bcee6lqfh4pku" path="res://assets/models/mobs/lithic_lurker.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://dmj6ddi5svmx8" path="res://assets/models/mobs/lithic_lurker.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_uvypv"]
-radius = 0.8613281
-height = 2.5170593
+radius = 1.1674805
+height = 5.8903656
 
 [node name="LithicLurkerEntity" type="CharacterBody3D" unique_id=1614040805]
 script = ExtResource("1_lurker")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=759731866]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2662811, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.9529343, 0)
 shape = SubResource("CapsuleShape3D_uvypv")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1299946025]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1828309882]
 
 [node name="lithic_lurker" parent="Visuals/BodyBobJoint" unique_id=473366106 instance=ExtResource("4_glb")]
-transform = Transform3D(-2.6226832e-07, 0, -6, 0, 6, 0, 6, 0, -2.6226832e-07, 0, 1.3688622, 0)
+transform = Transform3D(6, 0, 0, 0, 6, 0, 0, 0, 6, 0, 2.9972427, 0)

@@ -19,8 +19,10 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_SNEAK: float = 1.1
-const SPEED_RUN: float = 2.4
+# VELOCIDADES ESCALADAS AL DOBLE PARA UN RECOLECTOR ÁGIL Y ESCURRIDIZO
+const SPEED_SNEAK: float = 2.2
+const SPEED_RUN: float = 4.8
+
 const SCAVENGE_DURATION_SEC: float = 3.0
 const RANGE_SENSORY_SQ: float = 225.0
 

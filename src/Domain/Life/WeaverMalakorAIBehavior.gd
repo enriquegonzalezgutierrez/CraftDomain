@@ -17,8 +17,9 @@ extends IAIBehavior
 const TASK_IDLE = 0
 const TASK_WORKING = 6
 
-const SPEED_HOVER: float = 1.6
-const SPEED_ORBIT: float = 3.5
+# VELOCIDADES ESCALADAS AL DOBLE PARA UN COMBATE FINAL FLUIDO Y EXIGENTE
+const SPEED_HOVER: float = 3.2
+const SPEED_ORBIT: float = 7.0
 const RANGE_SIGHT_SQ: float = 576.0
 
 const COOLDOWN_BEAM_SEC: float = 3.5
@@ -116,10 +117,10 @@ func _build_initial_state() -> Dictionary:
 func _detect_intruder_proximity() -> bool:
 	var host := _blackboard.get_object("host") as CharacterBody3D
 	var parent := host.get_parent() as Node
-	var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
+	var player_node := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
 	
-	if is_instance_valid(player) and player.get("is_active"):
-		var dist_sq := host.global_position.distance_squared_to(player.global_position)
+	if is_instance_valid(player_node) and player_node.get("is_active"):
+		var dist_sq := host.global_position.distance_squared_to(player_node.global_position)
 		return dist_sq <= RANGE_SIGHT_SQ
 	return false
 
@@ -190,10 +191,10 @@ class LocateIntruderAction extends GOAPAction:
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var parent := host.get_parent() as Node
-		var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
+		var player_node := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
 		
-		if is_instance_valid(player) and player.get("is_active"):
-			bb.set_memory("intruder_player", player)
+		if is_instance_valid(player_node) and player_node.get("is_active"):
+			bb.set_memory("intruder_player", player_node)
 			if host.has_method("_play_malakor_awaken_voice"):
 				host.call("_play_malakor_awaken_voice")
 			return true
@@ -211,15 +212,15 @@ class HoverShootBeamAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
-		var player := bb.get_object("intruder_player") as CharacterBody3D
+		var player_node := bb.get_object("intruder_player") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
 		
-		var diff := player.global_position - host.global_position
+		var diff := player_node.global_position - host.global_position
 		diff.y = 0.0
 		
 		_apply_hover_movement(host, ai, diff.normalized())
-		_process_laser_fire(bb, player, delta)
-		return player.domain_entity.is_dead
+		_process_laser_fire(bb, player_node, delta)
+		return player_node.domain_entity.is_dead
 		
 	func _apply_hover_movement(host: CharacterBody3D, ai: Object, chase_dir: Vector3) -> void:
 		var velocity := host.velocity
@@ -258,11 +259,11 @@ class InvertGravityOrbitAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
-		var player := bb.get_object("intruder_player") as CharacterBody3D
+		var player_node := bb.get_object("intruder_player") as CharacterBody3D
 		
 		_apply_orbit_flight_mechanic(host, delta)
-		_process_gargoyle_summons(bb, player, delta)
-		return player.domain_entity.is_dead
+		_process_gargoyle_summons(bb, player_node, delta)
+		return player_node.domain_entity.is_dead
 		
 	func _apply_orbit_flight_mechanic(host: CharacterBody3D, _delta: float) -> void:
 		var time := Time.get_ticks_msec() / 1000.0
@@ -301,11 +302,11 @@ class FractureArenaAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
-		var player := bb.get_object("intruder_player") as CharacterBody3D
+		var player_node := bb.get_object("intruder_player") as CharacterBody3D
 		
 		_apply_unstable_shaking(host, delta)
 		_process_floor_mutations(bb, delta)
-		return player.domain_entity.is_dead
+		return player_node.domain_entity.is_dead
 		
 	func _apply_unstable_shaking(host: CharacterBody3D, _delta: float) -> void:
 		var time := Time.get_ticks_msec() / 1000.0

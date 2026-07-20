@@ -19,9 +19,10 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_PATROL: float = 1.0
-const SPEED_RETREAT: float = 1.6
-const SPEED_PANIC: float = 2.4
+# VELOCIDADES ESCALADAS AL DOBLE PARA TRANSICIONES COMERCIALES DINÁMICAS
+const SPEED_PATROL: float = 2.0
+const SPEED_RETREAT: float = 3.2
+const SPEED_PANIC: float = 4.8
 
 const COOLDOWN_COINS_SEC: float = 2.5
 const COOLDOWN_SHOUT_MIN: float = 10.0
@@ -67,6 +68,10 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	_initialize_agent(host)
 	_update_blackboard_timers(delta)
 	
+	if host.get("is_talking") == true:
+		_handle_conversation_interrupt(host)
+		return
+		
 	_evaluate_active_plan(host)
 	_execute_current_action(delta)
 

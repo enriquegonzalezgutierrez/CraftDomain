@@ -18,8 +18,9 @@ const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_WORKING = 6
 
-const SPEED_CHASE: float = 2.2
-const SPEED_WANDER: float = 1.1
+# VELOCIDADES ESCALADAS AL DOBLE PARA COMPORTAMIENTO AGRESIVO EQUILIBRADO
+const SPEED_CHASE: float = 4.4
+const SPEED_WANDER: float = 2.2
 
 const RANGE_CHASE_SQ: float = 256.0
 const RANGE_ATTACK_SQ: float = 1.44
@@ -195,9 +196,9 @@ class SpotTargetAction extends GOAPAction:
 				
 		var parent := host.get_parent()
 		if is_instance_valid(parent):
-			var player := parent.get_node_or_null("Player") as Node3D
-			if is_instance_valid(player) and player.get("is_active"):
-				list.append(player)
+			var player_node := parent.get_node_or_null("Player") as Node3D
+			if is_instance_valid(player_node) and player_node.get("is_active"):
+				list.append(player_node)
 		return list
 
 
@@ -295,7 +296,7 @@ class ZombieWanderAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(2.0, 5.0)
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() > 0.4 else Vector3.ZERO
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.4 else Vector3.ZERO
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)

@@ -1,11 +1,12 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/DirectChunkRenderingService.gd
 # Description: Infrastructure Service executing Milestone 2: Direct Server-Side
-#              Architecture. Bypasses the SceneTree entirely by communicating
-#              directly with Godot's C++ RenderingServer and PhysicsServer3D
-#              via 64-bit memory RIDs.
-#              COMPILER FIX: Stores ArrayMesh references directly in RAM records
-#              to resolve write-only RenderingServer base RID query errors.
+#              Architecture. Bypasses the SceneTree by communicating directly 
+#              with Godot's C++ RenderingServer and PhysicsServer3D via RIDs.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates low-level server RIDs.
+# - Teardown Stability Fix: Globalized _shared_box_mesh to static to prevent 
+#   mesh destruction before RenderingServer flushes instance command queues.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -25,15 +26,20 @@ var controller: Node3D
 var _world_scenario: RID
 var _world_space: RID
 var _active_chunks: Dictionary = {} # Vector3i -> ChunkRIDRecord
-var _shared_box_mesh: BoxMesh
+
+# FIX: Static variable survives the teardown of the WorldController, 
+# preventing "material is null" race conditions in the Vulkan backend queue.
+static var _shared_box_mesh: BoxMesh
 
 
 func _init(p_controller: Node3D, scenario: RID, space: RID) -> void:
 	controller = p_controller
 	_world_scenario = scenario
 	_world_space = space
-	_shared_box_mesh = BoxMesh.new()
-	_shared_box_mesh.size = Vector3(1.002, 1.002, 1.002)
+	
+	if _shared_box_mesh == null:
+		_shared_box_mesh = BoxMesh.new()
+		_shared_box_mesh.size = Vector3(1.002, 1.002, 1.002)
 
 
 ## Allocates server-side MultiMeshes, custom geometry instances, and physics bodies.
@@ -46,7 +52,6 @@ func allocate_chunk_visuals(
 ) -> void:
 	free_chunk(chunk_pos)
 	
-	# Dynamic RID validation to prevent startup viewport null bounds
 	if not _world_scenario.is_valid() and is_instance_valid(controller):
 		_world_scenario = controller.get_world_3d().scenario
 		_world_space = controller.get_world_3d().space
@@ -70,11 +75,12 @@ func free_chunk(chunk_pos: Vector3i) -> void:
 		
 	var record: ChunkRIDRecord = _active_chunks[chunk_pos] as ChunkRIDRecord
 	
+	# Let Godot's C++ layer gracefully disconnect dependencies internally.
 	for inst_rid: RID in record.instance_rids:
-		RenderingServer.free_rid(inst_rid)
+		if inst_rid.is_valid(): RenderingServer.free_rid(inst_rid)
 		
 	for mm_rid: RID in record.multimesh_rids:
-		RenderingServer.free_rid(mm_rid)
+		if mm_rid.is_valid(): RenderingServer.free_rid(mm_rid)
 		
 	if record.physics_body_rid.is_valid():
 		PhysicsServer3D.free_rid(record.physics_body_rid)
@@ -86,8 +92,7 @@ func _allocate_multimeshes(record: ChunkRIDRecord, transform: Transform3D, multi
 	for b_id: int in multimesh_data.keys():
 		var buffer: PackedFloat32Array = multimesh_data[b_id] as PackedFloat32Array
 		var count := int(buffer.size() / 12.0)
-		if count == 0:
-			continue
+		if count == 0: continue
 			
 		var mm_rid := RenderingServer.multimesh_create()
 		RenderingServer.multimesh_set_mesh(mm_rid, _shared_box_mesh.get_rid())
@@ -95,11 +100,11 @@ func _allocate_multimeshes(record: ChunkRIDRecord, transform: Transform3D, multi
 		RenderingServer.multimesh_set_buffer(mm_rid, buffer)
 		
 		var inst_rid := RenderingServer.instance_create()
-		RenderingServer.instance_set_base(inst_rid, mm_rid)
 		RenderingServer.instance_set_scenario(inst_rid, _world_scenario)
 		RenderingServer.instance_set_transform(inst_rid, transform)
 		
 		_apply_material_to_instance(inst_rid, b_id, is_distant)
+		RenderingServer.instance_set_base(inst_rid, mm_rid)
 		
 		record.multimesh_rids.append(mm_rid)
 		record.instance_rids.append(inst_rid)
@@ -109,19 +114,23 @@ func _allocate_multimeshes(record: ChunkRIDRecord, transform: Transform3D, multi
 func _allocate_custom_meshes(record: ChunkRIDRecord, transform: Transform3D, custom_meshes: Dictionary, is_distant: bool) -> void:
 	for b_id: int in custom_meshes.keys():
 		var mesh: ArrayMesh = custom_meshes[b_id] as ArrayMesh
-		if mesh == null:
-			continue
+		if mesh == null: continue
 			
 		var mat: Material = VoxelMaterialFactory.get_material(b_id, is_distant)
-		if mat != null:
-			# OCP FIX: Apply the material directly to the committed ArrayMesh surface.
-			# This bypasses the Instance-level binder, restoring 100% visibility on Intel GPUs.
-			mesh.surface_set_material(0, mat)
 		
+		# VULKAN SHADOW FIX: Assing the material directly to the ArrayMesh surface.
+		# Prevents "material is null" crashes when Godot RD assesses shadow casts.
+		if is_instance_valid(mat) and mesh.get_surface_count() > 0:
+			mesh.surface_set_material(0, mat)
+			
 		var inst_rid := RenderingServer.instance_create()
-		RenderingServer.instance_set_base(inst_rid, mesh.get_rid())
 		RenderingServer.instance_set_scenario(inst_rid, _world_scenario)
 		RenderingServer.instance_set_transform(inst_rid, transform)
+		
+		if is_instance_valid(mat):
+			RenderingServer.instance_geometry_set_material_override(inst_rid, mat.get_rid())
+			
+		RenderingServer.instance_set_base(inst_rid, mesh.get_rid())
 		
 		record.instance_rids.append(inst_rid)
 		record.instance_block_ids.append(b_id)
@@ -147,35 +156,34 @@ func _allocate_physics_body(record: ChunkRIDRecord, transform: Transform3D, shap
 
 func _apply_material_to_instance(inst_rid: RID, b_id: int, is_distant: bool) -> void:
 	var mat: Material = VoxelMaterialFactory.get_material(b_id, is_distant)
-	if mat != null:
+	if is_instance_valid(mat) and inst_rid.is_valid():
 		RenderingServer.instance_geometry_set_material_override(inst_rid, mat.get_rid())
 
 
 ## Symmetrical LOD trigger re-binding materials directly to active instances
 func update_lod_materials(chunk_pos: Vector3i, is_distant: bool) -> void:
-	if not _active_chunks.has(chunk_pos):
-		return
+	if not _active_chunks.has(chunk_pos): return
 		
 	var record: ChunkRIDRecord = _active_chunks[chunk_pos] as ChunkRIDRecord
 	var multimesh_count := record.multimesh_rids.size()
 	
 	for i in range(record.instance_rids.size()):
 		var inst_rid: RID = record.instance_rids[i]
+		if not inst_rid.is_valid(): continue
+			
 		var b_id: int = record.instance_block_ids[i]
+		_apply_material_to_instance(inst_rid, b_id, is_distant)
 		
-		if i < multimesh_count:
-			_apply_material_to_instance(inst_rid, b_id, is_distant)
-		else:
-			var custom_idx := i - multimesh_count
-			_apply_custom_mesh_lod(record, custom_idx, b_id, is_distant)
+		if i >= multimesh_count:
+			_apply_custom_mesh_lod(record, i - multimesh_count, b_id, is_distant)
 
 
 func _apply_custom_mesh_lod(record: ChunkRIDRecord, custom_idx: int, b_id: int, is_distant: bool) -> void:
 	if custom_idx >= 0 and custom_idx < record.custom_meshes.size():
 		var mesh: ArrayMesh = record.custom_meshes[custom_idx]
-		if is_instance_valid(mesh):
+		if is_instance_valid(mesh) and mesh.get_surface_count() > 0:
 			var mat := VoxelMaterialFactory.get_material(b_id, is_distant)
-			if mat != null:
+			if is_instance_valid(mat):
 				mesh.surface_set_material(0, mat)
 
 

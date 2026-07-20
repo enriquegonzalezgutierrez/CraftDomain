@@ -3,17 +3,17 @@
 [ext_resource type="Script" uid="uid://burb0pe0fafu" path="res://src/Infrastructure/Life/RaccoonEntity.gd" id="1_raccoon"]
 [ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://b321smvpwcv25" path="res://assets/models/mobs/raccoon.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://djf4toe4o7ldg" path="res://assets/models/mobs/raccoon.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_raccoon"]
 radius = 0.28222656
-height = 1.0284107
+height = 1.610885
 
 [node name="RaccoonEntity" type="CharacterBody3D" unique_id=1396229753]
 script = ExtResource("1_raccoon")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=495607125]
-transform = Transform3D(1, 0, 4.2632564e-14, 0, 1, 0, -4.2632564e-14, 0, 1, 0, 0.51411366, 0)
+transform = Transform3D(1, 0, 4.2632564e-14, 0, 1, 0, -4.2632564e-14, 0, 1, 0, 0.80535084, 0)
 shape = SubResource("CapsuleShape3D_raccoon")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=534331711]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1717941531]
 
 [node name="raccoon" parent="Visuals/BodyBobJoint" unique_id=1291840054 instance=ExtResource("4_glb")]
-transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0, 0.5471223, 0)
+transform = Transform3D(0.73226315, 0, 1.8611262, 0, 2, 0, -1.8611262, 0, 0.73226315, 0.06614733, 0.8778601, 0)

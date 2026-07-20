@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d3pstdy2cr6fs"
+uid="uid://cyvct0s5or6x7"
 path.s3tc="res://.godot/imported/farmer_2.jpg-c54822069fd9c5bdfdeb0dce7758558c.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "72e6b3963326ada4da950309a2aae075"
+"md5": "9099a4bc7d0bc86914ba94fea6a24162"
 }
 
 [deps]

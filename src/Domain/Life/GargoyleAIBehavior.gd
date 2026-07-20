@@ -18,8 +18,9 @@ const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_WORKING = 6
 
-const SPEED_CHASE: float = 3.0
-const SPEED_WANDER: float = 1.5
+# VELOCIDADES ESCALADAS AL DOBLE PARA ACECHOS AÉREOS AGRESIVOS
+const SPEED_CHASE: float = 6.0
+const SPEED_WANDER: float = 3.0
 
 const RANGE_SIGHT_SQ: float = 256.0
 const RANGE_ATTACK_SQ: float = 3.0
@@ -194,14 +195,14 @@ class NightLocateAction extends GOAPAction:
 		
 	func _scan_for_prey_target(host: CharacterBody3D) -> Node3D:
 		var parent := host.get_parent() as Node
-		var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
+		var player_node := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
 		
-		if is_instance_valid(player) and player.get("is_active"):
-			var dist_sq := host.global_position.distance_squared_to(player.global_position)
+		if is_instance_valid(player_node) and player_node.get("is_active"):
+			var dist_sq := host.global_position.distance_squared_to(player_node.global_position)
 			if dist_sq <= RANGE_SIGHT_SQ:
-				var domain := player.get("domain_entity") as VoxelEntity
+				var domain := player_node.get("domain_entity") as VoxelEntity
 				if is_instance_valid(domain) and not domain.is_dead:
-					return player
+					return player_node
 		return null
 
 

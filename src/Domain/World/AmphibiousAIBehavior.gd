@@ -18,8 +18,9 @@ const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_PANIC = 5
 
-const SPEED_CRAWL: float = 0.4
-const SPEED_SWIM: float = 1.1
+# VELOCIDADES ESCALADAS AL DOBLE PARA TRANSICIONES COSTERAS ÁGILES
+const SPEED_CRAWL: float = 0.8
+const SPEED_SWIM: float = 2.2
 const SPEED_PANIC_MULTIPLIER: float = 2.5
 const SENSORY_RANGE_SQ: float = 64.0
 

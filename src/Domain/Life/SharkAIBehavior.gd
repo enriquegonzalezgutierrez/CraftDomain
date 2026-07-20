@@ -20,8 +20,9 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_CHASE: float = 4.2
-const SPEED_SWIM: float = 1.8
+# VELOCIDADES ESCALADAS AL DOBLE PARA DEPREDADORES MARINOS LETALES
+const SPEED_CHASE: float = 8.4
+const SPEED_SWIM: float = 3.6
 
 const RANGE_SIGHT_SQ: float = 400.0
 const RANGE_ATTACK_SQ: float = 4.0
@@ -199,12 +200,6 @@ class StalkPreyAction extends GOAPAction:
 			
 		_apply_hydrodynamic_stalking(host, ai, diff.normalized(), delta)
 		return false
-		
-	func _apply_indirect_stalking_glide(host: CharacterBody3D, ai: Object, chase_dir: Vector3, delta: float) -> void:
-		_apply_dynamic_stalking_shunting(host, ai, chase_dir, delta)
-		
-	func _apply_dynamic_stalking_shunting(host: CharacterBody3D, ai: Object, chase_dir: Vector3, delta: float) -> void:
-		_apply_hydrodynamic_stalking(host, ai, chase_dir, delta)
 		
 	func _apply_hydrodynamic_stalking(host: CharacterBody3D, ai: Object, chase_dir: Vector3, delta: float) -> void:
 		var vel := host.velocity

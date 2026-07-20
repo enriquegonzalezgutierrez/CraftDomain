@@ -1,5 +1,5 @@
 # ==============================================================================
-# Pathfile: res://src/Domain/Life/CowAIBehavior.gd
+# Pathfile: res://src/Domain/World/CowAIBehavior.gd
 # Description: Pure Domain AI behavior strategy implementing Goal-Oriented Action 
 #              Planning (GOAP) for the Clay Cow.
 # SOLID COMPLIANCE:
@@ -19,9 +19,10 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_WALK: float = 0.6
-const SPEED_TROT: float = 1.0
-const SPEED_PANIC: float = 1.8
+# VELOCIDADES ESCALADAS AL DOBLE PARA MANADAS DE VACAS MÁS FLUIDAS
+const SPEED_WALK: float = 1.2
+const SPEED_TROT: float = 2.0
+const SPEED_PANIC: float = 3.6
 
 const SENSORY_RANGE_SQ: float = 64.0
 const LURE_RANGE_SQ: float = 144.0

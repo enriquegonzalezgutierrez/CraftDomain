@@ -1,14 +1,13 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/GOAP/GOAPPlanner.gd
 # Description: Pure Domain mathematical solver for Goal-Oriented Action Planning.
-#              Uses a specialized A* algorithm over an abstract state-space graph 
-#              to find the lowest-cost sequence of actions to fulfill a Goal.
+#              Optimized A* solver that handles pre-satisfied goals and 
+#              complex state-space graph reconstructions.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively executes the planning 
-#   algorithm. It does not store state or execute actions.
-# - Dependency Inversion Principle (DIP): Evaluates abstract GOAPAction and 
-#   GOAPGoal interfaces polymorphically.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+#   algorithm. Does not store state.
+# - Robustness Fix: Correctly handles cases where the initial state already 
+#   satisfies the goal, allowing behaviors to rotate through motivations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -30,65 +29,61 @@ class PlanNode:
 
 
 ## Calculates the optimal sequence of actions to satisfy the given Goal.
-## Returns an array of GOAPAction instances (the Plan). Returns an empty array if no plan is found.
 static func plan(goal: GOAPGoal, available_actions: Array[GOAPAction], initial_state: Dictionary) -> Array[GOAPAction]:
-	var usable_actions: Array[GOAPAction] = _filter_usable_actions(available_actions)
-	if usable_actions.is_empty():
+	# VALIDACIÓN PREVIA: Si la meta ya está satisfecha por el estado inicial,
+	# devolvemos una lista vacía pero indicamos éxito (en el flujo del behavior).
+	if _are_conditions_met(goal.desired_state, initial_state):
 		return []
 		
 	var leaves: Array[PlanNode] = []
 	var start_node := PlanNode.new(null, 0.0, initial_state.duplicate(), null)
 	
-	var success := _build_graph(start_node, leaves, usable_actions, goal.desired_state)
+	var success := _build_graph(start_node, leaves, available_actions, goal.desired_state)
 	if not success or leaves.is_empty():
 		return []
 		
 	return _extract_optimal_plan(leaves)
 
 
-## Pre-filters actions to discard those that are not contextually valid (Optimization)
-static func _filter_usable_actions(actions: Array[GOAPAction]) -> Array[GOAPAction]:
-	var usable: Array[GOAPAction] = []
-	# For planning purposes, we assume contextual validity if there's no blackboard context available,
-	# as actual contextual validation happens at execution time. This filter can be expanded later.
-	for action: GOAPAction in actions:
-		usable.append(action)
-	return usable
-
-
-## Recursive A* state-space graph builder. Explores possible action combinations.
+## Recursive A* state-space graph builder.
 static func _build_graph(parent: PlanNode, leaves: Array[PlanNode], usable_actions: Array[GOAPAction], goal_state: Dictionary) -> bool:
 	var found_path := false
 	
 	for action: GOAPAction in usable_actions:
+		# Verificamos si podemos ejecutar esta acción desde el estado del nodo actual
 		if _are_conditions_met(action.preconditions, parent.state):
-			var new_state := _apply_effects(parent.state, action.effects)
-			var node := PlanNode.new(parent, parent.running_cost + action.cost, new_state, action)
+			var next_state := _apply_effects(parent.state, action.effects)
+			var node := PlanNode.new(parent, parent.running_cost + action.cost, next_state, action)
 			
-			if _are_conditions_met(goal_state, new_state):
+			# ¿Esta acción nos lleva a la meta?
+			if _are_conditions_met(goal_state, next_state):
 				leaves.append(node)
 				found_path = true
 			else:
-				var remaining_actions := usable_actions.duplicate()
-				remaining_actions.erase(action)
-				var sub_path_found := _build_graph(node, leaves, remaining_actions, goal_state)
-				if sub_path_found:
+				# Si no, seguimos buscando en profundidad (excluyendo la acción actual para evitar bucles)
+				var remaining := usable_actions.duplicate()
+				remaining.erase(action)
+				
+				if _build_graph(node, leaves, remaining, goal_state):
 					found_path = true
 					
 	return found_path
 
 
-## Validates if all required conditions exist within the current simulated state
+## Validates if all required conditions exist within the current simulated state.
 static func _are_conditions_met(conditions: Dictionary, state: Dictionary) -> bool:
+	if conditions.is_empty():
+		return true
+		
 	for key: String in conditions.keys():
 		if not state.has(key):
+			# Si la meta pide algo que no está en el estado, asumimos que no se cumple.
 			return false
 		if state[key] != conditions[key]:
 			return false
 	return true
 
 
-## Simulates the application of an action's effects onto the current state
 static func _apply_effects(current_state: Dictionary, effects: Dictionary) -> Dictionary:
 	var next_state := current_state.duplicate()
 	for key: String in effects.keys():
@@ -96,7 +91,6 @@ static func _apply_effects(current_state: Dictionary, effects: Dictionary) -> Di
 	return next_state
 
 
-## Evaluates all successful branches and returns the one with the lowest total cost
 static func _extract_optimal_plan(leaves: Array[PlanNode]) -> Array[GOAPAction]:
 	var cheapest_node: PlanNode = null
 	var lowest_cost: float = 999999.0
@@ -109,9 +103,8 @@ static func _extract_optimal_plan(leaves: Array[PlanNode]) -> Array[GOAPAction]:
 	var compiled_plan: Array[GOAPAction] = []
 	var current: PlanNode = cheapest_node
 	
-	# Walk backwards up the tree to extract the actions
 	while current != null and current.action != null:
-		compiled_plan.insert(0, current.action) # Insert at beginning to reverse order
+		compiled_plan.insert(0, current.action)
 		current = current.parent
 		
 	return compiled_plan

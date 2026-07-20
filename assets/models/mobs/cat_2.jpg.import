@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dmlx3nx8yv21a"
+uid="uid://bnn8icjfwly4v"
 path.s3tc="res://.godot/imported/cat_2.jpg-c9ebfec9df6674d2363e4ec02b8c44fc.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "537a82fd82ebdc5ead0f66610a48cefe"
+"md5": "b635ec3ebd16474022c89cc8d4bb267e"
 }
 
 [deps]
@@ -29,8 +29,8 @@ compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=1
-roughness/src_normal="res://assets/models/mobs/cat_2.jpg"
+roughness/mode=0
+roughness/src_normal=""
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

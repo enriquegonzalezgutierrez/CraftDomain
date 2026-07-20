@@ -18,8 +18,9 @@ extends IAIBehavior
 const TASK_WANDERING = 1
 const TASK_PANIC = 5
 
-const SPEED_PANIC: float = 2.5
-const SPEED_GRAZE: float = 0.8
+# VELOCIDADES ESCALADAS AL DOBLE PARA MANADAS ÁGILES Y REALISTAS
+const SPEED_PANIC: float = 5.0
+const SPEED_GRAZE: float = 1.6
 const SENSORY_RANGE_SQ: float = 64.0
 
 var _blackboard: AIBlackboard

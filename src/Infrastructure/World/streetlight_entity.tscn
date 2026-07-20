@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cljn01pql4sxt"]
 
-[ext_resource type="Script" uid="uid://bmtx6tvgxuiw7" path="res://src/Infrastructure/World/StreetlightEntity.gd" id="1_script"]
+[ext_resource type="Script" path="res://src/Infrastructure/World/StreetlightEntity.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://cy65hresyj0cw" path="res://assets/models/decorations/streetlight.glb" id="2_glb"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_col"]

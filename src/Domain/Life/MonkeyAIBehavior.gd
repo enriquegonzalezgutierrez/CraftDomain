@@ -19,8 +19,10 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_PATROL: float = 2.2
-const SPEED_CLIMB: float = 2.8
+# VELOCIDADES ESCALADAS AL DOBLE PARA ACROBACIAS SELVÁTICAS ÁGILES
+const SPEED_PATROL: float = 4.4
+const SPEED_CLIMB: float = 5.6
+
 const COOLDOWN_FLIP_SEC: float = 5.0
 const RANGE_SIGHT_SQ: float = 100.0
 

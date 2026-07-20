@@ -14,9 +14,9 @@
 class_name SharkEntity
 extends PassiveEntity
 
-# Viewmodel and physical parameters
-const SPEED_CHASE: float = 4.2
-const SPEED_SWIM: float = 1.8
+# VELOCIDADES ESCALADAS AL DOBLE PARA SINCRONIZACIÓN CON EL DOMINIO
+const SPEED_CHASE: float = 8.4
+const SPEED_SWIM: float = 3.6
 
 var player: CharacterBody3D
 var _model_node: Node3D
@@ -116,17 +116,14 @@ func _process_procedural_swimming(delta: float) -> void:
 		var swim_speed := speed * 2.8
 		_model_node.rotation.y = _model_base_y + sin(_animation_time * swim_speed) * 0.22
 		
-		# Hydrodynamic Roll: Tilt body slightly on Z-axis when making turns
+		# Hydrodynamic Roll: Tilt body slightly on Z-axis cuando gira
 		var turn_rate := flat_velocity.angle_to(Vector2(-_model_node.global_transform.basis.z.x, -_model_node.global_transform.basis.z.z))
 		var target_roll := clampf(turn_rate * 0.45, -0.35, 0.35)
 		_model_node.rotation.z = lerp_angle(_model_node.rotation.z, target_roll, delta * 5.0)
 		
-		# Spawn glitched bubble trails from the tail periodically
 		if Engine.get_physics_frames() % 10 == 0:
 			_spawn_aquatic_bubble_particles()
-			
-		# Spawn surface foam if the dorsal fin breaks water
-		if global_position.y >= 3.8: # Water surface is approx 4.0
+		if global_position.y >= 3.8: 
 			_spawn_surface_foam_particles()
 	else:
 		_model_node.rotation.y = lerp_angle(_model_node.rotation.y, _model_base_y, delta * 4.0)
@@ -141,19 +138,18 @@ func _spawn_aquatic_bubble_particles() -> void:
 	particles.lifetime = 0.5
 	
 	var tail_offset := global_transform.basis.z.normalized() * 1.0
-	
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
 	particles.emission_sphere_radius = 0.2
 	particles.direction = Vector3.UP + tail_offset * 0.3
 	particles.spread = 20.0
 	particles.initial_velocity_min = 1.0
 	particles.initial_velocity_max = 2.0
-	particles.gravity = Vector3(0.0, 1.8, 0.0) # Bubbles rise upwards
+	particles.gravity = Vector3(0.0, 1.8, 0.0) 
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.06, 0.06, 0.06)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.0, 0.95, 0.95, 0.6) # Translucent cyan
+	mat.albedo_color = Color(0.0, 0.95, 0.95, 0.6) 
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh.material = mat
@@ -161,7 +157,6 @@ func _spawn_aquatic_bubble_particles() -> void:
 	particles.mesh = mesh
 	particles.finished.connect(particles.queue_free)
 	get_parent().add_child(particles)
-	
 	particles.global_position = global_position + tail_offset
 	particles.emitting = true
 
@@ -174,7 +169,6 @@ func _spawn_surface_foam_particles() -> void:
 	particles.lifetime = 0.4
 	
 	var fin_offset := global_transform.basis.z.normalized() * 0.5
-	
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	particles.emission_box_extents = Vector3(0.1, 0.02, 0.2)
 	particles.direction = -fin_offset
@@ -186,7 +180,7 @@ func _spawn_surface_foam_particles() -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.08, 0.04, 0.08)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.95, 0.95, 0.98, 0.7) # Foam white
+	mat.albedo_color = Color(0.95, 0.95, 0.98, 0.7) 
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh.material = mat
@@ -194,7 +188,6 @@ func _spawn_surface_foam_particles() -> void:
 	particles.mesh = mesh
 	particles.finished.connect(particles.queue_free)
 	get_parent().add_child(particles)
-	
 	particles.global_position = Vector3(global_position.x, 4.0, global_position.z) + fin_offset
 	particles.emitting = true
 

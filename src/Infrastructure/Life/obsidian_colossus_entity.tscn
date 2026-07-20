@@ -1,19 +1,19 @@
 [gd_scene format=3 uid="uid://5fstkqj78xtd"]
 
-[ext_resource type="Script" uid="uid://doh7p58obkosg" path="res://src/Infrastructure/Life/ObsidianColossusEntity.gd" id="1_colossus"]
+[ext_resource type="Script" uid="uid://c6xso5yaaujdw" path="res://src/Infrastructure/Life/ObsidianColossusEntity.gd" id="1_colossus"]
 [ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://bwwlnemhi8cmx" path="res://assets/models/mobs/obsidian_colossus.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://clwfpt5aiynu2" path="res://assets/models/mobs/obsidian_colossus.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_0rj4e"]
 radius = 0.74072266
-height = 3.5830383
+height = 3.9375153
 
 [node name="ObsidianColossusEntity" type="CharacterBody3D" unique_id=1415281573]
 script = ExtResource("1_colossus")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=307685539]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8062286, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9834671, 0)
 shape = SubResource("CapsuleShape3D_0rj4e")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1834820710]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=587314844]
 
 [node name="obsidian_colossus" parent="Visuals/BodyBobJoint" unique_id=1572717363 instance=ExtResource("4_glb")]
-transform = Transform3D(-1.7484555e-07, 0, -4, 0, 4, 0, 4, 0, -1.7484555e-07, 0, 1.8273523, 0)
+transform = Transform3D(4, 0, 0, 0, 4, 0, 0, 0, 4, 0, 1.9848042, 0)

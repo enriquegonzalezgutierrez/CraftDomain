@@ -1,9 +1,9 @@
 [gd_scene format=3 uid="uid://c1yrlj4r1cf7k"]
 
-[ext_resource type="Script" uid="uid://by6rrcwwkaru7" path="res://src/Infrastructure/Life/DruidEntity.gd" id="1_druid"]
+[ext_resource type="Script" uid="uid://cxhr5uf5ji7u0" path="res://src/Infrastructure/Life/DruidEntity.gd" id="1_druid"]
 [ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://ql84dhyqseg4" path="res://assets/models/mobs/druid.glb" id="4_glb"]
+[ext_resource type="PackedScene" uid="uid://ggkryg0hpkb5" path="res://assets/models/mobs/druid.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_druid"]
 radius = 0.36914063
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1513357840]
 
 [node name="druid" parent="Visuals/BodyBobJoint" unique_id=88736575 instance=ExtResource("4_glb")]
-transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0, 0.99021554, 0)
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0.99021554, 0)

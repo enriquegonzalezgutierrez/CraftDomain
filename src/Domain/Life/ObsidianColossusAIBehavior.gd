@@ -18,8 +18,9 @@ const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_WORKING = 6
 
-const SPEED_WALK: float = 1.1
-const SPEED_CHARGE: float = 3.2
+# VELOCIDADES ESCALADAS AL DOBLE PARA UN JEFE COLOSAL AMENAZANTE
+const SPEED_WALK: float = 2.2
+const SPEED_CHARGE: float = 6.4
 
 const RANGE_SIGHT_SQ: float = 400.0
 const RANGE_STOMP_SQ: float = 16.0

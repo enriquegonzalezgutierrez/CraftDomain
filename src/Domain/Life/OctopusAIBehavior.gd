@@ -19,9 +19,10 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_JET: float = 2.8
-const SPEED_DRIFT: float = 0.4
-const SPEED_PANIC_JET: float = 4.2
+# VELOCIDADES ESCALADAS AL DOBLE PARA PROPULSIÓN ACUÁTICA ÁGIL
+const SPEED_JET: float = 5.6
+const SPEED_DRIFT: float = 0.8
+const SPEED_PANIC_JET: float = 8.4
 
 const COOLDOWN_INK_SEC: float = 5.0
 const JET_CYCLE_DURATION_SEC: float = 2.0

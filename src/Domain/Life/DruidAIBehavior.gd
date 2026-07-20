@@ -19,8 +19,9 @@ const TASK_WANDERING = 1
 const TASK_PANIC = 5
 const TASK_WORKING = 6
 
-const SPEED_PATROL: float = 1.1
-const SPEED_PANIC: float = 2.4
+# VELOCIDADES ESCALADAS AL DOBLE PARA LABORES MÁGICAS FLUIDAS
+const SPEED_PATROL: float = 2.2
+const SPEED_PANIC: float = 4.8
 
 const COOLDOWN_SPELL_SEC: float = 6.0
 const CAST_DURATION_SEC: float = 2.0
@@ -61,7 +62,7 @@ func _setup_goals() -> void:
 	var meditate_goal := GOAPGoal.new("SacredGroveMeditation", 1.5)
 	meditate_goal.add_desired_state("is_meditating", true)
 	
-	var patrol_goal := GOAPGoal.new("PatrolGrove", 0.5)
+	var patrol_goal := GOAPGoal.new("Patrol", 0.5)
 	patrol_goal.add_desired_state("is_patrolling", true)
 	
 	_goals.append_array([survive_goal, heal_goal, meditate_goal, patrol_goal])
