@@ -113,7 +113,6 @@ func _execute_throttled_ai_tick() -> void:
 	if active_behavior != null:
 		# Delegate high-level plans and decisions 100% to the GOAP active strategy
 		active_behavior.evaluate_and_execute(_host, _ai_tick_rate)
-		_dispatch_active_telemetry()
 
 
 ## Shield of Drift: Zeroes out obsolete direction vectors when GOAP plans are inactive
@@ -187,24 +186,6 @@ func _keep_gaze_within_tether() -> void:
 		if _host.global_position.distance_squared_to(spawn_pt) > 144.0: 
 			wander_direction = (spawn_pt - _host.global_position).normalized()
 			wander_direction.y = 0.0
-
-
-func _dispatch_active_telemetry() -> void:
-	if is_instance_valid(AITelemetryService.instance) and is_instance_valid(_host):
-		var active_task_name: String = "IDLE"
-		if active_behavior != null and active_behavior.has_method("get_active_state_name"):
-			active_task_name = str(active_behavior.call("get_active_state_name", _host))
-		else:
-			active_task_name = _get_task_state_name(current_task as int)
-			
-		var lookup_key: String = active_task_name
-		if lookup_key == "WANDERING": lookup_key = "WANDER"
-		elif lookup_key == "CHATTING": lookup_key = "CHAT"
-		
-		AITelemetryService.log_movement(
-			_host.name, _host.global_position, _host.velocity, wander_direction,
-			tr("SHOWCASE_TASK_" + lookup_key).to_upper(), _host.is_on_wall(), _host.is_on_floor(), "", ""
-		)
 
 
 func _get_task_state_name(task_val: int) -> String:

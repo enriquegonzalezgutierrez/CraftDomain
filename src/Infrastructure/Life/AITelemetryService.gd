@@ -1,8 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/AITelemetryService.gd
 # Description: Infrastructure service responsible for gathering, buffering, 
-#              and writing high-resolution AI movement, environmental blocks, 
-#              and goal-planning telemetry to disk.
+#              and writing high-resolution AI deep-diagnostics to disk.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Handles exclusively diagnostics 
 #   formatting and asynchronous thread-safe log flushing.
@@ -15,9 +14,7 @@ extends RefCounted
 
 static var instance: AITelemetryService = null
 
-# Enable diagnostics logging for environmental inspection
 const IS_TELEMETRY_ENABLED: bool = true
-
 const LOG_PATH := "user://world_save/ai_telemetry_diagnostics.log"
 const FLUSH_INTERVAL_SEC: float = 2.0
 
@@ -33,54 +30,28 @@ func _init() -> void:
 		_clear_previous_log_file()
 
 
-static func log_movement(
-	entity_name: String, pos: Vector3, vel: Vector3, wander_dir: Vector3, 
-	task_name: String, on_wall: bool, on_floor: bool, blocks_info: String = "", target_info: String = ""
-) -> void:
+## OCP-Compliant Deep Diagnostics entry point for the physics pipeline
+static func log_deep_diagnostics(host: CharacterBody3D, task: String, dir: Vector3, v_in: Vector3, v_out: Vector3, col: bool, flags: Dictionary) -> void:
 	if not IS_TELEMETRY_ENABLED: return
 	if is_instance_valid(instance):
-		instance.append_log_line(entity_name, pos, vel, wander_dir, task_name, on_wall, on_floor, blocks_info, target_info)
+		instance._format_and_append_deep(host, task, dir, v_in, v_out, col, flags)
 
 
-func append_log_line(
-	entity_name: String, pos: Vector3, vel: Vector3, wander_dir: Vector3, 
-	task_name: String, on_wall: bool, on_floor: bool, blocks_info: String, target_info: String
-) -> void:
-	if not IS_TELEMETRY_ENABLED: return
+func _format_and_append_deep(host: CharacterBody3D, task: String, dir: Vector3, v_in: Vector3, v_out: Vector3, col: bool, flags: Dictionary) -> void:
+	var ts := Time.get_time_string_from_system()
+	var p := host.global_position
 	
-	var timestamp := Time.get_time_string_from_system()
-	var is_stuck := _is_entity_physically_stuck(vel, wander_dir, on_wall)
-	var log_line := _format_telemetry_line(
-		timestamp, entity_name, pos, vel, wander_dir, 
-		task_name, on_wall, on_floor, blocks_info, target_info, is_stuck
-	)
+	var line1 := "[%s] [%s] Task:%s | Pos:(%.2f,%.2f,%.2f) | Dir:(%.2f,%.2f)\n" % [ts, host.name, task, p.x, p.y, p.z, dir.x, dir.z]
+	var line2 := "    L-> Vel_IN:(%.2f,%.2f,%.2f) -> Vel_OUT:(%.2f,%.2f,%.2f)\n" % [v_in.x, v_in.y, v_in.z, v_out.x, v_out.y, v_out.z]
+	var line3 := "    L-> Floor:%s Wall:%s Col:%s | HabBlk:%s Turn:%.2f Edge:%s Yld:%s Wsk:%s\n" % [
+		host.is_on_floor(), host.is_on_wall(), col,
+		flags.get("hab_blk", false), flags.get("turn_thr", 1.0),
+		flags.get("edge_stp", false), flags.get("yield", false), flags.get("whisk", false)
+	]
 	
 	_lock.lock()
-	_log_buffer.append(log_line)
+	_log_buffer.append(line1 + line2 + line3)
 	_lock.unlock()
-
-
-func _is_entity_physically_stuck(vel: Vector3, wander_dir: Vector3, on_wall: bool) -> bool:
-	var horizontal_vel_sq := Vector2(vel.x, vel.z).length_squared()
-	var horizontal_dir_sq := Vector2(wander_dir.x, wander_dir.z).length_squared()
-	return on_wall and horizontal_dir_sq > 0.1 and horizontal_vel_sq < 0.05
-
-
-func _format_telemetry_line(
-	timestamp: String, entity_name: String, pos: Vector3, vel: Vector3, 
-	wander_dir: Vector3, task_name: String, on_wall: bool, on_floor: bool, 
-	blocks_info: String, target_info: String, is_stuck: bool
-) -> String:
-	var wall_str := "TRUE" if on_wall else "FALSE"
-	var floor_str := "TRUE" if on_floor else "FALSE"
-	var stuck_str := " | ⚠️ [STUCK]" if is_stuck else ""
-	var env_str := (" | Env: " + blocks_info) if blocks_info != "" else ""
-	var tgt_str := (" | Target: " + target_info) if target_info != "" else ""
-	
-	return "[%s] [%s] Pos:(%.2f,%.2f,%.2f) Vel:(%.2f,%.2f) Desired:(%.2f,%.2f) Task:%s Wall:%s Floor:%s%s%s%s" % [
-		timestamp, entity_name, pos.x, pos.y, pos.z, vel.x, vel.z, wander_dir.x, wander_dir.z,
-		task_name, wall_str, floor_str, env_str, tgt_str, stuck_str
-	]
 
 
 func process_telemetry_flush(delta: float) -> void:

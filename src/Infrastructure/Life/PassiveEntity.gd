@@ -253,10 +253,6 @@ func _cleanup_physics_shapes() -> void:
 	var alert_net := AlertNetworkService.instance
 	if is_instance_valid(alert_net): alert_net.unregister_defender(self)
 	
-	# ==========================================================================
-	# RELEASE JOB RESERVATION HOOK (SRP/OCP Integration)
-	# Safely release any claimed voxel coordinate before freeing Node RIDs
-	# ==========================================================================
 	var job_service := JobReservationService.instance
 	if is_instance_valid(job_service):
 		job_service.release_all_jobs_for_worker(get_instance_id())
@@ -284,8 +280,6 @@ func _apply_death_animations_and_free() -> void:
 
 func _spawn_death_particles() -> void:
 	var particles := CPUParticles3D.new()
-	_configure_death_particle_properties(particles)
-	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.15, 0.15, 0.15)
 	var mat := StandardMaterial3D.new()
@@ -295,15 +289,6 @@ func _spawn_death_particles() -> void:
 	mesh.material = mat
 	particles.mesh = mesh
 	
-	particles.finished.connect(particles.queue_free)
-	var world_node := get_parent()
-	if is_instance_valid(world_node):
-		world_node.add_child(particles)
-		particles.global_position = global_position + Vector3(0, 0.5, 0)
-		particles.emitting = true
-
-
-func _configure_death_particle_properties(particles: CPUParticles3D) -> void:
 	particles.amount = 15
 	particles.one_shot = true
 	particles.explosiveness = 0.95
@@ -315,6 +300,13 @@ func _configure_death_particle_properties(particles: CPUParticles3D) -> void:
 	particles.initial_velocity_min = 2.0
 	particles.initial_velocity_max = 4.0
 	particles.gravity = Vector3(0, 2.0, 0)
+	
+	particles.finished.connect(particles.queue_free)
+	var world_node := get_parent()
+	if is_instance_valid(world_node):
+		world_node.add_child(particles)
+		particles.global_position = global_position + Vector3(0, 0.5, 0)
+		particles.emitting = true
 
 
 func _try_drop_player_loot() -> void:
@@ -392,7 +384,6 @@ func _apply_grounded_snap(_delta: float) -> void:
 	velocity.y = -1.2
 
 
-## Public API: Exposes if the host is currently submerged in water or lava volumes.
 func is_in_liquid() -> bool:
 	return _check_in_liquid_state()
 
@@ -427,10 +418,6 @@ func _update_floating_nameplate_unconditional() -> void:
 		_ui_component.update_ui_state(active_quest, quest_target_id)
 
 
-# ==============================================================================
-# DECOUPLED QUEST SELECTION SYSTEMS (SRP Compliant)
-# ==============================================================================
-
 func _update_quest_bubble_state() -> void:
 	if not is_instance_valid(_ui_component):
 		return
@@ -439,48 +426,21 @@ func _update_quest_bubble_state() -> void:
 	var ws := _get_world_state_ref()
 	
 	if active_quest == null or ws == null:
-		_reset_quest_ui_state()
+		quest_target_id = ""
+		_ui_component.update_ui_state(null, "")
 		return
 		
 	if ws.active_quest_target_node == self:
-		_maintain_active_quest_focus(active_quest)
+		active_quest.target_position = global_position
+		_ui_component.update_ui_state(active_quest, active_quest.quest_id)
 		return
 		
-	if _is_another_node_tracking_quest(ws):
-		_deny_quest_claiming(active_quest)
-		return
-		
-	_evaluate_new_quest_claiming(active_quest, ws)
-
-
-func _get_world_state_ref() -> WorldState:
-	var parent := get_parent()
-	if is_instance_valid(parent) and "world_state" in parent:
-		return parent.world_state as WorldState
-	return null
-
-
-func _reset_quest_ui_state() -> void:
-	quest_target_id = ""
-	_ui_component.update_ui_state(null, "")
-
-
-func _maintain_active_quest_focus(active_quest: Quest) -> void:
-	active_quest.target_position = global_position
-	_ui_component.update_ui_state(active_quest, active_quest.quest_id)
-
-
-func _is_another_node_tracking_quest(ws: WorldState) -> bool:
 	var target_node := ws.active_quest_target_node
-	return is_instance_valid(target_node) and not target_node.domain_entity.is_dead
-
-
-func _deny_quest_claiming(active_quest: Quest) -> void:
-	quest_target_id = ""
-	_ui_component.update_ui_state(active_quest, "")
-
-
-func _evaluate_new_quest_claiming(active_quest: Quest, ws: WorldState) -> void:
+	if is_instance_valid(target_node) and not target_node.domain_entity.is_dead:
+		quest_target_id = ""
+		_ui_component.update_ui_state(active_quest, "")
+		return
+		
 	var dist := global_position.distance_to(active_quest.target_position)
 	if dist <= 25.0 and _is_eligible_for_quest(active_quest.quest_id):
 		quest_target_id = active_quest.quest_id
@@ -490,6 +450,13 @@ func _evaluate_new_quest_claiming(active_quest: Quest, ws: WorldState) -> void:
 	else:
 		quest_target_id = ""
 		_ui_component.update_ui_state(active_quest, "")
+
+
+func _get_world_state_ref() -> WorldState:
+	var parent := get_parent()
+	if is_instance_valid(parent) and "world_state" in parent:
+		return parent.world_state as WorldState
+	return null
 
 
 func _apply_absolute_boundary_forcefield(delta: float) -> void:
@@ -516,6 +483,9 @@ func _enforce_habitat_boundary(ws: WorldState, feet_coord: Vector3i) -> void:
 	if not is_feet_safe and not is_below_safe:
 		velocity.x = 0.0
 		velocity.z = 0.0
+		set_meta("diag_hab_blk", true)
+	else:
+		set_meta("diag_hab_blk", false)
 		
 	if _get_habitat() == 2 and block_at_feet == BlockType.Type.AIR:
 		velocity.y = -2.5
@@ -552,4 +522,32 @@ func _apply_visual_movement_and_slide(delta: float) -> void:
 		visual_representation.animate_movement(flat_velocity, is_on_floor(), delta)
 		
 	_physics_tick(delta)
-	move_and_slide()
+	
+	var vel_b4 := velocity
+	var collided := move_and_slide()
+	var vel_aft := velocity
+	
+	if Engine.get_physics_frames() % 15 == 0:
+		_dispatch_deep_telemetry(vel_b4, vel_aft, collided)
+
+
+func _dispatch_deep_telemetry(vel_b4: Vector3, vel_aft: Vector3, collided: bool) -> void:
+	var task_name := "IDLE"
+	var dir := Vector3.ZERO
+	
+	if is_instance_valid(ai_component):
+		dir = ai_component.wander_direction
+		var active_b: Resource = ai_component.get("active_behavior") as Resource
+		if active_b != null and active_b.has_method("get_active_state_name"):
+			task_name = str(active_b.call("get_active_state_name", self))
+		else:
+			task_name = ai_component.call("_get_task_state_name", ai_component.current_task) as String
+			
+	var flags: Dictionary = {
+		"hab_blk": get_meta("diag_hab_blk") if has_meta("diag_hab_blk") else false,
+		"turn_thr": get_meta("diag_turn_thr") if has_meta("diag_turn_thr") else 1.0,
+		"edge_stp": get_meta("diag_edge_stp") if has_meta("diag_edge_stp") else false,
+		"yield": get_meta("diag_yield") if has_meta("diag_yield") else false,
+		"whisk": get_meta("diag_whisk") if has_meta("diag_whisk") else false
+	}
+	AITelemetryService.log_deep_diagnostics(self, task_name, dir, vel_b4, vel_aft, collided, flags)

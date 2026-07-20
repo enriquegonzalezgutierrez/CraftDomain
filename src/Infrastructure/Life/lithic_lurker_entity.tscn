@@ -1,33 +1,29 @@
-[gd_scene format=3 uid="uid://cvjmhn0n2ertb"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/lithic_lurker_entity.tscn
-; Description: 3D Scene representing the Act I Boss Lithic Lurker entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/LithicLurkerEntity.gd" id="1_lurker"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/lithic_lurker.glb" id="4_glb"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_lurker"]
 size = Vector3(1.8, 2.5, 1.4)
 
-[node name="LithicLurkerEntity" type="CharacterBody3D" unique_id=938229598]
+[node name="LithicLurkerEntity" type="CharacterBody3D"]
 script = ExtResource("1_lurker")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1874051949]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, 0)
 shape = SubResource("BoxShape3D_lurker")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=294958248]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=18524128]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=704942511]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1066282385]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+
+[node name="lithic_lurker" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]

@@ -48,6 +48,13 @@ static func create_mob(spawn_id: int, pos: Vector3) -> Node:
 	var mob := factory.call(pos) as Node
 	
 	if is_instance_valid(mob):
+		# Ghost Shield: If the factory returns a raw CharacterBody3D without a physical class script attached
+		# (e.g. not extending PassiveEntity), we reject the spawn to prevent memory leaks and zombie processes.
+		if not (mob is PassiveEntity):
+			push_error("[MobRegistry] Fatal: Factory returned a raw node for Spawn ID %d without a physics class!" % spawn_id)
+			mob.queue_free()
+			return null
+			
 		_rig_npc_ai_component(mob, spawn_id)
 			
 	return mob
@@ -66,11 +73,6 @@ static func _rig_npc_ai_component(mob: Node, spawn_id: int) -> void:
 		if _behaviors.has(spawn_id):
 			var original: IAIBehavior = _behaviors[spawn_id]
 			if original != null:
-				# ==============================================================
-				# SOLID OCP DUPLICATION SHIELD
-				# Duplicates the static behavior resource so every spawned NPC
-				# possesses its own unique, isolated GOAP blackboard state!
-				# ==============================================================
 				ai.set("active_behavior", original.duplicate())
 
 

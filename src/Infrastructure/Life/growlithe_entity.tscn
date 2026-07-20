@@ -1,11 +1,4 @@
-[gd_scene format=3 uid="uid://duvfpge4imxy1"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/growlithe_entity.tscn
-; Description: 3D Scene representing the passive canine Growlithe entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/GrowlitheEntity.gd" id="1_growlithe"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
@@ -16,23 +9,23 @@
 radius = 0.19140625
 height = 0.8218994
 
-[node name="GrowlitheEntity" type="CharacterBody3D" unique_id=657819694]
+[node name="GrowlitheEntity" type="CharacterBody3D"]
 script = ExtResource("1_growlithe")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1801402479]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.42315674, 0)
 shape = SubResource("CapsuleShape3D_growlithe")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=610911647]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=760756280]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=1482573444]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=935271538]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="growlithe" parent="Visuals/BodyBobJoint" unique_id=1124338160 instance=ExtResource("4_glb")]
+[node name="growlithe" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, 0, 0, 0)

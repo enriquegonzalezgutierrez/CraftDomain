@@ -1,11 +1,4 @@
-[gd_scene format=3 uid="uid://cowshcdd2ok63"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/golem_entity.tscn
-; Description: 3D Scene representing the defensive colossus Iron Golem entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/GolemEntity.gd" id="1_golem"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
@@ -16,23 +9,23 @@
 radius = 1.7431641
 height = 6.065918
 
-[node name="GolemEntity" type="CharacterBody3D" unique_id=1050850655]
+[node name="GolemEntity" type="CharacterBody3D"]
 script = ExtResource("1_golem")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=479006488]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.0456543, 0)
 shape = SubResource("CapsuleShape3D_golem")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=408930700]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=1614283184]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=1153690745]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=334047307]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="golem" parent="Visuals/BodyBobJoint" unique_id=728753064 instance=ExtResource("4_glb")]
+[node name="golem" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(3, 0, 0, 0, 3, 0, 0, 0, 3, 0, 3.0099337, 0)

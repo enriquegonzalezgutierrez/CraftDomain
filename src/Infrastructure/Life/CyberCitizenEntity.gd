@@ -1,17 +1,16 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/CyberCitizenEntity.gd
 # Description: Physical character controller for the tech-noir Cyber Citizen Android.
-#              Updated to use native, highly-portable .glb skeletal animations.
-# Author: Enrique González Gutiérrez
+#              Updated to use native, highly-portable .glb static meshes.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name CyberCitizenEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/cyber/cyber_base.glb"
+const BASE_MODEL_PATH := "res://assets/models/mobs/cyber.glb"
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
-
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 10)
@@ -19,7 +18,6 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	humanoid_role = 0 
 	is_conversational_npc = true
 	name = "Entity_CYBER"
-
 
 func _ready() -> void:
 	add_to_group("passives")
@@ -34,7 +32,6 @@ func _ready() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = CyberCitizenAIBehavior.new()
 
-
 func _setup_graphics_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -42,32 +39,23 @@ func _setup_graphics_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("anim_idle_path", ANIM_DIR + "cyber/cyber_idle.glb")
-	strategy.set("anim_walk_path", ANIM_DIR + "cyber/cyber_walk.glb")
-	strategy.set("anim_panic_path", ANIM_DIR + "cyber/cyber_panic.glb")
-	strategy.set("anim_jump_path", ANIM_DIR + "cyber/cyber_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
-
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_ANDROID"
-
 
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2)
 
-
 func _is_eligible_for_quest(_quest_id: String) -> bool:
 	return false 
-
 
 func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
-
 
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD
@@ -76,7 +64,6 @@ func interact(player_node: CharacterBody3D) -> void:
 		intro_node.node_id = "cyber_intro_temp"
 		intro_node.text = _select_procedural_greeting_key()
 		hud.open_dialogue(intro_node, "NPC_NAME_ANDROID", self)
-
 
 func _select_procedural_greeting_key() -> String:
 	var is_night: bool = CelestialService.is_night_time_static()
@@ -89,16 +76,13 @@ func _select_procedural_greeting_key() -> String:
 		return "DIALOGUE_CYBER_PLAINS_A"
 	return "DIALOGUE_CYBER_PLAINS_B"
 
-
 func _can_socialize() -> bool:
 	if is_instance_valid(ai_component):
 		return ai_component.current_task != 6 
 	return true
 
-
 func _play_security_scan() -> void:
 	_spawn_cyan_laser_particles()
-
 
 func _spawn_cyan_laser_particles() -> void:
 	var particles := CPUParticles3D.new()

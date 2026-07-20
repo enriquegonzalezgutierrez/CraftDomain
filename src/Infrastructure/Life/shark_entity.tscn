@@ -1,11 +1,4 @@
-[gd_scene format=3 uid="uid://qa0qdc1e6lws"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/shark_entity.tscn
-; Description: 3D Scene representing the hostile aquatic Shark entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/SharkEntity.gd" id="1_shark"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
@@ -16,23 +9,23 @@
 radius = 0.52233887
 height = 1.1027222
 
-[node name="SharkEntity" type="CharacterBody3D" unique_id=671330564]
+[node name="SharkEntity" type="CharacterBody3D"]
 script = ExtResource("1_shark")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=515123654]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4033735, 0.9518685)
 shape = SubResource("CapsuleShape3D_shark")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=344988706]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=1876023229]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1598051556]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="shark" parent="Visuals/BodyBobJoint" unique_id=1029238103 instance=ExtResource("4_glb")]
+[node name="shark" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(-8.742278e-08, 0, 2, 0, 2, 0, -2, 0, -8.742278e-08, 0, 0, 0)

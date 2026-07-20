@@ -1,24 +1,16 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/HostileEntity.gd
 # Description: Physical character controller representing a hostile Cave Zombie.
-#              Manages high-frequency physics ticks, glitched spotted roars, 
-#              unshaded static glitch particles, and item thievery.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
-#   sound triggers, and particle emissions, delegating state decisions to ZombieAIBehavior.
-# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
-#   to break Godot 4's cyclic preloader compile locks with its behavior script.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+#              Updated to use native, highly-portable .glb static meshes.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name HostileEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/zombie/zombie_base.glb"
+const BASE_MODEL_PATH := "res://assets/models/mobs/zombie.glb"
 const SPEECH_BUBBLE_SCENE := preload("res://src/Infrastructure/UI/speech_bubble.tscn")
 
-## Decoupled local metadata key to prevent cyclic compile locks with ZombieAIBehavior
 const META_ZOMBIE_STATE = "zombie_local_state"
 
 var player: CharacterBody3D
@@ -43,7 +35,7 @@ func _ready() -> void:
 		remove_from_group("passives") 
 	
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
-	_model_node = get_node_or_null("Visuals/BodyBobJoint/zombie_base") as Node3D
+	_model_node = get_node_or_null("Visuals/BodyBobJoint/zombie") as Node3D
 	
 	_setup_graphics_representation()
 	_locate_player()
@@ -74,11 +66,6 @@ func _build_glb_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	
-	strategy.set("anim_idle_path", ANIM_DIR + "zombie/zombie_idle.glb")
-	strategy.set("anim_walk_path", ANIM_DIR + "zombie/zombie_walk.glb")
-	strategy.set("anim_attack_path", ANIM_DIR + "zombie/zombie_attack.glb")
-	strategy.set("anim_jump_path", ANIM_DIR + "zombie/zombie_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	

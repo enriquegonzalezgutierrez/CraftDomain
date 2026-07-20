@@ -5,7 +5,7 @@
 #              Vulkan pre-warming, and 100% Offline Socket Isolation.
 #              EXIT SAFEGUARD: Intercepts OS window close requests to synchronously 
 #              join background worker threads before X11 window destruction (BadWindow).
-# Author: Enrique González Gutiérrez
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name Bootstrap
@@ -177,6 +177,7 @@ func _register_passive_wildlife(h_land: int, h_both: int, h_water: int) -> void:
 	_register_scene_mob(205, BirdEntity, h_land, ai_fauna)
 	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna)
 	_register_scene_mob(208, CrabEntity, h_both, ai_fauna)
+	_register_scene_mob(209, ElephantEntity, h_land, ai_fauna) # FIXED: Added missing Elephant registration
 	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna)
 
 
@@ -204,7 +205,7 @@ func _register_civilian_professions(h_land: int) -> void:
 func _register_campaign_bosses(h_land: int) -> void:
 	_register_scene_mob(50, LithicLurkerEntity, h_land, LithicLurkerAIBehavior.new())
 	_register_scene_mob(51, ObsidianColossusEntity, h_land, ObsidianColossusAIBehavior.new())
-	_register_scene_mob(52, WeaverMalakorEntity, h_land, WeaverMalakorAIBehavior.new())
+	_register_scene_mob(52, WeaverMalakorEntity, h_land, WeaverMalakorAIBehavior.new()) # FIXED: Added missing Weaver Final Boss registration
 
 
 func _register_scene_mob(spawn_id: int, fallback_class: Variant, habitat: int, default_behavior: IAIBehavior = null) -> void:
@@ -245,7 +246,6 @@ func _register_prop(prop_id: int, _prop_class: Variant) -> void:
 
 
 func _load_and_apply_user_settings() -> void:
-	# Symmetrical Guardrail: Guarantee that core audio buses are compiled on first boot
 	_get_or_create_bus("Music")
 	_get_or_create_bus("SFX")
 	

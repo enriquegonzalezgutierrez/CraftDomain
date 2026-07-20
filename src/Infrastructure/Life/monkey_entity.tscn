@@ -1,11 +1,4 @@
-[gd_scene format=3 uid="uid://cxlpiaymk64xi"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/monkey_entity.tscn
-; Description: 3D Scene representing the passive acrobatic Monkey entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/MonkeyEntity.gd" id="1_monkey"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
@@ -16,22 +9,22 @@
 radius = 0.37841797
 height = 1.0947266
 
-[node name="MonkeyEntity" type="CharacterBody3D" unique_id=778887141]
+[node name="MonkeyEntity" type="CharacterBody3D"]
 script = ExtResource("1_monkey")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1010523382]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5473633, 0)
 shape = SubResource("CapsuleShape3D_monkey")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=552095216]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=1953412953]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=1211502992]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=925166689]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="monkey" parent="Visuals/BodyBobJoint" unique_id=223357302 instance=ExtResource("4_glb")]
+[node name="monkey" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]

@@ -39,7 +39,6 @@ window/vsync/vsync_mode=0
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0
-textures/vram_compression/import_s3tc_bptc=true
 scaling_3d/scale=0.85
 environment/defaults/default_clear_color=Color(0.04, 0.04, 0.06, 1)
 textures/default_filters/texture_filter_3d=2

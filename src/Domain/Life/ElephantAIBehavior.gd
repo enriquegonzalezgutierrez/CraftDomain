@@ -8,7 +8,8 @@
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
 #   heavy-impact triggers (such as trunk slaps) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+# - BUG FIX: Correctly routed inner classes static calls to the outer scope namespace.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ElephantAIBehavior
@@ -29,7 +30,7 @@ var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
-	overrides_wandering = true
+	overrides_wandering = true 
 	_setup_goap_profile()
 
 
@@ -167,7 +168,7 @@ class ElephantPanicAction extends GOAPAction:
 		vel.z = wander_dir.z * SPEED_WALK * 1.6
 		host.velocity = vel
 		if is_instance_valid(ai): ai.set("wander_direction", wander_dir)
-		_process_stride_impacts(bb, host, delta)
+		ElephantAIBehavior._process_stride_impacts(bb, host, delta) # FIXED: Explicit outer class namespace
 
 
 class HeavyStrollAction extends GOAPAction:
@@ -201,12 +202,12 @@ class HeavyStrollAction extends GOAPAction:
 		if wander_dir != Vector3.ZERO:
 			vel.x = wander_dir.x * SPEED_WALK
 			vel.z = wander_dir.z * SPEED_WALK
-			_process_stride_impacts(bb, host, delta)
+			ElephantAIBehavior._process_stride_impacts(bb, host, delta) # FIXED: Explicit outer class namespace
 			_apply_heavy_wall_rebound(bb, host, wander_dir)
 		else:
 			vel.x = move_toward(vel.x, 0.0, SPEED_WALK)
 			vel.z = move_toward(vel.z, 0.0, SPEED_WALK)
-			bb.set_memory("stride_timer", 0.4) # Reset stride
+			bb.set_memory("stride_timer", 0.4) 
 		host.velocity = vel
 		if is_instance_valid(ai): ai.set("wander_direction", wander_dir)
 		
@@ -229,7 +230,7 @@ class HeavyStrollAction extends GOAPAction:
 
 
 # ==============================================================================
-# COMBINED HELPER FUNCTION (Ensuring DRY/SRP limits)
+# COMBINED HELPER FUNCTION
 # ==============================================================================
 
 static func _process_stride_impacts(bb: AIBlackboard, host: CharacterBody3D, delta: float) -> void:
@@ -237,5 +238,5 @@ static func _process_stride_impacts(bb: AIBlackboard, host: CharacterBody3D, del
 	if stride_timer <= 0.0:
 		stride_timer = STRIDE_INTERVAL_SEC
 		if host.has_method("_play_heavy_step_impact"):
-			host.call("_play_heavy_step_impact") # Shakes camera and plays heavy thuds
+			host.call("_play_heavy_step_impact") 
 	bb.set_memory("stride_timer", stride_timer)

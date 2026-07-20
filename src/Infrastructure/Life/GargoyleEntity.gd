@@ -2,13 +2,8 @@
 # Pathfile: res://src/Infrastructure/Life/GargoyleEntity.gd
 # Description: Physical character controller for the hostile nocturnal Gargoyle.
 #              Manages day/night petrification state transitions and flight physics.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively visual sways, 
-#   sound triggers, and particle emissions, delegating state decisions to GargoyleAIBehavior.
-# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
-#   to break Godot 4's cyclic preloader compile locks with its behavior script.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+#              REFACTORED: Purged all skeletal animations to use static procedural swaying.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GargoyleEntity
@@ -22,7 +17,6 @@ const META_STATE = "gargoyle_nocturnal_state"
 
 var player: CharacterBody3D
 var _model_node: Node3D
-var _anim_player: AnimationPlayer
 
 var _animation_time: float = 0.0
 var _model_base_rot: Vector3 = Vector3.ZERO
@@ -43,7 +37,6 @@ func _ready() -> void:
 	_model_node = get_node_or_null("Visuals/BodyBobJoint/gargoyle") as Node3D
 	
 	if is_instance_valid(_model_node):
-		_anim_player = _model_node.find_child("AnimationPlayer", true, false) as AnimationPlayer
 		_model_base_rot = _model_node.rotation
 		GLBModelSanitizer.sanitize_model(_model_node)
 		
@@ -147,7 +140,18 @@ func _process_gargoyle_flight_physics(delta: float) -> void:
 
 func _spawn_basalt_dust_particles() -> void:
 	var particles := CPUParticles3D.new()
-	_configure_basalt_particle_properties(particles)
+	
+	particles.amount = 6
+	particles.one_shot = true
+	particles.explosiveness = 0.9
+	particles.lifetime = 0.45
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	particles.emission_box_extents = Vector3(0.6, 0.1, 0.4)
+	particles.direction = Vector3.DOWN
+	particles.spread = 15.0
+	particles.initial_velocity_min = 1.0
+	particles.initial_velocity_max = 2.0
+	particles.gravity = Vector3(0.0, -9.8, 0.0)
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.08, 0.08, 0.08)
@@ -163,20 +167,6 @@ func _spawn_basalt_dust_particles() -> void:
 	
 	particles.global_position = global_position + Vector3(0.0, 1.2, 0.0)
 	particles.emitting = true
-
-
-func _configure_basalt_particle_properties(particles: CPUParticles3D) -> void:
-	particles.amount = 6
-	particles.one_shot = true
-	particles.explosiveness = 0.9
-	particles.lifetime = 0.45
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	particles.emission_box_extents = Vector3(0.6, 0.1, 0.4)
-	particles.direction = Vector3.DOWN
-	particles.spread = 15.0
-	particles.initial_velocity_min = 1.0
-	particles.initial_velocity_max = 2.0
-	particles.gravity = Vector3(0.0, -9.8, 0.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -244,8 +234,6 @@ func _animate_gargoyle_nocturnal_state(delta: float) -> void:
 
 
 func _animate_awakened_flight() -> void:
-	_play_flight_skeletal_anim()
-	
 	var flat_velocity := Vector2(velocity.x, velocity.z)
 	var is_moving := flat_velocity.length_squared() > 0.1
 	var hover_bob := sin(_animation_time * 5.0) * 0.25
@@ -259,19 +247,7 @@ func _animate_awakened_flight() -> void:
 		_model_node.rotation.x = 0.0
 
 
-func _play_flight_skeletal_anim() -> void:
-	if is_instance_valid(_anim_player):
-		var anims := _anim_player.get_animation_list()
-		if anims.size() > 0:
-			var target_anim: String = anims[0]
-			if _anim_player.current_animation != target_anim or not _anim_player.is_playing():
-				_anim_player.play(target_anim)
-
-
 func _animate_petrified_dormancy(delta: float) -> void:
-	if is_instance_valid(_anim_player):
-		_anim_player.stop()
-		
 	_model_node.position.y = lerp(_model_node.position.y, MODEL_BASE_Y, delta * 5.0)
 	_model_node.rotation = _model_node.rotation.lerp(_model_base_rot, delta * 5.0)
 

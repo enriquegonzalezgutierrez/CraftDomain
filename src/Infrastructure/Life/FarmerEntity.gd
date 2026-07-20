@@ -1,17 +1,16 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/FarmerEntity.gd
 # Description: Physical character controller representing an agricultural Farmer NPC.
-#              Updated to use native, highly-portable .glb skeletal animations.
-# Author: Enrique González Gutiérrez
+#              Updated to use native, highly-portable .glb static meshes.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name FarmerEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/farmer/farmer_base.glb"
+const BASE_MODEL_PATH := "res://assets/models/mobs/farmer.glb"
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
-
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 6)
@@ -19,7 +18,6 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	humanoid_role = 3 
 	is_conversational_npc = true
 	name = "Entity_FARMER"
-
 
 func _ready() -> void:
 	add_to_group("passives")
@@ -34,7 +32,6 @@ func _ready() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = FarmerAIBehavior.new()
 
-
 func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -42,32 +39,23 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("anim_idle_path", ANIM_DIR + "farmer/farmer_idle.glb")
-	strategy.set("anim_walk_path", ANIM_DIR + "farmer/farmer_walk.glb")
-	strategy.set("anim_attack_path", ANIM_DIR + "farmer/farmer_harvest.glb")
-	strategy.set("anim_jump_path", ANIM_DIR + "farmer/farmer_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
-
 
 func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
 
-
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_FARMER"
-
 
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2) 
 
-
 func _is_eligible_for_quest(_quest_id: String) -> bool:
 	return false 
-
 
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: 
@@ -80,7 +68,6 @@ func _physics_process(delta: float) -> void:
 		
 	super(delta)
 
-
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD
 	if is_instance_valid(hud):
@@ -89,7 +76,6 @@ func interact(player_node: CharacterBody3D) -> void:
 		intro_node.text = _select_procedural_greeting_key()
 		
 		hud.open_dialogue(intro_node, "NPC_NAME_FARMER", self)
-
 
 func _select_procedural_greeting_key() -> String:
 	var is_night: bool = CelestialService.is_night_time_static()

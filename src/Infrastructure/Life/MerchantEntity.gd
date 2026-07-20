@@ -1,16 +1,15 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MerchantEntity.gd
 # Description: Physical character controller for the passive village Merchant.
-#              Updated to use native, highly-portable .glb skeletal animations.
-# Author: Enrique González Gutiérrez
+#              Updated to use native, highly-portable .glb static meshes.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MerchantEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/merchant/merchant_base.glb"
+const BASE_MODEL_PATH := "res://assets/models/mobs/merchant.glb"
 var gaze_rotation_offset: float = PI
-
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 6)
@@ -18,7 +17,6 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	humanoid_role = 1 
 	is_conversational_npc = true
 	name = "Entity_MERCHANT"
-
 
 func _ready() -> void:
 	add_to_group("passives")
@@ -32,7 +30,6 @@ func _ready() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = MerchantAIBehavior.new()
 
-
 func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -40,31 +37,22 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("anim_idle_path", ANIM_DIR + "merchant/merchant_idle.glb")
-	strategy.set("anim_walk_path", ANIM_DIR + "merchant/merchant_walk.glb")
-	strategy.set("anim_panic_path", ANIM_DIR + "merchant/merchant_panic.glb")
-	strategy.set("anim_jump_path", ANIM_DIR + "merchant/merchant_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
-
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_MERCHANT"
-
 
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2) 
 
-
 func _is_eligible_for_quest(quest_id: String) -> bool:
 	return quest_id == "fuel_fryer"
-
 
 func _can_socialize() -> bool:
 	var is_night: bool = CelestialService.is_night_time_static()
 	return not is_night
-
 
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD

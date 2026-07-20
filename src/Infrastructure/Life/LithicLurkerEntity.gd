@@ -1,36 +1,27 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/LithicLurkerEntity.gd
 # Description: Physical character controller for the Lithic Lurker Act I Boss.
-#              Orchestrates the physics, AoE ground pound impacts, reflective 
-#              armor invulnerability, and dynamic core flashing.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles strictly physical interactions,
-#   hitboxes, and particle feedbacks. AI is fully delegated to LithicLurkerAIBehavior.
-# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
-#   to break Godot 4's cyclic preloader compile locks with its behavior script.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+#              REFACTORED: Purged procedural mesh builders to use native .glb.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name LithicLurkerEntity
 extends PassiveEntity
 
 const POUND_DAMAGE: int = 3
-const POUND_RADIUS_SQ: float = 36.0 # 6.0 meters squared
-const BOSS_MAX_HEALTH: int = 24     # 12 Hearts of health
+const POUND_RADIUS_SQ: float = 36.0 
+const BOSS_MAX_HEALTH: int = 24     
 
-## Decoupled local metadata key to prevent cyclic compile locks with LithicLurkerAIBehavior
 const META_STATE = "lurker_state"
 
 var player: CharacterBody3D
+var _model_node: Node3D
 var _animation_time: float = 0.0
-
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, BOSS_MAX_HEALTH)
 	entity_habitat = 0 
 	name = "Entity_LITHIC_LURKER"
-
 
 func _ready() -> void:
 	add_to_group("hostiles")
@@ -38,59 +29,31 @@ func _ready() -> void:
 		remove_from_group("passives")
 		
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
-	if not is_instance_valid(visual_component):
-		visual_component = NPCVisualComponent.new()
-		add_child(visual_component)
-		
 	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
-	if not is_instance_valid(ai_component):
-		ai_component = NPCAIComponent.new()
-		add_child(ai_component)
+	
+	_model_node = get_node_or_null("Visuals/BodyBobJoint/lithic_lurker") as Node3D
+	if is_instance_valid(_model_node):
+		GLBModelSanitizer.sanitize_model(_model_node)
 		
 	_locate_player()
-	_build_visual_representation()
 	_setup_nameplate_height()
 	
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = LithicLurkerAIBehavior.new()
 
-
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_LITHIC_LURKER"
 
-
 func _get_nameplate_color() -> Color:
 	return Color(0.95, 0.15, 0.15) 
-
-
-func _build_visual_representation() -> void:
-	var builder := LithicLurkerModelBuilder.new()
-	builder.build_model(visual_component, Color.BLACK, Color.BLACK, Color.BLACK, 0)
-	_apply_dynamic_collision_shape(builder.get_collision_box_size(), builder.get_collision_box_position())
-
-
-func _apply_dynamic_collision_shape(box_size: Vector3, box_pos: Vector3) -> void:
-	var col := get_node_or_null("EntityCollider") as CollisionShape3D
-	if not is_instance_valid(col):
-		col = CollisionShape3D.new()
-		col.name = "EntityCollider"
-		add_child(col)
-		
-	var shape := BoxShape3D.new()
-	shape.size = box_size
-	col.shape = shape
-	col.position = box_pos
-
 
 func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
 
-
 func _play_boss_awaken_roar() -> void:
 	AudioService.play_sfx_static("zombie_groan", global_position, 60.0)
-
 
 func _execute_ground_pound_impact() -> void:
 	AudioService.play_sfx_static("footstep_stone", global_position, 80.0)
@@ -110,7 +73,6 @@ func _execute_ground_pound_impact() -> void:
 		var knockback := Vector3(push_dir.x * 8.5, 4.0, push_dir.z * 8.5)
 		player.call("take_damage", POUND_DAMAGE, knockback)
 
-
 func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -> void:
 	if domain_entity.is_dead:
 		return
@@ -119,21 +81,18 @@ func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -
 	if has_meta(META_STATE):
 		state = get_meta(META_STATE) as int
 		
-	if state == 3: # STUNNED Phase
+	if state == 3: 
 		super(amount, knockback_force, attacker)
 		AudioService.play_sfx_static("block_break", global_position)
 	else:
-		super(0, Vector3.ZERO, attacker) # Reflects sword hits completely
+		super(0, Vector3.ZERO, attacker) 
 		AudioService.play_sfx_static("hit_sword", global_position)
 		_spawn_deflected_sparks()
-
 
 func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(15, 1)
 	inv.add_item(28, 5)
 
-
-## High-Frequency Physics Loop (Runs at 120Hz on the physics thread)
 func _physics_tick(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
@@ -142,24 +101,18 @@ func _physics_tick(delta: float) -> void:
 	if has_meta(META_STATE):
 		state = get_meta(META_STATE) as int
 		
-	if state == 3: # STATE_STUNNED
+	if state == 3: 
 		_process_stunned_visuals(delta)
-
 
 func _process_stunned_visuals(delta: float) -> void:
 	_animation_time += delta
-	var visual_root := visual_component.get("visual_root") as Node3D if is_instance_valid(visual_component) else null
-	
-	if is_instance_valid(visual_root):
+	if is_instance_valid(_model_node):
 		var flash_intensity: float = absf(sin(_animation_time * 18.0)) * 3.5
-		_apply_cyan_core_emission(visual_root, flash_intensity)
-
+		_apply_cyan_core_emission(_model_node, flash_intensity)
 
 func _restore_chasing_armor() -> void:
-	var visual_root := visual_component.get("visual_root") as Node3D if is_instance_valid(visual_component) else null
-	if is_instance_valid(visual_root):
-		_apply_cyan_core_emission(visual_root, 2.5)
-
+	if is_instance_valid(_model_node):
+		_apply_cyan_core_emission(_model_node, 2.5)
 
 func _apply_cyan_core_emission(node: Node, energy: float) -> void:
 	if node is MeshInstance3D:
@@ -169,7 +122,6 @@ func _apply_cyan_core_emission(node: Node, energy: float) -> void:
 			
 	for child in node.get_children():
 		_apply_cyan_core_emission(child, energy)
-
 
 func _spawn_pound_dust_particles() -> void:
 	var particles := CPUParticles3D.new()
@@ -190,7 +142,6 @@ func _spawn_pound_dust_particles() -> void:
 	particles.global_position = global_position + Vector3(0.0, 0.5, 0.0)
 	particles.emitting = true
 
-
 func _configure_dust_particle_properties(particles: CPUParticles3D) -> void:
 	particles.amount = 32
 	particles.one_shot = true
@@ -206,7 +157,6 @@ func _configure_dust_particle_properties(particles: CPUParticles3D) -> void:
 	particles.initial_velocity_min = 3.0
 	particles.initial_velocity_max = 5.0
 	particles.gravity = Vector3(0.0, -9.8, 0.0)
-
 
 func _spawn_deflected_sparks() -> void:
 	var particles := CPUParticles3D.new()

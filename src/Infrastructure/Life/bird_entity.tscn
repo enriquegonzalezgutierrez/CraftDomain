@@ -1,11 +1,4 @@
-[gd_scene format=3 uid="uid://ca8eucptdvt7"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/bird_entity.tscn
-; Description: 3D Scene representing the passive flying Yellow Bird entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/BirdEntity.gd" id="1_bird"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
@@ -16,23 +9,23 @@
 radius = 0.95947266
 height = 3.1634278
 
-[node name="BirdEntity" type="CharacterBody3D" unique_id=1045926448]
+[node name="BirdEntity" type="CharacterBody3D"]
 script = ExtResource("1_bird")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=374574006]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9931884, 0)
 shape = SubResource("CapsuleShape3D_bird")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=294316656]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=738294684]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=1510095576]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1727239445]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="yellow_bird" parent="Visuals/BodyBobJoint" unique_id=2037144196 instance=ExtResource("4_glb")]
+[node name="yellow_bird" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(0.25, 0, 0, 0, 0.25, 0, 0, 0, 0.25, 0, 0, 0)

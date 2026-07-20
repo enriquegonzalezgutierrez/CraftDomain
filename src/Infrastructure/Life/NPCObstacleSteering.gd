@@ -60,41 +60,47 @@ func process_steering(delta: float) -> void:
 func _enforce_turn_before_walk() -> void:
 	var dir: Vector3 = ai_component.get("wander_direction") as Vector3
 	if dir == Vector3.ZERO:
+		host.set_meta("diag_turn_thr", 1.0)
 		return
 		
 	var vis_comp := host.get_node_or_null("NPCVisualComponent")
 	if is_instance_valid(vis_comp) and "visual_root" in vis_comp:
-		var visual_root: Node3D = vis_comp.get("visual_root") as Node3D
-		if is_instance_valid(visual_root):
-			var current_facing := -visual_root.global_transform.basis.z.normalized()
+		var v_root: Node3D = vis_comp.get("visual_root") as Node3D
+		if is_instance_valid(v_root):
+			var current_facing := -v_root.global_transform.basis.z.normalized()
 			var alignment := current_facing.dot(dir.normalized())
 			
 			if alignment < 0.6:
 				var throttle := clampf((alignment + 1.0) / 1.6, 0.15, 1.0)
 				host.velocity.x *= throttle
 				host.velocity.z *= throttle
+				host.set_meta("diag_turn_thr", throttle)
+			else:
+				host.set_meta("diag_turn_thr", 1.0)
 
 
 ## Senses upcoming drops and naturally decelerates before jumping or falling
 func _process_edge_anticipation(space_state: PhysicsDirectSpaceState3D, delta: float) -> void:
 	var flat_vel := Vector2(host.velocity.x, host.velocity.z)
-	if flat_vel.length_squared() < 0.1 or not host.is_on_floor():
-		return
-		
 	var habitat: int = host.get("entity_habitat") if "entity_habitat" in host else 0
-	if habitat == 2: return 
+	
+	if flat_vel.length_squared() < 0.1 or not host.is_on_floor() or habitat == 2:
+		host.set_meta("diag_edge_stp", false)
+		return
 		
 	var look_ahead := host.global_position + host.velocity * 0.4
 	var start_pos := look_ahead + Vector3(0.0, 0.5, 0.0)
-	var end_pos := look_ahead + Vector3(0.0, -2.5, 0.0)
 	
-	var query := PhysicsRayQueryParameters3D.create(start_pos, end_pos)
+	var query := PhysicsRayQueryParameters3D.create(start_pos, look_ahead + Vector3(0.0, -2.5, 0.0))
 	query.exclude = [host.get_rid()]
 	
 	var result := space_state.intersect_ray(query)
 	if result.is_empty() or (start_pos.y - float(result["position"].y) > 1.2):
 		host.velocity.x = lerp(host.velocity.x, 0.0, delta * 5.0)
 		host.velocity.z = lerp(host.velocity.z, 0.0, delta * 5.0)
+		host.set_meta("diag_edge_stp", true)
+	else:
+		host.set_meta("diag_edge_stp", false)
 
 
 # ==============================================================================
@@ -107,6 +113,7 @@ func _process_dynamic_yielding(space_state: PhysicsDirectSpaceState3D, delta: fl
 	var dir: Vector3 = ai_component.get("wander_direction") as Vector3
 	if dir == Vector3.ZERO:
 		_yield_timer = 0.0
+		host.set_meta("diag_yield", false)
 		return false
 		
 	var r_origin := _get_dynamic_ray_origin()
@@ -114,12 +121,12 @@ func _process_dynamic_yielding(space_state: PhysicsDirectSpaceState3D, delta: fl
 	query.exclude = [host.get_rid()]
 	
 	var result := space_state.intersect_ray(query)
-	if not result.is_empty():
-		var collider: Node = result["collider"] as Node
-		if is_instance_valid(collider) and collider is CharacterBody3D and collider != host:
-			return _execute_yield_wait_logic(delta)
+	if not result.is_empty() and result["collider"] is CharacterBody3D and result["collider"] != host:
+		host.set_meta("diag_yield", true)
+		return _execute_yield_wait_logic(delta)
 			
 	_yield_timer = 0.0
+	host.set_meta("diag_yield", false)
 	return false
 
 
@@ -170,11 +177,18 @@ func _cast_whisker_rays(space_state: PhysicsDirectSpaceState3D, r_origin: Vector
 				closest_dist = dist
 				best_normal = result["normal"] as Vector3
 				
+	_apply_whisker_steering(best_normal, wander_dir, delta)
+
+
+func _apply_whisker_steering(best_normal: Vector3, wander_dir: Vector3, delta: float) -> void:
 	if best_normal != Vector3.ZERO:
 		var flat_normal := Vector3(best_normal.x, 0.0, best_normal.z).normalized()
 		if flat_normal != Vector3.ZERO:
 			var steer_target := wander_dir.bounce(flat_normal).normalized()
 			ai_component.set("wander_direction", wander_dir.lerp(steer_target, delta * 8.0).normalized())
+		host.set_meta("diag_whisk", true)
+	else:
+		host.set_meta("diag_whisk", false)
 
 
 func _handle_step_climbing_and_unsticking(delta: float) -> void:

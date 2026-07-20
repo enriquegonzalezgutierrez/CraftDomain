@@ -1,11 +1,4 @@
-[gd_scene format=3 uid="uid://bwk5ibc5ooi8q"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/sheep_entity.tscn
-; Description: 3D Scene representing the passive Fluffy Sheep entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/SheepEntity.gd" id="1_sheep"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
@@ -16,22 +9,22 @@
 radius = 0.40673828
 height = 1.0024414
 
-[node name="SheepEntity" type="CharacterBody3D" unique_id=189901055]
+[node name="SheepEntity" type="CharacterBody3D"]
 script = ExtResource("1_sheep")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=227965575]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5197754, 0)
 shape = SubResource("CapsuleShape3D_sheep")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=1487611404]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=159742051]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=908397151]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="sheep" parent="Visuals/BodyBobJoint" unique_id=682198733 instance=ExtResource("4_glb")]
+[node name="sheep" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]

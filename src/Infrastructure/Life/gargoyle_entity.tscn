@@ -1,11 +1,4 @@
-[gd_scene format=3 uid="uid://crngc5vjnil1s"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/gargoyle_entity.tscn
-; Description: 3D Scene representing the hostile nocturnal Gargoyle entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/GargoyleEntity.gd" id="1_gargoyle"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
@@ -16,23 +9,23 @@
 radius = 0.43017578
 height = 2.0021973
 
-[node name="GargoyleEntity" type="CharacterBody3D" unique_id=1520422958]
+[node name="GargoyleEntity" type="CharacterBody3D"]
 script = ExtResource("1_gargoyle")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=25535899]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0182159, 0)
 shape = SubResource("CapsuleShape3D_gargoyle")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=590871825]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=817849081]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1889340245]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="gargoyle" parent="Visuals/BodyBobJoint" unique_id=682649713 instance=ExtResource("4_glb")]
+[node name="gargoyle" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(-1.3113416e-07, 0, -3, 0, 3, 0, 3, 0, -1.3113416e-07, 0, 1.1374629, 0)

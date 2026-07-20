@@ -1,17 +1,16 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/VillagerEntity.gd
 # Description: Physical character controller for the common Gossip Villager NPC.
-#              Updated to use native, highly-portable .glb skeletal animations.
-# Author: Enrique González Gutiérrez
+#              Updated to use native, highly-portable .glb static meshes.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name VillagerEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/villager/villager_base.glb"
+const BASE_MODEL_PATH := "res://assets/models/mobs/villager.glb"
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
-
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 6)
@@ -19,7 +18,6 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	humanoid_role = 0 
 	is_conversational_npc = true
 	name = "Entity_VILLAGER"
-
 
 func _ready() -> void:
 	add_to_group("passives")
@@ -32,7 +30,6 @@ func _ready() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = VillagerAIBehavior.new()
 
-
 func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -40,44 +37,32 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("anim_idle_path", ANIM_DIR + "villager/villager_idle.glb")
-	strategy.set("anim_walk_path", ANIM_DIR + "villager/villager_walk.glb")
-	strategy.set("anim_panic_path", ANIM_DIR + "villager/villager_panic.glb")
-	strategy.set("anim_jump_path", ANIM_DIR + "villager/villager_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
-
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_VILLAGER"
-
 
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2) 
 
-
 func _is_eligible_for_quest(quest_id: String) -> bool:
 	return quest_id == "lost_bazaar" or quest_id == "bazaar_return"
 
-
 func _has_ui_decorations() -> bool:
 	return true
-
 
 func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
 
-
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	pass 
 
-
 func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(37, 1) # Gold Block
-
 
 func interact(player_node: CharacterBody3D) -> void:
 	var active_q := QuestService.get_active_quest()
@@ -99,7 +84,6 @@ func interact(player_node: CharacterBody3D) -> void:
 			intro_node.node_id = "villager_intro_temp"
 			intro_node.text = _select_procedural_greeting_key()
 			hud.open_dialogue(intro_node, "NPC_NAME_VILLAGER", self)
-
 
 func _select_procedural_greeting_key() -> String:
 	var is_night: bool = CelestialService.is_night_time_static()

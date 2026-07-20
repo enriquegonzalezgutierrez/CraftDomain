@@ -2,15 +2,14 @@
 # Pathfile: res://src/Infrastructure/Life/DruidEntity.gd
 # Description: Physical character controller for the forest guardian Druid.
 #              Provides specialized state behaviors and conversational dialogs.
-# Author: Enrique González Gutiérrez
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name DruidEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/druid/druid_base.glb"
+const BASE_MODEL_PATH := "res://assets/models/mobs/druid.glb"
 var gaze_rotation_offset: float = PI
-
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 8)
@@ -18,7 +17,6 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	humanoid_role = 5 
 	is_conversational_npc = true
 	name = "Entity_DRUID"
-
 
 func _ready() -> void:
 	super()
@@ -32,7 +30,6 @@ func _ready() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = DruidAIBehavior.new()
 
-
 func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
 	if strategy_script == null:
@@ -40,26 +37,19 @@ func _build_visual_representation() -> void:
 		
 	var strategy: Resource = strategy_script.new()
 	strategy.set("base_model_path", BASE_MODEL_PATH)
-	strategy.set("anim_idle_path", ANIM_DIR + "druid/druid_idle.glb")
-	strategy.set("anim_walk_path", ANIM_DIR + "druid/druid_walk.glb")
-	strategy.set("anim_jump_path", ANIM_DIR + "druid/druid_jump.glb")
 	
 	visual_representation = strategy as IEntityVisualRepresentation
 	if is_instance_valid(visual_component) and is_instance_valid(visual_component.body_bob_node):
 		visual_representation.build_representation(self, visual_component.body_bob_node)
 
-
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_DRUID"
-
 
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2) 
 
-
 func _is_eligible_for_quest(_quest_id: String) -> bool:
 	return false 
-
 
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD
@@ -69,7 +59,6 @@ func interact(player_node: CharacterBody3D) -> void:
 		intro_node.text = _select_procedural_greeting_key()
 			
 		hud.open_dialogue(intro_node, "NPC_NAME_DRUID", self)
-
 
 func _select_procedural_greeting_key() -> String:
 	var is_night: bool = CelestialService.is_night_time_static()
@@ -82,12 +71,10 @@ func _select_procedural_greeting_key() -> String:
 		return "DIALOGUE_DRUID_PLAINS_A"
 	return "DIALOGUE_DRUID_PLAINS_B"
 
-
 func _can_socialize() -> bool:
 	if is_instance_valid(ai_component):
 		return ai_component.current_task != 6 
 	return true
-
 
 func _play_healing_visuals(target_node: Node3D) -> void:
 	if not is_instance_valid(target_node):
@@ -95,7 +82,6 @@ func _play_healing_visuals(target_node: Node3D) -> void:
 	var frame_stamp := Engine.get_physics_frames()
 	if frame_stamp % 12 == 0:
 		_spawn_magical_heal_particle(target_node.global_position)
-
 
 func _spawn_magical_heal_particle(target_pos: Vector3) -> void:
 	var particles := CPUParticles3D.new()

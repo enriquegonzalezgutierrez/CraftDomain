@@ -1,11 +1,4 @@
-[gd_scene format=3 uid="uid://crvvj1ncwwchg"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/pig_entity.tscn
-; Description: 3D Scene representing the passive prairie Pig entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/PigEntity.gd" id="1_pig"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
@@ -16,23 +9,23 @@
 radius = 0.3642578
 height = 0.8100586
 
-[node name="PigEntity" type="CharacterBody3D" unique_id=1503595207]
+[node name="PigEntity" type="CharacterBody3D"]
 script = ExtResource("1_pig")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1902404766]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4050293, 0)
 shape = SubResource("CapsuleShape3D_pig")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=1294822048]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=744164129]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=941271528]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=657485286]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="pig" parent="Visuals/BodyBobJoint" unique_id=1978983367 instance=ExtResource("4_glb")]
+[node name="pig" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(-4.371139e-07, 0, -10, 0, 10, 0, 10, 0, -4.371139e-07, 0, 0.0102, 0)

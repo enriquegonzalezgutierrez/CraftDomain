@@ -6,8 +6,8 @@
 # - Single Responsibility Principle (SRP): Coordinates exclusively mob lifecycle.
 # - Open-Closed Principle (OCP): Integrates dynamically with the custom population 
 #   densities and rosters declared by the active biome.
-# - Overlap Shield: Prevents depenetration launch bugs on game reload by applying 
-#   dynamic spawn offsets to landmark NPCs if they overlap with the player.
+# - Quest Persistency Shield: Forces quest objective instantiation even on 
+#   re-loaded saved chunks, guaranteeing mission progression continuity.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -68,6 +68,8 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 		_spawn_wilderness_wildlife(chunk_offset, world_state, world_node, biome, spawned_nodes)
 
 	_spawn_megastructure_defenders(chunk.position, world_state, world_node, spawned_nodes)
+	
+	# OCP Persistence Injection: Always forces the spawn check for active quest mobs!
 	_spawn_active_quest_objectives(chunk, chunk_offset, world_state, world_node, spawned_nodes)
 
 
@@ -139,10 +141,9 @@ func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState
 func _spawn_decoupled_landmark_mob(point: StructurePopulationService.PopulationPoint, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
 	var spawn_pos := point.global_pos
 	
-	# Symmetrical Overlap Shield: Avoid launching NPCs due to player collision on reload
 	var player_node := world_node.get("player") as CharacterBody3D if is_instance_valid(world_node) else null
 	if is_instance_valid(player_node) and spawn_pos.distance_to(player_node.global_position) < 1.2:
-		spawn_pos += Vector3(1.2, 0.0, 1.2) # Shift slightly to prevent clipping
+		spawn_pos += Vector3(1.2, 0.0, 1.2) 
 		
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var spawn_node := MobRegistry.create_mob(point.spawn_id, spawn_pos)
@@ -162,8 +163,9 @@ func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_s
 	
 	if target_chunk_pos == chunk.position:
 		var mob_id: int = QUEST_TARGET_MOBS[active_q.quest_id]
-		var existing_target := _find_eligible_entity_in_list(spawned_nodes, mob_id)
+		var existing_target := _find_eligible_entity_in_list(world_node, mob_id, target_pos)
 		
+		# If the mob is already present in the active scene tree (persisted across chunk reloads), just assign it
 		if existing_target != null:
 			existing_target.quest_target_id = active_q.quest_id
 			return
@@ -171,11 +173,15 @@ func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_s
 		_spawn_exact_quest_mob(mob_id, target_pos, chunk_offset, world_state, world_node, spawned_nodes, active_q.quest_id)
 
 
-func _find_eligible_entity_in_list(nodes: Array[Node], mob_id: int) -> CharacterBody3D:
-	for node: Node in nodes:
-		if node is CharacterBody3D and node.has_meta("spawn_id"):
-			if int(node.get_meta("spawn_id")) == mob_id:
-				return node as CharacterBody3D
+func _find_eligible_entity_in_list(world_node: Node, mob_id: int, target_pos: Vector3) -> CharacterBody3D:
+	if not is_instance_valid(world_node):
+		return null
+		
+	for child in world_node.get_children():
+		if child is CharacterBody3D and child.has_meta("spawn_id"):
+			if int(child.get_meta("spawn_id")) == mob_id:
+				if child.global_position.distance_squared_to(target_pos) <= 225.0: # 15 meters radius tolerance
+					return child as CharacterBody3D
 	return null
 
 

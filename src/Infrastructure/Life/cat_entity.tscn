@@ -1,11 +1,4 @@
-[gd_scene format=3 uid="uid://g2a5l82lgglu"]
-; ==============================================================================
-; Pathfile: res://src/Infrastructure/Life/cat_entity.tscn
-; Description: 3D Scene representing the passive domestic Cat entity.
-;              Cleaned of orphan UIDs to guarantee stable cross-OS loading.
-; Author: Enrique González Gutiérrez
-; Email: enrique.gonzalez.gutierrez@gmail.com
-; ==============================================================================
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/Infrastructure/Life/CatEntity.gd" id="1_cat"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
@@ -16,23 +9,23 @@
 radius = 0.14697266
 height = 0.745918
 
-[node name="CatEntity" type="CharacterBody3D" unique_id=1774184488]
+[node name="CatEntity" type="CharacterBody3D"]
 script = ExtResource("1_cat")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=2042458840]
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.372959, 0)
 shape = SubResource("CapsuleShape3D_cat")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=1179284481]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=48898497]
+[node name="NPCVisualComponent" type="Node" parent="."]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=254685920]
+[node name="Visuals" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1862616390]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="cat" parent="Visuals/BodyBobJoint" unique_id=1190464672 instance=ExtResource("4_glb")]
+[node name="cat" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0)
