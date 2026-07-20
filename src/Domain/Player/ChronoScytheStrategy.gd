@@ -3,7 +3,12 @@
 # Description: Concrete Domain Strategy implementing the usage logic for the
 #              Chrono-Scythe tool. Restores unweaved void rifts and corrupted 
 #              blocks to their natural/original state.
-# Author: Enrique González Gutiérrez
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively manages the usage rules
+#   for the Chrono-Scythe tool.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ChronoScytheStrategy
@@ -13,8 +18,8 @@ extends ItemUsageStrategy
 const CHRONO_SCYTHE_ITEM_ID: int = 85
 
 # Block IDs involved in corruption and static decay
-const GLITCH_STATIC_ID: int = 90  # Representation of flat grey static
-const VOID_AIR_ID: int = 0         # Unweaved empty void gaps in solid structures
+const GLITCH_STATIC_ID: int = 90  
+const VOID_AIR_ID: int = 0         
 
 
 func _init() -> void:
@@ -38,8 +43,6 @@ func can_use(
 
 
 ## Concrete Contract: Executes the block restoration transaction.
-## Passes the coordinate back to the world modifier adapter to calculate 
-## and apply the uncorrupted state.
 func use(
 	_player_health: VoxelEntity, 
 	_inventory: IInventory, 
@@ -55,7 +58,6 @@ func _is_corrupted_block(type: int, coord: Vector3i, world_state: WorldState) ->
 	if type == GLITCH_STATIC_ID:
 		return true
 		
-	# Check if an empty air block represents an unweaved rift gap (enclosed by solid blocks)
 	if type == VOID_AIR_ID:
 		return _is_enclosed_void_rift(coord, world_state)
 		
@@ -64,16 +66,12 @@ func _is_corrupted_block(type: int, coord: Vector3i, world_state: WorldState) ->
 
 func _is_enclosed_void_rift(coord: Vector3i, world_state: WorldState) -> bool:
 	var below_block := world_state.get_block(coord + Vector3i(0, -1, 0))
-	# A void rift gap sits directly on top of solid bedrock or structures
-	return BlockType.is_solid(below_block)
+	return BlockLibrary.is_solid(below_block)
 
 
 func _calculate_restored_type(coord: Vector3i, _world_modifier: IWorldModifier) -> BlockType.Type:
-	# Symmetrical fallback: if we cannot calculate the original noise height,
-	# we default to restoring stone to patch the hole safely.
 	var restored := BlockType.Type.STONE
 	
-	# Future enhancement: Query _world_modifier/generator for seed-based block restoration
 	if coord.y == 11:
 		restored = BlockType.Type.GRASS
 	elif coord.y < 11:

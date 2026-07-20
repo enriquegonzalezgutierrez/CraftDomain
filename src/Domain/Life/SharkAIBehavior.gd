@@ -8,7 +8,8 @@
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
 #   marine hunting maneuvers (such as tail-swipes) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SharkAIBehavior
@@ -162,17 +163,17 @@ class DetectPreyAction extends GOAPAction:
 		
 	func _scan_for_swimming_prey(host: CharacterBody3D) -> Node3D:
 		var parent := host.get_parent() as Node
-		var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
+		var player_node := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
 		
-		if is_instance_valid(player) and player.get("is_active"):
+		if is_instance_valid(player_node) and player_node.get("is_active"):
 			var host_pos := host.global_position
-			var player_pos := player.global_position
+			var player_pos := player_node.global_position
 			
-			var is_swimming: bool = player_pos.y <= 10.5 # Submerged in water
+			var is_swimming: bool = player_pos.y <= 10.5 
 			var dist_sq := host_pos.distance_squared_to(player_pos)
 			
 			if dist_sq <= RANGE_SIGHT_SQ and is_swimming:
-				return player
+				return player_node
 		return null
 
 
@@ -200,7 +201,7 @@ class StalkPreyAction extends GOAPAction:
 		return false
 		
 	func _apply_indirect_stalking_glide(host: CharacterBody3D, ai: Object, chase_dir: Vector3, delta: float) -> void:
-		_apply_hydrodynamic_stalking(host, ai, chase_dir, delta)
+		_apply_dynamic_stalking_shunting(host, ai, chase_dir, delta)
 		
 	func _apply_dynamic_stalking_shunting(host: CharacterBody3D, ai: Object, chase_dir: Vector3, delta: float) -> void:
 		_apply_hydrodynamic_stalking(host, ai, chase_dir, delta)
@@ -237,7 +238,7 @@ class LeapBiteAction extends GOAPAction:
 		
 		var diff := target.global_position - host.global_position
 		if diff.length_squared() > RANGE_ATTACK_SQ:
-			return true # Target moved; re-plan to stalk
+			return true 
 			
 		_execute_bite_strike(bb, host, ai, target, diff)
 		return false
@@ -252,7 +253,6 @@ class LeapBiteAction extends GOAPAction:
 			if host.has_method("_bite_player"):
 				host.call("_bite_player")
 				
-			# Vertical Leap: launch upwards if target is slightly higher than water line
 			if target.global_position.y - host.global_position.y > 0.5:
 				host.velocity.y = 4.5
 				
@@ -309,4 +309,4 @@ class SharkSwimAction extends GOAPAction:
 		var check_pos := host.global_position + dir * 2.0
 		var target_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
 		var target_block := ws.get_block(target_coord)
-		return (target_block == 6 or target_block == 15 or target_block == 0) and not BlockType.is_solid(target_block)
+		return (target_block == 6 or target_block == 15 or target_block == 0) and not BlockLibrary.is_solid(target_block)

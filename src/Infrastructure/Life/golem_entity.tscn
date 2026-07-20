@@ -1,31 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://7awgqiurt8j4"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/GolemEntity.gd" id="1_golem"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/golem.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://dwryhl717bp2a" path="res://src/Infrastructure/Life/GolemEntity.gd" id="1_golem"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://bs5ag82oceg6w" path="res://assets/models/mobs/golem.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_golem"]
-radius = 1.7431641
-height = 6.065918
+radius = 0.6352539
+height = 2.9425964
 
-[node name="GolemEntity" type="CharacterBody3D"]
+[node name="GolemEntity" type="CharacterBody3D" unique_id=7987812]
 script = ExtResource("1_golem")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.0456543, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=156521438]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4839935, 0)
 shape = SubResource("CapsuleShape3D_golem")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1743737905]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=705334748]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=913550002]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=212185657]
 
-[node name="golem" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(3, 0, 0, 0, 3, 0, 0, 0, 3, 0, 3.0099337, 0)
+[node name="golem" parent="Visuals/BodyBobJoint" unique_id=1575114312 instance=ExtResource("4_glb")]
+transform = Transform3D(-1.3113416e-07, 0, -3, 0, 3, 0, 3, 0, -1.3113416e-07, 0, 1.4981198, 0)

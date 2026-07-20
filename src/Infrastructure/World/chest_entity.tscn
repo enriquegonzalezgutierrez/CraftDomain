@@ -1,20 +1,21 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://ee8px2r20pfn"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/World/ChestEntity.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://assets/models/decorations/chest.glb" id="2_glb"]
+[ext_resource type="Script" uid="uid://y8df012ehvj0" path="res://src/Infrastructure/World/ChestEntity.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://crcbeqsnpslih" path="res://assets/models/decorations/chest.glb" id="2_glb"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_col"]
-size = Vector3(0.8, 0.8, 0.8)
+size = Vector3(0.7179443, 0.72324216, 0.9463379)
 
-[node name="ChestEntity" type="StaticBody3D"]
+[node name="ChestEntity" type="StaticBody3D" unique_id=307810283]
 script = ExtResource("1_script")
 
-[node name="ChestCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+[node name="ChestCollider" type="CollisionShape3D" parent="." unique_id=382301511]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.012609839, 0.36162108, -0.01071775)
 shape = SubResource("BoxShape3D_col")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=1223849583]
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1465464456]
 
-[node name="chest" parent="Visuals/BodyBobJoint" instance=ExtResource("2_glb")]
+[node name="chest" parent="Visuals/BodyBobJoint" unique_id=853224695 instance=ExtResource("2_glb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.36784205, 0)

@@ -9,7 +9,8 @@
 # - Open-Closed Principle (OCP): Works polymorphically across all NPC shapes
 #   and sizes by dynamically querying their collision boundaries.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NPCObstacleSteering
@@ -196,7 +197,6 @@ func _handle_step_climbing_and_unsticking(delta: float) -> void:
 	if wander_direction == Vector3.ZERO:
 		return
 		
-	# Symmetrical Block Check: Only attempt step-climbing if colliding with static terrain
 	if _is_touching_solid_block():
 		var stuck_timer: float = ai_component.get("stuck_timer") as float
 		ai_component.set("stuck_timer", stuck_timer + delta)
@@ -214,7 +214,6 @@ func _is_touching_solid_block() -> bool:
 		var collision := host.get_slide_collision(i)
 		var collider := collision.get_collider()
 		
-		# Server-side direct rendering RIDs have valid collision RIDs but no Node representation
 		if collider == null and collision.get_collider_rid().is_valid():
 			return true
 			
@@ -237,7 +236,7 @@ func _evaluate_step_climbing() -> void:
 		if is_instance_valid(ws):
 			var block_feet := ws.get_block(Vector3i(target_coord.x, target_coord.y - 1, target_coord.z))
 			var block_chest := ws.get_block(target_coord)
-			is_step_climbable = BlockType.is_solid(block_feet) and not BlockType.is_solid(block_chest)
+			is_step_climbable = BlockLibrary.is_solid(block_feet) and not BlockLibrary.is_solid(block_chest)
 			
 	if is_step_climbable:
 		_execute_jump_to_step(target_coord, world_node)
@@ -255,7 +254,7 @@ func _execute_jump_to_step(target_coord: Vector3i, world_node: Node) -> void:
 	var head_coord := Vector3i(floori(host.global_position.x), floori(host.global_position.y) + 2, floori(host.global_position.z))
 	if is_instance_valid(world_node) and "world_state" in world_node:
 		var ws: WorldState = world_node.get("world_state") as WorldState
-		if BlockType.is_solid(ws.get_block(head_coord)):
+		if BlockLibrary.is_solid(ws.get_block(head_coord)): 
 			return 
 			
 	var is_jump_capable := host.call("_can_jump_to", target_coord) as bool if host.has_method("_can_jump_to") else true

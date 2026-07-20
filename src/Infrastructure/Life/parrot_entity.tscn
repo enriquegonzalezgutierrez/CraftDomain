@@ -1,32 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://b5anay4emfdu0"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/ParrotEntity.gd" id="1_parrot"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/parrot.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://cghisxfg8ir36" path="res://src/Infrastructure/Life/ParrotEntity.gd" id="1_parrot"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://b4xqyas20gxt7" path="res://assets/models/mobs/parrot.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_parrot"]
-radius = 0.311035
-height = 1.43872
+radius = 0.50927734
+height = 1.9387815
 
-[node name="ParrotEntity" type="CharacterBody3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+[node name="ParrotEntity" type="CharacterBody3D" unique_id=1649641404]
 script = ExtResource("1_parrot")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.711929, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=443335408]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0017195, 0)
 shape = SubResource("CapsuleShape3D_parrot")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=269954132]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=1318832855]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=175354877]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=616185771]
 
-[node name="parrot" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(-8.74228e-08, 0, -2, 0, 2, 0, 2, 0, -8.74228e-08, 0, 0.75, 0)
+[node name="parrot" parent="Visuals/BodyBobJoint" unique_id=1649598647 instance=ExtResource("4_glb")]
+transform = Transform3D(1.9844077, 0, -0.24924988, 0, 2, 0, 0.24924988, 0, 1.9844077, 0, 0.9912721, 0)

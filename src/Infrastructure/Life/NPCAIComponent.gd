@@ -6,6 +6,7 @@
 # - Single Responsibility Principle (SRP): Coordinates strictly physics and 
 #   sensory loops, ensuring correct sequential execution (GOAP -> Locomotion -> Steering).
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# - BUG FIX: Allowed linear movement during active tasks, preventing self-deceleration.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -118,18 +119,15 @@ func _verify_active_plan_presence() -> void:
 
 func _apply_movement_vectors(delta: float) -> void:
 	var base_speed: float = _host.get("BASE_SPEED") as float if "BASE_SPEED" in _host else 1.3
+	var is_trying_to_move := wander_direction.length_squared() > 0.01
 	
-	match current_task:
-		TaskState.IDLE, TaskState.GREETING, TaskState.CHATTIING, TaskState.WORKING:
-			_host.velocity.x = move_toward(_host.velocity.x, 0.0, base_speed)
-			_host.velocity.z = move_toward(_host.velocity.z, 0.0, base_speed)
-			stuck_timer = 0.0
-		TaskState.EXAMINING:
-			_host.velocity.x = wander_direction.x * (base_speed * 0.25)
-			_host.velocity.z = wander_direction.z * (base_speed * 0.25)
-			stuck_timer = 0.0
-		_:
-			_execute_linear_walk(base_speed, delta)
+	# BUG FIX: Allow linear movement during active tasks if a direction is set
+	if is_trying_to_move and current_task != TaskState.IDLE:
+		_execute_linear_walk(base_speed, delta)
+	else:
+		_host.velocity.x = move_toward(_host.velocity.x, 0.0, base_speed)
+		_host.velocity.z = move_toward(_host.velocity.z, 0.0, base_speed)
+		stuck_timer = 0.0
 
 
 func _execute_linear_walk(base_speed: float, delta: float) -> void:
@@ -178,7 +176,6 @@ func _keep_gaze_within_tether() -> void:
 			wander_direction.y = 0.0
 
 
-## Public API: Translates TaskState enum values to safe String representations
 func get_task_state_name(task_val: int) -> String:
 	var names: Array[String] = ["IDLE", "WANDERING", "EXAMINING", "GREETING", "CHATTING", "PANIC", "WORKING"]
 	if task_val >= 0 and task_val < names.size(): 

@@ -1,31 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://cp2ywf7urujn7"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/GrowlitheEntity.gd" id="1_growlithe"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/growlithe.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://cdiov1k2r7vx1" path="res://src/Infrastructure/Life/GrowlitheEntity.gd" id="1_growlithe"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://cwqorbtho4pva" path="res://assets/models/mobs/growlithe.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_growlithe"]
-radius = 0.19140625
-height = 0.8218994
+radius = 0.2265625
+height = 0.95596313
 
-[node name="GrowlitheEntity" type="CharacterBody3D"]
+[node name="GrowlitheEntity" type="CharacterBody3D" unique_id=1828782608]
 script = ExtResource("1_growlithe")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.42315674, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=896814610]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4901886, 0)
 shape = SubResource("CapsuleShape3D_growlithe")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1959289332]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=98835354]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=942669915]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=795972519]
 
-[node name="growlithe" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, 0, 0, 0)
+[node name="growlithe" parent="Visuals/BodyBobJoint" unique_id=4176642 instance=ExtResource("4_glb")]
+transform = Transform3D(-6.556708e-08, 0, -1.5, 0, 1.5, 0, 1.5, 0, -6.556708e-08, 0, 0.50082177, 0)

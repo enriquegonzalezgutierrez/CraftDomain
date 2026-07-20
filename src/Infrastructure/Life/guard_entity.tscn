@@ -1,31 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://dwihk1tip0e2o"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/GuardEntity.gd" id="1_guard"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/guard.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://bhudg4loh5i4j" path="res://src/Infrastructure/Life/GuardEntity.gd" id="1_guard"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://4jwqqldee7cc" path="res://assets/models/mobs/guard.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_guard"]
-radius = 0.3
-height = 1.8
+radius = 0.28466797
+height = 1.9745605
 
-[node name="GuardEntity" type="CharacterBody3D"]
+[node name="GuardEntity" type="CharacterBody3D" unique_id=1411143430]
 script = ExtResource("1_guard")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1413941900]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.99478215, 0)
 shape = SubResource("CapsuleShape3D_guard")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1649369520]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=668593067]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=1030987279]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=976851659]
 
-[node name="guard" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)
+[node name="guard" parent="Visuals/BodyBobJoint" unique_id=228957661 instance=ExtResource("4_glb")]
+transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0.009127378, 0.9897518, 0)

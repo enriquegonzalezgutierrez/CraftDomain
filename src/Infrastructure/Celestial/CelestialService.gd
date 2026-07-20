@@ -3,17 +3,11 @@
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              dynamic Sun/Moon rotations, dynamic fog light color syncing,
 #              and sky material shader parameter syncing.
-#              WEATHER UPGRADE: Added real-time atmospheric dimming, dynamic
-#              fog density scale syncing, and procedural double-flash lightning.
-#              FOG SOFTENING: Re-calibrated altitude remapping factor from 3.0 
-#              to 1.2 to extend standard ground horizon visual clearance.
-#              INDOOR SAFETY: Added a fast 3D block-casting sensor to suppress 
-#              and dampen lightning flashes and fog color leaks inside houses.
-#              STARTUP SHIELD: Blocks lightning processing during loading screens 
-#              and CPU thread stalls to prevent silent, glitchy flashes on spawn.
-#              STABILITY: Implemented Defensive Delta Clamping and safe lerp factor 
-#              limits to prevent color overshoots and gradient oscillations.
-# Author: Enrique González Gutiérrez
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly day/night cycles.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# - BUG FIX: Redirected voxel physics query to the uncoupled BlockLibrary.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name CelestialService
@@ -35,7 +29,7 @@ var _weather_service: WeatherService
 
 # Procedural Lightning states
 var _lightning_timer: float = 8.0
-var _lightning_flash_phase: int = 0 # 0 = Off, 1 = Flash A, 2 = Dark Interval, 3 = Flash B
+var _lightning_flash_phase: int = 0 
 var _lightning_energy_boost: float = 0.0
 var _is_flashing: bool = false
 var _flash_duration: float = 0.0
@@ -53,13 +47,10 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	name = "CelestialService"
 	_setup_dynamic_moon_light()
-	
-	# Randomize first natural lightning to prevent spawn illusions
 	_lightning_timer = randf_range(15.0, 30.0)
 
 
 func _process(delta: float) -> void:
-	# Defensive Delta Clamping: Prevents simulation and timer blowout during loading stalls
 	var safe_delta := clampf(delta, 0.0, 0.1)
 	
 	_locate_weather_service_if_missing()
@@ -84,7 +75,6 @@ func _setup_dynamic_moon_light() -> void:
 
 
 func _locate_weather_service_if_missing() -> void:
-	# Symmetrical lookup: check if we are currently inside the Showcase Room
 	var showcase := get_tree().root.find_child("AIShowcaseRoom", true, false)
 	if is_instance_valid(showcase):
 		_weather_service = showcase.get_node_or_null("WeatherService") as WeatherService
@@ -109,13 +99,11 @@ func _update_orbital_timers(delta: float) -> void:
 			_calendar_days = 1
 
 
-## Procedural Lightning engine: Coordinates double-flash lightning in storms
 func _process_lightning_strikes(delta: float) -> void:
-	# Symmetrical Startup Shield: Prevent lightning during loading screen frames
 	if not _is_world_fully_active():
 		_is_flashing = false
 		_lightning_energy_boost = 0.0
-		_lightning_timer = randf_range(15.0, 30.0) # Reset timer to prevent instant post-load flashes
+		_lightning_timer = randf_range(15.0, 30.0) 
 		return
 		
 	if _weather_service == null or _weather_service.current_weather != IClimateProfile.ClimateType.RAINY:
@@ -142,8 +130,6 @@ func _trigger_new_lightning() -> void:
 	_lightning_flash_phase = 1
 	_lightning_energy_boost = 6.5 
 	_flash_duration = 0.08 
-	
-	print("[CelestialService] Lightning Flash! Triggering instantaneous Thunder strike sound.")
 	AudioService.play_sfx_static("thunder_strike", Vector3.ZERO)
 
 
@@ -186,14 +172,13 @@ func _calculate_sun_light_intensity() -> float:
 	elif _current_time > 0.68: 
 		intensity = remap(_current_time, 0.68, 0.76, 1.2, 0.0)
 		
-	# Symmetrical Lerp Factor Clamping: prevents overshoots during first frame load stalls
 	var storm_dim: float = lerp(1.0, 0.22, clampf(_current_storm_weight, 0.0, 1.0))
 	var final_intensity: float = intensity * storm_dim
 	
 	if _is_flashing and _lightning_energy_boost > 0.1:
 		var boost := _lightning_energy_boost
 		if _is_player_indoors():
-			boost *= 0.15 # 85% light flash mitigation inside houses
+			boost *= 0.15 
 		final_intensity += boost
 		
 	return clampf(final_intensity, 0.0, 10.0)
@@ -228,7 +213,6 @@ func _process_weather_transitions(delta: float) -> void:
 		if w_type != IClimateProfile.ClimateType.SUNNY and w_type != IClimateProfile.ClimateType.FOGGY:
 			target_storm = 1.0
 			
-	# Symmetrical Lerp Factor Clamping: prevents overshoots during first frame load stalls
 	_current_storm_weight = lerp(_current_storm_weight, target_storm, clampf(delta * 0.4, 0.0, 1.0))
 
 
@@ -276,7 +260,6 @@ func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
 	var storm_fog_color: Color = Color(0.12, 0.13, 0.15)
 	var lightning_color: Color = Color(0.85, 0.9, 1.0)
 	
-	# Symmetrical Lerp Factor Clamping: prevents overshoots during first frame load stalls
 	var base_fog_color: Color = night_fog_color.lerp(day_fog_color, clampf(day_weight, 0.0, 1.0))
 	var target_fog: Color = base_fog_color.lerp(storm_fog_color, clampf(_current_storm_weight * 0.72, 0.0, 1.0))
 	
@@ -289,7 +272,6 @@ func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
 		env.fog_light_color = target_fog
 
 
-## Height-Fog Coordinator: Pulls fog close in valleys and pushes it out in high altitudes (SRP)
 func _sync_fog_density_multiplier(env: Environment) -> void:
 	if not env.fog_enabled:
 		return
@@ -300,7 +282,6 @@ func _sync_fog_density_multiplier(env: Environment) -> void:
 		
 	var player_y := _get_player_altitude()
 	
-	# FOG SOFTENING LIMITS: Slashed baseline density factor from 3.0 to 1.2.
 	var height_factor := remap(clampf(player_y, 5.0, 22.0), 5.0, 22.0, 1.2, 0.15)
 	var final_multiplier := fog_mult * height_factor
 	
@@ -328,7 +309,6 @@ func _apply_environment_fog_limits(env: Environment, final_multiplier: float) ->
 	env.fog_depth_end = clampf(base_end / final_multiplier, 20.0, base_end * 5.0)
 
 
-## Voxel Raycaster: Detects if there is any solid block above the player's head
 func _is_player_indoors() -> bool:
 	var bootstrap := get_node_or_null("/root/Bootstrap")
 	if not is_instance_valid(bootstrap):
@@ -343,10 +323,9 @@ func _is_player_indoors() -> bool:
 			var p_pos := player_node.global_position
 			var feet_coord := Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z))
 			
-			# Scan upwards from head level to world ceiling height limit (31)
 			for y in range(feet_coord.y + 2, 32):
 				var block := ws.get_block(Vector3i(feet_coord.x, y, feet_coord.z))
-				if BlockType.is_solid(block):
+				if BlockLibrary.is_solid(block):
 					return true
 	return false
 

@@ -8,7 +8,8 @@
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
 #   ecological goals (such as drinking water) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name FaunaAIBehavior
@@ -99,7 +100,6 @@ func _detect_threat_proximity(host: CharacterBody3D) -> bool:
 		
 	var closest := _scan_for_hostiles(host)
 	if is_instance_valid(closest):
-		# Force a 4.5-second panic run memory state
 		_blackboard.set_memory("panic_timer", 4.5)
 		
 		var host_pos := host.global_position
@@ -172,7 +172,7 @@ class FaunaPanicAction extends GOAPAction:
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		if not is_instance_valid(host):
-			return true # Abort safely if host was freed mid-simulation
+			return true 
 			
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_PANIC)
@@ -181,7 +181,7 @@ class FaunaPanicAction extends GOAPAction:
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
-			timer = randf_range(0.3, 0.8) # Frantic changes
+			timer = randf_range(0.3, 0.8) 
 			var angle := randf() * TAU
 			var candidate := Vector3(cos(angle), 0.0, sin(angle))
 			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
@@ -201,7 +201,7 @@ class FaunaGrazeAction extends GOAPAction:
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		if not is_instance_valid(host):
-			return true # Abort safely if host was freed mid-simulation
+			return true 
 			
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
@@ -242,7 +242,7 @@ class FaunaGrazeAction extends GOAPAction:
 
 
 # ==============================================================================
-# SPATIAL TERRAIN FILTER HELPER (OCP / Section 3.2)
+# SPATIAL TERRAIN FILTER HELPER 
 # ==============================================================================
 
 static func _is_direction_safe_fauna(host: CharacterBody3D, dir: Vector3) -> bool:
@@ -258,7 +258,7 @@ static func _is_direction_safe_fauna(host: CharacterBody3D, dir: Vector3) -> boo
 	var b_below := ws.get_block(b_below_coord)
 	var b_at := ws.get_block(b_at_coord)
 	
-	if BlockType.is_solid(b_at): return false
+	if BlockLibrary.is_solid(b_at): return false
 	
 	var is_liquid := b_below == 6 or b_below == 15 or b_at == 6
 	var is_void := b_below == 0

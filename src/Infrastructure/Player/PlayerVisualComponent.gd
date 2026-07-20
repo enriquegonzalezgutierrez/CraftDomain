@@ -5,11 +5,11 @@
 #              eye blinking, and dynamic high-fidelity voxel/GLB tool attachment.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Isolates third-person character 
-#   geometry and animation loops from movement physics. Methods decomposed 
-#   to under 20 lines.
-# - Open-Closed Principle (OCP): Introduces a dynamic back-mounted glider joint
-#   visible in third-person view and replicated correctly to remote multiplayer peers.
-# Author: Enrique González Gutiérrez
+#   geometry and animation loops from movement physics.
+# - Open-Closed Principle (OCP): Inherits from Node3D. Instantiates modular
+#   weapon scenes (.tscn) instead of writing raw procedurals in script.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PlayerVisualComponent
@@ -43,8 +43,8 @@ var _is_blinking: bool = false
 # Cached shared micro-grain noise texture
 static var _shared_grain_texture: NoiseTexture2D
 
-const SWORD_MODEL_PATH := "res://assets/models/weapons/sword.glb"
-const PICKAXE_MODEL_PATH := "res://assets/models/weapons/pick.glb"
+const SWORD_SCENE_PATH := "res://src/Infrastructure/World/sword_weapon_prop.tscn"
+const PICKAXE_SCENE_PATH := "res://src/Infrastructure/World/pick_weapon_prop.tscn"
 
 
 func _ready() -> void:
@@ -107,7 +107,7 @@ func _setup_appendage_joints() -> void:
 	
 	_glider_wings_root = Node3D.new()
 	_glider_wings_root.name = "GliderWingsRoot"
-	_glider_wings_root.position = Vector3(0.0, 1.1, -0.2) # Attached to upper back
+	_glider_wings_root.position = Vector3(0.0, 1.1, -0.2) 
 	_glider_wings_root.visible = false
 	body_bob_node.add_child(_glider_wings_root)
 	
@@ -167,14 +167,11 @@ func _build_back_glider_wings() -> void:
 	var wood := Color(0.45, 0.3, 0.15)
 	var fabric := Color(0.92, 0.92, 0.95)
 	
-	# Soporte estructural central de anclaje
 	_create_box(_glider_wings_root, Vector3(0.12, 0.12, 0.12), Vector3(0, 0, 0), wood)
 	
-	# Ala Izquierda (Aerodinámica replegada hacia atrás)
 	_create_box(_glider_wings_root, Vector3(1.2, 0.04, 0.45), Vector3(-0.65, 0.1, 0.1), fabric)
 	_create_box(_glider_wings_root, Vector3(1.2, 0.06, 0.06), Vector3(-0.65, 0.12, 0.25), wood)
 	
-	# Ala Derecha (Aerodinámica replegada hacia atrás)
 	_create_box(_glider_wings_root, Vector3(1.2, 0.04, 0.45), Vector3(0.65, 0.1, 0.1), fabric)
 	_create_box(_glider_wings_root, Vector3(1.2, 0.06, 0.06), Vector3(0.65, 0.12, 0.25), wood)
 
@@ -260,14 +257,11 @@ func update_held_tool(item_id: int) -> void:
 		var block_def := BlockLibrary.get_definition(item_id as BlockType.Type)
 		var block_color := block_def.color_top if block_def != null else Color.GRAY
 		_create_box_mesh(held_tool_joint, Vector3(0.18, 0.18, 0.18), Vector3(0, 0.09, 0), block_color)
-		
 	elif item_id == 15:
 		_create_box_mesh(held_tool_joint, Vector3(0.14, 0.18, 0.14), Vector3(0, 0.09, 0), iron) 
 		_create_box_mesh(held_tool_joint, Vector3(0.10, 0.04, 0.10), Vector3(0, 0.17, 0), Color(1.0, 0.45, 0.0)) 
-		
 	elif item_id == 16:
 		_create_box_mesh(held_tool_joint, Vector3(0.15, 0.12, 0.22), Vector3(0, 0.06, 0), Color(0.9, 0.6, 0.3)) 
-		
 	elif item_id >= 1 and item_id <= 5 or item_id == 28 or item_id == 29: 
 		_build_held_pickaxe(wood, iron)
 	elif item_id == 17:
@@ -275,15 +269,12 @@ func update_held_tool(item_id: int) -> void:
 
 
 func _build_held_pickaxe(wood: Color, iron: Color) -> void:
-	if ResourceLoader.exists(PICKAXE_MODEL_PATH):
-		var model_scene := load(PICKAXE_MODEL_PATH) as PackedScene
-		var model_node := model_scene.instantiate() as Node3D
-		_prune_extraneous_nodes(model_node)
-		model_node.scale = Vector3(12.0, 12.0, 12.0)
-		model_node.position = Vector3(0.12, 0.15, 0.0) 
-		model_node.rotation_degrees = Vector3(0, 0, 0)
-		held_tool_joint.add_child(model_node)
-		_register_glb_materials(model_node)
+	if ResourceLoader.exists(PICKAXE_SCENE_PATH):
+		var model_scene := load(PICKAXE_SCENE_PATH) as PackedScene
+		if is_instance_valid(model_scene):
+			var model_node := model_scene.instantiate() as Node3D
+			model_node.position = Vector3(0.12, 0.15, 0.0) 
+			held_tool_joint.add_child(model_node)
 	else:
 		_create_box_mesh(held_tool_joint, Vector3(0.04, 0.52, 0.04), Vector3(0.0, 0.0, 0.0), wood)
 		var pick_head_joint := Node3D.new()
@@ -296,44 +287,16 @@ func _build_held_pickaxe(wood: Color, iron: Color) -> void:
 
 
 func _build_held_sword(iron: Color) -> void:
-	if ResourceLoader.exists(SWORD_MODEL_PATH):
-		var model_scene := load(SWORD_MODEL_PATH) as PackedScene
-		var model_node := model_scene.instantiate() as Node3D
-		_prune_extraneous_nodes(model_node)
-		model_node.scale = Vector3(0.045, 0.045, 0.045)
-		model_node.position = Vector3(0.025, -0.10, 0.0) 
-		model_node.rotation_degrees = Vector3(180, 180, 0)
-		held_tool_joint.add_child(model_node)
-		_register_glb_materials(model_node)
+	if ResourceLoader.exists(SWORD_SCENE_PATH):
+		var model_scene := load(SWORD_SCENE_PATH) as PackedScene
+		if is_instance_valid(model_scene):
+			var model_node := model_scene.instantiate() as Node3D
+			model_node.position = Vector3(0.025, -0.10, 0.0) 
+			held_tool_joint.add_child(model_node)
 	else:
 		_create_box_mesh(held_tool_joint, Vector3(0.04, 0.15, 0.04), Vector3(0.0, -0.15, 0.0), Color(0.35, 0.22, 0.15))
 		_create_box_mesh(held_tool_joint, Vector3(0.15, 0.04, 0.04), Vector3(0.0, -0.04, 0.0), Color(0.85, 0.60, 0.15))
 		_create_box_mesh(held_tool_joint, Vector3(0.08, 0.45, 0.04), Vector3(0.0, 0.20, 0.0), iron)
-
-
-## Recursively duplicates materials to prevent material-sharing leaks
-func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		var mat: Material = node.get_active_material(0) as Material
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0) as Material
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			node.material_override = new_mat
-			
-	for child: Node in node.get_children():
-		_register_glb_materials(child)
-
-
-## Recursively locates and frees extraneous camera and light nodes
-func _prune_extraneous_nodes(node: Node) -> void:
-	for i in range(node.get_child_count() - 1, -1, -1):
-		var child := node.get_child(i)
-		if "Camera" in child.name or "Light" in child.name:
-			child.free()
-		else:
-			_prune_extraneous_nodes(child)
 
 
 func _create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:

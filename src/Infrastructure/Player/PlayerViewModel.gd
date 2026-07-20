@@ -6,9 +6,10 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates first-person 
 #   arms drawings, sways, and active hand swing Tweens.
-# - Open-Closed Principle (OCP): Implements an extensible tool-mapping registry,
-#   allowing glider wings to compile without changing core movement scripts.
-# Author: Enrique González Gutiérrez
+# - Open-Closed Principle (OCP): Inherits from Node3D. Instantiates modular
+#   weapon scenes (.tscn) instead of writing raw procedurals in script.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PlayerViewModel
@@ -16,14 +17,14 @@ extends Node3D
 
 enum ToolType {
 	NONE,
-	SCROLL,     # Shown when selecting blocks (blueprints)
-	PICKAXE,    # Shown when selecting Stone, Dirt, or Grass (mining)
-	SWORD,      # Shown when selecting the Sword slot (combat)
-	GLIDER      # Shown when the high-altitude glider is deployed (flight)
+	SCROLL,     
+	PICKAXE,    
+	SWORD,      
+	GLIDER      
 }
 
-const SWORD_MODEL_PATH := "res://assets/models/weapons/sword.glb"
-const PICKAXE_MODEL_PATH := "res://assets/models/weapons/pick.glb"
+const SWORD_SCENE_PATH := "res://src/Infrastructure/World/sword_weapon_prop.tscn"
+const PICKAXE_SCENE_PATH := "res://src/Infrastructure/World/pick_weapon_prop.tscn"
 
 ## Injectable reference to the active Player Controller.
 var player: CharacterBody3D
@@ -47,17 +48,16 @@ static var _item_tools: Dictionary = {}
 
 
 static func _static_init() -> void:
-	register_item_tool_type(15, ToolType.SCROLL)  # Lava Bucket
-	register_item_tool_type(16, ToolType.SCROLL)  # Fried Chicken
-	register_item_tool_type(17, ToolType.SWORD)   # Wooden Sword
-	register_item_tool_type(18, ToolType.SCROLL)  # Crop Seeds
-	register_item_tool_type(210, ToolType.GLIDER) # Voxel Glider
+	register_item_tool_type(15, ToolType.SCROLL)  
+	register_item_tool_type(16, ToolType.SCROLL)  
+	register_item_tool_type(17, ToolType.SWORD)   
+	register_item_tool_type(18, ToolType.SCROLL)  
+	register_item_tool_type(210, ToolType.GLIDER) 
 
 
 ## Public OCP Extension API: Registers a custom item tool type dynamically.
 static func register_item_tool_type(item_id: int, tool_type: ToolType) -> void:
 	_item_tools[item_id] = tool_type
-	print("[PlayerViewModel] Registered dynamic OCP tool type for ID %d -> '%d'" % [item_id, tool_type])
 
 
 ## Static Router: Resolves the appropriate first-person ToolType for any item ID.
@@ -65,13 +65,11 @@ static func get_tool_type_for_item(item_id: int) -> ToolType:
 	if item_id == -1:
 		return ToolType.NONE
 		
-	# 1. Check custom OCP non-block item tool registrations
 	if _item_tools.has(item_id):
 		return _item_tools[item_id] as ToolType
 		
-	# 2. Symmetrical Fallback: Check if the item is a valid registered block
 	var def := BlockLibrary.get_definition(item_id as BlockType.Type) as BlockDefinition
-	if def != null and def.type != 0: # 0 represents BlockType.Type.AIR
+	if def != null and def.type != 0: 
 		return ToolType.PICKAXE
 		
 	return ToolType.NONE
@@ -86,7 +84,6 @@ func _ready() -> void:
 	_tool_root.name = "ToolRoot"
 	add_child(_tool_root)
 	
-	# Start with Scroll by default
 	switch_to_tool(ToolType.SCROLL)
 
 
@@ -99,7 +96,6 @@ func _process(delta: float) -> void:
 		var speed: float = flat_velocity.length()
 		var is_moving: bool = speed > 0.5 and player.is_on_floor()
 		
-		# Box Bobbing Math
 		var target_pos := BASELINE_POSITION
 		
 		if is_moving:
@@ -172,20 +168,15 @@ func _build_scroll() -> void:
 	_create_box_mesh(_tool_root, Vector3(0.02, 0.38, 0.02), Vector3(0, 0, 0), wood_color)  
 
 
-## Loads the high-fidelity GLB pickaxe scene with robust procedural fallback support
+## Loads the high-fidelity declarative pickaxe scene.
 func _build_pickaxe() -> void:
-	if ResourceLoader.exists(PICKAXE_MODEL_PATH):
-		var model_scene := load(PICKAXE_MODEL_PATH) as PackedScene
-		var model_node := model_scene.instantiate() as Node3D
-		_prune_extraneous_nodes(model_node)
-		
-		# First-person viewmodel calibration offsets
-		model_node.scale = Vector3(5.5, 5.5, 5.5)
-		model_node.position = Vector3(0.15, -0.22, -0.32)
-		model_node.rotation_degrees = Vector3(15, 110, -45)
-		
-		_tool_root.add_child(model_node)
-		_register_glb_materials(model_node)
+	if ResourceLoader.exists(PICKAXE_SCENE_PATH):
+		var model_scene := load(PICKAXE_SCENE_PATH) as PackedScene
+		if is_instance_valid(model_scene):
+			var model_node := model_scene.instantiate() as Node3D
+			model_node.position = Vector3(0.15, -0.22, -0.32)
+			model_node.rotation_degrees = Vector3(15, 110, -45)
+			_tool_root.add_child(model_node)
 	else:
 		var handle_color := Color(0.45, 0.3, 0.15)
 		var stone_color := Color(0.48, 0.48, 0.48)
@@ -194,20 +185,15 @@ func _build_pickaxe() -> void:
 		_create_box_mesh(_tool_root, Vector3(0.06, 0.08, 0.08), Vector3(0, 0.18, 0), Color(0.3, 0.3, 0.3)) 
 
 
-## Loads the high-fidelity GLB sword scene and applies exact viewmodel offsets
+## Loads the high-fidelity declarative sword scene.
 func _build_sword() -> void:
-	if ResourceLoader.exists(SWORD_MODEL_PATH):
-		var model_scene := load(SWORD_MODEL_PATH) as PackedScene
-		var model_node := model_scene.instantiate() as Node3D
-		_prune_extraneous_nodes(model_node)
-		
-		# First-person viewmodel calibration offsets
-		model_node.scale = Vector3(0.035, 0.035, 0.035)
-		model_node.position = Vector3(0.12, -0.32, -0.42)
-		model_node.rotation_degrees = Vector3(180, 45, 0)
-		
-		_tool_root.add_child(model_node)
-		_register_glb_materials(model_node)
+	if ResourceLoader.exists(SWORD_SCENE_PATH):
+		var model_scene := load(SWORD_SCENE_PATH) as PackedScene
+		if is_instance_valid(model_scene):
+			var model_node := model_scene.instantiate() as Node3D
+			model_node.position = Vector3(0.12, -0.32, -0.42)
+			model_node.rotation_degrees = Vector3(180, 45, 0)
+			_tool_root.add_child(model_node)
 	else:
 		_build_fallback_sword()
 
@@ -221,46 +207,17 @@ func _build_fallback_sword() -> void:
 	_create_box_mesh(_tool_root, Vector3(0.04, 0.14, 0.04), Vector3(0, -0.16, 0), hilt_color)  
 
 
-## Esculpe proceduralmente las alas extendidas en primera persona
 func _build_glider() -> void:
-	var handle_color := Color(0.45, 0.3, 0.15)  # Madera
-	var fabric_color := Color(0.92, 0.92, 0.95)  # Tela de nube blanca
+	var handle_color := Color(0.45, 0.3, 0.15)  
+	var fabric_color := Color(0.92, 0.92, 0.95)  
 	
-	# Marco transversal principal del ala delta
 	_create_box_mesh(_tool_root, Vector3(0.75, 0.03, 0.03), Vector3(0.0, 0.12, -0.15), handle_color)
 	
-	# Ala Izquierda (Inclinación diagonal simulada)
 	_create_box_mesh(_tool_root, Vector3(0.55, 0.02, 0.38), Vector3(-0.38, 0.12, -0.28), fabric_color)
 	_create_box_mesh(_tool_root, Vector3(0.55, 0.03, 0.03), Vector3(-0.38, 0.13, -0.14), handle_color)
 	
-	# Ala Derecha (Inclinación diagonal simulada)
 	_create_box_mesh(_tool_root, Vector3(0.55, 0.02, 0.38), Vector3(0.38, 0.12, -0.28), fabric_color)
 	_create_box_mesh(_tool_root, Vector3(0.55, 0.03, 0.03), Vector3(0.38, 0.13, -0.14), handle_color)
-
-
-## Recursively duplicates materials to prevent material-sharing leaks
-func _register_glb_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		var mat: Material = node.get_active_material(0) as Material
-		if mat == null and node.mesh != null:
-			mat = node.mesh.surface_get_material(0) as Material
-			
-		if mat is BaseMaterial3D:
-			var new_mat := mat.duplicate() as BaseMaterial3D
-			node.material_override = new_mat
-			
-	for child: Node in node.get_children():
-		_register_glb_materials(child)
-
-
-## Recursively locates and frees extraneous camera and light nodes
-func _prune_extraneous_nodes(node: Node) -> void:
-	for i in range(node.get_child_count() - 1, -1, -1):
-		var child := node.get_child(i)
-		if "Camera" in child.name or "Light" in child.name:
-			child.free()
-		else:
-			_prune_extraneous_nodes(child)
 
 
 func _create_box_mesh(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> void:

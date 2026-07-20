@@ -1,33 +1,34 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene format=3 uid="uid://cljn01pql4sxt"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/World/StreetlightEntity.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://assets/models/decorations/streetlight.glb" id="2_glb"]
+[ext_resource type="Script" uid="uid://bmtx6tvgxuiw7" path="res://src/Infrastructure/World/StreetlightEntity.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://cy65hresyj0cw" path="res://assets/models/decorations/streetlight.glb" id="2_glb"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_col"]
-size = Vector3(0.6, 2.6, 0.6)
+size = Vector3(0.26658934, 0.99350584, 0.3954834)
 
-[node name="StreetlightEntity" type="StaticBody3D"]
+[node name="StreetlightEntity" type="StaticBody3D" unique_id=2066441714]
 script = ExtResource("1_script")
 
-[node name="LamppostCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.3, 0)
+[node name="LamppostCollider" type="CollisionShape3D" parent="." unique_id=1310172519]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.8298626e-05, 0.49675292, -1.2204051e-05)
 shape = SubResource("BoxShape3D_col")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=1980758517]
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=586926439]
 
-[node name="streetlight" parent="Visuals/BodyBobJoint" instance=ExtResource("2_glb")]
+[node name="streetlight" parent="Visuals/BodyBobJoint" unique_id=72073746 instance=ExtResource("2_glb")]
+transform = Transform3D(1.1924881e-08, 0, -1, 0, 1, 0, 1, 0, 1.1924881e-08, 0, 0.5011588, 0)
 
-[node name="LeftLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 2.15, 0)
+[node name="LeftLight" type="OmniLight3D" parent="." unique_id=1880216290]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.10943818, 0.71458393, 0)
 light_color = Color(1, 0.72, 0.3, 1)
 light_energy = 0.0
 shadow_enabled = true
 omni_range = 14.0
 
-[node name="RightLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 2.15, 0)
+[node name="RightLight" type="OmniLight3D" parent="." unique_id=598514049]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.11702237, 0.715, 0)
 light_color = Color(1, 0.72, 0.3, 1)
 light_energy = 0.0
 shadow_enabled = true

@@ -1,31 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://bqua77f1hbnqe"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/MerchantEntity.gd" id="1_merchant"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/merchant.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://qd41pbiccfor" path="res://src/Infrastructure/Life/MerchantEntity.gd" id="1_merchant"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://ba8j7agkt3rpj" path="res://assets/models/mobs/merchant.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_merchant"]
-radius = 0.311035
-height = 1.43872
+radius = 0.28466797
+height = 1.9815978
 
-[node name="MerchantEntity" type="CharacterBody3D"]
+[node name="MerchantEntity" type="CharacterBody3D" unique_id=670970295]
 script = ExtResource("1_merchant")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.711929, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=2058570371]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9833679, 0)
 shape = SubResource("CapsuleShape3D_merchant")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=64425702]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=1432937773]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=642421219]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=924156618]
 
-[node name="merchant" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)
+[node name="merchant" parent="Visuals/BodyBobJoint" unique_id=1790854121 instance=ExtResource("4_glb")]
+transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0.015826702, 0.9898225, 0)

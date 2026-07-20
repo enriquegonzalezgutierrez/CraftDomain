@@ -1,31 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://b3iik4f72u4aw"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/CowEntity.gd" id="1_cow"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/cow.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://dygevtcdxsqjt" path="res://src/Infrastructure/Life/CowEntity.gd" id="1_cow"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://dqwlufg40mrmu" path="res://assets/models/mobs/cow.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_cow"]
-radius = 1.26233
-height = 2.52466
+radius = 0.17236328
+height = 1.3646548
 
-[node name="CowEntity" type="CharacterBody3D"]
+[node name="CowEntity" type="CharacterBody3D" unique_id=2039441370]
 script = ExtResource("1_cow")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000039, 1.32625, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1069929906]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.9e-05, 0.6863117, 0)
 shape = SubResource("CapsuleShape3D_cow")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=831175049]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=1285479252]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=1295367986]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=2010614536]
 
-[node name="cow" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(0.025, 0, 0, 0, 0.025, 0, 0, 0, 0.025, 0, 0, 0)
+[node name="cow" parent="Visuals/BodyBobJoint" unique_id=1097650870 instance=ExtResource("4_glb")]
+transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0, 0.72010857, 0)

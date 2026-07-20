@@ -6,20 +6,19 @@
 # - Single Responsibility Principle (SRP): Coordinates exclusively mob lifecycle.
 # - Open-Closed Principle (OCP): Integrates dynamically with the custom population 
 #   densities and rosters declared by the active biome.
-# - Quest Persistency Shield: Forces quest objective instantiation even on 
-#   re-loaded saved chunks, guaranteeing mission progression continuity.
-# Author: Enrique González Gutiérrez
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MobSpawningService
 extends RefCounted
 
-# Spawning registries mapping quest IDs to target mob IDs
 const QUEST_TARGET_MOBS: Dictionary = {
-	"lost_bazaar": 100,       # Villager Entity ID (Act I)
-	"fuel_fryer": 101,        # Merchant Entity ID (Act I)
-	"plains_defender": 10,    # Cave Zombie ID
-	"bazaar_return": 100      # Villager Entity ID (Act IV Epilogue)
+	"lost_bazaar": 100,       
+	"fuel_fryer": 101,        
+	"plains_defender": 10,    
+	"bazaar_return": 100      
 }
 
 const MOB_ID_PIG: int = 0
@@ -68,8 +67,6 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 		_spawn_wilderness_wildlife(chunk_offset, world_state, world_node, biome, spawned_nodes)
 
 	_spawn_megastructure_defenders(chunk.position, world_state, world_node, spawned_nodes)
-	
-	# OCP Persistence Injection: Always forces the spawn check for active quest mobs!
 	_spawn_active_quest_objectives(chunk, chunk_offset, world_state, world_node, spawned_nodes)
 
 
@@ -165,7 +162,6 @@ func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_s
 		var mob_id: int = QUEST_TARGET_MOBS[active_q.quest_id]
 		var existing_target := _find_eligible_entity_in_list(world_node, mob_id, target_pos)
 		
-		# If the mob is already present in the active scene tree (persisted across chunk reloads), just assign it
 		if existing_target != null:
 			existing_target.quest_target_id = active_q.quest_id
 			return
@@ -180,7 +176,7 @@ func _find_eligible_entity_in_list(world_node: Node, mob_id: int, target_pos: Ve
 	for child in world_node.get_children():
 		if child is CharacterBody3D and child.has_meta("spawn_id"):
 			if int(child.get_meta("spawn_id")) == mob_id:
-				if child.global_position.distance_squared_to(target_pos) <= 225.0: # 15 meters radius tolerance
+				if child.global_position.distance_squared_to(target_pos) <= 225.0: 
 					return child as CharacterBody3D
 	return null
 
@@ -241,7 +237,7 @@ func _get_water_surface_y(world_state_ref: WorldState, global_x: int, global_z: 
 	var surface_block := world_state_ref.get_block(Vector3i(global_x, hit_y, global_z))
 	if surface_block == BlockType.Type.WATER:
 		var space_above_1 := world_state_ref.get_block(Vector3i(global_x, hit_y + 1, global_z))
-		if not BlockType.is_solid(space_above_1):
+		if not BlockLibrary.is_solid(space_above_1):
 			return float(hit_y) - 0.35
 			
 	return -1.0
@@ -251,7 +247,7 @@ func _is_voxel_spawn_space_free(world_state_ref: WorldState, spawn_pos: Vector3)
 	var base_coord := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
 	var feet_block := world_state_ref.get_block(base_coord)
 	var chest_block := world_state_ref.get_block(base_coord + Vector3i(0, 1, 0))
-	return not BlockType.is_solid(feet_block) and not BlockType.is_solid(chest_block)
+	return not BlockLibrary.is_solid(feet_block) and not BlockLibrary.is_solid(chest_block)
 
 
 func _detect_chunk_biome_id(chunk_pos: Vector3i, world_node: Node) -> int:

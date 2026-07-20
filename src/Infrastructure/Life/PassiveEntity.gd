@@ -545,6 +545,7 @@ func _dispatch_deep_telemetry(vel_b4: Vector3, vel_aft: Vector3, collided: bool)
 		else:
 			task_name = ai_component.get_task_state_name(int(ai_component.current_task))
 			
+	var custom_name := _generate_telemetry_name()
 	var flags: Dictionary = {
 		"hab_blk": bool(get_meta("diag_hab_blk")) if has_meta("diag_hab_blk") else false,
 		"turn_thr": float(get_meta("diag_turn_thr")) if has_meta("diag_turn_thr") else 1.0,
@@ -552,4 +553,11 @@ func _dispatch_deep_telemetry(vel_b4: Vector3, vel_aft: Vector3, collided: bool)
 		"yield": bool(get_meta("diag_yield")) if has_meta("diag_yield") else false,
 		"whisk": bool(get_meta("diag_whisk")) if has_meta("diag_whisk") else false
 	}
-	AITelemetryService.log_deep_diagnostics(self, task_name, dir, vel_b4, vel_aft, collided, flags)
+	AITelemetryService.log_deep_diagnostics(self, custom_name, task_name, dir, vel_b4, vel_aft, collided, flags)
+
+
+func _generate_telemetry_name() -> String:
+	var raw_name := tr(entity_name_key).to_upper()
+	if raw_name == "" or raw_name.begins_with("NPC_NAME"):
+		raw_name = get_class().to_upper()
+	return "%s#%d" % [raw_name, get_instance_id()]

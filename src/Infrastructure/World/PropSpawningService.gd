@@ -6,7 +6,9 @@
 # - Single Responsibility Principle (SRP): Coordinates exclusively static props.
 # - Dependency Inversion Principle (DIP): Resolves coordinates through the pure 
 #   domain SpawnCoordinateSolver instead of carrying custom duplicate voxel loops.
-# Author: Enrique González Gutiérrez
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PropSpawningService
@@ -95,8 +97,7 @@ func _spawn_decoupled_landmark_prop(point: StructurePopulationService.Population
 	var spawn_pos := point.global_pos
 	var block_at_pos := world_state.get_block(Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z)))
 	
-	# If the target coordinate is inside a solid block (slope/hill adjust), find the true surface Y
-	if BlockType.is_solid(block_at_pos):
+	if BlockLibrary.is_solid(block_at_pos):
 		var gy := SpawnCoordinateSolver.solve_surface_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
 		if gy > 0.0:
 			spawn_pos.y = gy
@@ -168,7 +169,7 @@ func _is_voxel_spawn_space_free(world_state_ref: WorldState, spawn_pos: Vector3)
 	var base_coord := Vector3i(floori(spawn_pos.x), floori(spawn_pos.y), floori(spawn_pos.z))
 	var feet_block := world_state_ref.get_block(base_coord)
 	var chest_block := world_state_ref.get_block(base_coord + Vector3i(0, 1, 0))
-	return not BlockType.is_solid(feet_block) and not BlockType.is_solid(chest_block)
+	return not BlockLibrary.is_solid(feet_block) and not BlockLibrary.is_solid(chest_block)
 
 
 func _detect_chunk_biome_id(chunk_pos: Vector3i, world_node: Node) -> int:

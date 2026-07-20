@@ -1,31 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://doshxfqx1w75s"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/TurtleEntity.gd" id="1_turtle"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/turtle.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://beugre2etqq8o" path="res://src/Infrastructure/Life/TurtleEntity.gd" id="1_turtle"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://bu4flffeybgbw" path="res://assets/models/mobs/turtle.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_turtle"]
-radius = 0.18408203
-height = 0.45717773
+radius = 0.33728027
+height = 0.67456055
 
-[node name="TurtleEntity" type="CharacterBody3D"]
+[node name="TurtleEntity" type="CharacterBody3D" unique_id=1036408672]
 script = ExtResource("1_turtle")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.24943845, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=322961058]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.33900145, 0)
 shape = SubResource("CapsuleShape3D_turtle")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1883176969]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=925583842]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=259127810]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1160145396]
 
-[node name="turtle" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(0.075, 0, 0, 0, 0.075, 0, 0, 0, 0.075, 0, 0, 0)
+[node name="turtle" parent="Visuals/BodyBobJoint" unique_id=371100120 instance=ExtResource("4_glb")]
+transform = Transform3D(2.3849761e-08, 0, -2, 0, 2, 0, 2, 0, 2.3849761e-08, 0, 0.32707867, 0)

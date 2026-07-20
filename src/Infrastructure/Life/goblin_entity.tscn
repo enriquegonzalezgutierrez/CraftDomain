@@ -1,31 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://biv55n24vkmco"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/GoblinEntity.gd" id="1_goblin"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/goblin.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://cafm0g2qoiy8k" path="res://src/Infrastructure/Life/GoblinEntity.gd" id="1_goblin"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://dientnp5u8rik" path="res://assets/models/mobs/goblin.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_goblin"]
-radius = 0.31933594
-height = 1.4831543
+radius = 0.23730469
+height = 1.4938354
 
-[node name="GoblinEntity" type="CharacterBody3D"]
+[node name="GoblinEntity" type="CharacterBody3D" unique_id=1012446659]
 script = ExtResource("1_goblin")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7437271, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1509419174]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.74906766, 0)
 shape = SubResource("CapsuleShape3D_goblin")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=874392254]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=303327323]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=240067892]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=659372774]
 
-[node name="goblin" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(-6.556708e-08, 0, -1.5, 0, 1.5, 0, 1.5, 0, -6.556708e-08, 0, 0.73887503, 0)
+[node name="goblin" parent="Visuals/BodyBobJoint" unique_id=1106242574 instance=ExtResource("4_glb")]
+transform = Transform3D(-6.556708e-08, 0, -1.5, 0, 1.5, 0, 1.5, 0, -6.556708e-08, 0, 0.73952943, 0)

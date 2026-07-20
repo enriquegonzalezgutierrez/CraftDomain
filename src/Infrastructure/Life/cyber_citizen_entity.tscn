@@ -1,31 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://bw2n7atx7free"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/CyberCitizenEntity.gd" id="1_cyber"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/cyber.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://bsecpbovdaejn" path="res://src/Infrastructure/Life/CyberCitizenEntity.gd" id="1_cyber"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://tnjx1qvdhjv" path="res://assets/models/mobs/cyber.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_cyber"]
-radius = 0.249512
-height = 1.84272
+radius = 0.25341797
+height = 1.9689808
 
-[node name="CyberCitizenEntity" type="CharacterBody3D"]
+[node name="CyberCitizenEntity" type="CharacterBody3D" unique_id=1665090776]
 script = ExtResource("1_cyber")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.934937, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=283652789]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9980674, 0)
 shape = SubResource("CapsuleShape3D_cyber")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=278324631]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=1750062103]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=118507133]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1730677203]
 
-[node name="cyber" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)
+[node name="cyber" parent="Visuals/BodyBobJoint" unique_id=301437701 instance=ExtResource("4_glb")]
+transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, 0, 0.9896598, 0)

@@ -3,10 +3,11 @@
 # Description: Domain Aggregate Root representing the global voxel world, managing
 #              chunk storage, coordinate systems, and a double-buffered timeline 
 #              system to support seamless Present/Past chronological shifting.
-# SOLID COMPLIANCE: Exclusively coordinates block states and active timeline buffers.
-#              MISSION UPGRADE: Added a typesafe global target subscription anchor
-#              to guarantee exactly one unique entity holds the active quest star.
-# Author: Enrique González Gutiérrez
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Exclusively coordinates block states 
+#   and active timeline buffers.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name WorldState
@@ -33,9 +34,7 @@ var _timeline_modifications: Dictionary = {
 	Timeline.PAST: {}
 }
 
-# --- SOLID MISSION REGISTRY ANCHOR (ISP / LSP Compliant) ---
 ## The single, unique, and compiled CharacterBody3D node designated as the quest target.
-## Prevents multiple entities from claiming the gold star indicator simultaneously.
 var active_quest_target_node: CharacterBody3D = null
 
 
@@ -72,8 +71,6 @@ func swap_timeline(new_timeline: Timeline) -> void:
 		
 	active_timeline = new_timeline
 	_chunks.clear()
-	
-	# Clear the unique quest target reference as the world shifts epoch
 	active_quest_target_node = null
 	
 	timeline_swapped.emit(active_timeline)
@@ -166,17 +163,13 @@ func set_block(global_pos: Vector3i, type: BlockType.Type) -> void:
 	active_mods[chunk_pos][local_pos] = type
 
 
-# ==============================================================================
-# CORE GEOGRAPHIC DOMAIN RULES (DDD Pure Domain)
-# ==============================================================================
-
 ## Domain Rule: Performs a vertical downward scan from max altitude (Y=31)
 func get_highest_solid_y(global_x: int, global_z: int) -> float:
 	for y in range(31, -1, -1):
 		var check_pos := Vector3i(global_x, y, global_z)
-		if BlockType.is_solid(get_block(check_pos)):
+		if BlockLibrary.is_solid(get_block(check_pos)):
 			var space_above_1 := get_block(check_pos + Vector3i(0, 1, 0))
 			var space_above_2 := get_block(check_pos + Vector3i(0, 2, 0))
-			if not BlockType.is_solid(space_above_1) and not BlockType.is_solid(space_above_2):
+			if not BlockLibrary.is_solid(space_above_1) and not BlockLibrary.is_solid(space_above_2):
 				return float(y) + 2.0
-	return 14.0 # Default safe fallback above water level
+	return 14.0

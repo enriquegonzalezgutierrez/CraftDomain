@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://cfx1qt48p3bnn"]
+
+[ext_resource type="PackedScene" uid="uid://uqj7geisas2b" path="res://assets/models/weapons/pick.glb" id="1_glb"]
+
+[node name="PickWeaponProp" type="Node3D" unique_id=245089037]
+
+[node name="pick" parent="." unique_id=1795712527 instance=ExtResource("1_glb")]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0.2608962, 0)

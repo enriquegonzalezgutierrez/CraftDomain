@@ -6,7 +6,9 @@
 # - Single Responsibility Principle (SRP): Handles exclusively diagnostics 
 #   formatting and asynchronous thread-safe log flushing.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+# - REFACTORED: Supported custom instance-based holographic naming to prevent
+#   anonymous engine-assigned node strings in logs.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name AITelemetryService
@@ -31,17 +33,17 @@ func _init() -> void:
 
 
 ## OCP-Compliant Deep Diagnostics entry point for the physics pipeline
-static func log_deep_diagnostics(host: CharacterBody3D, task: String, dir: Vector3, v_in: Vector3, v_out: Vector3, col: bool, flags: Dictionary) -> void:
+static func log_deep_diagnostics(host: CharacterBody3D, custom_name: String, task: String, dir: Vector3, v_in: Vector3, v_out: Vector3, col: bool, flags: Dictionary) -> void:
 	if not IS_TELEMETRY_ENABLED: return
 	if is_instance_valid(instance):
-		instance._format_and_append_deep(host, task, dir, v_in, v_out, col, flags)
+		instance._format_and_append_deep(host, custom_name, task, dir, v_in, v_out, col, flags)
 
 
-func _format_and_append_deep(host: CharacterBody3D, task: String, dir: Vector3, v_in: Vector3, v_out: Vector3, col: bool, flags: Dictionary) -> void:
+func _format_and_append_deep(host: CharacterBody3D, custom_name: String, task: String, dir: Vector3, v_in: Vector3, v_out: Vector3, col: bool, flags: Dictionary) -> void:
 	var ts := Time.get_time_string_from_system()
 	var p := host.global_position
 	
-	var line1 := "[%s] [%s] Task:%s | Pos:(%.2f,%.2f,%.2f) | Dir:(%.2f,%.2f)\n" % [ts, host.name, task, p.x, p.y, p.z, dir.x, dir.z]
+	var line1 := "[%s] [%s] Task:%s | Pos:(%.2f,%.2f,%.2f) | Dir:(%.2f,%.2f)\n" % [ts, custom_name, task, p.x, p.y, p.z, dir.x, dir.z]
 	var line2 := "    L-> Vel_IN:(%.2f,%.2f,%.2f) -> Vel_OUT:(%.2f,%.2f,%.2f)\n" % [v_in.x, v_in.y, v_in.z, v_out.x, v_out.y, v_out.z]
 	var line3 := "    L-> Floor:%s Wall:%s Col:%s | HabBlk:%s Turn:%.2f Edge:%s Yld:%s Wsk:%s\n" % [
 		host.is_on_floor(), host.is_on_wall(), col,

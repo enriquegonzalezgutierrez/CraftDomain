@@ -1,25 +1,26 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene format=3 uid="uid://dnsvnh32oeph2"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/World/CampfireEntity.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://assets/models/decorations/campfire.glb" id="2_glb"]
+[ext_resource type="Script" uid="uid://ct1b1tmvol6oe" path="res://src/Infrastructure/World/CampfireEntity.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://bmtcg6kb1mttc" path="res://assets/models/decorations/campfire.glb" id="2_glb"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_col"]
-size = Vector3(0.8, 0.4, 0.8)
+size = Vector3(0.9821045, 0.6052734, 0.9712402)
 
-[node name="CampfireEntity" type="StaticBody3D"]
+[node name="CampfireEntity" type="StaticBody3D" unique_id=1626349913]
 script = ExtResource("1_script")
 
-[node name="CampfireCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+[node name="CampfireCollider" type="CollisionShape3D" parent="." unique_id=1112660658]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.005212426, 0.3026367, -0.009008765)
 shape = SubResource("BoxShape3D_col")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=971297599]
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=58825342]
 
-[node name="campfire" parent="Visuals/BodyBobJoint" instance=ExtResource("2_glb")]
+[node name="campfire" parent="Visuals/BodyBobJoint" unique_id=622591170 instance=ExtResource("2_glb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3853681, 0)
 
-[node name="CampfireLight" type="OmniLight3D" parent="."]
+[node name="CampfireLight" type="OmniLight3D" parent="." unique_id=964286910]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
 light_color = Color(1, 0.65, 0.15, 1)
 light_energy = 2.8
