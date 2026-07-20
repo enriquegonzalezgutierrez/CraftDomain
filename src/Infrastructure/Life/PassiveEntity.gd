@@ -8,7 +8,9 @@
 # - Liskov Substitution Principle (LSP): Serves as a robust base class contract; 
 #   its API conforms perfectly across humans and quadruped species.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+# - COMPILER SHIELD: Replaced dynamic class-call reflections with 100% compile-time
+#   type-safe casts and public method bindings.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 @warning_ignore("unused_private_class_variable")
@@ -541,13 +543,13 @@ func _dispatch_deep_telemetry(vel_b4: Vector3, vel_aft: Vector3, collided: bool)
 		if active_b != null and active_b.has_method("get_active_state_name"):
 			task_name = str(active_b.call("get_active_state_name", self))
 		else:
-			task_name = ai_component.call("_get_task_state_name", ai_component.current_task) as String
+			task_name = ai_component.get_task_state_name(int(ai_component.current_task))
 			
 	var flags: Dictionary = {
-		"hab_blk": get_meta("diag_hab_blk") if has_meta("diag_hab_blk") else false,
-		"turn_thr": get_meta("diag_turn_thr") if has_meta("diag_turn_thr") else 1.0,
-		"edge_stp": get_meta("diag_edge_stp") if has_meta("diag_edge_stp") else false,
-		"yield": get_meta("diag_yield") if has_meta("diag_yield") else false,
-		"whisk": get_meta("diag_whisk") if has_meta("diag_whisk") else false
+		"hab_blk": bool(get_meta("diag_hab_blk")) if has_meta("diag_hab_blk") else false,
+		"turn_thr": float(get_meta("diag_turn_thr")) if has_meta("diag_turn_thr") else 1.0,
+		"edge_stp": bool(get_meta("diag_edge_stp")) if has_meta("diag_edge_stp") else false,
+		"yield": bool(get_meta("diag_yield")) if has_meta("diag_yield") else false,
+		"whisk": bool(get_meta("diag_whisk")) if has_meta("diag_whisk") else false
 	}
 	AITelemetryService.log_deep_diagnostics(self, task_name, dir, vel_b4, vel_aft, collided, flags)

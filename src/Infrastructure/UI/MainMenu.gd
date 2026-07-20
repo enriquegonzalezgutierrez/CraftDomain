@@ -2,24 +2,17 @@
 # Pathfile: res://src/Infrastructure/UI/MainMenu.gd
 # Description: Tactile Glassmorphic Main Menu controller. Handles game boots,
 #              modal popups, cooperative lobby connections, and author attribution.
-#              EXIT FIX: Gracefully stops the VideoStreamPlayer on shutdown
-#              notifications to prevent out-of-order X11 geometry queries (BadWindow).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly Main Menu 
-#   navigation events and settings transition states.
-# - Declarative UI (Rule 7.1): Respects constraints by reading the copyright 
-#   and title labels declaratively from the .tscn structure.
-# Author: Enrique González Gutiérrez
+#              REFACTORED: Converted compile-time preloads to runtime load calls
+#              to immunize the startup compiler from Windows file-locking race conditions.
+#              COMPLIANCE: Decomposed monolithic methods into < 20 line helpers.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MainMenu
 extends Control
 
 signal play_pressed(should_clear_save: bool)
-signal showcase_pressed # Decoupled transition signal for Composition Root
-
-const SETTINGS_MENU_SCENE := preload("res://src/Infrastructure/UI/settings_menu.tscn")
-const LOBBY_MENU_SCENE := preload("res://src/Infrastructure/UI/Widgets/multiplayer_lobby_widget.tscn")
+signal showcase_pressed 
 
 var _settings_overlay: SettingsMenu
 var _lobby_overlay: MultiplayerLobbyWidget
@@ -30,7 +23,7 @@ var _has_save_game: bool = false
 
 @onready var _play_continue_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/PlayButton
 @onready var _multiplayer_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/MultiplayerButton
-@onready var _reset_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/NewGameButton
+@onready var _new_game_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/NewGameButton
 @onready var _showcase_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/ShowcaseButton
 @onready var _settings_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/SettingsButton
 @onready var _exit_btn: Button = $CenterContainer/MasterVBox/MenuCard/CardMargin/VBoxContainer/ExitButton
@@ -47,22 +40,7 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_has_save_game = FileAccess.file_exists("user://world_save/global_save.json")
 	
-	_play_continue_btn.pressed.connect(_on_play_pressed)
-	_multiplayer_btn.pressed.connect(_on_multiplayer_pressed)
-	
-	if _has_save_game:
-		_reset_btn.visible = true
-		_reset_btn.pressed.connect(_on_new_game_clicked_with_save)
-	else:
-		_reset_btn.visible = false
-		
-	_showcase_btn.pressed.connect(func() -> void: showcase_pressed.emit())
-	_settings_btn.pressed.connect(_on_settings_pressed)
-	_exit_btn.pressed.connect(_on_exit_pressed)
-	
-	_modal_confirm_btn.pressed.connect(_on_overwrite_confirmed)
-	_modal_cancel_btn.pressed.connect(_on_overwrite_cancelled)
-	
+	_connect_menu_signals()
 	_refresh_localized_text()
 	_play_entry_animation()
 
@@ -76,8 +54,27 @@ func _notification(what: int) -> void:
 
 func _process(delta: float) -> void:
 	if is_instance_valid(_title_label):
-		var anim_y := _title_label.position.y + sin(float(Time.get_ticks_msec()) / 1000.0 * 1.5) * 0.4
+		var speed_scale := float(Time.get_ticks_msec()) / 1000.0 * 1.5
+		var anim_y := _title_label.position.y + sin(speed_scale) * 0.4
 		_title_label.position.y = lerp(_title_label.position.y, anim_y, delta * 5.0)
+
+
+func _connect_menu_signals() -> void:
+	_play_continue_btn.pressed.connect(_on_play_pressed)
+	_multiplayer_btn.pressed.connect(_on_multiplayer_pressed)
+	
+	if _has_save_game:
+		_new_game_btn.visible = true
+		_new_game_btn.pressed.connect(_on_new_game_clicked_with_save)
+	else:
+		_new_game_btn.visible = false
+		
+	_showcase_btn.pressed.connect(func() -> void: showcase_pressed.emit())
+	_settings_btn.pressed.connect(_on_settings_pressed)
+	_exit_btn.pressed.connect(_on_exit_pressed)
+	
+	_modal_confirm_btn.pressed.connect(_on_overwrite_confirmed)
+	_modal_cancel_btn.pressed.connect(_on_overwrite_cancelled)
 
 
 func _refresh_localized_text() -> void:
@@ -85,8 +82,8 @@ func _refresh_localized_text() -> void:
 		_play_continue_btn.text = tr("MENU_CONTINUE") if _has_save_game else tr("MENU_PLAY_WORLD")
 	if is_instance_valid(_multiplayer_btn):
 		_multiplayer_btn.text = tr("MENU_MULTIPLAYER").to_upper()
-	if is_instance_valid(_reset_btn):
-		_reset_btn.text = tr("MENU_NEW_GAME")
+	if is_instance_valid(_new_game_btn):
+		_new_game_btn.text = tr("MENU_NEW_GAME")
 	if is_instance_valid(_showcase_btn):
 		_showcase_btn.text = tr("MENU_ASSET_SHOWCASE")
 	if is_instance_valid(_settings_btn):
@@ -105,7 +102,6 @@ func _refresh_text_title() -> void:
 
 
 func _refresh_copyright_label() -> void:
-	# Declarative binding: searches for a suttle Copyright Label node under the MasterVBox
 	var copyright := get_node_or_null("CenterContainer/MasterVBox/CopyrightLabel") as Label
 	if is_instance_valid(copyright):
 		copyright.text = tr("MENU_COPYRIGHT")
@@ -138,9 +134,11 @@ func _on_play_pressed() -> void:
 
 
 func _on_multiplayer_pressed() -> void:
-	_lobby_overlay = LOBBY_MENU_SCENE.instantiate() as MultiplayerLobbyWidget
-	_lobby_overlay.closed.connect(_on_lobby_closed)
-	add_child(_lobby_overlay)
+	var lobby_menu_scene := load("res://src/Infrastructure/UI/Widgets/multiplayer_lobby_widget.tscn") as PackedScene
+	if is_instance_valid(lobby_menu_scene):
+		_lobby_overlay = lobby_menu_scene.instantiate() as MultiplayerLobbyWidget
+		_lobby_overlay.closed.connect(_on_lobby_closed)
+		add_child(_lobby_overlay)
 
 
 func _on_lobby_closed() -> void:
@@ -173,9 +171,11 @@ func _on_overwrite_cancelled() -> void:
 
 
 func _on_settings_pressed() -> void:
-	_settings_overlay = SETTINGS_MENU_SCENE.instantiate() as SettingsMenu
-	_settings_overlay.closed.connect(_on_settings_closed)
-	add_child(_settings_overlay)
+	var settings_menu_scene := load("res://src/Infrastructure/UI/settings_menu.tscn") as PackedScene
+	if is_instance_valid(settings_menu_scene):
+		_settings_overlay = settings_menu_scene.instantiate() as SettingsMenu
+		_settings_overlay.closed.connect(_on_settings_closed)
+		add_child(_settings_overlay)
 
 
 func _on_settings_closed() -> void:

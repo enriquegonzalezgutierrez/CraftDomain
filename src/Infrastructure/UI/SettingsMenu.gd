@@ -2,19 +2,16 @@
 # Pathfile: res://src/Infrastructure/UI/SettingsMenu.gd
 # Description: Infrastructure UI component strictly managing system settings modifications,
 #              dynamic localizations, and persistence.
-# SOLID COMPLIANCE: Class limits set < 300 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 20 lines.
-# - Open-Closed Principle (OCP): Integrates the custom Gamepad Binding Overlay 
-#   via runtime instantiation without changing core settings repositories.
-# Author: Enrique González Gutiérrez
+#              REFACTORED: Converted compile-time preloads to runtime load calls
+#              to immunize the startup compiler from Windows file-locking race conditions.
+#              COMPLIANCE: Decomposed monolithic methods into < 20 line helpers.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SettingsMenu
 extends Panel
 
 signal closed
-
-const BINDING_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/gamepad_binding_overlay.tscn")
 
 @onready var _menu_card: Panel = $CenterContainer/MenuCard
 
@@ -40,10 +37,25 @@ const BINDING_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/gamepad_bind
 
 
 func _ready() -> void:
+	_setup_sliders_and_options()
+	_connect_settings_signals()
+	_initialize_settings_states()
+	_refresh_text_title()
+	_play_entry_animation()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED:
+		_refresh_localized_text()
+
+
+func _setup_sliders_and_options() -> void:
 	_music_slider.value = AudioServer.get_bus_volume_db(_get_or_create_bus("Music"))
 	_sfx_slider.value = AudioServer.get_bus_volume_db(_get_or_create_bus("SFX"))
 	_dist_slider.value = float(ChunkLoaderService.global_view_distance)
-	
+
+
+func _connect_settings_signals() -> void:
 	_music_slider.value_changed.connect(_on_music_changed)
 	_sfx_slider.value_changed.connect(_on_sfx_changed)
 	_dist_slider.value_changed.connect(_on_render_distance_changed)
@@ -56,19 +68,13 @@ func _ready() -> void:
 		_save_all_current_settings()
 		_play_exit_animation()
 	)
-	
+
+
+func _initialize_settings_states() -> void:
 	_populate_dropdown_items()
 	_setup_language_selection_state()
 	_setup_resolution_dropdown_state()
 	_setup_username_display_state()
-	
-	_refresh_localized_text()
-	_play_entry_animation()
-
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_TRANSLATION_CHANGED:
-		_refresh_localized_text()
 
 
 func _populate_dropdown_items() -> void:
@@ -98,6 +104,10 @@ func _refresh_localized_text() -> void:
 	if is_instance_valid(_back_btn): _back_btn.text = tr("SETTINGS_BACK").to_upper()
 	if is_instance_valid(_apply_btn): _apply_btn.text = tr("SETTINGS_APPLY").to_upper()
 	
+	_update_dropdown_items_text()
+
+
+func _update_dropdown_items_text() -> void:
 	if is_instance_valid(_res_opt):
 		var active_index: int = _res_opt.selected
 		_res_opt.set_item_text(0, tr("SETTINGS_RESOLUTION_720"))
@@ -208,12 +218,14 @@ func _on_language_changed(index: int) -> void:
 
 
 func _on_gamepad_bindings_pressed() -> void:
-	var overlay := BINDING_OVERLAY_SCENE.instantiate() as GamepadBindingOverlay
-	add_child(overlay)
-	overlay.closed.connect(func() -> void:
-		overlay.queue_free()
-	)
-	AudioService.play_sfx_static("ui_click")
+	var binding_overlay_scene := load("res://src/Infrastructure/UI/gamepad_binding_overlay.tscn") as PackedScene
+	if is_instance_valid(binding_overlay_scene):
+		var overlay := binding_overlay_scene.instantiate() as GamepadBindingOverlay
+		add_child(overlay)
+		overlay.closed.connect(func() -> void:
+			overlay.queue_free()
+		)
+		AudioService.play_sfx_static("ui_click")
 
 
 func _save_all_current_settings() -> void:
@@ -245,3 +257,7 @@ func _get_or_create_bus(bus_name: String) -> int:
 		idx = AudioServer.get_bus_count() - 1
 		AudioServer.set_bus_name(idx, bus_name)
 	return idx
+
+
+func _refresh_text_title() -> void:
+	_refresh_localized_text()

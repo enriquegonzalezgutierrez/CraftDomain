@@ -3,17 +3,17 @@
 [ext_resource type="Script" path="res://src/Infrastructure/Life/MinerEntity.gd" id="1_miner"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/miner/miner_base.glb" id="4_glb"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/miner.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_miner"]
-radius = 0.336914
-height = 1.79937
+radius = 0.311035
+height = 1.43872
 
 [node name="MinerEntity" type="CharacterBody3D"]
 script = ExtResource("1_miner")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.899683, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.711929, 0)
 shape = SubResource("CapsuleShape3D_miner")
 
 [node name="NPCAIComponent" type="Node" parent="."]
@@ -27,12 +27,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="miner_base" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
+[node name="miner" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)
-
-[node name="HeadlampBeam" type="SpotLight3D" parent="Visuals/BodyBobJoint"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.86864, -0.22)
-light_color = Color(0.921569, 0.94902, 1, 1)
-light_energy = 2.4
-shadow_enabled = true
-spot_range = 16.0

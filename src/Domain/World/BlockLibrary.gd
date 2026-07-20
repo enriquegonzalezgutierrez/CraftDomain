@@ -4,10 +4,10 @@
 #              and spawning behaviors of all block types in the game world.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively manages block definitions.
-# - SOLID OCP: Declares the fallback Air definition as is_air = true at domain level.
-# - Explicit Scope Bindings: Prefixes all static calls with the class name 
-#   to prevent Godot 4.7+ parser scope resolution bugs.
-# Author: Enrique González Gutiérrez
+# - Open-Closed Principle (OCP): Closed completely to cyclic class dependencies
+#   by housing static solid/translucent checks natively.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name BlockLibrary
@@ -34,6 +34,21 @@ static func get_definition(type: int) -> BlockDefinition:
 static func register_definition(definition: BlockDefinition) -> void:
 	if definition != null:
 		BlockLibrary._definitions[definition.type] = definition
+
+
+## Symmetrical checks breaking compile-time loops (DIP / OCP Compliant)
+static func is_solid(type: int) -> bool:
+	if type == 0 or type == 6 or type == 15: # AIR, WATER, LAVA
+		return false
+	var def := get_definition(type)
+	return def.is_solid if def != null else false
+
+
+static func is_transparent(type: int) -> bool:
+	if type == 0 or type == 6 or type == 15: # AIR, WATER, LAVA
+		return true
+	var def := get_definition(type)
+	return def.is_transparent if def != null else false
 
 
 static func _ensure_initialized() -> void:
@@ -86,9 +101,8 @@ static func _register_air_fallback() -> void:
 	air.translation_key = "BLOCK_AIR"
 	air.is_solid = false
 	air.is_transparent = true
-	air.is_air = true # SOLID OOP definition
+	air.is_air = true 
 	
-	# SOLID OCP Spawning properties configuration
 	air.is_spawn_surface = false
 	air.is_spawn_penetrable = true 
 	

@@ -3,17 +3,17 @@
 [ext_resource type="Script" path="res://src/Infrastructure/Life/GuardEntity.gd" id="1_guard"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
 [ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/guard/guard_base.glb" id="4_glb"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/guard.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_guard"]
-radius = 0.330566
-height = 2.11191
+radius = 0.3
+height = 1.8
 
 [node name="GuardEntity" type="CharacterBody3D"]
 script = ExtResource("1_guard")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05596, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_guard")
 
 [node name="NPCAIComponent" type="Node" parent="."]
@@ -27,5 +27,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
 [node name="BodyBobJoint" type="Node3D" parent="Visuals"]
 
-[node name="guard_base" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
+[node name="guard" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
 transform = Transform3D(0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01, 0, 0, 0)

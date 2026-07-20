@@ -3,18 +3,16 @@
 # Description: Central composition root of the application. Orchestrates the 
 #              asynchronous initialization of global systems, unified scene transitions,
 #              Vulkan pre-warming, and 100% Offline Socket Isolation.
-#              EXIT SAFEGUARD: Intercepts OS window close requests to synchronously 
-#              join background worker threads before X11 window destruction (BadWindow).
+#              REFACTORED: Converted compile-time preloads to runtime load calls
+#              to immunize the startup compiler from Windows file-locking race conditions.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name Bootstrap
 extends Node
 
-const MAIN_MENU_SCENE := preload("res://src/Infrastructure/UI/main_menu.tscn")
-const LOADING_SCREEN_SCENE := preload("res://src/Infrastructure/UI/loading_screen.tscn")
 const LIGHT_RECOVERY_SECTOR_Y: float = 12.0
-const VEGETATION_PROP_SCRIPT := preload("res://src/Infrastructure/World/VegetationProp.gd")
+const VEGETATION_PROP_SCRIPT_PATH: String = "res://src/Infrastructure/World/VegetationProp.gd"
 
 var main_menu: MainMenu
 var world_controller: Node3D
@@ -32,6 +30,9 @@ var world_repository: WorldRepository
 var sun_light: DirectionalLight3D
 var world_environment: WorldEnvironment
 
+var main_menu_scene: PackedScene
+var loading_screen_scene: PackedScene
+
 
 func _ready() -> void:
 	_enforce_offline_multiplayer_peer()
@@ -39,14 +40,11 @@ func _ready() -> void:
 
 
 func _notification(what: int) -> void:
-	# Intercept OS close requests to execute a safe thread-joining shutdown
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		_handle_safe_exit_isolation()
 
 
 func _enforce_offline_multiplayer_peer() -> void:
-	# Offline Isolation Protocol: Enforce completely offline socket state by default.
-	# Zero external queries or UPnP lookups will occur in Single-Player.
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 
 
@@ -55,6 +53,7 @@ func _initialize_application_async() -> void:
 	_init_basic_telemetry_and_settings()
 	TranslationRegistry.initialize_translations()
 	
+	_load_runtime_scenes()
 	var splash := _instantiate_startup_splash()
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -69,10 +68,13 @@ func _initialize_application_async() -> void:
 	_setup_celestial()
 	_setup_audio_and_network()
 	
-	# Milestone 3: Vulkan Pipeline Pre-Warming
 	await _execute_vulkan_prewarming()
-	
 	_transition_to_main_menu(splash)
+
+
+func _load_runtime_scenes() -> void:
+	main_menu_scene = load("res://src/Infrastructure/UI/main_menu.tscn") as PackedScene
+	loading_screen_scene = load("res://src/Infrastructure/UI/loading_screen.tscn") as PackedScene
 
 
 func _execute_vulkan_prewarming() -> void:
@@ -87,14 +89,14 @@ func _instantiate_startup_splash() -> CanvasLayer:
 	canvas_layer.layer = 100
 	add_child(canvas_layer)
 	
-	var splash := LOADING_SCREEN_SCENE.instantiate() as LoadingScreen
-	splash.name = "StartupSplash"
-	canvas_layer.add_child(splash)
-	
-	var status := splash.get_node_or_null("CenterContainer/VBoxContainer/Status") as Label
-	if is_instance_valid(status):
-		status.text = tr("LOADING_STATUS").to_upper()
-		
+	if is_instance_valid(loading_screen_scene):
+		var splash := loading_screen_scene.instantiate() as LoadingScreen
+		splash.name = "StartupSplash"
+		canvas_layer.add_child(splash)
+		var status := splash.get_node_or_null("CenterContainer/VBoxContainer/Status") as Label
+		if is_instance_valid(status):
+			status.text = tr("LOADING_STATUS").to_upper()
+			
 	return canvas_layer
 
 
@@ -103,14 +105,14 @@ func _create_declarative_loading_screen() -> CanvasLayer:
 	canvas_layer.name = "UnloadLoadingScreenCanvas"
 	canvas_layer.layer = 100
 	
-	var splash := LOADING_SCREEN_SCENE.instantiate() as LoadingScreen
-	splash.name = "UnloadLoadingScreen"
-	canvas_layer.add_child(splash)
-	
-	var status := splash.get_node_or_null("CenterContainer/VBoxContainer/Status") as Label
-	if is_instance_valid(status):
-		status.text = tr("LOADING_UNLOAD_WORLD").to_upper()
-		
+	if is_instance_valid(loading_screen_scene):
+		var splash := loading_screen_scene.instantiate() as LoadingScreen
+		splash.name = "UnloadLoadingScreen"
+		canvas_layer.add_child(splash)
+		var status := splash.get_node_or_null("CenterContainer/VBoxContainer/Status") as Label
+		if is_instance_valid(status):
+			status.text = tr("LOADING_UNLOAD_WORLD").to_upper()
+			
 	return canvas_layer
 
 
@@ -177,7 +179,7 @@ func _register_passive_wildlife(h_land: int, h_both: int, h_water: int) -> void:
 	_register_scene_mob(205, BirdEntity, h_land, ai_fauna)
 	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna)
 	_register_scene_mob(208, CrabEntity, h_both, ai_fauna)
-	_register_scene_mob(209, ElephantEntity, h_land, ai_fauna) # FIXED: Added missing Elephant registration
+	_register_scene_mob(209, ElephantEntity, h_land, ai_fauna) 
 	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna)
 
 
@@ -205,7 +207,7 @@ func _register_civilian_professions(h_land: int) -> void:
 func _register_campaign_bosses(h_land: int) -> void:
 	_register_scene_mob(50, LithicLurkerEntity, h_land, LithicLurkerAIBehavior.new())
 	_register_scene_mob(51, ObsidianColossusEntity, h_land, ObsidianColossusAIBehavior.new())
-	_register_scene_mob(52, WeaverMalakorEntity, h_land, WeaverMalakorAIBehavior.new()) # FIXED: Added missing Weaver Final Boss registration
+	_register_scene_mob(52, WeaverMalakorEntity, h_land, WeaverMalakorAIBehavior.new())
 
 
 func _register_scene_mob(spawn_id: int, fallback_class: Variant, habitat: int, default_behavior: IAIBehavior = null) -> void:
@@ -239,7 +241,9 @@ func _register_prop(prop_id: int, _prop_class: Variant) -> void:
 			var inst := scene.instantiate() as Node3D
 			inst.position = pos
 			if prop_id >= 220 and prop_id <= 235:
-				inst.set_script(VEGETATION_PROP_SCRIPT)
+				var script_res := load(VEGETATION_PROP_SCRIPT_PATH) as GDScript
+				if is_instance_valid(script_res):
+					inst.set_script(script_res)
 			return inst
 		return null
 	)
@@ -325,11 +329,12 @@ func _setup_audio_and_network() -> void:
 
 func _load_main_menu() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	main_menu = MAIN_MENU_SCENE.instantiate() as MainMenu
-	main_menu.name = "MainMenu"
-	main_menu.play_pressed.connect(_on_start_game_requested)
-	main_menu.showcase_pressed.connect(_on_showcase_requested)
-	add_child(main_menu)
+	if is_instance_valid(main_menu_scene):
+		main_menu = main_menu_scene.instantiate() as MainMenu
+		main_menu.name = "MainMenu"
+		main_menu.play_pressed.connect(_on_start_game_requested)
+		main_menu.showcase_pressed.connect(_on_showcase_requested)
+		add_child(main_menu)
 
 
 func _transition_to_main_menu(splash_canvas: CanvasLayer) -> void:
@@ -352,12 +357,13 @@ func _on_start_game_requested(should_clear_save: bool = false) -> void:
 	canvas_layer.layer = 100
 	add_child(canvas_layer)
 	
-	var loading_screen := LOADING_SCREEN_SCENE.instantiate() as LoadingScreen
-	loading_screen.name = "LoadingScreenOverlay"
-	canvas_layer.add_child(loading_screen)
-	
-	await get_tree().process_frame
-	_execute_world_start(should_clear_save, loading_screen)
+	if is_instance_valid(loading_screen_scene):
+		var loading_screen := loading_screen_scene.instantiate() as LoadingScreen
+		loading_screen.name = "LoadingScreenOverlay"
+		canvas_layer.add_child(loading_screen)
+		
+		await get_tree().process_frame
+		_execute_world_start(should_clear_save, loading_screen)
 
 
 func _execute_world_start(should_clear_save: bool, loading_screen: LoadingScreen) -> void:

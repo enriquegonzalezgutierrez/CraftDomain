@@ -6,7 +6,7 @@
 # - Single Responsibility Principle (SRP): Coordinates strictly physics and 
 #   sensory loops, ensuring correct sequential execution (GOAP -> Locomotion -> Steering).
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NPCAIComponent
@@ -74,7 +74,7 @@ func _on_world_block_modified(global_pos: Vector3i, _type: BlockType.Type) -> vo
 	var host_coord := Vector3i(floori(h_pos.x), floori(h_pos.y), floori(h_pos.z))
 	
 	if host_coord.distance_to(global_pos) < 15:
-		_ai_timer_accum = _ai_tick_rate # Force immediate AI update on next frame
+		_ai_timer_accum = _ai_tick_rate 
 
 
 ## Master Loop: Executes correct sequential data pipeline (GOAP -> Locomotion -> Steering)
@@ -85,16 +85,10 @@ func process_ai(delta: float) -> void:
 	if is_instance_valid(AITelemetryService.instance):
 		AITelemetryService.instance.process_telemetry_flush(delta)
 		
-	# 1. GOAP calculates high-level intent (sets tasks & base desired vectors)
 	_calculate_base_desired_direction(delta)
-	
-	# 2. Prevent drift of obsolete movement vectors when plan is empty or idle
 	_verify_active_plan_presence()
-	
-	# 3. Locomotion applies base physical velocities to the CharacterBody
 	_apply_movement_vectors(delta)
 	
-	# 4. Steering runs LAST, adjusting and damping velocities safely before move_and_slide()
 	if is_instance_valid(_steering_component):
 		_steering_component.process_steering(delta)
 
@@ -111,14 +105,11 @@ func _calculate_base_desired_direction(delta: float) -> void:
 
 func _execute_throttled_ai_tick() -> void:
 	if active_behavior != null:
-		# Delegate high-level plans and decisions 100% to the GOAP active strategy
 		active_behavior.evaluate_and_execute(_host, _ai_tick_rate)
 
 
-## Shield of Drift: Zeroes out obsolete direction vectors when GOAP plans are inactive
 func _verify_active_plan_presence() -> void:
 	if active_behavior != null and not is_manual_override:
-		# Reflective lookup bypasses vulnerable telemetry strings
 		var active_plan: Variant = active_behavior.get("_active_plan")
 		if active_plan is Array and active_plan.is_empty():
 			current_task = TaskState.IDLE
@@ -129,7 +120,6 @@ func _apply_movement_vectors(delta: float) -> void:
 	var base_speed: float = _host.get("BASE_SPEED") as float if "BASE_SPEED" in _host else 1.3
 	
 	match current_task:
-		# Symmetrical Fix: WORKING (6) grouped with IDLE to stay locked in place during tasks
 		TaskState.IDLE, TaskState.GREETING, TaskState.CHATTIING, TaskState.WORKING:
 			_host.velocity.x = move_toward(_host.velocity.x, 0.0, base_speed)
 			_host.velocity.z = move_toward(_host.velocity.z, 0.0, base_speed)
@@ -188,9 +178,11 @@ func _keep_gaze_within_tether() -> void:
 			wander_direction.y = 0.0
 
 
-func _get_task_state_name(task_val: int) -> String:
+## Public API: Translates TaskState enum values to safe String representations
+func get_task_state_name(task_val: int) -> String:
 	var names: Array[String] = ["IDLE", "WANDERING", "EXAMINING", "GREETING", "CHATTING", "PANIC", "WORKING"]
-	if task_val >= 0 and task_val < names.size(): return names[task_val]
+	if task_val >= 0 and task_val < names.size(): 
+		return names[task_val]
 	return "IDLE"
 
 

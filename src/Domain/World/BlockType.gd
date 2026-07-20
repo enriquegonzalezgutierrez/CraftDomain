@@ -3,11 +3,9 @@
 # Description: Pure Domain Value Object defining all supported voxel block types.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Encapsulates exclusively the raw block
-#   ID enum type mappings.
-# - Open-Closed Principle (OCP): All active custom blocks, flora, and tools 
-#   registered cleanly inside the Type enum to permanently prevent compiler
-#   casting warnings across biomes and blueprints.
-# Author: Enrique González Gutiérrez
+#   ID enum type mappings. Closed completely to external class references to prevent
+#   cross-platform cyclic compilation deadlocks.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name BlockType
@@ -118,16 +116,14 @@ enum Type {
 	MYCELIUM = 74,
 	SMOOTH_STONE_SLAB_TOP = 75,
 	
-	# Netherrack & Glass Slab
+	# College & Glass Slab
 	NETHERRACK = 76,
 	NETHER_BRICKS = 77,
 	CACTUS = 78,
 	MAGMA = 79,
 	GLASS_SLAB_BOTTOM = 80,
 	
-	# ==========================================================================
-	# REGISTERED CUSTOM OCP BLOCKS & FLORA (Warnings Solved)
-	# ==========================================================================
+	# Registered Custom OCP Blocks & Flora
 	BIRCH_PLANKS = 81,
 	DEAD_BUSH = 82,
 	CHERRY_LOG = 83,
@@ -155,25 +151,3 @@ enum Type {
 	TULIP_PINK = 108,
 	TULIP_WHITE = 109
 }
-
-
-## Returns true if the block type occupies physical space (is solid).
-## Sourced dynamically from the data-driven BlockLibrary with absolute liquid safety checks.
-static func is_solid(type: Type) -> bool:
-	# Absolute Safety Guardrail: Air and liquids must NEVER possess physical collision
-	if type == Type.AIR or type == Type.WATER or type == Type.LAVA:
-		return false
-		
-	var def: BlockDefinition = BlockLibrary.get_definition(type) as BlockDefinition
-	return def.is_solid if def != null else false
-
-
-## Returns true if the block type is transparent or semi-transparent.
-## Sourced dynamically from the data-driven BlockLibrary.
-static func is_transparent(type: Type) -> bool:
-	# Absolute Safety Guardrail: Air and liquids are always transparent
-	if type == Type.AIR or type == Type.WATER or type == Type.LAVA:
-		return true
-		
-	var def: BlockDefinition = BlockLibrary.get_definition(type) as BlockDefinition
-	return def.is_transparent if def != null else false

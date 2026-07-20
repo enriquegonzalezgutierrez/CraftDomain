@@ -2,12 +2,10 @@
 # Pathfile: res://src/Infrastructure/Player/PlayerController.gd
 # Description: First-person player physics controller managing movements,
 #              LOD views, and stable gravity-free startup phases.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Decoupled hotbar and equipment logic 
-#   entirely into PlayerEquipmentComponent.
-# - SOLID OCP: Replaced hardcoded block ID lists in _check_in_liquid_state with 
-#   the new polymorphic BlockDefinition is_liquid check.
-# Author: Enrique González Gutiérrez
+#              REFACTORED: Converted compile-time preloads to runtime load calls
+#              to immunize the startup compiler from Windows file-locking race conditions.
+#              COMPLIANCE: Decomposed monolithic methods into < 20 line helpers.
+# Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PlayerController
@@ -15,7 +13,6 @@ extends CharacterBody3D
 
 signal sword_swung
 
-const PLAYER_HUD_SCENE := preload("res://src/Infrastructure/UI/player_hud.tscn")
 const GLIDER_ITEM_ID: int = 210
 
 const SPEED: float = 6.0
@@ -62,6 +59,7 @@ var _glider_physics: GliderPhysicsStrategy
 var _input_component: PlayerInputComponent
 var _camera_effects: CameraEffectsComponent
 var _footstep_player: FootstepAudioPlayer
+var player_hud_scene: PackedScene
 
 
 func _init() -> void:
@@ -113,39 +111,59 @@ func _setup_player_geometry() -> void:
 		camera.name = "PlayerCamera"
 		camera.position = Vector3(0, 1.6, 0) 
 		camera.current = true
-		
-		var camera_attrs := CameraAttributesPractical.new()
-		camera_attrs.auto_exposure_enabled = true
-		camera_attrs.auto_exposure_scale = 0.35 
-		camera_attrs.auto_exposure_speed = 1.2  
-		camera.attributes = camera_attrs
-		
-		add_child(camera)
+		_apply_camera_attributes()
+
+
+func _apply_camera_attributes() -> void:
+	var camera_attrs := CameraAttributesPractical.new()
+	camera_attrs.auto_exposure_enabled = true
+	camera_attrs.auto_exposure_scale = 0.35 
+	camera_attrs.auto_exposure_speed = 1.2  
+	camera.attributes = camera_attrs
+	add_child(camera)
 
 
 func _setup_sub_components() -> void:
 	inventory = InventoryComponent.new()
+	_setup_viewmodel()
+	_setup_interaction_component()
+	_setup_hud()
+	_setup_decoupled_components()
+
+
+func _setup_viewmodel() -> void:
 	viewmodel = PlayerViewModel.new()
 	viewmodel.player = self  
-	camera.add_child(viewmodel)
-	
-	var inter_script := load("res://src/Infrastructure/Player/VoxelInteractionComponent.gd") as GDScript
-	if inter_script != null:
+	if is_instance_valid(camera):
+		camera.add_child(viewmodel)
+
+
+func _setup_interaction_component() -> void:
+	var path := "res://src/Infrastructure/Player/VoxelInteractionComponent.gd"
+	var inter_script := load(path) as GDScript
+	if is_instance_valid(inter_script) and is_instance_valid(camera):
 		interaction_component = inter_script.new() as Node3D
 		interaction_component.set("player", self)
 		interaction_component.set("world_controller", world_controller)
 		camera.add_child(interaction_component)
-	
-	hud = PLAYER_HUD_SCENE.instantiate() as PlayerHUD
-	hud.player = self
-	hud.world_controller = world_controller
-	add_child(hud)
-	
+
+
+func _setup_hud() -> void:
+	player_hud_scene = load("res://src/Infrastructure/UI/player_hud.tscn") as PackedScene
+	if is_instance_valid(player_hud_scene):
+		hud = player_hud_scene.instantiate() as PlayerHUD
+		hud.player = self
+		hud.world_controller = world_controller
+		add_child(hud)
+		_check_loading_screen_state()
+
+
+func _check_loading_screen_state() -> void:
 	var parent_node := get_parent()
-	if is_instance_valid(parent_node) and not parent_node.has_node("LoadingScreenCanvas/LoadingScreenOverlay"):
-		hud.show_loading_screen()
-		
-	_setup_decoupled_components()
+	if is_instance_valid(parent_node) and is_instance_valid(hud):
+		var has_loading := parent_node.has_node("LoadingScreenCanvas/LoadingScreenOverlay")
+		if not has_loading:
+			hud.show_loading_screen()
 
 
 func _setup_decoupled_components() -> void:
@@ -172,7 +190,11 @@ func _input(event: InputEvent) -> void:
 		_handle_pause_trigger()
 		return
 		
-	# Symmetrical Debugger: Press F10 in development to trigger a real storm instantly
+	_handle_debug_storm_input(event)
+	_handle_chat_trigger_input(event)
+
+
+func _handle_debug_storm_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
 		var key_event := event as InputEventKey
 		if key_event.keycode == KEY_F10:
@@ -184,8 +206,9 @@ func _input(event: InputEvent) -> void:
 					var target := 1 if current == 0 else 0
 					ws.set("current_weather", target)
 					ws.call("_trigger_climatological_overcast")
-					print("[Developer Debug] Forced weather state to: ", "RAINY" if target == 1 else "SUNNY")
-		
+
+
+func _handle_chat_trigger_input(event: InputEvent) -> void:
 	if is_active and event is InputEventKey and event.pressed:
 		var key_event := event as InputEventKey
 		var is_chat_key := (key_event.keycode == KEY_T or key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER)
