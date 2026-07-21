@@ -1,7 +1,7 @@
-[gd_scene format=3 uid="uid://baouqopghs311"]
+[gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" uid="uid://dkiunse17dnjg" path="res://src/Infrastructure/World/BarrelEntity.gd" id="1_script"]
-[ext_resource type="PackedScene" uid="uid://4iakdsj78sx7" path="res://assets/models/decorations/barrel.glb" id="2_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/World/BarrelEntity.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/models/decorations/barrel.glb" id="2_glb"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_col"]
 size = Vector3(0.8454053, 0.9811279, 0.8832471)

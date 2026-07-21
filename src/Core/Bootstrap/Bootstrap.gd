@@ -202,6 +202,9 @@ func _register_civilian_professions(h_land: int) -> void:
 	_register_scene_mob(101, MerchantEntity, h_land)
 	_register_scene_mob(105, MinerEntity, h_land)
 	_register_scene_mob(106, CyberCitizenEntity, h_land)
+	
+	# Integración OCP de Quique como Residente Especial (ID 110)
+	_register_scene_mob(110, QuiqueEntity, h_land)
 
 
 func _register_campaign_bosses(h_land: int) -> void:

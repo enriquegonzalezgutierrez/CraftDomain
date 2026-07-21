@@ -1,10 +1,9 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/ZombieAIBehavior.gd
-# Description: Pure Domain AI behavior strategy implementing hostile zombie routines,
-#              including player tracking, glitched spotted roars, and wall flanking.
+# Description: Pure Domain AI behavior strategy implementing hostile zombie routines.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Isolates sensory spotting, path 
-#   pursuit, and close-proximity attack actions into decoupled inner classes.
+#   pursuit, close-proximity attacks, resting, and wandering into decoupled actions.
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows custom zombie 
 #   mutation types (e.g., runners, tanks) to be added without code rewrites.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
@@ -43,6 +42,7 @@ func _setup_goap_profile() -> void:
 	_actions.append(SpotTargetAction.new())
 	_actions.append(ChaseTargetAction.new())
 	_actions.append(AttackTargetAction.new())
+	_actions.append(ZombieRestAction.new())
 	_actions.append(ZombieWanderAction.new())
 
 
@@ -50,10 +50,13 @@ func _setup_goals() -> void:
 	var hunt_goal := GOAPGoal.new("HuntPrey", 2.0)
 	hunt_goal.add_desired_state("did_eliminate", true)
 	
+	var lurk_goal := GOAPGoal.new("Lurk", 1.0)
+	lurk_goal.add_desired_state("is_lurking", true)
+	
 	var wander_goal := GOAPGoal.new("IdleWander", 0.5)
 	wander_goal.add_desired_state("is_wandering", true)
 	
-	_goals.append_array([hunt_goal, wander_goal])
+	_goals.append_array([hunt_goal, lurk_goal, wander_goal])
 
 
 func evaluate_and_execute(host: Object, delta: float) -> void:
@@ -73,6 +76,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("attack_cooldown", 0.0)
 		_blackboard.set_memory("alert_timer", 0.0)
+		_blackboard.set_memory("rest_timer", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 		_blackboard.set_memory("has_spotted", false)
 
@@ -83,6 +87,9 @@ func _update_blackboard_timers(delta: float) -> void:
 	
 	var alert := _blackboard.get_float("alert_timer") - delta
 	_blackboard.set_memory("alert_timer", maxf(0.0, alert))
+	
+	var rest := _blackboard.get_float("rest_timer") - delta
+	_blackboard.set_memory("rest_timer", maxf(0.0, rest))
 
 
 func _evaluate_active_plan(_host: Object) -> void:
@@ -90,7 +97,7 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		for goal in sorted_goals:
+		for goal: GOAPGoal in sorted_goals:
 			if goal.is_valid(_blackboard):
 				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
 				if not _active_plan.is_empty():
@@ -101,6 +108,7 @@ func _evaluate_active_plan(_host: Object) -> void:
 func _build_initial_state() -> Dictionary:
 	var state: Dictionary = {}
 	state["did_eliminate"] = not _is_target_active()
+	state["is_lurking"] = false
 	state["is_wandering"] = false
 	return state
 
@@ -147,6 +155,7 @@ func get_active_state_name(host: Object) -> String:
 		if action_name == "SpotTarget": return "EXAMINE"
 		elif action_name == "ChaseTarget": return "CHASING"
 		elif action_name == "AttackTarget": return "ATTACKING"
+		elif action_name == "ZombieRest": return "IDLE"
 	return "WANDER"
 
 
@@ -166,7 +175,7 @@ class SpotTargetAction extends GOAPAction:
 			bb.set_memory("threat_target", target)
 			if not bb.get_bool("has_spotted"):
 				bb.set_memory("has_spotted", true)
-				bb.set_memory("alert_timer", ALERT_DURATION_SEC)
+				bb.set_memory("alert_timer", ZombieAIBehavior.ALERT_DURATION_SEC)
 				if host.has_method("_play_spotted_roar"):
 					host.call("_play_spotted_roar", target)
 			return true
@@ -175,22 +184,22 @@ class SpotTargetAction extends GOAPAction:
 	func _scan_for_prey(host: CharacterBody3D) -> Node3D:
 		var host_pos := host.global_position
 		var closest: Node3D = null
-		var min_dist_sq := RANGE_CHASE_SQ
+		var min_dist_sq := ZombieAIBehavior.RANGE_CHASE_SQ
 		var targets := _gather_prey_population(host)
 		
-		for child in targets:
+		for child: Node in targets:
 			var domain := child.get("domain_entity") as VoxelEntity
 			if is_instance_valid(domain) and not domain.is_dead:
 				var dist_sq := host_pos.distance_squared_to(child.global_position)
 				if dist_sq < min_dist_sq:
 					min_dist_sq = dist_sq
-					closest = child
+					closest = child as Node3D
 		return closest
 		
 	func _gather_prey_population(host: CharacterBody3D) -> Array[Node3D]:
 		var list: Array[Node3D] = []
 		var passives := host.get_tree().get_nodes_in_group("passives")
-		for child in passives:
+		for child: Node in passives:
 			if child is CharacterBody3D and child.name != host.name:
 				list.append(child as Node3D)
 				
@@ -227,17 +236,17 @@ class ChaseTargetAction extends GOAPAction:
 			_freeze_and_look(host, ai, diff.normalized())
 			return false
 			
-		if diff.length_squared() <= RANGE_ATTACK_SQ:
+		if diff.length_squared() <= ZombieAIBehavior.RANGE_ATTACK_SQ:
 			return true
 			
-		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_CHASE)
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), ZombieAIBehavior.SPEED_CHASE)
 		return false
 		
 	func _freeze_and_look(host: CharacterBody3D, ai: Object, dir: Vector3) -> void:
 		VoxelKinematicService.halt_movement(host, ai)
 		if is_instance_valid(ai):
 			ai.set("wander_direction", dir)
-			ai.set("current_task", TASK_WORKING)
+			ai.set("current_task", ZombieAIBehavior.TASK_WORKING)
 
 
 class AttackTargetAction extends GOAPAction:
@@ -260,7 +269,7 @@ class AttackTargetAction extends GOAPAction:
 		
 		var diff := target.global_position - host.global_position
 		diff.y = 0.0
-		if diff.length_squared() > RANGE_ATTACK_SQ:
+		if diff.length_squared() > ZombieAIBehavior.RANGE_ATTACK_SQ:
 			return true # Target moved; re-plan to chase
 			
 		_execute_bite(bb, host, ai, diff.normalized())
@@ -272,7 +281,7 @@ class AttackTargetAction extends GOAPAction:
 			
 		var cooldown := bb.get_float("attack_cooldown")
 		if cooldown <= 0.0:
-			bb.set_memory("attack_cooldown", COOLDOWN_ATTACK_SEC)
+			bb.set_memory("attack_cooldown", ZombieAIBehavior.COOLDOWN_ATTACK_SEC)
 			if host.has_method("_bite_player"):
 				host.call("_bite_player")
 				
@@ -280,15 +289,49 @@ class AttackTargetAction extends GOAPAction:
 			if is_instance_valid(vis): vis.trigger_attack_visuals()
 
 
+class ZombieRestAction extends GOAPAction:
+	func _init() -> void:
+		super("ZombieRest", 1.0)
+		add_effect("is_lurking", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("rest_timer") <= 0.0
+		
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("action_timer", randf_range(3.0, 7.0))
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai := host.get("ai_component")
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("current_task", ZombieAIBehavior.TASK_IDLE)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var timer := bb.get_float("action_timer") - delta
+		bb.set_memory("action_timer", timer)
+		
+		if timer <= 0.0:
+			bb.set_memory("rest_timer", randf_range(10.0, 20.0))
+			return true
+		return false
+
+
 class ZombieWanderAction extends GOAPAction:
 	func _init() -> void:
 		super("Wander", 1.0)
 		add_effect("is_wandering", true)
 		
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("patrol_duration", randf_range(10.0, 18.0))
+		bb.set_memory("wander_timer", 0.0)
+		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+		if is_instance_valid(ai): ai.set("current_task", ZombieAIBehavior.TASK_WANDERING)
+			
+		var duration := bb.get_float("patrol_duration") - delta
+		bb.set_memory("patrol_duration", duration)
+		if duration <= 0.0:
+			return true # Finish wandering, allows GOAP to choose Lurk/Rest
 			
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
@@ -296,9 +339,27 @@ class ZombieWanderAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(2.0, 5.0)
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.4 else Vector3.ZERO
+			# SRP FIX: Always pick a direction, never ZERO!
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
-		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_WANDER)
+		_check_and_resolve_wall_collisions(bb, host, wander_dir, delta)
+		
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, ZombieAIBehavior.SPEED_WANDER)
 		return false
+		
+	func _check_and_resolve_wall_collisions(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
+		var stuck := bb.get_float("stuck_timer")
+		if wander_dir != Vector3.ZERO and host.is_on_wall():
+			stuck += delta
+			if stuck > 0.4:
+				stuck = 0.0
+				var normal := host.get_wall_normal()
+				var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
+				if flat_normal != Vector3.ZERO:
+					var bounce := wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
+					bb.set_memory("wander_direction", bounce)
+		else:
+			stuck = 0.0
+		bb.set_memory("stuck_timer", stuck)

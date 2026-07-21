@@ -1,9 +1,9 @@
-[gd_scene format=3 uid="uid://csusfw0dr7wxn"]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" uid="uid://dskwcjmfhl0e4" path="res://src/Infrastructure/Life/VillagerEntity.gd" id="1_villager"]
-[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://dqv7l7ubv48ay" path="res://assets/models/mobs/villager.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/VillagerEntity.gd" id="1_villager"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/villager.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_villager"]
 radius = 0.2783203

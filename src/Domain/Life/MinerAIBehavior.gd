@@ -4,7 +4,7 @@
 #              Planning (GOAP) for the Cavern Miner NPC.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates ore scanning, tunneling, 
-#   and extraction processes into highly cohesive, decoupled action classes.
+#   resting, and wandering processes into highly cohesive, decoupled action classes.
 # - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
 #   mineable resource types (such as iron or diamonds) without altering the planner.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
@@ -42,16 +42,20 @@ func _setup_goap_profile() -> void:
 	_actions.append(MoveToVeinAction.new())
 	_actions.append(ExtractOreAction.new())
 	_actions.append(RestAction.new())
+	_actions.append(MinerWanderAction.new())
 
 
 func _setup_goals() -> void:
-	var mine_goal := GOAPGoal.new("SupplyCavernOre", 1.0)
+	var mine_goal := GOAPGoal.new("SupplyCavernOre", 2.0)
 	mine_goal.add_desired_state("did_mine", true)
 	
-	var rest_goal := GOAPGoal.new("TakeBreak", 0.5)
+	var rest_goal := GOAPGoal.new("TakeBreak", 1.0)
 	rest_goal.add_desired_state("is_resting", true)
 	
-	_goals.append_array([mine_goal, rest_goal])
+	var wander_goal := GOAPGoal.new("PatrolMines", 0.5)
+	wander_goal.add_desired_state("is_wandering", true)
+	
+	_goals.append_array([mine_goal, rest_goal, wander_goal])
 
 
 func evaluate_and_execute(host: Object, delta: float) -> void:
@@ -61,6 +65,10 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 	_initialize_agent(host)
 	_update_blackboard_timers(delta)
 	
+	if host.get("is_talking") == true:
+		_handle_conversation_interrupt(host)
+		return
+		
 	_evaluate_active_plan(host)
 	_execute_current_action(delta)
 
@@ -95,7 +103,7 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		for goal in sorted_goals:
+		for goal: GOAPGoal in sorted_goals:
 			if goal.is_valid(_blackboard):
 				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
 				if not _active_plan.is_empty():
@@ -107,6 +115,7 @@ func _build_initial_state() -> Dictionary:
 	var state: Dictionary = {}
 	state["did_mine"] = false
 	state["is_resting"] = false
+	state["is_wandering"] = false
 	return state
 
 
@@ -141,8 +150,9 @@ func get_active_state_name(host: Object) -> String:
 	if _active_plan.size() > 0:
 		var action_name := _active_plan[0].action_name
 		if action_name == "ScanVeins": return "SCANNING_ORE"
-		elif action_name == "MoveToVein": return "WANDERING"
+		elif action_name == "MoveToVein" or action_name == "Wander": return "WANDERING"
 		elif action_name == "ExtractOre": return "EXTRACTING_COAL"
+		elif action_name == "Rest": return "IDLE"
 	return "IDLE"
 
 
@@ -155,18 +165,15 @@ class ScanVeinsAction extends GOAPAction:
 		super("ScanVeins", 1.0)
 		add_effect("has_ore_target", true)
 		
-	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
-		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
-			
 		var ore_coord := _scan_for_coal_veins(host)
+		
 		if ore_coord != Vector3i(0, -999, 0):
 			if JobReservationService.instance.claim_job(ore_coord, host.get_instance_id()):
 				bb.set_memory("target_ore", ore_coord)
 				return true
 				
-		_wander_randomly(host, ai, bb, delta)
 		return false
 		
 	func _scan_for_coal_veins(host: CharacterBody3D) -> Vector3i:
@@ -178,21 +185,13 @@ class ScanVeinsAction extends GOAPAction:
 		var my_coord := Vector3i(floori(host.global_position.x), floori(host.global_position.y), floori(host.global_position.z))
 		var job_service := JobReservationService.instance
 		
-		for x in range(-3, 4):
-			for y in range(-1, 2):
-				for z in range(-3, 4):
+		for x in range(-5, 6):
+			for y in range(-2, 3):
+				for z in range(-5, 6):
 					var c := my_coord + Vector3i(x, y, z)
 					if ws.get_block(c) == 21: # 21 = BlockType.Type.COAL_ORE
 						if not job_service.is_job_claimed(c): return c
 		return Vector3i(0, -999, 0)
-		
-	func _wander_randomly(_host: CharacterBody3D, ai: Object, bb: AIBlackboard, delta: float) -> void:
-		var timer := bb.get_float("wander_timer") - delta
-		if timer <= 0.0:
-			timer = randf_range(2.0, 5.0)
-			var angle := randf() * TAU
-			if is_instance_valid(ai): ai.set("wander_direction", Vector3(cos(angle), 0.0, sin(angle)))
-		bb.set_memory("wander_timer", timer)
 
 
 class MoveToVeinAction extends GOAPAction:
@@ -214,12 +213,12 @@ class MoveToVeinAction extends GOAPAction:
 		diff.y = 0.0
 		
 		if diff.length() < 1.3:
+			VoxelKinematicService.halt_movement(host, ai)
 			if is_instance_valid(ai): ai.set("wander_direction", diff.normalized())
-			host.velocity.x = 0.0; host.velocity.z = 0.0
 			return true
 			
-		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_TUNNEL)
-		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), MinerAIBehavior.SPEED_TUNNEL)
+		if is_instance_valid(ai): ai.set("current_task", MinerAIBehavior.TASK_WANDERING)
 		return false
 
 
@@ -230,12 +229,14 @@ class ExtractOreAction extends GOAPAction:
 		add_effect("did_mine", true)
 		
 	func on_enter(bb: AIBlackboard) -> void:
-		bb.set_memory("mine_timer", MINE_DURATION_SEC)
+		bb.set_memory("mine_timer", MinerAIBehavior.MINE_DURATION_SEC)
 		var host := bb.get_object("host") as Node3D
 		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
 		
-		var vis := host.get("visual_representation") as Resource
+		VoxelKinematicService.halt_movement(host as CharacterBody3D, ai)
+		if is_instance_valid(ai): ai.set("current_task", MinerAIBehavior.TASK_WORKING)
+		
+		var vis: Resource = host.get("visual_representation") as Resource
 		if is_instance_valid(vis) and vis.has_method("trigger_attack_visuals"):
 			vis.call("trigger_attack_visuals") # Play pickaxe swing
 			
@@ -270,15 +271,45 @@ class RestAction extends GOAPAction:
 		super("Rest", 1.0)
 		add_effect("is_resting", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("rest_timer") <= 0.0
+		
 	func on_enter(bb: AIBlackboard) -> void:
-		bb.set_memory("rest_timer", 3.0) # Rest for 3 seconds
+		bb.set_memory("action_timer", 5.0) # Rest for 5 seconds
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai := host.get("ai_component")
-		if is_instance_valid(ai):
-			ai.set("current_task", TASK_IDLE)
-			VoxelKinematicService.halt_movement(host, ai)
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("current_task", MinerAIBehavior.TASK_IDLE)
 			
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
-		var timer := bb.get_float("rest_timer") - delta
-		bb.set_memory("rest_timer", timer)
-		return timer <= 0.0
+		var timer := bb.get_float("action_timer") - delta
+		bb.set_memory("action_timer", timer)
+		
+		if timer <= 0.0:
+			bb.set_memory("rest_timer", randf_range(15.0, 30.0))
+			return true
+		return false
+
+
+class MinerWanderAction extends GOAPAction:
+	func _init() -> void:
+		super("Wander", 1.0)
+		add_effect("is_wandering", true)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", MinerAIBehavior.TASK_WANDERING)
+			
+		var timer := bb.get_float("wander_timer") - delta
+		var wander_dir := bb.get_vector3("wander_direction")
+		
+		if timer <= 0.0:
+			timer = randf_range(2.0, 5.0)
+			var angle := randf() * TAU
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() > 0.4 else Vector3.ZERO
+			bb.set_memory("wander_direction", wander_dir)
+			
+		bb.set_memory("wander_timer", timer)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, MinerAIBehavior.SPEED_WANDER)
+		return false

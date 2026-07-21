@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dwuw4h1yqxuyt"
+uid="uid://mrnk6bgws0am"
 path.s3tc="res://.godot/imported/wishing_well_odyssey_1.jpg-1181afaece2dbb12fbae33c89117db83.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "0cfe10934dfececcc0de4ec34a98ae76"
 }
 
 [deps]

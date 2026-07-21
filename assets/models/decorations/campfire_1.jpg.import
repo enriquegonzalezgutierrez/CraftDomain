@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b32d862et6j5e"
+uid="uid://cxuegaj31nrns"
 path.s3tc="res://.godot/imported/campfire_1.jpg-46c27e993294a452cd8e0cf541586938.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "5aba545e6ac5f9b1a7b6717620127065"
 }
 
 [deps]

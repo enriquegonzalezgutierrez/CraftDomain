@@ -3,24 +3,24 @@
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
 #              Planning (GOAP) for Generic Passive Wildlife and herd animals.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Segregates generic grazing, 
-#   stuck recovery wall bounces, and threat panic escapes into distinct actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   ecological goals (such as drinking water) dynamically.
+# - Single Responsibility Principle (SRP): Segregates generic wandering, 
+#   resting/idling, stuck recovery, and threat panic escapes into distinct actions.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Standardized 
+#   base behavior for fallback wildlife without rigid state machines.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
-# Author: Enrique Gonzalez Gutierrez
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name FaunaAIBehavior
 extends IAIBehavior
 
+const TASK_IDLE = 0
 const TASK_WANDERING = 1
 const TASK_PANIC = 5
 
 # VELOCIDADES ESCALADAS AL DOBLE PARA MANADAS ÁGILES Y REALISTAS
 const SPEED_PANIC: float = 5.0
-const SPEED_GRAZE: float = 1.6
+const SPEED_WANDER: float = 1.6
 const SENSORY_RANGE_SQ: float = 64.0
 
 var _blackboard: AIBlackboard
@@ -37,17 +37,21 @@ func _init() -> void:
 func _setup_goap_profile() -> void:
 	_setup_goals()
 	_actions.append(FaunaPanicAction.new())
-	_actions.append(FaunaGrazeAction.new())
+	_actions.append(FaunaRestAction.new())
+	_actions.append(FaunaWanderAction.new())
 
 
 func _setup_goals() -> void:
 	var evade_goal := GOAPGoal.new("EvadeThreats", 10.0)
 	evade_goal.add_desired_state("is_safe", true)
 	
-	var graze_goal := GOAPGoal.new("PeacefulGraze", 0.5)
-	graze_goal.add_desired_state("is_grazing", true)
+	var rest_goal := GOAPGoal.new("RestPeriod", 1.0)
+	rest_goal.add_desired_state("is_resting", true)
 	
-	_goals.append_array([evade_goal, graze_goal])
+	var wander_goal := GOAPGoal.new("SimpleRoam", 0.5)
+	wander_goal.add_desired_state("is_wandering", true)
+	
+	_goals.append_array([evade_goal, rest_goal, wander_goal])
 
 
 func evaluate_and_execute(host: Object, delta: float) -> void:
@@ -66,6 +70,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("panic_timer", 0.0)
+		_blackboard.set_memory("rest_timer", 0.0)
 		_blackboard.set_memory("stuck_timer", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
@@ -73,6 +78,9 @@ func _initialize_agent(host: Object) -> void:
 func _update_blackboard_timers(delta: float) -> void:
 	var panic := _blackboard.get_float("panic_timer") - delta
 	_blackboard.set_memory("panic_timer", maxf(0.0, panic))
+	
+	var rest := _blackboard.get_float("rest_timer") - delta
+	_blackboard.set_memory("rest_timer", maxf(0.0, rest))
 
 
 func _evaluate_active_plan(_host: Object) -> void:
@@ -80,7 +88,7 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		for goal in sorted_goals:
+		for goal: GOAPGoal in sorted_goals:
 			if goal.is_valid(_blackboard):
 				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
 				if not _active_plan.is_empty():
@@ -91,7 +99,8 @@ func _evaluate_active_plan(_host: Object) -> void:
 func _build_initial_state() -> Dictionary:
 	var state: Dictionary = {}
 	state["is_safe"] = not _detect_threat_proximity(_blackboard.get_object("host") as CharacterBody3D)
-	state["is_grazing"] = false
+	state["is_resting"] = false
+	state["is_wandering"] = false
 	return state
 
 
@@ -116,7 +125,7 @@ func _scan_for_hostiles(host: CharacterBody3D) -> Node3D:
 	var hostiles := host.get_tree().get_nodes_in_group("hostiles")
 	var host_pos := host.global_position
 	
-	for child in hostiles:
+	for child: Node in hostiles:
 		if is_instance_valid(child) and child is Node3D:
 			var domain := child.get("domain_entity") as VoxelEntity
 			if is_instance_valid(domain) and not domain.is_dead:
@@ -156,7 +165,8 @@ func get_active_state_name(host: Object) -> String:
 	var _h := host
 	if _active_plan.size() > 0:
 		var action_name := _active_plan[0].action_name
-		if action_name == "FaunaGraze": return "WANDER"
+		if action_name == "Wander": return "WANDERING"
+		elif action_name == "Rest": return "IDLE"
 		elif action_name == "FaunaPanic": return "PANIC"
 	return "IDLE"
 
@@ -176,7 +186,7 @@ class FaunaPanicAction extends GOAPAction:
 			return true 
 			
 		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai): ai.set("current_task", TASK_PANIC)
+		if is_instance_valid(ai): ai.set("current_task", FaunaAIBehavior.TASK_PANIC)
 			
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
@@ -190,14 +200,39 @@ class FaunaPanicAction extends GOAPAction:
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
-		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PANIC)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, FaunaAIBehavior.SPEED_PANIC)
 		return bb.get_float("panic_timer") <= 0.0
 
 
-class FaunaGrazeAction extends GOAPAction:
+class FaunaRestAction extends GOAPAction:
 	func _init() -> void:
-		super("FaunaGraze", 1.0)
-		add_effect("is_grazing", true)
+		super("Rest", 1.0)
+		add_effect("is_resting", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("rest_timer") <= 0.0
+		
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("action_timer", randf_range(3.0, 6.0)) # Stands still for 3 to 6 seconds
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai := host.get("ai_component")
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("current_task", FaunaAIBehavior.TASK_IDLE)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var timer := bb.get_float("action_timer") - delta
+		bb.set_memory("action_timer", timer)
+		
+		if timer <= 0.0:
+			bb.set_memory("rest_timer", randf_range(12.0, 24.0)) # Enforces a cooldown before resting again
+			return true
+		return false
+
+
+class FaunaWanderAction extends GOAPAction:
+	func _init() -> void:
+		super("Wander", 1.0)
+		add_effect("is_wandering", true)
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
@@ -205,13 +240,13 @@ class FaunaGrazeAction extends GOAPAction:
 			return true 
 			
 		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+		if is_instance_valid(ai): ai.set("current_task", FaunaAIBehavior.TASK_WANDERING)
 			
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
-			if randf() < 0.45:
+			if randf() < 0.5:
 				var angle := randf() * TAU
 				var candidate := Vector3(cos(angle), 0.0, sin(angle))
 				wander_dir = candidate if FaunaAIBehavior._is_direction_safe_fauna(host, candidate) else Vector3.ZERO
@@ -223,7 +258,7 @@ class FaunaGrazeAction extends GOAPAction:
 			
 		bb.set_memory("wander_timer", timer)
 		_check_and_resolve_wall_collisions(bb, host, wander_dir, delta)
-		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_GRAZE)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, FaunaAIBehavior.SPEED_WANDER)
 		return false
 		
 	func _check_and_resolve_wall_collisions(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
@@ -243,13 +278,13 @@ class FaunaGrazeAction extends GOAPAction:
 
 
 # ==============================================================================
-# SPATIAL TERRAIN FILTER HELPER 
+# SPATIAL TERRAIN FILTER HELPER (Decomposed for Rule 4.2 Limits)
 # ==============================================================================
 
 static func _is_direction_safe_fauna(host: CharacterBody3D, dir: Vector3) -> bool:
 	var parent := host.get_parent() as Node
 	if not is_instance_valid(parent) or not "world_state" in parent: return true
-	var ws: WorldState = parent.world_state
+	var ws: WorldState = parent.get("world_state") as WorldState
 	if ws == null: return true
 		
 	var check_pos := host.global_position + dir * 1.5
@@ -260,7 +295,10 @@ static func _is_direction_safe_fauna(host: CharacterBody3D, dir: Vector3) -> boo
 	var b_at := ws.get_block(b_at_coord)
 	
 	if BlockLibrary.is_solid(b_at): return false
-	
+	return _evaluate_liquid_and_void(ws, b_below_coord, b_below, b_at)
+
+
+static func _evaluate_liquid_and_void(ws: WorldState, b_below_coord: Vector3i, b_below: int, b_at: int) -> bool:
 	var is_liquid := b_below == 6 or b_below == 15 or b_at == 6
 	var is_void := b_below == 0
 	

@@ -2,9 +2,7 @@
 # Pathfile: res://src/Core/Bootstrap/EntityPreloaderRegistry.gd
 # Description: Static Registry centralizing preloads of scenes and static GLB
 #              meshes to eliminate runtime disk I/O blocks (SRP / OCP).
-#              REFACTORED: Converted compile-time preloads to runtime load calls
-#              to resolve the Godot 4 import deadlock on clean cache builds.
-# Author: Enrique Gonzalez Gutierrez
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name EntityPreloaderRegistry
@@ -82,6 +80,7 @@ static func _preload_civilian_humanoids() -> void:
 	_mobs_scenes[105] = load("res://src/Infrastructure/Life/miner_entity.tscn")
 	_mobs_scenes[106] = load("res://src/Infrastructure/Life/cyber_citizen_entity.tscn")
 	_mobs_scenes[107] = load("res://src/Infrastructure/Life/golem_entity.tscn")
+	_mobs_scenes[110] = load("res://src/Infrastructure/Life/quique_entity.tscn")
 
 
 static func _preload_props() -> void:
@@ -125,3 +124,4 @@ static func _preload_static_meshes_cache() -> void:
 	_static_models["res://assets/models/mobs/miner.glb"] = load("res://assets/models/mobs/miner.glb")
 	_static_models["res://assets/models/mobs/villager.glb"] = load("res://assets/models/mobs/villager.glb")
 	_static_models["res://assets/models/mobs/zombie.glb"] = load("res://assets/models/mobs/zombie.glb")
+	_static_models["res://assets/models/mobs/quique/quique.glb"] = load("res://assets/models/mobs/quique/quique.glb")

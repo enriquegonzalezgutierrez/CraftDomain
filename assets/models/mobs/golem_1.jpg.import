@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bj3jd65eomywo"
+uid="uid://vkicwmhseqd"
 path.s3tc="res://.godot/imported/golem_1.jpg-2e6b0130de0a2f47f63768ab91b42aea.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "fe608166949d651bb750fa9d86dfc8c1"
 }
 
 [deps]

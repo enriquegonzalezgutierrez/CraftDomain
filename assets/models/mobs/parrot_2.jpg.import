@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d2ow5kct37w78"
+uid="uid://ruycf5jhf8vv"
 path.s3tc="res://.godot/imported/parrot_2.jpg-44cfbb48eb19acb943278a4ff915eda0.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "e55e8600d5a1f6accc8146105bd9a943"
 }
 
 [deps]
@@ -29,8 +26,8 @@ compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=1
-roughness/src_normal="res://assets/models/mobs/parrot_2.jpg"
+roughness/mode=0
+roughness/src_normal=""
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

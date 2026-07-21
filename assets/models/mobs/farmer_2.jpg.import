@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cyvct0s5or6x7"
+uid="uid://b5631ywxe3bxy"
 path.s3tc="res://.godot/imported/farmer_2.jpg-c54822069fd9c5bdfdeb0dce7758558c.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "9099a4bc7d0bc86914ba94fea6a24162"
 }
 
 [deps]
@@ -29,8 +26,8 @@ compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=1
-roughness/src_normal="res://assets/models/mobs/farmer_2.jpg"
+roughness/mode=0
+roughness/src_normal=""
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

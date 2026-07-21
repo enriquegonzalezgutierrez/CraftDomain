@@ -1,6 +1,6 @@
-[gd_scene format=3 uid="uid://cfx1qt48p3bnn"]
+[gd_scene load_steps=2 format=3]
 
-[ext_resource type="PackedScene" uid="uid://uqj7geisas2b" path="res://assets/models/weapons/pick.glb" id="1_glb"]
+[ext_resource type="PackedScene" path="res://assets/models/weapons/pick.glb" id="1_glb"]
 
 [node name="PickWeaponProp" type="Node3D" unique_id=245089037]
 

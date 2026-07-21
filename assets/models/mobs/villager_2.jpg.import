@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://570rg60mmp5d"
+uid="uid://blb5u1jpw33jr"
 path.s3tc="res://.godot/imported/villager_2.jpg-daf484c5ce0eccdcbb5a039dae809649.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "082f9c46379ffcecfb6728a55190bd78"
 }
 
 [deps]
@@ -29,8 +26,8 @@ compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=1
-roughness/src_normal="res://assets/models/mobs/villager_2.jpg"
+roughness/mode=0
+roughness/src_normal=""
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

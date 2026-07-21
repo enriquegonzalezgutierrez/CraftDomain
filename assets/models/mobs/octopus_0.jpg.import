@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c5nsi0j67e4qa"
+uid="uid://csxm5hgyp514o"
 path.s3tc="res://.godot/imported/octopus_0.jpg-495a549cfaf63c5dae1c6896365dddf1.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "d7b6b0e0356d3846f808956ae628b052"
 }
 
 [deps]

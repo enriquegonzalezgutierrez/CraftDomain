@@ -505,5 +505,8 @@
   "BOOT_STATUS_TEXTURES": "PRE-CARGANDO TEXTURAS 3D EN SEGUNDO PLANO...",
   "BOOT_STATUS_COMPLETE": "INICIO COMPLETADO. ABRIENDO MENÚ...",
 
-  "MENU_LOADING_TITLE": "CARGANDO AVENTURA"
+  "MENU_LOADING_TITLE": "CARGANDO AVENTURA",
+
+  "NPC_NAME_QUIQUE": "Quique el Noble",
+  "DIALOGUE_QUIQUE_GREETING": "¡Saludos, viajero! Bienvenido al Gran Castillo. ¡Ten mucho cuidado con las criaturas que acechan fuera!",
 }

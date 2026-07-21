@@ -1,9 +1,9 @@
-[gd_scene format=3 uid="uid://dqg3pjepwrbfq"]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" uid="uid://cghctmtmdy6pf" path="res://src/Infrastructure/Life/ChickenEntity.gd" id="1_chicken"]
-[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://dnkhjcl342sgt" path="res://assets/models/mobs/chicken.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/ChickenEntity.gd" id="1_chicken"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/chicken.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_chicken"]
 radius = 0.16113281

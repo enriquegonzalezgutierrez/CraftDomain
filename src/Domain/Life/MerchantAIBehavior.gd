@@ -4,10 +4,10 @@
 #              Planning (GOAP) for the Shopkeeper Merchant NPC.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates marketing shoutouts, 
-#   nightly accounting, and guard seeking into independent action packages.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows shop inventories 
-#   and trade offers to be modified dynamically without touching the planner.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+#   nightly accounting, guard seeking, and casual market wandering into decoupled actions.
+# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Working routines 
+#   are now cyclical (Cooldown-driven) to allow the merchant to walk around 
+#   the village organically instead of being permanently frozen at the stall.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -27,6 +27,7 @@ const SPEED_PANIC: float = 4.8
 const COOLDOWN_COINS_SEC: float = 2.5
 const COOLDOWN_SHOUT_MIN: float = 10.0
 const COOLDOWN_SHOUT_MAX: float = 20.0
+const SHIFT_DURATION_SEC: float = 15.0
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -46,6 +47,7 @@ func _setup_goap_profile() -> void:
 	_actions.append(CountCoinsAction.new())
 	_actions.append(GoToStallAction.new())
 	_actions.append(OpenShopAction.new())
+	_actions.append(MerchantWanderAction.new())
 
 
 func _setup_goals() -> void:
@@ -55,10 +57,13 @@ func _setup_goals() -> void:
 	var accounting_goal := GOAPGoal.new("CountEarnings", 2.0)
 	accounting_goal.add_desired_state("coins_counted", true)
 	
-	var trade_goal := GOAPGoal.new("OpenShop", 1.0)
-	trade_goal.add_desired_state("is_trading", true)
+	var trade_goal := GOAPGoal.new("OperateShop", 1.0)
+	trade_goal.add_desired_state("did_trade", true)
 	
-	_goals.append_array([survive_goal, accounting_goal, trade_goal])
+	var wander_goal := GOAPGoal.new("WanderMarket", 0.5)
+	wander_goal.add_desired_state("is_wandering", true)
+	
+	_goals.append_array([survive_goal, accounting_goal, trade_goal, wander_goal])
 
 
 func evaluate_and_execute(host: Object, delta: float) -> void:
@@ -82,6 +87,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("gold_cooldown", 0.0)
 		_blackboard.set_memory("shout_cooldown", 5.0)
+		_blackboard.set_memory("shop_cooldown", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
 
@@ -91,6 +97,9 @@ func _update_blackboard_timers(delta: float) -> void:
 	
 	var shout_cd := _blackboard.get_float("shout_cooldown") - delta
 	_blackboard.set_memory("shout_cooldown", maxf(0.0, shout_cd))
+	
+	var shop_cd := _blackboard.get_float("shop_cooldown") - delta
+	_blackboard.set_memory("shop_cooldown", maxf(0.0, shop_cd))
 
 
 func _handle_conversation_interrupt(host: Object) -> void:
@@ -106,7 +115,7 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		for goal in sorted_goals:
+		for goal: GOAPGoal in sorted_goals:
 			if goal.is_valid(_blackboard):
 				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
 				if not _active_plan.is_empty():
@@ -118,7 +127,8 @@ func _build_initial_state() -> Dictionary:
 	var state: Dictionary = {}
 	state["is_safe"] = not _detect_threat_proximity(_blackboard.get_object("host") as CharacterBody3D)
 	state["coins_counted"] = false
-	state["is_trading"] = false
+	state["did_trade"] = false
+	state["is_wandering"] = false
 	return state
 
 
@@ -136,7 +146,16 @@ func _detect_threat_proximity(host: CharacterBody3D) -> bool:
 
 
 func _get_sorted_goals() -> Array[GOAPGoal]:
+	# Si el puesto está en cooldown o es de noche, anula el goal de comercio para que deambule
+	var is_night := _blackboard.get_bool("is_night")
+	var on_cooldown := _blackboard.get_float("shop_cooldown") > 0.0
+	
 	var sorted := _goals.duplicate()
+	for i in range(sorted.size() - 1, -1, -1):
+		var g: GOAPGoal = sorted[i]
+		if g.goal_name == "OperateShop" and (is_night or on_cooldown):
+			sorted.remove_at(i)
+			
 	sorted.sort_custom(func(a: GOAPGoal, b: GOAPGoal) -> bool:
 		return a.get_priority(_blackboard) > b.get_priority(_blackboard)
 	)
@@ -166,10 +185,10 @@ func get_active_state_name(host: Object) -> String:
 	if _active_plan.size() > 0:
 		var action_name := _active_plan[0].action_name
 		if action_name == "CountCoins": return "IDLE"
-		elif action_name == "GoToStall" or action_name == "GoToShelter": return "WANDERING"
+		elif action_name == "GoToStall" or action_name == "GoToShelter" or action_name == "Wander": return "WANDERING"
 		elif action_name == "OpenShop": return "CHAT"
 		elif action_name == "MerchantFlee": return "PANIC"
-	return "IDLE"
+	return "WANDER"
 
 
 # ==============================================================================
@@ -223,14 +242,20 @@ class GoToShelterAction extends GOAPAction:
 		
 		if is_instance_valid(nav):
 			var shelter_pos := nav.find_closest_shelter_node(host.global_position)
-			if shelter_pos != Vector3.ZERO:
-				var diff := shelter_pos - host.global_position
-				diff.y = 0.0
-				if diff.length() > 0.8:
-					var ai: Object = host.get("ai_component")
-					VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_RETREAT)
-					if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
-					return false
+			if shortcut_distance_check(host, shelter_pos):
+				return true
+				
+		return false
+		
+	func shortcut_distance_check(host: CharacterBody3D, shelter_pos: Vector3) -> bool:
+		if shelter_pos != Vector3.ZERO:
+			var diff := shelter_pos - host.global_position
+			diff.y = 0.0
+			if diff.length() > 0.8:
+				var ai: Object = host.get("ai_component")
+				VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_RETREAT)
+				if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+				return false
 		return true
 
 
@@ -256,7 +281,7 @@ class CountCoinsAction extends GOAPAction:
 			if host.has_method("_play_counting_coins"):
 				host.call("_play_counting_coins")
 				
-		return not bb.get_bool("is_night") # Done when daytime returns
+		return not bb.get_bool("is_night") # Termina cuando vuelve el día
 
 
 class GoToStallAction extends GOAPAction:
@@ -265,7 +290,7 @@ class GoToStallAction extends GOAPAction:
 		add_effect("is_at_stall", true)
 		
 	func is_contextually_valid(bb: AIBlackboard) -> bool:
-		return not bb.get_bool("is_night")
+		return not bb.get_bool("is_night") and bb.get_float("shop_cooldown") <= 0.0
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
@@ -286,12 +311,15 @@ class OpenShopAction extends GOAPAction:
 	func _init() -> void:
 		super("OpenShop", 1.0)
 		add_precondition("is_at_stall", true)
-		add_effect("is_trading", true)
+		add_effect("did_trade", true)
 		
 	func is_contextually_valid(bb: AIBlackboard) -> bool:
 		return not bb.get_bool("is_night")
 		
-	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("shift_timer", MerchantAIBehavior.SHIFT_DURATION_SEC)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
 		VoxelKinematicService.halt_movement(host, ai)
@@ -302,9 +330,20 @@ class OpenShopAction extends GOAPAction:
 			_execute_advertise_spin(host, ai)
 		else:
 			if is_instance_valid(ai):
-				ai.set("current_task", TASK_WORKING) # Stands actively trading
+				ai.set("current_task", TASK_WORKING)
 				
-		return bb.get_bool("is_night") # Close shop when night returns
+		var shift := bb.get_float("shift_timer") - delta
+		bb.set_memory("shift_timer", shift)
+		
+		if shift <= 0.0 or bb.get_bool("is_night"):
+			_finish_shift(bb)
+			return true
+			
+		return false
+		
+	func _finish_shift(bb: AIBlackboard) -> void:
+		bb.set_memory("shop_cooldown", randf_range(20.0, 45.0)) # Cierra temporalmente la tienda
+		bb.erase_memory("is_at_stall") # Permite que vuelva a requerir el viaje a la tienda después
 		
 	func _execute_advertise_spin(host: CharacterBody3D, ai: Object) -> void:
 		var angle := float(Time.get_ticks_msec() / 150.0)
@@ -314,3 +353,27 @@ class OpenShopAction extends GOAPAction:
 			
 		if host.has_method("_play_advertising_shout"):
 			host.call("_play_advertising_shout")
+
+
+class MerchantWanderAction extends GOAPAction:
+	func _init() -> void:
+		super("Wander", 1.0)
+		add_effect("is_wandering", true)
+		
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var host := bb.get_object("host") as CharacterBody3D
+		var ai: Object = host.get("ai_component")
+		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+			
+		var timer := bb.get_float("wander_timer") - delta
+		var wander_dir := bb.get_vector3("wander_direction")
+		
+		if timer <= 0.0:
+			timer = randf_range(2.0, 5.0)
+			var angle := randf() * TAU
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() > 0.4 else Vector3.ZERO
+			bb.set_memory("wander_direction", wander_dir)
+			
+		bb.set_memory("wander_timer", timer)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL * 0.75)
+		return false

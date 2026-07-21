@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c88vwfoavkxk8"
+uid="uid://bqer8uy66fef6"
 path.s3tc="res://.godot/imported/chicken_2.jpg-3a7f9405c51c8d22b739d4196f80f84a.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "2d117004869cc82f8188a648220de469"
 }
 
 [deps]
@@ -29,8 +26,8 @@ compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=1
-roughness/src_normal="res://assets/models/mobs/chicken_2.jpg"
+roughness/mode=0
+roughness/src_normal=""
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

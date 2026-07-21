@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://chhpf3u82pacj"
+uid="uid://mpb1m6sgne4y"
 path.s3tc="res://.godot/imported/weaver_malakor_2.jpg-9054482deea3ee73a4602da6a310930f.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "560aff3a3f71bee67f5539eff53632fb"
 }
 
 [deps]
@@ -29,8 +26,8 @@ compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=1
-roughness/src_normal="res://assets/models/mobs/weaver_malakor_2.jpg"
+roughness/mode=0
+roughness/src_normal=""
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

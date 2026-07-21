@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dwpwcrexi1ka0"
+uid="uid://cpwfia2yjg5cv"
 path.s3tc="res://.godot/imported/streetlight_0.jpg-e321def90a2259a502987220ea3a02ea.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "92f60be9e506e9dfa7c811a2b593576f"
 }
 
 [deps]

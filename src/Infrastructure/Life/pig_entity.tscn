@@ -1,9 +1,9 @@
-[gd_scene format=3 uid="uid://cftc64w8vqn6x"]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" uid="uid://bbqhvbwb5v3pc" path="res://src/Infrastructure/Life/PigEntity.gd" id="1_pig"]
-[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://i2gpswiny4h" path="res://assets/models/mobs/pig.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/PigEntity.gd" id="1_pig"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/pig.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_pig"]
 radius = 0.35498047

@@ -1,9 +1,9 @@
-[gd_scene format=3 uid="uid://c84e6p1s8g7y8"]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" uid="uid://35jnm0q8pl67" path="res://src/Infrastructure/Life/CatEntity.gd" id="1_cat"]
-[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://m8kpl1xtfkm0" path="res://assets/models/mobs/cat.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/CatEntity.gd" id="1_cat"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/cat.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_cat"]
 radius = 0.19482422

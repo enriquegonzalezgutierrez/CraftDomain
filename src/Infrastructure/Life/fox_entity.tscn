@@ -1,9 +1,9 @@
-[gd_scene format=3 uid="uid://6tv7oycodpp8"]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" uid="uid://d311fnf8srw0o" path="res://src/Infrastructure/Life/FoxEntity.gd" id="1_fox"]
-[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://b6tytv4wb2ism" path="res://assets/models/mobs/fox.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/FoxEntity.gd" id="1_fox"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/fox.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fox"]
 radius = 0.203125

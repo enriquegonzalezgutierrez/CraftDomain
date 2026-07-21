@@ -1,9 +1,9 @@
-[gd_scene format=3 uid="uid://dan8583su0sd5"]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" uid="uid://dhhvjrnvyhj1g" path="res://src/Infrastructure/Life/ElephantEntity.gd" id="1_elephant"]
-[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://fgg6urbl2syx" path="res://assets/models/mobs/elephant.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/ElephantEntity.gd" id="1_elephant"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" path="res://assets/models/mobs/elephant.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_elephant"]
 radius = 0.40039063

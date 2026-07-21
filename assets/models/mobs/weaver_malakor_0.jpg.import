@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://p78e1yru27l0"
+uid="uid://c4p00t3b8iqs5"
 path.s3tc="res://.godot/imported/weaver_malakor_0.jpg-5c8a016bbc13b0069af4c76eda3866a3.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "d5c4fb606498c7f67eb7243ffa51392d"
 }
 
 [deps]

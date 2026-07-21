@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c3d14866ulhtg"
+uid="uid://ff2mx58m21i8"
 path.s3tc="res://.godot/imported/parrot_1.jpg-b2feb882849b39abd7733e2eac246c27.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "260bec145b8103e0fa47a1d572721cae"
 }
 
 [deps]

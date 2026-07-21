@@ -1,16 +1,16 @@
-[gd_scene format=3 uid="uid://ejbaohtw8afp"]
+[gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" uid="uid://ckfsu3hbkr1xh" path="res://src/Infrastructure/World/WishingWellEntity.gd" id="1_script"]
-[ext_resource type="PackedScene" uid="uid://clptqlutcsfa1" path="res://assets/models/decorations/wishing_well_odyssey.glb" id="2_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/World/WishingWellEntity.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/models/decorations/wishing_well_odyssey.glb" id="2_glb"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_col"]
-size = Vector3(0.8571289, 0.9935913, 2000.8298)
+size = Vector3(0.8571289, 0.9935913, 0.8571289)
 
 [node name="WishingWellEntity" type="StaticBody3D" unique_id=430974127]
 script = ExtResource("1_script")
 
 [node name="WellCollider" type="CollisionShape3D" parent="." unique_id=1459058663]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8580427e-05, 0.49679565, 999.5149)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49679565, 0)
 shape = SubResource("BoxShape3D_col")
 
 [node name="Visuals" type="Node3D" parent="." unique_id=1871588401]

@@ -1,12 +1,13 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/DirectChunkRenderingService.gd
-# Description: Infrastructure Service executing Milestone 2: Direct Server-Side
-#              Architecture. Bypasses the SceneTree by communicating directly 
-#              with Godot's C++ RenderingServer and PhysicsServer3D via RIDs.
+# Description: Infrastructure Service executing Direct Server-Side Architecture.
+#              Bypasses the SceneTree by communicating directly with Godot's 
+#              RenderingServer and PhysicsServer3D via RIDs.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates low-level server RIDs.
-# - Teardown Stability Fix: Globalized _shared_box_mesh to static to prevent 
-#   mesh destruction before RenderingServer flushes instance command queues.
+# - Teardown Stability Fix: Explicitly detaches instances from scenarios and 
+#   material overrides prior to freeing RIDs, preventing Vulkan RD null-material
+#   shadow pass errors on world exits.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -25,10 +26,8 @@ class ChunkRIDRecord:
 var controller: Node3D
 var _world_scenario: RID
 var _world_space: RID
-var _active_chunks: Dictionary = {} # Vector3i -> ChunkRIDRecord
+var _active_chunks: Dictionary = {}
 
-# FIX: Static variable survives the teardown of the WorldController, 
-# preventing "material is null" race conditions in the Vulkan backend queue.
 static var _shared_box_mesh: BoxMesh
 
 
@@ -68,24 +67,35 @@ func allocate_chunk_visuals(
 	_active_chunks[chunk_pos] = record
 
 
-## Purges all RIDs associated with a chunk directly from the C++ servers.
+## Safe Teardown Purge: Detaches instances from scenario before freeing RIDs
 func free_chunk(chunk_pos: Vector3i) -> void:
 	if not _active_chunks.has(chunk_pos):
 		return
 		
 	var record: ChunkRIDRecord = _active_chunks[chunk_pos] as ChunkRIDRecord
+	_detach_and_free_instances(record)
+	_detach_and_free_physics(record)
 	
-	# Let Godot's C++ layer gracefully disconnect dependencies internally.
-	for inst_rid: RID in record.instance_rids:
-		if inst_rid.is_valid(): RenderingServer.free_rid(inst_rid)
-		
-	for mm_rid: RID in record.multimesh_rids:
-		if mm_rid.is_valid(): RenderingServer.free_rid(mm_rid)
-		
-	if record.physics_body_rid.is_valid():
-		PhysicsServer3D.free_rid(record.physics_body_rid)
-		
 	_active_chunks.erase(chunk_pos)
+
+
+func _detach_and_free_instances(record: ChunkRIDRecord) -> void:
+	for inst_rid: RID in record.instance_rids:
+		if inst_rid.is_valid():
+			# VULKAN TEARDOWN FIX: Detach from scenario & material BEFORE freeing
+			RenderingServer.instance_set_scenario(inst_rid, RID())
+			RenderingServer.instance_geometry_set_material_override(inst_rid, RID())
+			RenderingServer.free_rid(inst_rid)
+			
+	for mm_rid: RID in record.multimesh_rids:
+		if mm_rid.is_valid():
+			RenderingServer.free_rid(mm_rid)
+
+
+func _detach_and_free_physics(record: ChunkRIDRecord) -> void:
+	if record.physics_body_rid.is_valid():
+		PhysicsServer3D.body_set_space(record.physics_body_rid, RID())
+		PhysicsServer3D.free_rid(record.physics_body_rid)
 
 
 func _allocate_multimeshes(record: ChunkRIDRecord, transform: Transform3D, multimesh_data: Dictionary, is_distant: bool) -> void:
@@ -117,9 +127,6 @@ func _allocate_custom_meshes(record: ChunkRIDRecord, transform: Transform3D, cus
 		if mesh == null: continue
 			
 		var mat: Material = VoxelMaterialFactory.get_material(b_id, is_distant)
-		
-		# VULKAN SHADOW FIX: Assing the material directly to the ArrayMesh surface.
-		# Prevents "material is null" crashes when Godot RD assesses shadow casts.
 		if is_instance_valid(mat) and mesh.get_surface_count() > 0:
 			mesh.surface_set_material(0, mat)
 			
@@ -160,7 +167,6 @@ func _apply_material_to_instance(inst_rid: RID, b_id: int, is_distant: bool) -> 
 		RenderingServer.instance_geometry_set_material_override(inst_rid, mat.get_rid())
 
 
-## Symmetrical LOD trigger re-binding materials directly to active instances
 func update_lod_materials(chunk_pos: Vector3i, is_distant: bool) -> void:
 	if not _active_chunks.has(chunk_pos): return
 		

@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cbopa5iw7qc47"
+uid="uid://bp05s43rfya6d"
 path.s3tc="res://.godot/imported/raccoon_0.jpg-24632e57c07145e7e7b477cfde277dc8.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "bddc5417a53cc4d64675c957b84abdb8"
 }
 
 [deps]

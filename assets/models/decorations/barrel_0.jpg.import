@@ -2,14 +2,11 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ddt5ekt1pcleh"
+uid="uid://c5nmwvlllaa7n"
 path.s3tc="res://.godot/imported/barrel_0.jpg-234bf0f965235b5213df5b734c9e4b00.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
-}
-generator_parameters={
-"md5": "e27b80f8ef87ee8f7bcdc699f3264073"
 }
 
 [deps]

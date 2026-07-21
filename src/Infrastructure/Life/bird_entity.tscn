@@ -1,31 +1,28 @@
-[gd_scene format=3 uid="uid://dcntorn3um1op"]
+[gd_scene load_steps=5 format=3]
 
-[ext_resource type="Script" uid="uid://c42vgf3gotgx6" path="res://src/Infrastructure/Life/BirdEntity.gd" id="1_bird"]
-[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" uid="uid://cq1wnxen0vi0k" path="res://assets/models/mobs/yellow_bird.glb" id="4_glb"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/BirdEntity.gd" id="1_bird"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_visual"]
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_bird"]
-radius = 0.22705078
-height = 0.9587509
+[sub_resource type="SphereShape3D" id="SphereShape3D_bird"]
+radius = 0.35
 
-[node name="BirdEntity" type="CharacterBody3D" unique_id=74376893]
+[node name="BirdEntity" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 1
 script = ExtResource("1_bird")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1551928353]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49625623, 0)
-shape = SubResource("CapsuleShape3D_bird")
+[node name="EntityCollider" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
+shape = SubResource("SphereShape3D_bird")
 
-[node name="NPCAIComponent" type="Node" parent="." unique_id=699022112]
+[node name="NPCAIComponent" type="Node" parent="."]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="." unique_id=801938261]
-script = ExtResource("3_vis")
+[node name="NPCVisualComponent" type="Node" parent="."]
+script = ExtResource("3_visual")
 
-[node name="Visuals" type="Node3D" parent="." unique_id=1868765454]
+[node name="Visuals" type="Node3D" parent="NPCVisualComponent"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=2144991796]
-
-[node name="yellow_bird" parent="Visuals/BodyBobJoint" unique_id=1864597825 instance=ExtResource("4_glb")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.47161224, 0)
+[node name="BodyBobJoint" type="Node3D" parent="NPCVisualComponent/Visuals"]
