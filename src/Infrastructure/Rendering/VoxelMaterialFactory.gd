@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/VoxelMaterialFactory.gd
 # Description: Infrastructure Factory managing compilation, pre-warming, and
-#              caching of PBR block materials, triplanar shaders, and liquid materials.
+#              caching of PBR block materials, triplanar shaders, and crystal water.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -10,7 +10,6 @@ extends RefCounted
 
 const TRIPLANAR_SHADER_PATH: String = "res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader"
 const FOLIAGE_SHADER_PATH: String = "res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader"
-const WATER_SHADER_PATH: String = "res://src/Infrastructure/Rendering/Shaders/liquid_water.gdshader"
 const COLOR_DIAGNOSTIC_ERROR := Color(1.0, 0.0, 1.0)
 
 static var _materials_cache: Dictionary = {}
@@ -18,8 +17,6 @@ static var _distant_materials_cache: Dictionary = {}
 
 static var _triplanar_blocks_shader: Shader
 static var _leaves_wind_shader: Shader
-static var _water_shader: Shader
-
 static var _error_fallback_material: StandardMaterial3D
 static var _lock: Mutex = Mutex.new()
 
@@ -33,7 +30,7 @@ static func warm_up_material_pipelines() -> void:
 		var _std := get_material(b_id, false)
 		var _dist := get_material(b_id, true)
 		
-	print("[VoxelMaterialFactory] Triplanar & Water Foam Warm-up completed.")
+	print("[VoxelMaterialFactory] Realistic PBR Water & Triplanar Warm-up completed.")
 
 
 ## Resolves and returns the PBR material from RAM cache.
@@ -96,7 +93,7 @@ static func _compile_standard_material(block_id: int) -> Material:
 		
 	match def.rendering_type:
 		"foliage": return _compile_foliage_material(def, block_id)
-		"liquid_water", "liquid_lava": return _compile_liquid_material(def)
+		"liquid_water", "liquid_lava": return _compile_liquid_material(def, block_id)
 		_: return _compile_pbr_solid_material(def, block_id)
 
 
@@ -130,13 +127,10 @@ static func _compile_fallback_standard_material(def: BlockDefinition, b_id: int)
 	m.roughness = def.roughness
 	m.metallic = def.metallic
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
-	
-	if def.is_transparent:
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	if def.is_transparent: m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		
 	var tex := TextureRegistry.get_block_texture(b_id)
-	if tex != null:
-		m.albedo_texture = tex
+	if tex != null: m.albedo_texture = tex
 		
 	_apply_emissive_settings(m, def)
 	return m
@@ -165,19 +159,20 @@ static func _compile_foliage_material(def: BlockDefinition, block_id: int) -> Sh
 	return sm
 
 
-static func _compile_liquid_material(def: BlockDefinition) -> ShaderMaterial:
-	if _water_shader == null and ResourceLoader.exists(WATER_SHADER_PATH):
-		_water_shader = load(WATER_SHADER_PATH) as Shader
+## Restores the crystal-clear, realistic PBR water material with water.png texture.
+static func _compile_liquid_material(_def: BlockDefinition, block_id: int) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.18, 0.52, 0.85, 0.55)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.roughness = 0.05
+	m.metallic = 0.12
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
+	
+	var tex := TextureRegistry.get_block_texture(block_id)
+	if tex != null:
+		m.albedo_texture = tex
 		
-	var sm := ShaderMaterial.new()
-	sm.shader = _water_shader
-	sm.set_shader_parameter("shallow_water_color", def.color_top)
-	sm.set_shader_parameter("deep_water_color", def.color_bottom)
-	sm.set_shader_parameter("foam_color", Color(0.95, 0.98, 1.0, 0.95))
-	sm.set_shader_parameter("foam_threshold", 0.45)
-	sm.set_shader_parameter("wave_speed", 1.2)
-	sm.set_shader_parameter("wave_amplitude", 0.04)
-	return sm
+	return m
 
 
 static func clear_factory_cache() -> void:

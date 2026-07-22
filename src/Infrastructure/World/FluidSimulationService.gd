@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/FluidSimulationService.gd
 # Description: Infrastructure Service responsible for simulating high-performance
-#              cellular automata fluid dynamics (Water & Lava flow/fusion) (SRP).
+#              cellular automata fluid dynamics (Water & Lava flow and fusion).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -9,8 +9,6 @@ class_name FluidSimulationService
 extends RefCounted
 
 const UPDATE_INTERVAL: float = 0.25
-var _tick_timer: float = UPDATE_INTERVAL
-
 const MAX_WATER_SPREAD: int = 4
 const MAX_LAVA_SPREAD: int = 2
 const MAX_UPDATES_PER_TICK: int = 64
@@ -18,6 +16,7 @@ const MAX_UPDATES_PER_TICK: int = 64
 var world_controller: Node3D
 var world_state: WorldState
 var _active_fluids: Dictionary = {}
+var _tick_timer: float = UPDATE_INTERVAL
 
 class FluidState:
 	var type: BlockType.Type
@@ -39,7 +38,6 @@ func register_fluid_block(global_pos: Vector3i, type: BlockType.Type, max_spread
 		
 	var default_spread := MAX_WATER_SPREAD if type == BlockType.Type.WATER else MAX_LAVA_SPREAD
 	var spread := default_spread if max_spread == -1 else max_spread
-	
 	_active_fluids[global_pos] = FluidState.new(type, spread)
 
 
@@ -58,8 +56,7 @@ func _on_block_modified(global_pos: Vector3i, type: BlockType.Type) -> void:
 
 
 func _reactivate_adjacent_fluids(global_pos: Vector3i) -> void:
-	if world_state == null:
-		return
+	if world_state == null: return
 		
 	var offsets: Array[Vector3i] = [
 		Vector3i(0, 1, 0), Vector3i(0, -1, 0),
@@ -71,8 +68,16 @@ func _reactivate_adjacent_fluids(global_pos: Vector3i) -> void:
 		var neighbor_pos := global_pos + offset
 		var neighbor_type := world_state.get_block(neighbor_pos)
 		
-		if neighbor_type == BlockType.Type.WATER or neighbor_type == BlockType.Type.LAVA:
-			register_fluid_block(neighbor_pos, neighbor_type)
+		if (neighbor_type == BlockType.Type.WATER or neighbor_type == BlockType.Type.LAVA) and _should_fluid_flow_into_air(global_pos, neighbor_pos, neighbor_type):
+			register_fluid_block(neighbor_pos, neighbor_type, 1)
+
+
+func _should_fluid_flow_into_air(air_pos: Vector3i, fluid_pos: Vector3i, fluid_type: BlockType.Type) -> bool:
+	if fluid_pos.y > air_pos.y:
+		return true
+		
+	var block_above_fluid := world_state.get_block(fluid_pos + Vector3i(0, 1, 0))
+	return block_above_fluid == fluid_type
 
 
 func process_fluid_simulation(delta: float) -> void:
@@ -82,7 +87,6 @@ func process_fluid_simulation(delta: float) -> void:
 		_simulate_cellular_tick()
 
 
-## Main cellular automata algorithm coordinator (SRP Decomposed)
 func _simulate_cellular_tick() -> void:
 	if _active_fluids.size() == 0 or world_state == null or not is_instance_valid(world_controller):
 		return
@@ -93,8 +97,7 @@ func _simulate_cellular_tick() -> void:
 	var current_tick_removals: Array[Vector3i] = []
 	
 	for pos: Vector3i in active_keys:
-		if processed_count >= MAX_UPDATES_PER_TICK:
-			break
+		if processed_count >= MAX_UPDATES_PER_TICK: break
 		processed_count += 1
 		_process_active_fluid_block(pos, next_tick_additions, current_tick_removals)
 			
@@ -117,8 +120,7 @@ func _process_active_fluid_block(pos: Vector3i, next_additions: Dictionary, curr
 
 func _flow_downward(pos: Vector3i, state: FluidState, next_additions: Dictionary, current_removals: Array[Vector3i]) -> bool:
 	var below_pos := pos + Vector3i(0, -1, 0)
-	if below_pos.y <= 0:
-		return true
+	if below_pos.y <= 0: return true
 		
 	var below_block := world_state.get_block(below_pos)
 	if _check_and_apply_fusion(pos, state.type, below_pos, below_block):
@@ -127,7 +129,6 @@ func _flow_downward(pos: Vector3i, state: FluidState, next_additions: Dictionary
 		
 	if below_block == BlockType.Type.AIR:
 		var default_spread := MAX_WATER_SPREAD if state.type == BlockType.Type.WATER else MAX_LAVA_SPREAD
-		# Async redirection: Writes to WorldState but defers rendering to task pool
 		world_controller.call("set_block_globally_async", below_pos, state.type)
 		next_additions[below_pos] = FluidState.new(state.type, default_spread)
 		return false
@@ -137,20 +138,14 @@ func _flow_downward(pos: Vector3i, state: FluidState, next_additions: Dictionary
 
 func _spread_laterally(pos: Vector3i, state: FluidState, next_additions: Dictionary) -> bool:
 	var is_stable := true
-	var directions: Array[Vector3i] = [
-		Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
-		Vector3i(0, 0, 1), Vector3i(0, 0, -1)
-	]
+	var directions: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
 	
 	for dir: Vector3i in directions:
 		var side_pos := pos + dir
 		var side_block := world_state.get_block(side_pos)
-		
-		if _check_and_apply_fusion(pos, state.type, side_pos, side_block):
-			continue
+		if _check_and_apply_fusion(pos, state.type, side_pos, side_block): continue
 			
 		if side_block == BlockType.Type.AIR:
-			# Async redirection: Writes to WorldState but defers rendering to task pool
 			world_controller.call("set_block_globally_async", side_pos, state.type)
 			next_additions[side_pos] = FluidState.new(state.type, state.remaining_spread - 1)
 			is_stable = false
@@ -165,7 +160,6 @@ func _check_and_apply_fusion(source_pos: Vector3i, source_type: BlockType.Type, 
 	)
 	
 	if is_water_lava_clash:
-		# Async redirection for dynamic volcanic stone fusions
 		world_controller.call("set_block_globally_async", source_pos, BlockType.Type.STONE)
 		world_controller.call("set_block_globally_async", target_pos, BlockType.Type.STONE)
 		AudioService.play_sfx_static("block_break", Vector3(target_pos))
@@ -175,8 +169,5 @@ func _check_and_apply_fusion(source_pos: Vector3i, source_type: BlockType.Type, 
 
 
 func _apply_tick_mutations(next_additions: Dictionary, current_removals: Array[Vector3i]) -> void:
-	for rm_pos: Vector3i in current_removals:
-		_active_fluids.erase(rm_pos)
-		
-	for add_pos: Vector3i in next_additions.keys():
-		_active_fluids[add_pos] = next_additions[add_pos]
+	for rm_pos: Vector3i in current_removals: _active_fluids.erase(rm_pos)
+	for add_pos: Vector3i in next_additions.keys(): _active_fluids[add_pos] = next_additions[add_pos]

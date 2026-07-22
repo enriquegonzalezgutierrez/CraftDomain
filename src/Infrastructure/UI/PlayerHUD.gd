@@ -14,6 +14,7 @@ const WORLD_MAP_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/map_overla
 const LOADING_SCREEN_SCENE := preload("res://src/Infrastructure/UI/loading_screen.tscn")
 const HACKING_TERMINAL_SCENE := preload("res://src/Infrastructure/UI/hacking_terminal_overlay.tscn")
 const GLITCH_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/null_void_glitch.gdshader"
+const UNDERWATER_SHADER_PATH: String = "res://src/Infrastructure/Rendering/Shaders/underwater_post_process.gdshader"
 
 const UI_UPDATE_INTERVAL: float = 0.05 
 
@@ -23,7 +24,6 @@ var world_controller: Node3D
 @onready var minimap: MinimapWidget = $MinimapWidget
 @onready var gps_panel: GPSPanelWidget = $GPSPanelWidget
 @onready var quest_panel: QuestTrackerWidget = $QuestTrackerWidget
-
 @onready var _damage_widget: ColorRect = $DamageOverlayWidget
 @onready var _hotbar_dock_widget: Control = $HotbarDockWidget
 @onready var _pause_widget: Panel = $PauseMenuWidget
@@ -31,6 +31,9 @@ var world_controller: Node3D
 var glitch_overlay: ColorRect
 var glitch_material: ShaderMaterial
 var _current_glitch_intensity: float = 0.0
+
+var underwater_overlay: ColorRect
+var underwater_material: ShaderMaterial
 
 var chat_box: ChatBoxWidget
 var _ui_update_timer: float = 0.0
@@ -53,7 +56,7 @@ func _ready() -> void:
 	
 	_propagate_widget_dependencies()
 	_setup_dialogue_system()
-	_setup_glitch_overlay()
+	_setup_post_process_overlays()
 	_connect_domain_signals()
 	_connect_network_observers()
 	
@@ -64,14 +67,9 @@ func _ready() -> void:
 
 
 func _propagate_widget_dependencies() -> void:
-	if is_instance_valid(minimap):
-		minimap.player = player
-		minimap.world_controller = world_controller
-	if is_instance_valid(gps_panel):
-		gps_panel.player = player
-		gps_panel.world_controller = world_controller
-	if is_instance_valid(quest_panel):
-		quest_panel.player = player
+	if is_instance_valid(minimap): minimap.player = player; minimap.world_controller = world_controller
+	if is_instance_valid(gps_panel): gps_panel.player = player; gps_panel.world_controller = world_controller
+	if is_instance_valid(quest_panel): quest_panel.player = player
 
 
 func _find_chat_box_recursive(node: Node) -> ChatBoxWidget:
@@ -80,6 +78,11 @@ func _find_chat_box_recursive(node: Node) -> ChatBoxWidget:
 		var found := _find_chat_box_recursive(child)
 		if is_instance_valid(found): return found
 	return null
+
+
+func _setup_post_process_overlays() -> void:
+	_setup_glitch_overlay()
+	_setup_underwater_overlay()
 
 
 func _setup_glitch_overlay() -> void:
@@ -92,9 +95,28 @@ func _setup_glitch_overlay() -> void:
 	glitch_material = ShaderMaterial.new()
 	glitch_material.shader = load(GLITCH_SHADER_PATH) as Shader
 	glitch_overlay.material = glitch_material
-	
 	add_child(glitch_overlay)
 	move_child(glitch_overlay, 0)
+
+
+func _setup_underwater_overlay() -> void:
+	if not ResourceLoader.exists(UNDERWATER_SHADER_PATH): return
+	underwater_overlay = ColorRect.new()
+	underwater_overlay.name = "UnderwaterSubmersionOverlay"
+	underwater_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	underwater_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	underwater_overlay.visible = false
+	
+	underwater_material = ShaderMaterial.new()
+	underwater_material.shader = load(UNDERWATER_SHADER_PATH) as Shader
+	underwater_overlay.material = underwater_material
+	add_child(underwater_overlay)
+	move_child(underwater_overlay, 1)
+
+
+func set_underwater_overlay_visible(p_visible: bool) -> void:
+	if is_instance_valid(underwater_overlay):
+		underwater_overlay.visible = p_visible
 
 
 func _process(delta: float) -> void:

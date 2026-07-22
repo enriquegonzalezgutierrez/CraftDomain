@@ -1,13 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/ChunkLifecycleService.gd
-# Description: High-Performance Infrastructure Service managing background tasks,
-#              LODs, and asynchronous edits.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates chunk lifecycle,
-#   LOD transitions, and threaded task resolutions, delegating physics to servers.
-# - Open-Closed Principle (OCP): Dynamically registers newly loaded chunks into
-#   the hierarchical navigation service, closing the core graph to manual edits.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Description: High-Performance Infrastructure Service managing chunk lifecycles,
+#              LOD updates, background threads, and multi-layer entity spawning.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -15,8 +9,6 @@ class_name ChunkLifecycleService
 extends RefCounted
 
 const CHUNK_MASK: int = 15
-
-# Time-Slicing Budgets (Microseconds)
 const TIME_BUDGET_ACTIVE_USEC: int = 2000  
 const TIME_BUDGET_LOADING_USEC: int = 40000 
 
@@ -83,8 +75,7 @@ func _update_viewer_chunk_position() -> void:
 		var player_node: Node3D = controller.get("player") as Node3D
 		if is_instance_valid(player_node):
 			var p_pos := player_node.global_position
-			var active_pos := world_state.global_to_chunk_pos(Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z)))
-			_last_known_viewer_chunk_pos = active_pos
+			_last_known_viewer_chunk_pos = world_state.global_to_chunk_pos(Vector3i(floori(p_pos.x), floori(p_pos.y), floori(p_pos.z)))
 
 
 func _process_unload_queue(player_active: bool) -> void:
@@ -92,24 +83,18 @@ func _process_unload_queue(player_active: bool) -> void:
 	var time_budget := 500 if player_active else 10000 
 	
 	while _unload_queue.size() > 0:
-		var elapsed := Time.get_ticks_usec() - start_time
-		if elapsed > time_budget:
-			break
-			
-		var chunk_to_unload := _unload_queue.pop_front() as Vector3i
-		_unload_chunk_direct(chunk_to_unload)
+		if (Time.get_ticks_usec() - start_time) > time_budget: break
+		_unload_chunk_direct(_unload_queue.pop_front() as Vector3i)
 
 
 func _unload_chunk_direct(chunk_pos: Vector3i) -> void:
 	direct_renderer.free_chunk(chunk_pos)
-	
-	# Unregister chunk from high-level Hierarchical Pathfinding graph
 	HierarchicalPathingService.unregister_chunk(chunk_pos)
 	
 	if _chunk_lod_states.has(chunk_pos):
 		_chunk_lod_states.erase(chunk_pos)
 		
-	var entities_key := Vector3i(chunk_pos.x, 0, chunk_pos.z)
+	var entities_key := chunk_pos
 	if _chunk_entities.has(entities_key):
 		var entities: Array = _chunk_entities[entities_key] as Array
 		_chunk_entities.erase(entities_key)
@@ -121,17 +106,14 @@ func _unload_chunk_direct(chunk_pos: Vector3i) -> void:
 
 func set_block_globally(global_pos: Vector3i, type: BlockType.Type) -> void:
 	world_state.set_block(global_pos, type)
-	
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
 	_rebuild_chunk_instantly(chunk_pos)
-	
 	_trigger_adjacent_boundary_redraws(global_pos, chunk_pos, true)
 
 
 func set_block_globally_async(global_pos: Vector3i, type: BlockType.Type) -> void:
 	world_state.set_block(global_pos, type)
-	
 	var chunk_pos := world_state.global_to_chunk_pos(global_pos)
 	_chunk_versions[chunk_pos] = _chunk_versions.get(chunk_pos, 0) + 1
 	_request_chunk_rebuild(chunk_pos) 
@@ -152,10 +134,8 @@ func _check_neighbor_rebuild(condition: bool, chunk_pos: Vector3i, offset: Vecto
 	if condition:
 		var neighbor_pos := chunk_pos + offset
 		_chunk_versions[neighbor_pos] = _chunk_versions.get(neighbor_pos, 0) + 1
-		if is_async:
-			_request_chunk_rebuild(neighbor_pos)
-		else:
-			_rebuild_chunk_instantly(neighbor_pos)
+		if is_async: _request_chunk_rebuild(neighbor_pos)
+		else: _rebuild_chunk_instantly(neighbor_pos)
 
 
 func _rebuild_chunk_instantly(chunk_pos: Vector3i) -> void:
@@ -189,13 +169,9 @@ func _render_completed_chunks_from_queue(player_active: bool) -> void:
 	var time_budget := TIME_BUDGET_ACTIVE_USEC if player_active else TIME_BUDGET_LOADING_USEC
 	
 	while task_scheduler.has_completed_tasks():
-		var elapsed := Time.get_ticks_usec() - start_time
-		if elapsed > time_budget:
-			break 
-			
+		if (Time.get_ticks_usec() - start_time) > time_budget: break 
 		var task := task_scheduler.pop_completed_task()
-		if task != null:
-			_render_single_completed_task(task)
+		if task != null: _render_single_completed_task(task)
 
 
 func _render_single_completed_task(task: GeneratedChunkTask) -> void:
@@ -208,16 +184,13 @@ func _render_single_completed_task(task: GeneratedChunkTask) -> void:
 	_cleanup_task_states(chunk_pos)
 	_register_completed_chunk_state(task, chunk_pos)
 	
-	# Register loaded chunk into the high-level Hierarchical Pathfinding graph
 	HierarchicalPathingService.register_chunk(chunk_pos)
-	
 	_register_navigation_nodes(task)
 	_apply_visuals_direct(task, chunk_pos)
 
 
 func _register_completed_chunk_state(task: GeneratedChunkTask, chunk_pos: Vector3i) -> void:
-	var is_distant := _calculate_is_chunk_distant(chunk_pos)
-	_chunk_lod_states[chunk_pos] = is_distant
+	_chunk_lod_states[chunk_pos] = _calculate_is_chunk_distant(chunk_pos)
 		
 	if not task.is_rebuild and is_instance_valid(world_state):
 		world_state.add_chunk(task.chunk)
@@ -228,8 +201,7 @@ func _register_completed_chunk_state(task: GeneratedChunkTask, chunk_pos: Vector
 
 func _is_task_version_obsolete(task: GeneratedChunkTask, chunk_pos: Vector3i) -> bool:
 	var task_version: int = task.get_meta("version") if task.has_meta("version") else 0
-	var current_version: int = _chunk_versions.get(chunk_pos, 0)
-	return task_version < current_version
+	return task_version < _chunk_versions.get(chunk_pos, 0)
 
 
 func _cleanup_task_states(chunk_pos: Vector3i) -> void:
@@ -253,19 +225,10 @@ func _apply_visuals_direct(task: GeneratedChunkTask, chunk_pos: Vector3i) -> voi
 	
 	if task.is_rebuild and collision_shape == null:
 		var record: DirectChunkRenderingService.ChunkRIDRecord = direct_renderer._active_chunks.get(chunk_pos) as DirectChunkRenderingService.ChunkRIDRecord
-		if record != null:
-			collision_shape = record.collision_shape_ref
+		if record != null: collision_shape = record.collision_shape_ref
 			
-	direct_renderer.allocate_chunk_visuals(
-		chunk_pos,
-		task.multimesh_data,
-		task.liquid_meshes,
-		collision_shape,
-		is_distant
-	)
-	
-	if not task.is_rebuild:
-		_notify_controller_spawn(task.chunk)
+	direct_renderer.allocate_chunk_visuals(chunk_pos, task.multimesh_data, task.liquid_meshes, collision_shape, is_distant)
+	if not task.is_rebuild: _notify_controller_spawn(task.chunk)
 
 
 func _notify_controller_spawn(_chunk: Chunk) -> void:
@@ -273,33 +236,31 @@ func _notify_controller_spawn(_chunk: Chunk) -> void:
 		controller.call("check_player_spawn_activation")
 
 
+## Multi-layer Chunk Proximity Scanner: Scans both Y=0 and Y=1 chunk layers.
 func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
 	var player_block_pos := Vector3i(floor(player_global_pos.x), floor(player_global_pos.y), floor(player_global_pos.z))
 	var current_viewer_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
 	
-	for x: int in range(-spawn_radius, spawn_radius + 1):
-		for z: int in range(-spawn_radius, spawn_radius + 1):
-			_evaluate_entity_spawn_for_chunk(current_viewer_chunk_pos, x, z)
+	for x in range(-spawn_radius, spawn_radius + 1):
+		for z in range(-spawn_radius, spawn_radius + 1):
+			for y_layer in range(2): # Scans Y=0 and Y=1 chunk vertical layers
+				_evaluate_entity_spawn_for_chunk(current_viewer_chunk_pos, x, y_layer, z)
 
 
-func _evaluate_entity_spawn_for_chunk(center: Vector3i, offset_x: int, offset_z: int) -> void:
+func _evaluate_entity_spawn_for_chunk(center: Vector3i, offset_x: int, y_layer: int, offset_z: int) -> void:
 	if is_instance_valid(controller):
 		var player_node := controller.get("player") as CharacterBody3D
-		if is_instance_valid(player_node) and not player_node.get("is_active"):
-			return
+		if is_instance_valid(player_node) and not player_node.get("is_active"): return
 
-	var target_chunk_pos := Vector3i(center.x + offset_x, 0, center.z + offset_z)
-	if not _chunk_lod_states.has(target_chunk_pos) or not direct_renderer.has_collision_body(target_chunk_pos):
+	var target_chunk_pos := Vector3i(center.x + offset_x, y_layer, center.z + offset_z)
+	if not _chunk_lod_states.has(target_chunk_pos) or not direct_renderer.has_collision_body(target_chunk_pos) or _calculate_is_chunk_distant(target_chunk_pos):
 		return
 		
-	if _calculate_is_chunk_distant(target_chunk_pos):
-		return
-		
-	var col_pos := Vector3i(target_chunk_pos.x, 0, target_chunk_pos.z)
+	var col_pos := target_chunk_pos
 	if not _chunk_entities.has(col_pos):
-		var chunk_0 := world_state.get_chunk(target_chunk_pos)
-		if chunk_0 != null and controller.has_method("spawn_entities_for_chunk"):
-			var raw_array: Array = controller.call("spawn_entities_for_chunk", chunk_0) as Array
+		var chunk_inst := world_state.get_chunk(target_chunk_pos)
+		if chunk_inst != null and controller.has_method("spawn_entities_for_chunk"):
+			var raw_array: Array = controller.call("spawn_entities_for_chunk", chunk_inst) as Array
 			var typed_nodes: Array[Node] = []
 			for n_element: Variant in raw_array:
 				if n_element is Node: typed_nodes.append(n_element as Node)
@@ -314,18 +275,14 @@ func _execute_lod_scans() -> void:
 		if is_currently_distant != was_distant:
 			_chunk_lod_states[pos] = is_currently_distant
 			direct_renderer.update_lod_materials(pos, is_currently_distant)
-			
 			if not is_currently_distant and not direct_renderer.has_collision_body(pos):
 				_request_chunk_rebuild(pos)
 
 
 func _calculate_is_chunk_distant(chunk_pos: Vector3i) -> bool:
-	var current_distance := ChunkLoaderService.global_view_distance
-	var lod_threshold := max(3, current_distance - 3)
-	
+	var lod_threshold := max(3, ChunkLoaderService.global_view_distance - 3)
 	var diff_x := abs(chunk_pos.x - _last_known_viewer_chunk_pos.x)
 	var diff_z := abs(chunk_pos.z - _last_known_viewer_chunk_pos.z)
-	
 	return diff_x > lod_threshold or diff_z > lod_threshold
 
 

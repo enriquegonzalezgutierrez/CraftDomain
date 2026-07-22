@@ -1,14 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
-# Description: Infrastructure Service managing dynamic herd spawning, local chunk 
-#              population, and active campaign quest targets.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively mob lifecycle.
-# - Open-Closed Principle (OCP): Integrates dynamically with the custom population 
-#   densities and rosters declared by the active biome.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
-# Author: Enrique Gonzalez Gutierrez
+# Description: Infrastructure Service managing dynamic entity spawning, local
+#              chunk population, spatial mob separation, and quest objectives.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MobSpawningService
@@ -25,30 +19,24 @@ const MOB_ID_PIG: int = 0
 const MOB_ID_CHICKEN: int = 1
 const MOB_ID_SHEEP: int = 2
 const MOB_ID_COW: int = 3
-const MOB_ID_ZOMBIE: int = 10
 const MOB_ID_SHARK: int = 11
-const MOB_ID_VILLAGER: int = 100
-const MOB_ID_MERCHANT: int = 101
-const MOB_ID_GOLEM: int = 107
 const MOB_ID_TURTLE: int = 201
 const MOB_ID_OCTOPUS: int = 210
 
 const OFFSET_D: float = 11.5
 const OFFSET_HALF_CHUNK: float = 8.0
-
 const HEIGHT_MAX_TERRAIN_LIMIT: int = 31
-const STRAY_PROBABILITY_THRESHOLD: float = 0.25
+const STRAY_PROBABILITY_THRESHOLD: float = 0.20
+const MIN_MOB_SEPARATION_SQ: float = 144.0 # 12 meters minimum spatial separation
 
 
-## Spawns procedural wildlife and themed outpost entities inside a newly loaded chunk.
+## Spawns procedural wildlife and themed outpost entities inside a loaded chunk.
 func spawn_mobs_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldState) -> Array[Node]:
 	var spawned_nodes: Array[Node] = []
 	var chunk_pos: Vector3i = chunk.position
 	
-	if chunk_pos.y == 0:
-		var upper_chunk := world_state.get_chunk(Vector3i(chunk_pos.x, 1, chunk_pos.z))
-		if upper_chunk == null:
-			return [] 
+	if chunk_pos.y == 0 and world_state.get_chunk(Vector3i(chunk_pos.x, 1, chunk_pos.z)) == null:
+		return [] 
 			
 	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	_process_chunk_spawning(chunk, chunk_offset, world_state, world_node, spawned_nodes)
@@ -71,17 +59,11 @@ func _process_chunk_spawning(chunk: Chunk, chunk_offset: Vector3, world_state: W
 
 
 func _spawn_village_mobs(chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
-	var density := biome.get_village_population_density()
 	var civilian_ids := biome.get_village_civilian_ids()
-	
-	if civilian_ids.is_empty():
-		return
+	if civilian_ids.is_empty(): return
 		
-	for i: int in range(density):
-		var spawn_id: int = civilian_ids[randi() % civilian_ids.size()]
-		var rx := randf_range(2.0, 14.0)
-		var rz := randf_range(2.0, 14.0)
-		_spawn_and_register_entity(spawn_id, chunk_offset, rx, rz, world_state, world_node, spawned_nodes)
+	var spawn_id: int = civilian_ids[randi() % civilian_ids.size()]
+	_spawn_and_register_entity(spawn_id, chunk_offset, randf_range(2.0, 14.0), randf_range(2.0, 14.0), world_state, world_node, spawned_nodes)
 
 
 func _spawn_village_stray_animals(chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
@@ -92,53 +74,38 @@ func _spawn_village_stray_animals(chunk_offset: Vector3, world_state: WorldState
 
 
 func _spawn_wilderness_wildlife(chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
-	var roll := randf()
-	var spawn_chance := biome.get_spawn_probability()
-		
-	if roll < spawn_chance:
+	if randf() < biome.get_spawn_probability():
 		var wildlife_ids := _get_dynamic_wildlife_table(biome, chunk_offset, world_state)
 		if wildlife_ids.size() > 0:
-			_spawn_wildlife_group(wildlife_ids, chunk_offset, world_state, world_node, biome, spawned_nodes)
+			_spawn_individual_wildlife(wildlife_ids, chunk_offset, world_state, world_node, spawned_nodes)
 
 
 func _get_dynamic_wildlife_table(biome: IBiome, chunk_offset: Vector3, world_state: WorldState) -> Array[int]:
 	var list := biome.get_wilderness_wildlife_ids()
 	var sample_pos := chunk_offset + Vector3(OFFSET_HALF_CHUNK, 0.0, OFFSET_HALF_CHUNK)
-	var hit_y := _get_water_surface_y(world_state, floori(sample_pos.x), floori(sample_pos.z))
 	
-	if hit_y > 0.0:
-		var marine_life: Array[int] = [MOB_ID_SHARK, MOB_ID_TURTLE, MOB_ID_OCTOPUS] 
-		for id: int in marine_life:
-			if not list.has(id):
-				list.append(id)
+	if _get_water_surface_y(world_state, floori(sample_pos.x), floori(sample_pos.z)) > 0.0:
+		for id: int in [MOB_ID_SHARK, MOB_ID_TURTLE, MOB_ID_OCTOPUS]:
+			if not list.has(id): list.append(id)
 				
 	return list
 
 
-func _spawn_wildlife_group(wildlife_ids: Array[int], chunk_offset: Vector3, world_state: WorldState, world_node: Node, biome: IBiome, spawned_nodes: Array[Node]) -> void:
-	var rand_idx := randi() % wildlife_ids.size()
-	var spawn_id := int(wildlife_ids[rand_idx])
-	var max_group_size := biome.get_max_group_size()
-	var group_size := randi_range(2, max_group_size)
-	
-	for i: int in range(group_size):
-		var rx := randf_range(2.0, 14.0)
-		var rz := randf_range(2.0, 14.0)
-		_spawn_and_register_entity(spawn_id, chunk_offset, rx, rz, world_state, world_node, spawned_nodes)
+func _spawn_individual_wildlife(wildlife_ids: Array[int], chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
+	var spawn_id := int(wildlife_ids[randi() % wildlife_ids.size()])
+	_spawn_and_register_entity(spawn_id, chunk_offset, randf_range(2.0, 14.0), randf_range(2.0, 14.0), world_state, world_node, spawned_nodes)
 
 
 func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
-	var pop_points := StructurePopulationService.get_population_for_chunk(chunk_pos)
-	
-	for point: StructurePopulationService.PopulationPoint in pop_points:
+	for point in StructurePopulationService.get_population_for_chunk(chunk_pos):
 		if not point.is_prop and MobRegistry.has_mob(point.spawn_id):
 			_spawn_decoupled_landmark_mob(point, world_state, world_node, spawned_nodes)
 
 
 func _spawn_decoupled_landmark_mob(point: StructurePopulationService.PopulationPoint, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
 	var spawn_pos := point.global_pos
-	
 	var player_node := world_node.get("player") as CharacterBody3D if is_instance_valid(world_node) else null
+	
 	if is_instance_valid(player_node) and spawn_pos.distance_to(player_node.global_position) < 1.2:
 		spawn_pos += Vector3(1.2, 0.0, 1.2) 
 		
@@ -152,32 +119,24 @@ func _spawn_decoupled_landmark_mob(point: StructurePopulationService.PopulationP
 
 func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
 	var active_q := QuestService.get_active_quest() as Quest
-	if active_q == null or not QUEST_TARGET_MOBS.has(active_q.quest_id):
-		return
+	if active_q == null or not QUEST_TARGET_MOBS.has(active_q.quest_id): return
 		
 	var target_pos := active_q.target_position
-	var target_chunk_pos := world_state.global_to_chunk_pos(Vector3i(target_pos))
-	
-	if target_chunk_pos == chunk.position:
+	if world_state.global_to_chunk_pos(Vector3i(target_pos)).x == chunk.position.x and world_state.global_to_chunk_pos(Vector3i(target_pos)).z == chunk.position.z:
 		var mob_id: int = QUEST_TARGET_MOBS[active_q.quest_id]
-		var existing_target := _find_eligible_entity_in_list(world_node, mob_id, target_pos)
+		var existing := _find_eligible_entity_in_list(world_node, mob_id, target_pos)
 		
-		if existing_target != null:
-			existing_target.quest_target_id = active_q.quest_id
-			return
-			
-		_spawn_exact_quest_mob(mob_id, target_pos, chunk_offset, world_state, world_node, spawned_nodes, active_q.quest_id)
+		if existing != null:
+			existing.quest_target_id = active_q.quest_id
+		else:
+			_spawn_exact_quest_mob(mob_id, target_pos, chunk_offset, world_state, world_node, spawned_nodes, active_q.quest_id)
 
 
 func _find_eligible_entity_in_list(world_node: Node, mob_id: int, target_pos: Vector3) -> CharacterBody3D:
-	if not is_instance_valid(world_node):
-		return null
-		
+	if not is_instance_valid(world_node): return null
 	for child in world_node.get_children():
-		if child is CharacterBody3D and child.has_meta("spawn_id"):
-			if int(child.get_meta("spawn_id")) == mob_id:
-				if child.global_position.distance_squared_to(target_pos) <= 225.0: 
-					return child as CharacterBody3D
+		if child is CharacterBody3D and child.has_meta("spawn_id") and int(child.get_meta("spawn_id")) == mob_id:
+			if child.global_position.distance_squared_to(target_pos) <= 225.0: return child as CharacterBody3D
 	return null
 
 
@@ -199,12 +158,12 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 		
 	var global_x := int(offset.x + lx)
 	var global_z := int(offset.z + lz)
-	var habitat := MobRegistry.get_mob_habitat(spawn_id)
-	
-	var gy := _resolve_habitat_ground_y(world_state, global_x, global_z, habitat, spawn_id)
+	var gy := _resolve_habitat_ground_y(world_state, global_x, global_z, spawn_id)
 	if gy < 0.0: return 
 		
 	var pos := Vector3(offset.x + lx, gy, offset.z + lz)
+	if _is_spawn_point_too_close(world_node, pos): return
+		
 	if _is_voxel_spawn_space_free(world_state, pos):
 		var mob := MobRegistry.create_mob(spawn_id, pos)
 		if mob != null:
@@ -213,31 +172,37 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 			list.append(mob)
 
 
-func _resolve_habitat_ground_y(world_state_ref: WorldState, global_x: int, global_z: int, habitat: int, spawn_id: int) -> float:
-	if habitat == MobRegistry.Habitat.AQUATIC:
-		return _get_water_surface_y(world_state_ref, global_x, global_z)
-		
-	if spawn_id == MOB_ID_ZOMBIE or spawn_id == 13:
-		return SpawnCoordinateSolver.solve_cave_y(world_state_ref, global_x, global_z)
-		
-	return SpawnCoordinateSolver.solve_surface_y(world_state_ref, global_x, global_z)
+## Enforces a 12-meter minimum spatial separation distance between entity spawns.
+static func _is_spawn_point_too_close(world_node: Node, pos: Vector3) -> bool:
+	if not is_instance_valid(world_node): return false
+	for child in world_node.get_children():
+		if child is CharacterBody3D and child.has_meta("spawn_id"):
+			if child.global_position.distance_squared_to(pos) < MIN_MOB_SEPARATION_SQ:
+				return true
+	return false
+
+
+func _resolve_habitat_ground_y(world_state_ref: WorldState, global_x: int, global_z: int, spawn_id: int) -> float:
+	var zone := MobRegistry.get_mob_spawn_zone(spawn_id)
+	match zone:
+		MobRegistry.SpawnZone.AQUATIC:
+			return _get_water_surface_y(world_state_ref, global_x, global_z)
+		MobRegistry.SpawnZone.SUBTERRANEAN:
+			return SpawnCoordinateSolver.solve_cave_y(world_state_ref, global_x, global_z)
+		_:
+			return SpawnCoordinateSolver.solve_surface_y(world_state_ref, global_x, global_z)
 
 
 func _get_water_surface_y(world_state_ref: WorldState, global_x: int, global_z: int) -> float:
 	var hit_y := -1
 	for y: int in range(HEIGHT_MAX_TERRAIN_LIMIT, -1, -1):
-		var check_pos := Vector3i(global_x, y, global_z)
-		var block_type := world_state_ref.get_block(check_pos)
-		if block_type != BlockType.Type.AIR:
+		if world_state_ref.get_block(Vector3i(global_x, y, global_z)) != BlockType.Type.AIR:
 			hit_y = y
 			break
 			
 	if hit_y == -1: return -1.0
-		
-	var surface_block := world_state_ref.get_block(Vector3i(global_x, hit_y, global_z))
-	if surface_block == BlockType.Type.WATER:
-		var space_above_1 := world_state_ref.get_block(Vector3i(global_x, hit_y + 1, global_z))
-		if not BlockLibrary.is_solid(space_above_1):
+	if world_state_ref.get_block(Vector3i(global_x, hit_y, global_z)) == BlockType.Type.WATER:
+		if not BlockLibrary.is_solid(world_state_ref.get_block(Vector3i(global_x, hit_y + 1, global_z))):
 			return float(hit_y) - 0.35
 			
 	return -1.0
@@ -253,11 +218,9 @@ func _is_voxel_spawn_space_free(world_state_ref: WorldState, spawn_pos: Vector3)
 func _detect_chunk_biome_id(chunk_pos: Vector3i, world_node: Node) -> int:
 	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator if is_instance_valid(world_node) else null
 	if is_instance_valid(generator) and "_terrain_noise" in generator:
-		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
-		if terrain_noise != null:
-			var center_x := chunk_pos.x * Chunk.SIZE + 8
-			var center_z := chunk_pos.z * Chunk.SIZE + 8
-			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
+		var noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
+		if noise != null:
+			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(chunk_pos.x * Chunk.SIZE + 8, chunk_pos.z * Chunk.SIZE + 8, noise) as BiomeService.BiomeProfile
 			return profile.biome_id
 	return 2
 
@@ -265,10 +228,8 @@ func _detect_chunk_biome_id(chunk_pos: Vector3i, world_node: Node) -> int:
 func _is_village_chunk(chunk_pos: Vector3i, world_node: Node) -> bool:
 	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator if is_instance_valid(world_node) else null
 	if is_instance_valid(generator) and "_terrain_noise" in generator:
-		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
-		if terrain_noise != null:
-			var center_x := chunk_pos.x * Chunk.SIZE + 8
-			var center_z := chunk_pos.z * Chunk.SIZE + 8
-			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
+		var noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
+		if noise != null:
+			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(chunk_pos.x * Chunk.SIZE + 8, chunk_pos.z * Chunk.SIZE + 8, noise) as BiomeService.BiomeProfile
 			return profile.landmark_id == 3
 	return false

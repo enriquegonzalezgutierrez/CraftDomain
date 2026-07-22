@@ -1,49 +1,56 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/SpawnCoordinateSolver.gd
-# Description: Pure Domain Service responsible for calculating safe 3D spawning 
-#              coordinates in both surface and cave layers.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively coordinate scanning.
-# - Open-Closed Principle (OCP): Works polymorphically with BlockDefinition properties,
-#   remaining completely closed to specific block ID list modifications.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
-# Author: Enrique Gonzalez Gutierrez
+# Description: Pure Domain Service calculating safe 3D spawning coordinates
+#              for surface structures, subterranean caves, and ocean beds.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SpawnCoordinateSolver
 extends RefCounted
 
 
-## Top-Down Solver: Calculates the true organic surface Y level, skipping structural roofs.
+## Top-Down Solver: Solves the true surface Y level for organic ground and building floors.
 static func solve_surface_y(world_state: WorldState, gx: int, gz: int) -> float:
+	if world_state == null:
+		return -1.0
+		
 	for y in range(31, -1, -1):
 		var coord := Vector3i(gx, y, gz)
-		var block := world_state.get_block(coord)
-		var def := BlockLibrary.get_definition(block)
-		if def == null: continue
-		
-		if def.is_spawn_surface:
-			if _verify_vertical_clearance(world_state, coord):
-				return float(y) + 1.0
-		elif not def.is_spawn_penetrable:
-			break 
-			
-	return -1.0 
-
-
-## Bottom-Up Solver: Calculates a safe cave floor Y level with air chamber and ceiling.
-static func solve_cave_y(world_state: WorldState, gx: int, gz: int) -> float:
-	for y in range(1, 12): 
-		var coord := Vector3i(gx, y, gz)
-		var block := world_state.get_block(coord)
-		var def := BlockLibrary.get_definition(block)
-		if def == null or not def.is_solid: continue
-		
-		if _verify_vertical_clearance(world_state, coord) and _has_solid_ceiling(world_state, coord):
+		if _is_valid_surface_ground(world_state, coord):
 			return float(y) + 1.0
 			
 	return -1.0 
+
+
+static func _is_valid_surface_ground(world_state: WorldState, coord: Vector3i) -> bool:
+	var block := world_state.get_block(coord)
+	var def := BlockLibrary.get_definition(block)
+	if def == null or not def.is_solid or def.is_liquid:
+		return false
+		
+	return def.is_spawn_surface or _verify_vertical_clearance(world_state, coord)
+
+
+## Bottom-Up Solver: Calculates a safe subterranean cave floor Y level with ceiling.
+static func solve_cave_y(world_state: WorldState, gx: int, gz: int) -> float:
+	if world_state == null:
+		return -1.0
+		
+	for y in range(1, 12): 
+		var coord := Vector3i(gx, y, gz)
+		if _is_valid_cave_floor(world_state, coord):
+			return float(y) + 1.0
+			
+	return -1.0 
+
+
+static func _is_valid_cave_floor(world_state: WorldState, coord: Vector3i) -> bool:
+	var block := world_state.get_block(coord)
+	var def := BlockLibrary.get_definition(block)
+	if def == null or not def.is_solid or def.is_liquid:
+		return false
+		
+	return _verify_vertical_clearance(world_state, coord) and _has_solid_ceiling(world_state, coord)
 
 
 static func _verify_vertical_clearance(world_state: WorldState, coord: Vector3i) -> bool:
