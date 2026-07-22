@@ -47,7 +47,50 @@ graph TD
 
 ---
 
-## ⚡ 2. High-Performance Voxel Pipeline (120 FPS Guardrail)
+## 🧠 2. Goal-Oriented Action Planning (GOAP) AI Architecture
+
+Entities utilize a non-blocking Goal-Oriented Action Planning (GOAP) engine powered by an A* state-space graph solver (`GOAPPlanner.gd`). Behaviors dynamically evaluate goals and chain atomic actions based on environmental state.
+
+```mermaid
+graph TD
+	subgraph Sensory_Tick ["NPCAIComponent (0.25s Throttled Brain)"]
+		Blackboard[AIBlackboard Memory]
+		ContextFilter[Contextual Action Filter]
+		Planner[GOAPPlanner - A* State-Space Solver]
+	end
+
+	subgraph Goal_Hierarchy ["Goal Priority Evaluation"]
+		G_Panic[Survive / Evade - Pri: 10.0]
+		G_Combat[Smash / Hunt Prey - Pri: 2.0]
+		G_Work[Work / Socialize - Pri: 1.0]
+		G_Wander[Patrol / Roam - Pri: 0.5]
+	end
+
+	subgraph Kinematic_Exec ["Physics & Steering (120Hz Loop)"]
+		Steering[NPCObstacleSteering]
+		Kinematics[VoxelKinematicService]
+		Body[CharacterBody3D Physics]
+	end
+
+	Blackboard --> ContextFilter
+	ContextFilter -->|Valid Usable Actions| Planner
+	Goal_Hierarchy -->|Highest Valid Goal| Planner
+	Planner -->|Active Plan Queue| Blackboard
+	Blackboard -->|XZ Motion Vectors| Kinematics
+	Kinematics --> Steering
+	Steering -->|move_and_slide| Body
+	
+	style Sensory_Tick fill:#1e293b,stroke:#00f3f3,stroke-width:2px
+	style Kinematic_Exec fill:#0f172a,stroke:#38bdf8,stroke-width:2px
+```
+
+*   **Contextual Action Filtering:** Actions are filtered dynamically via `is_contextually_valid(_blackboard)` before plan generation. If an action's prerequisites or cooldowns are unsatisfied (e.g., scanning for nonexistent crops or lost peers), the action is excluded, preventing planner deadlocks and allowing seamless fallback to roaming/patrolling.
+*   **Reactive Threat Interrupters:** While patrolling, Guards (`GuardAIBehavior.gd`) and Hostiles (`ZombieAIBehavior.gd`) run real-time 20-block (400m²) threat sweeps. Detecting an enemy instantly aborts passive patrol loops and triggers combat engagement.
+*   **Multi-Angle XZ Plane Locomotion:** Wander and patrol actions execute multi-angle candidate sampling strictly on the horizontal `(X, Z)` ground plane (`Y = 0.0`), preventing entities from stalling near walls or stepping into unsafe voids.
+
+---
+
+## ⚡ 3. High-Performance Voxel Pipeline (120 FPS Guardrail)
 
 To prevent Main Thread stutters during infinite exploration or massive explosions, chunk generation and occlusion culling are offloaded to a dynamically budgeted `WorkerThreadPool`. 
 
@@ -77,7 +120,7 @@ sequenceDiagram
 
 ---
 
-## 🧠 3. Decoupled AI & Procedural Visuals
+## 🎨 4. Decoupled Physics & Procedural Visuals
 
 Entities strictly separate their physical translations (Gravity, Wall sliding) from their logical decisions. AI "Brains" dynamically swap pure Domain strategy classes (`IAIBehavior`) at runtime without modifying the physical controllers.
 
@@ -99,18 +142,18 @@ classDiagram
 		<<Interface>>
 		+evaluate_and_execute(host, delta)
 	}
-	class GargoyleAIBehavior {
-		+State: STONE | AWAKE
+	class GuardAIBehavior {
+		+State: OVERWATCH_PATROL | SPRINTING_TO_THREAT
 	}
-	class FarmerAIBehavior {
-		+State: SCANNING | HARVESTING
+	class ZombieAIBehavior {
+		+State: WANDER | CHASING | ATTACKING
 	}
 
 	CharacterBody3D <|-- PassiveEntity
 	PassiveEntity *-- NPCAIComponent : Contains
 	NPCAIComponent o-- IAIBehavior : Delegates to
-	IAIBehavior <|.. GargoyleAIBehavior
-	IAIBehavior <|.. FarmerAIBehavior
+	IAIBehavior <|.. GuardAIBehavior
+	IAIBehavior <|.. ZombieAIBehavior
 ```
 
 *   **Zero-Skeletal Skinning Overhead:** CPU-heavy skeletal animation players have been fully removed. The engine utilizes high-performance procedural vertical bobs, walk-sways, and joint rotations directly on static `.glb` meshes via `NPCVisualComponent.gd`.
@@ -118,13 +161,13 @@ classDiagram
 
 ---
 
-## 🔬 4. Deep Diagnostics Telemetry
+## 🔬 5. Deep Diagnostics Telemetry
 
 To ensure extreme maintainability and testability of physical and steering interactions, the engine features a high-frequency Deep Diagnostics Telemetry layer.
 
 ```
-[14:35:26] [MonkeyEntity] Task:IDLE | Pos:(195.14,13.00,216.95) | Dir:(0.00,0.00)
-	L-> Vel_IN:(0.00,-1.20,0.00) -> Vel_OUT:(0.00,0.00,0.00)
+[14:35:26] [GuardEntity] Task:WANDERING | Pos:(195.14,13.00,216.95) | Dir:(-0.40,0.91)
+	L-> Vel_IN:(-0.16,-1.20,0.36) -> Vel_OUT:(-0.16,-1.20,0.36)
 	L-> Floor:true Wall:false Col:true | HabBlk:false Turn:1.00 Edge:false Yld:false Wsk:false
 ```
 
@@ -133,7 +176,7 @@ To ensure extreme maintainability and testability of physical and steering inter
 
 ---
 
-## 🌐 5. Multiplayer & State Synchronization
+## 🌐 6. Multiplayer & State Synchronization
 
 CraftDomain supports P2P Multiplayer with Server-Authoritative Anti-Cheat validation and Late-Join Delta Synchronization. 
 
@@ -170,7 +213,7 @@ graph LR
 
 ---
 
-## 🌌 6. Atmospheric & Celestial Synthesis
+## 🌌 7. Atmospheric & Celestial Synthesis
 
 The engine features a fully synchronized, dynamic sky and fog shading system integrated directly with the calendar time loops and weather services.
 
@@ -206,7 +249,7 @@ graph TD
 
 ---
 
-## 🛡️ 7. SOLID Compliance Checklist
+## 🛡️ 8. SOLID Compliance Checklist
 
 *   **[S] Single Responsibility:** Controllers like `WorldController` only coordinate; they do not calculate geometry. `DiskWorldRepository` only streams files; it does not pack JSON data.
 *   **[O] Open-Closed:** `BlockLibrary` (housing static solid/translucent checks), `MobRegistry`, and `StructureLibrary` dynamically load resources on demand without modifying core engine scripts.
@@ -216,7 +259,7 @@ graph TD
 
 ---
 
-## ⌨️ 8. Controls Reference
+## ⌨️ 9. Controls Reference
 
 | Action | PC (KBM) | Gamepad | Description |
 | :--- | :---: | :---: | :--- |

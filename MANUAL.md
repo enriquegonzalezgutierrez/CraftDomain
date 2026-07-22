@@ -48,7 +48,7 @@ graph LR
     style UI_Throttler fill:#1e293b,stroke:#00f3f3,stroke-width:2px
 ```
 
-*   **Tactical Map (`M`):** Opens a fullscreen map. Click on any discovered Global Mega-Structure pin to Fast Travel.
+*   **Tactical Map (`M`):** Opens a fullscreen map. Click on any discovered Global Mega-Structure pin to Fast Travel instantly.
 *   **Dynamic Cursor Release (`Hold L-Alt`):** Freezes first-person camera rotation and releases the hardware mouse pointer to click HUD elements smoothly.
 
 ---
@@ -66,6 +66,8 @@ Input mappings are processed via hardware buffers, supporting both Keyboard/Mous
 | **Place / Interact** | `Right-Click` | `L1 / LB` | `IWorldModifier` placement |
 | **Inventory** | `I` | `X / Square` | 24-Slot Array overlay |
 | **Crafting** | `C` | `Y / Triangle` | Recipe Dictionary parsing |
+| **Map** | `M` | `Back / Share` | Tactical World Map overlay |
+| **Chat** | `T / Enter` | - | Open P2P Multiplayer Chat Field |
 
 ---
 
@@ -97,33 +99,38 @@ sequenceDiagram
 
 ---
 
-## 🧠 5. AI Schedules, Economy & Defense Networks
+## 🧠 5. GOAP AI Decision Pipeline, Schedules & Defense Networks
 
-The procedural world is populated with entities driven by the `IAIBehavior` strategy pattern. Their schedules react dynamically to the `CelestialService` and `WeatherService`.
+The procedural world is populated with entities driven by Goal-Oriented Action Planning (GOAP) strategy behaviors (`IAIBehavior`). Their schedules react dynamically to environmental triggers and `CelestialService` states.
 
-### Day / Night Cycle & Shelter Logic
+### Non-Blocking GOAP Execution Flow
 ```mermaid
 stateDiagram-v2
-    [*] --> WANDERING
-    WANDERING --> WORKING : Find Task (Farm, Mine)
-    WORKING --> WANDERING : Task Complete
+    [*] --> EvaluateGoals : 0.25s AI Tick
     
-    WANDERING --> PANIC : Threat Detected
-    WORKING --> PANIC : Threat Detected
-    
-    WANDERING --> SHELTER_SEEK : Sunset / Storm
-    WORKING --> SHELTER_SEEK : Sunset / Storm
-    
-    SHELTER_SEEK --> IDLE_INDOORS : Reached A* Node
-    IDLE_INDOORS --> WANDERING : Sunrise / Clear Skies
+    state EvaluateGoals {
+        [*] --> FilterUsableActions : Check is_contextually_valid()
+        FilterUsableActions --> RunPlanner : Pass usable actions to GOAPPlanner
+        RunPlanner --> SelectGoal : Priority evaluation
+    }
+
+    SelectGoal --> ExecutingPlan : Plan found
+    SelectGoal --> FallbackPatrol : No candidate plan
+
+    state ExecutingPlan {
+        [*] --> ActionStep
+        ActionStep --> CheckThreats : 20-block threat sweep
+        CheckThreats --> AbortToCombat : Hostile in sight
+        ActionStep --> NextAction : Action completed
+    }
+
+    AbortToCombat --> EvaluateGoals : Invalidate active plan
+    FallbackPatrol --> EvaluateGoals : Patrol timer expires
 ```
 
-### The Village Defense Network (`AlertNetworkService`)
-Villages are actively protected by tactical defenders (Guards and Golems) which register themselves into a shared **Alert Alarm Network** upon spawning.
-1.  A Cave Zombie hits a Civilian.
-2.  The Civilian emits a proximity alarm via the `AlertNetworkService`.
-3.  Nearby Protectors (< 30m) instantly break their patrol loops, set the Zombie as their `_combat_target`, and sprint to intercept.
-4.  **Iron Golems** execute a heavy double-arm launch attack, throwing hostiles **9.5 meters into the air**.
+*   **Contextual Action Filtering:** Before planning, actions are filtered by `is_contextually_valid(_blackboard)`. If prerequisites are missing (e.g. scanning for nonexistent crops, inactive terminals, or absent peers), the action is excluded, allowing the planner to cleanly select fallback goals like `Patrol` or `Wander`.
+*   **Reactive 20-Block Threat Sweep:** During passive patrols, Guards (`GuardAIBehavior.gd`) and Hostiles (`ZombieAIBehavior.gd`) perform real-time threat scans within a 20-block (400m²) radius. Spotting a target instantly interrupts the patrol loop, initiating immediate sprint-chase engagement.
+*   **The Village Defense Network (`AlertNetworkService`):** Civilians struck by hostiles broadcast an alarm through `AlertNetworkService`. All registered protectors within 30m group up to intercept the attacker. **Iron Golems** execute a heavy double-arm launch attack, throwing hostiles **9.5 meters into the air**.
 
 ---
 
@@ -159,21 +166,21 @@ graph TD
 
 ## 🏛️ 7. Epic Boss Encounters (Campaign Acts)
 
-The campaign features advanced multi-phase boss state machines.
+The campaign features advanced multi-phase boss state machines driven by prioritized GOAP goals (`destroy_goal` = 2.0, `sleep_goal` = 0.5).
 
-*   **Act I - The Lithic Lurker (Craggy Peaks):** Sleeps in a basalt crater `[-100, 100]`. Immune to knockback. Executes a heavy AoE Ground Pound. Upon impact, it enters a `STUNNED` state for 3.5 seconds, exposing its cyan core to standard damage.
+*   **Act I - The Lithic Lurker (Craggy Peaks):** Sleeps in a basalt crater at `[-100, 100]`. Immune to knockback. Executes a heavy AoE Ground Pound. Upon impact, it enters a `STUNNED` state for 3.5 seconds, exposing its cyan core to standard damage.
 *   **Act III - Obsidian Colossus (Nether Outpost):** Guards the bridge at `[-300, -300]`. Features **Unstoppable Mass** (takes damage but completely ignores physical weapon knockback). Enters a fast `RAGE CHARGE` when health drops below 50%.
-*   **Act IV - Weaver Malakor (Cloud Kingdom):** The final antagonist. Initiates a `GRAVITY INVERSION` phase, forcing the player to deploy their Voxel Glider, dodging unshaded laser beams while airborne.
+*   **Act IV - Weaver Malakor (Cloud Kingdom):** The final antagonist. Features full airborne levitation physics (`_can_fly`). Initiates a `GRAVITY INVERSION` phase, forcing the player to deploy their Voxel Glider while dodging static laser beams airborne.
 
 ---
 
 ## 💾 8. Automated Delta-Save Pipeline
 
-CraftDomain features a silent, zero-stutter background **Delta-Save** process. You never have to manually click a save button:
+CraftDomain features a silent, zero-stutter background **Delta-Save** process:
 
 1.  Pressing **Escape** pauses the game, opens the sleek Pause Menu, and triggers the save sequence.
 2.  The engine instantly gathers your current `(X, Y, Z)` position, camera look angles, world seed, celestial calendar day (persisting moon phases), active quest states, and full 24-slot backpack item quantities, writing them to `user://world_save/global_save.json`.
-3.  Simultaneously, any blocks you broke or placed are gathered as localized modification deltas and saved directly to chunk files on disk (e.g., `chunk_-21_1_10.json`).
+3.  Simultaneously, any blocks broken or placed are gathered as localized modification deltas and saved directly to chunk files on disk (e.g., `chunk_-21_1_10.json`).
 
 ---
 
@@ -181,8 +188,10 @@ CraftDomain features a silent, zero-stutter background **Delta-Save** process. Y
 
 The environment incorporates a procedurally simulated sky and a cohesive fogging model tied directly to the day/night progression.
 
-### Symmetrical Horizon Softening
-When distant terrain renders, the sharp polygonal edges of the voxel chunks are blended with the sky using depth-based Exponential Fog. To prevent jarring dark lines against bright horizons, the fog's light color (`fog_light_color`) is dynamically adjusted in real-time on the CPU. It shifts from a bright sky-blue during the day (`Color(0.42, 0.65, 0.88)`) to a deep cosmic navy-black at night (`Color(0.015, 0.02, 0.04)`), ensuring a smooth gradient transition at the horizon.
+### Symmetrical Horizon Softening & Low-Lying Mists
+When distant terrain renders, the sharp polygonal edges of the voxel chunks are blended with the sky using depth-based Exponential Fog. 
+*   **Horizon Color Matching:** The fog's light color (`fog_light_color`) is dynamically adjusted in real-time on the CPU. It shifts from a bright sky-blue during the day (`Color(0.42, 0.65, 0.88)`) to a deep cosmic navy-black at night (`Color(0.015, 0.02, 0.04)`), preventing visual horizon splitting.
+*   **Altitude-Scaled Fog Attenuation:** Fog density scales inversely with altitude (`remap(clampf(player_y, 5.0, 22.0), ...)`). Deep valleys and swamp basins accumulate thick ground mists, while mountain peaks and floating sky islands enjoy crystal-clear atmospheric vistas.
 
 ### The 28-Day Lunar Cycle
 At night, the celestial shader projects a procedural moon on the sky dome. The moon's current phase is calculated in real-time from the global calendar:

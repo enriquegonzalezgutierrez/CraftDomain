@@ -76,18 +76,21 @@ This document details the completed development phases and outlines the future m
 *   **Day/Night Transits:** Synchronized real-time celestial clock rotations with high-contrast, non-blurry Rayleigh sky gradients.
 *   **Procedural Moon Phases:** Sculpted a mathematical moon dome in tangent space, casting dynamic shadows on craters according to the 28-day lunar calendar.
 *   **Unified Fog-Sky Shading:** Integrated a CPU-to-GPU fog color alignment pipeline that automatically matches fog light tints with the horizon.
+*   **Height-Based Low-Lying Mists:** Implemented altitude-scaled fog attenuation in `CelestialService.gd` (`remap(clampf(player_y, 5.0, 22.0), ...)`), creating dense morning mists in valleys while keeping mountain peaks clear.
 *   **Nocturnal Twinkling Stars:** Programmatically mapped high-frequency sparkling star noise, fading out during the day or during overcast storms.
 
 ### Milestone 15: SOLID Mob Spawning & Unique Target Allocation
 *   **Typesafe Spawning Mapping:** Integrated a typesafe, OCP-compliant quest-objective spawner inside `MobSpawningService` mapped to concrete entity identifiers.
-*   **Exclusive Proximity Claiming:** Removed dynamic auto-claiming from `PassiveEntity`, routing target locking strictly through the `WorldState` registry. This guarantees that exactly one unique entity holds the gold star and aligns GPS coordinates in real-time, completely preventing duplicate arrows.
-*   **Dynamic Target Injection:** The loaded chunk automatically evaluates the active mission context on spawn. If no eligible target exists, it instantiates a unique quest mob, aligning its spawning Y coordinate cleanly to the highest solid ground.
+*   **Exclusive Proximity Claiming:** Removed dynamic auto-claiming from `PassiveEntity`, routing target locking strictly through the `WorldState` registry. This guarantees that exactly one unique entity holds the gold star and aligns GPS coordinates in real-time.
+*   **Dynamic Target Injection:** The loaded chunk automatically evaluates the active mission context on spawn, instantiating unique quest mobs and aligning spawning Y coordinates cleanly to the highest solid ground.
 
-### Milestone 16: Non-Clumsy AI Movement & Aerodynamics
-*   **Throttled Pathfinding Updates:** Modified `NPCAIComponent` to restrict A* pathfinder waypoint evaluations strictly to low-frequency ticks (4Hz). This prevents the pathfinder from overwriting `NPCObstacleSteering`'s slide tangents on intermediate frames, allowing entities to slide fluidly.
-*   **Unstuck Re-Router (Stuck Resolver):** Implemented an automated unsticking routine. If an NPC's movement speed remains below `0.04` for more than 1.2s, the AI clears its active path, executes an agile backstep hop, and re-routes its path away from the corner.
-*   **Typesafe Conversational Gaze:** Refactored `NPCVisualComponent` to support body-rotation slerps towards targets during talking, greeting, and gossiping states, even at zero movement velocity.
-*   **Gravity Bypass Correction:** Audited and corrected `_is_avian()` flags in `TurtleEntity` and `OctopusEntity` from `true` to `false`. This restores standard physical gravity snapping, preventing aquatic and amphibious fauna from floating up into the sky.
+### Milestone 16: Contextual GOAP Architecture, Reactive Combat & Procedural Physics
+*   **Contextual GOAP Action Filtering:** Refactored `_evaluate_active_plan` across all 18 AI behaviors to filter `usable_actions` via `action.is_contextually_valid(_blackboard)` prior to A* state-space planning. Scan actions with unfulfilled preconditions or active cooldowns are excluded, allowing entities to seamlessly fall back to `Wander` or `Patrol`.
+*   **Reactive 20-Block Threat Interrupts:** Implemented real-time interrupters in `GuardAIBehavior` and `ZombieAIBehavior`. When hostiles or passives enter the expanded 20-block (400m²) sight range, passive patrol loops are immediately cleared, triggering instant combat engagement and knockback physics.
+*   **Multi-Angle XZ Plane Locomotion:** Standardized 3D direction sampling strictly on the horizontal `(X, Z)` ground plane (`Y = 0.0`), preventing entities from stalling against walls or boundary checks.
+*   **Procedural Slope Body Incline:** Implemented real-time CPU matrix pitch/roll alignment in `PassiveEntity.gd` (`_apply_procedural_slope_tilt`), dynamically tilting quadruped and humanoid bodies according to terrain floor normals.
+*   **Dynamic Camera Eye-Adaptation:** Integrated `CameraAttributesPractical` inside `PlayerController.gd` with auto-exposure, providing smooth human pupil adaptation when moving between bright plains and dark caves.
+*   **Godot 4.7 C++ Tree-Safety & Typing:** Fixed `INCOMPATIBLE_TERNARY` compiler warnings and C++ tree locking errors (`add_child.call_deferred` in `NPCVisualComponent.gd` and `is_inside_tree()` guardrails in `NPCObstacleSteering.gd`).
 
 ---
 
@@ -99,20 +102,13 @@ This document details the completed development phases and outlines the future m
 *   **Dynamic Seasons & Thermodynamics:** Expand `CelestialService` and `WeatherService` to track yearly macro-seasons (Winter, Summer), dynamically freezing lakes or drying crops based on localized biome thermodynamics.
 *   **Vehicles & Mounts:** Implement raycast-suspended collision vehicles (Minecarts on rails, Saddled Horses, Galleon steering) adhering to the existing `VoxelNavigationService` topological grid.
 
-### Milestone 18: Atmospheric & Environmental Shading (Backlog)
-*   **Height-Based Fog (Low-Lying Mists):** Implement a linear fog shader that calculates density based on absolute altitude (Y) rather than distance. This creates low-lying morning mist that hugs valleys, canals, and swamps while keeping high altitudes and sky domes 100% clear.
-*   **Dynamic Eye Adaptation:** Simulate human pupil adjustment. The camera will dynamically transition exposure levels when moving between bright plains and dark interiors (such as basalt caves, castle corridors, and nether rifts), creating a highly cinematic transition of scale.
-
-### Milestone 19: High-Fidelity Geometry & Materials (Backlog)
-*   **Foliage Proximity Bend (Player-Grass Turbulence):** Modify `foliage_leaves.gdshader` to dynamically bend grass and wild flowers away from the player or fast-moving mobs. This provides instant physical feedback when running through the wilderness, making the environment feel responsive.
-*   **Procedural Block Beveling (Specular Edge Highlights):** Implement a mathematical edge-normal bevel calculation in the triplanar shader. This will catch solar specular highlights on the edges of block bricks, logs, and metals, softening sharp 90-degree polygon seams and making voxels look premium and physically constructed.
-
-### Milestone 20: Procedural Slope Alignment (Backlog)
-*   **Slope Body Incline (Procedural Tilt):** Develop a lightweight CPU-based matrix alignment system for quadrupeds (cows, pigs, foxes, wolves). This will dynamically tilt their vertical body orientation according to the incline of the terrain slope or stairs they are traversing, preventing robotic capsule clipping.
+### Milestone 18: High-Fidelity Shading & Materials (Backlog)
+*   **Foliage Proximity Bend (Player-Grass Turbulence):** Modify `foliage_leaves.gdshader` to dynamically bend grass and wild flowers away from the player or fast-moving mobs.
+*   **Procedural Block Beveling (Specular Edge Highlights):** Implement a mathematical edge-normal bevel calculation in the triplanar shader to catch solar specular highlights on the edges of block bricks, logs, and metals.
 
 ---
 
 ### ⚡ 120 FPS Technical Feasibility Guardrail
 All upcoming visual enhancements in the backlog are designed with strict performance budgets:
-*   **CPU Operations:** Animal slope inclines and eye adaptation are resolved using simple local matrix calculations once per frame, bypassing heavy physics server queries.
+*   **CPU Operations:** Vehicle raycasts and seasonal temperature updates run on low-frequency background timers (20Hz to 1Hz), keeping the Main Thread free.
 *   **GPU Operations:** Foliage bending and edge beveling are processed directly on the GPU within single-pass shaders, avoiding vertex restructuring or extra draw calls.
