@@ -75,7 +75,6 @@ func _init() -> void:
 func _ready() -> void:
 	_configure_physics_parameters()
 	_setup_player_geometry()
-	
 	if is_multiplayer_authority():
 		_setup_sub_components()
 		_bind_inventory_signals()
@@ -145,8 +144,7 @@ func _setup_sub_components() -> void:
 func _setup_viewmodel() -> void:
 	viewmodel = PlayerViewModel.new()
 	viewmodel.player = self  
-	if is_instance_valid(camera):
-		camera.add_child(viewmodel)
+	if is_instance_valid(camera): camera.add_child(viewmodel)
 
 
 func _setup_interaction_component() -> void:
@@ -171,8 +169,7 @@ func _setup_hud() -> void:
 func _check_loading_screen_state() -> void:
 	var parent_node := get_parent()
 	if is_instance_valid(parent_node) and is_instance_valid(hud):
-		var has_loading := parent_node.has_node("LoadingScreenCanvas/LoadingScreenOverlay")
-		if not has_loading:
+		if not parent_node.has_node("LoadingScreenCanvas/LoadingScreenOverlay"):
 			hud.show_loading_screen()
 
 
@@ -205,25 +202,20 @@ func _input(event: InputEvent) -> void:
 
 
 func _handle_debug_storm_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed:
-		var key_event := event as InputEventKey
-		if key_event.keycode == KEY_F10:
-			var bootstrap := get_node_or_null("/root/Bootstrap")
-			if is_instance_valid(bootstrap):
-				var ws := bootstrap.get("weather_service") as Node
-				if is_instance_valid(ws):
-					var current: int = ws.get("current_weather") as int
-					var target := 1 if current == 0 else 0
-					ws.set("current_weather", target)
-					ws.call("_trigger_climatological_overcast")
+	if event is InputEventKey and event.pressed and (event as InputEventKey).keycode == KEY_F10:
+		var bootstrap := get_node_or_null("/root/Bootstrap")
+		if is_instance_valid(bootstrap):
+			var ws := bootstrap.get("weather_service") as Node
+			if is_instance_valid(ws):
+				var target := 1 if (ws.get("current_weather") as int) == 0 else 0
+				ws.set("current_weather", target)
+				ws.call("_trigger_climatological_overcast")
 
 
 func _handle_chat_trigger_input(event: InputEvent) -> void:
 	if is_active and event is InputEventKey and event.pressed:
-		var key_event := event as InputEventKey
-		var is_chat_key := (key_event.keycode == KEY_T or key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER)
-		
-		if is_chat_key and is_instance_valid(hud) and not hud.is_any_menu_open():
+		var key_code := (event as InputEventKey).keycode
+		if (key_code == KEY_T or key_code == KEY_ENTER or key_code == KEY_KP_ENTER) and is_instance_valid(hud) and not hud.is_any_menu_open():
 			get_viewport().set_input_as_handled()
 			var chat := hud.chat_box
 			if is_instance_valid(chat) and chat.has_method("_activate_typing_mode"):
@@ -243,24 +235,20 @@ func _handle_pause_trigger() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not is_multiplayer_authority() or not is_active or Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
-		return
+	if not is_multiplayer_authority() or not is_active or Input.mouse_mode == Input.MOUSE_MODE_VISIBLE: return
 	if event is InputEventMouseMotion and is_instance_valid(camera):
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
 		camera.rotation.x = clamp(camera.rotation.x, CAMERA_PITCH_MIN, CAMERA_PITCH_MAX)
 	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP: 
-			equipment_component.scroll_hotbar(-1)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: 
-			equipment_component.scroll_hotbar(1)
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP: equipment_component.scroll_hotbar(-1)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: equipment_component.scroll_hotbar(1)
 
 
 func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
-		var remote_flat_velocity := Vector2(velocity.x, velocity.z)
 		if is_instance_valid(visual_component):
-			visual_component.animate_movement(remote_flat_velocity, is_on_floor(), delta)
+			visual_component.animate_movement(Vector2(velocity.x, velocity.z), is_on_floor(), delta)
 		return
 	_process_local_player(delta)
 
@@ -270,37 +258,32 @@ func _process_local_player(delta: float) -> void:
 	_rescue_player_from_void()
 	
 	if not is_active:
-		_process_frozen_physics_movement(delta)
+		velocity = Vector3.ZERO
 		return
 
 	_process_active_gameplay_tick(delta)
 
 
 func _process_active_gameplay_tick(delta: float) -> void:
-	if is_instance_valid(equipment_component):
-		equipment_component.process_hotbar_inputs(_input_component)
-		
+	if is_instance_valid(equipment_component): equipment_component.process_hotbar_inputs(_input_component)
 	_update_interactions_and_gamepad(delta)
 	_evaluate_glider_deployment()
 
-	if is_glider_deployed:
-		_process_glider_physics(delta)
-	else:
-		_process_standard_movement(delta)
+	if is_glider_deployed: _process_glider_physics(delta)
+	else: _process_standard_movement(delta)
 
 	move_and_slide()
 	_apply_physics_effects(delta)
 	RenderingServer.global_shader_parameter_set("player_position", global_position)
 
 
-func _process_frozen_physics_movement(_delta: float) -> void:
-	velocity = Vector3.ZERO
-
-
 func _update_interactions_and_gamepad(delta: float) -> void:
 	if is_instance_valid(interaction_component) and interaction_component.has_method("process_interaction"):
 		interaction_component.call("process_interaction")
+	_process_gamepad_camera_look(delta)
 
+
+func _process_gamepad_camera_look(delta: float) -> void:
 	if is_instance_valid(_input_component) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var pad_look := _input_component.get_gamepad_look_vector()
 		if pad_look != Vector2.ZERO and is_instance_valid(camera):
@@ -319,14 +302,15 @@ func _apply_physics_effects(delta: float) -> void:
 func _evaluate_glider_deployment() -> void:
 	if is_glider_deployed and GliderItemStrategy.evaluate_auto_retraction(is_on_floor(), is_on_wall()):
 		is_glider_deployed = false
-		_set_viewmodel_tool(PlayerViewModel.ToolType.NONE)
+		if is_instance_valid(viewmodel): viewmodel.switch_to_tool(PlayerViewModel.ToolType.NONE)
 		if is_instance_valid(visual_component): visual_component.set_glider_wings_visible(false)
 		return
 
 	if not is_on_floor() and is_instance_valid(_input_component) and _input_component.is_jump_just_pressed():
 		if is_instance_valid(inventory) and inventory.get_item_total_quantity(GLIDER_ITEM_ID) > 0:
 			is_glider_deployed = not is_glider_deployed
-			_set_viewmodel_tool(PlayerViewModel.ToolType.GLIDER if is_glider_deployed else PlayerViewModel.ToolType.NONE)
+			var tool_type := PlayerViewModel.ToolType.GLIDER if is_glider_deployed else PlayerViewModel.ToolType.NONE
+			if is_instance_valid(viewmodel): viewmodel.switch_to_tool(tool_type)
 			if is_instance_valid(visual_component): visual_component.set_glider_wings_visible(is_glider_deployed)
 			if is_glider_deployed: AudioService.play_sfx_static("loot_pickup")
 
@@ -341,28 +325,17 @@ func _process_glider_physics(delta: float) -> void:
 		wind_strength = weather_node.get("_current_wind_strength") as float
 
 	var look_direction := -camera.global_transform.basis.z.normalized() if is_instance_valid(camera) else Vector3.FORWARD
-	
-	velocity = _glider_physics.calculate_glide_velocity(
-		velocity, 
-		look_direction, 
-		wind_vector, 
-		wind_strength, 
-		global_position.y, 
-		delta
-	)
+	velocity = _glider_physics.calculate_glide_velocity(velocity, look_direction, wind_vector, wind_strength, global_position.y, delta)
 
 	var input_dir := _input_component.get_movement_vector() if is_instance_valid(_input_component) else Vector2.ZERO
-	if input_dir.x != 0.0:
-		rotate_y(-input_dir.x * 2.0 * delta)
+	if input_dir.x != 0.0: rotate_y(-input_dir.x * 2.0 * delta)
 
 
 func _process_standard_movement(delta: float) -> void:
 	var is_in_liquid := _check_in_liquid_state()
-	
 	if not is_on_floor():
-		var active_gravity := _get_active_gravity()
 		var terminal := -8.0 if is_in_liquid else TERMINAL_VELOCITY
-		velocity.y = max(velocity.y - active_gravity * delta, terminal)
+		velocity.y = max(velocity.y - _get_active_gravity() * delta, terminal)
 			
 	if is_instance_valid(_input_component) and _input_component.is_jump_just_pressed() and is_on_floor():
 		velocity.y = JUMP_VELOCITY * (0.85 if is_in_liquid else 1.0)
@@ -374,8 +347,7 @@ func _get_active_gravity() -> float:
 	var active_gravity := gravity
 	if is_instance_valid(GlitchRiftService.instance):
 		var rift := GlitchRiftService.instance.get_active_rift_at(global_position)
-		if rift != null: 
-			active_gravity = rift.get_localized_gravity(gravity)
+		if rift != null: active_gravity = rift.get_localized_gravity(gravity)
 	return active_gravity
 
 
@@ -392,10 +364,6 @@ func _apply_horizontal_movement(delta: float, is_in_liquid: bool) -> void:
 	
 	velocity.x = current_flat_velocity.x
 	velocity.z = current_flat_velocity.y
-
-
-func _set_viewmodel_tool(tool_id: PlayerViewModel.ToolType) -> void:
-	if is_instance_valid(viewmodel): viewmodel.switch_to_tool(tool_id)
 
 
 func take_damage(amount: int, knockback_force: Vector3) -> void:
@@ -432,12 +400,10 @@ func _on_inventory_changed() -> void:
 func _rescue_player_from_void() -> void:
 	if global_position.y >= -5.0: return
 	velocity = Vector3.ZERO
-	var block_x := floori(position.x)
-	var block_z := floori(position.z)
 	var found_safe_y: float = 14.0 
 	if is_instance_valid(world_controller) and "world_state" in world_controller:
 		var ws: WorldState = world_controller.world_state
-		if is_instance_valid(ws): found_safe_y = ws.get_highest_solid_y(block_x, block_z)
+		if is_instance_valid(ws): found_safe_y = ws.get_highest_solid_y(floori(position.x), floori(position.z))
 	global_position.y = found_safe_y
 
 
@@ -456,17 +422,10 @@ func _check_in_liquid_state() -> bool:
 		if is_instance_valid(ws):
 			var px := floori(global_position.x)
 			var pz := floori(global_position.z)
-			var feet_y := floori(global_position.y + 0.2)
-			var chest_y := floori(global_position.y + 1.2)
-			
-			var f_block := ws.get_block(Vector3i(px, feet_y, pz))
-			var c_block := ws.get_block(Vector3i(px, chest_y, pz))
+			var f_block := ws.get_block(Vector3i(px, floori(global_position.y + 0.2), pz))
+			var c_block := ws.get_block(Vector3i(px, floori(global_position.y + 1.2), pz))
 			
 			var def_f := BlockLibrary.get_definition(f_block) as BlockDefinition
 			var def_c := BlockLibrary.get_definition(c_block) as BlockDefinition
-			
-			var is_f_liquid := def_f != null and def_f.is_liquid
-			var is_c_liquid := def_c != null and def_c.is_liquid
-			
-			return is_f_liquid or is_c_liquid
+			return (def_f != null and def_f.is_liquid) or (def_c != null and def_c.is_liquid)
 	return false
