@@ -1,153 +1,130 @@
 // ==============================================================================
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader
-// Description: Advanced sky shader utilizing pre-baked FBM noise textures for
-//              ultra-high performance parallax clouds and astronomical bodies.
-//              WEATHER UPGRADE: Configured high-altitude jet stream wind limits,
-//              eternal clear sun weights, and minimal stratospheric fog.
-//              PHYSICS UPGRADE: Replaced dynamic wind multiplication by TIME 
-//              with a continuous, CPU-accumulated 'wind_offset' parameter.
+// Description: Complete Celestial Sky Shader featuring Sun disc, Moon phases,
+//              twinkling night stars, wind-driven 3D clouds, and atmosphere.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
 shader_type sky;
-render_mode use_half_res_pass;
 
-// Sourced globally from project.godot (Continuous physical offsets)
-global uniform float storm_weight;
-global uniform vec2 wind_offset;
-
-// Injected dynamically by CelestialService.gd (DIP Compliant)
-uniform float day_weight : hint_range(0.0, 1.0) = 0.5;
 uniform vec3 sun_direction = vec3(0.0, 1.0, 0.0);
 uniform vec3 moon_direction = vec3(0.0, -1.0, 0.0);
+uniform float day_weight : hint_range(0.0, 1.0) = 0.5;
+uniform float storm_weight : hint_range(0.0, 1.0) = 0.0;
 uniform float moon_phase : hint_range(0.0, 1.0) = 0.5;
 
-// Pre-baked seamless cloud noise texture
-uniform sampler2D cloud_texture : filter_linear_mipmap, repeat_enable;
+// Global wind synchronization
+global uniform vec2 wind_vector;
+global uniform float wind_strength;
 
-// Sky Parameters
-uniform float power = 0.5;
-uniform float scale = 0.055;      
-uniform float speed = 0.015;      
-uniform float density : hint_range(0.0, 1.0) = 0.38;
-
-// Day & Night Gradients
-uniform vec3 sky_color_top : source_color = vec3(0.12, 0.42, 0.85);    // Zenith Day Blue
-uniform vec3 sky_color_bottom : source_color = vec3(0.42, 0.65, 0.88); // Horizon Day Blue
-
-uniform vec3 sky_night_top : source_color = vec3(0.005, 0.005, 0.015);  // Zenith Night Navy
-uniform vec3 sky_night_bottom : source_color = vec3(0.015, 0.02, 0.04); // Horizon Night Navy
-
-uniform vec3 ground_color_top : source_color = vec3(0.2, 0.169, 0.133);
-uniform vec3 ground_color_bottom : source_color = vec3(0.1, 0.08, 0.06);
-
-// 3D hash for twinkling star positions
-float hash3d(vec3 p) {
-	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
+// Hash and 3D Noise functions for 100% seamless clouds
+float hash3D(vec3 p) {
+	p = fract(p * vec3(443.897, 441.423, 437.195));
+	p += dot(p, p.yxz + 19.19);
+	return fract((p.x + p.y) * p.z);
 }
 
-vec3 calculate_sky_base(vec3 eye) {
-	vec3 grad_day = mix(sky_color_bottom, sky_color_top, clamp(eye.y, 0.0, 1.0));
-	vec3 grad_night = mix(sky_night_bottom, sky_night_top, clamp(eye.y, 0.0, 1.0));
-	return mix(grad_night, grad_day, day_weight);
+float noise3D(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	
+	float n000 = hash3D(i + vec3(0.0, 0.0, 0.0));
+	float n100 = hash3D(i + vec3(1.0, 0.0, 0.0));
+	float n010 = hash3D(i + vec3(0.0, 1.0, 0.0));
+	float n110 = hash3D(i + vec3(1.0, 1.0, 0.0));
+	float n001 = hash3D(i + vec3(0.0, 0.0, 1.0));
+	float n101 = hash3D(i + vec3(1.0, 0.0, 1.0));
+	float n011 = hash3D(i + vec3(0.0, 1.0, 1.0));
+	float n111 = hash3D(i + vec3(1.0, 1.0, 1.0));
+	
+	float nx0 = mix(n000, n100, f.x);
+	float nx1 = mix(n001, n101, f.x);
+	float nxx0 = mix(n010, n110, f.x);
+	float nxx1 = mix(n011, n111, f.x);
+	
+	float ny0 = mix(nx0, nxx0, f.y);
+	float ny1 = mix(nx1, nxx1, f.y);
+	
+	return mix(ny0, ny1, f.z);
+}
+
+float fbm3D(vec3 p) {
+	float val = 0.0;
+	float amp = 0.5;
+	for (int i = 0; i < 4; i++) {
+		val += noise3D(p) * amp;
+		p *= 2.02;
+		amp *= 0.5;
+	}
+	return val;
 }
 
 void sky() {
-	// Symmetrical horizon softening
-	float fade = smoothstep(0.01, 0.15, EYEDIR.y);
-	vec3 sky_back = vec3(0.0);
+	vec3 dir = normalize(EYEDIR);
 	
-	if (EYEDIR.y > 0.0) {
-		// 1. DAY/NIGHT SKY GRADIENT
-		sky_back = calculate_sky_base(EYEDIR);
-		
-		// 2. TWINKLING STARS (ONLY AT NIGHT)
-		if (day_weight < 0.95) {
-			vec3 star_grid = EYEDIR * 220.0;
-			float star_noise = hash3d(floor(star_grid));
-			if (star_noise > 0.994) {
-				float twinkle = sin(TIME * 3.5 + star_noise * 120.0) * 0.5 + 0.5;
-				float star_vis = (1.0 - day_weight) * twinkle * smoothstep(0.02, 0.22, EYEDIR.y);
-				sky_back += vec3(star_vis) * (1.0 - storm_weight * 0.85);
-			}
+	// 1. BASE ATMOSPHERIC GRADIENTS
+	vec3 day_sky_top = vec3(0.20, 0.52, 0.92);
+	vec3 day_sky_horizon = vec3(0.68, 0.84, 0.98);
+	vec3 night_sky_top = vec3(0.01, 0.015, 0.035);
+	vec3 night_sky_horizon = vec3(0.02, 0.04, 0.08);
+	vec3 storm_sky = vec3(0.10, 0.12, 0.15);
+	
+	float altitude_factor = clamp(dir.y, 0.0, 1.0);
+	vec3 base_day = mix(day_sky_horizon, day_sky_top, altitude_factor);
+	vec3 base_night = mix(night_sky_horizon, night_sky_top, altitude_factor);
+	vec3 sky_color = mix(base_night, base_day, day_weight);
+	sky_color = mix(sky_color, storm_sky, storm_weight * 0.85);
+	
+	// 2. TWINKLING NIGHT STARS
+	float night_factor = (1.0 - day_weight) * (1.0 - storm_weight);
+	if (night_factor > 0.01) {
+		vec3 star_pos = dir * 180.0;
+		float star_noise = hash3D(floor(star_pos));
+		if (star_noise > 0.982) {
+			float twinkle = sin(TIME * 3.0 + star_noise * 100.0) * 0.5 + 0.5;
+			vec3 star_color = vec3(0.9, 0.95, 1.0) * twinkle * night_factor;
+			sky_color += star_color;
 		}
-		
-		// 3. SUN DISK
-		vec3 norm_sun_dir = normalize(sun_direction);
-		float sun_dot = dot(EYEDIR, norm_sun_dir);
-		if (sun_dot > 0.992) {
-			float sun_disk = smoothstep(0.993, 0.995, sun_dot);
-			vec3 sun_color = vec3(1.0, 0.98, 0.90) * 1.5;
-			sky_back = mix(sky_back, sun_color, sun_disk * day_weight);
-		}
-		
-		// 4. MOON DISK WITH PROCEDURAL SHADED PHASES
-		vec3 norm_moon_dir = normalize(moon_direction);
-		float moon_dot = dot(EYEDIR, norm_moon_dir);
-		
-		if (moon_dot > 0.994 && day_weight < 0.95) {
-			vec3 up_vec = abs(norm_moon_dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
-			vec3 tangent_u = normalize(cross(norm_moon_dir, up_vec));
-			vec3 tangent_v = cross(tangent_u, norm_moon_dir);
-			
-			vec2 moon_uv = vec2(dot(EYEDIR, tangent_u), dot(EYEDIR, tangent_v)) * (1.0 / 0.077);
-			float dist_sq = dot(moon_uv, moon_uv);
-			
-			if (dist_sq <= 1.0) {
-				vec3 moon_normal = vec3(moon_uv, sqrt(max(0.0, 1.0 - dist_sq)));
-				float phase_angle = (moon_phase - 0.5) * 3.14159265 * 2.0;
-				vec3 phase_light_dir = normalize(vec3(sin(phase_angle), 0.0, cos(phase_angle)));
-				
-				float phase_shade = dot(moon_normal, phase_light_dir);
-				float moon_alpha = smoothstep(-0.06, 0.06, phase_shade);
-				
-				float craters = texture(cloud_texture, moon_uv * 0.25).r * 0.22 + 0.78;
-				vec3 moon_color = vec3(0.92, 0.94, 0.98) * craters * (1.0 - day_weight);
-				
-				sky_back = mix(sky_back, moon_color, moon_alpha * smoothstep(1.0, 0.96, dist_sq));
-			}
-		}
-		
-		// 5. VOLUMETRIC PARALLAX CLOUDS (WIND AFFECTED)
-		vec2 sky_uv = EYEDIR.xz / max(EYEDIR.y, 0.01); // Prevent division by zero
-		
-		// Symmetrical Parallax: Calculates wind scroll using the continuous CPU-accumulated offset
-		vec2 wind_offset_final = wind_offset * speed;
-		
-		vec2 coord_a = sky_uv * scale - wind_offset_final;
-		vec2 coord_b = sky_uv * (scale * 2.2) - (wind_offset_final * 1.4) + vec2(TIME * 0.003, TIME * -0.002);
-		
-		float layer_a = texture(cloud_texture, coord_a).r;
-		float layer_b = texture(cloud_texture, coord_b).r;
-		
-		float clouds_noise = (layer_a * 0.65 + layer_b * 0.35);
-		float dens = smoothstep(density, density + 0.15, clouds_noise);
-		
-		if (dens > 0.0) {
-			vec3 active_light_dir = mix(normalize(moon_direction), normalize(sun_direction), day_weight);
-			vec2 light_offset = normalize(active_light_dir.xz) * 0.045;
-			
-			float layer_a_light = texture(cloud_texture, coord_a + light_offset).r;
-			float layer_b_light = texture(cloud_texture, coord_b + light_offset).r;
-			float clouds_noise_light = (layer_a_light * 0.65 + layer_b_light * 0.35);
-			
-			float edge_glow = smoothstep(0.0, 0.15, clouds_noise - clouds_noise_light);
-			
-			vec3 lit_color = mix(vec3(0.65, 0.68, 0.72), vec3(1.0, 0.98, 0.95), day_weight);
-			vec3 shadow_color = mix(vec3(0.04, 0.05, 0.08), vec3(0.45, 0.50, 0.60), day_weight);
-			
-			vec3 cloud_shading = mix(shadow_color, lit_color, smoothstep(-0.05, 0.15, clouds_noise - clouds_noise_light));
-			cloud_shading = mix(cloud_shading, vec3(1.15, 1.10, 1.0), edge_glow * 0.65 * day_weight);
-			cloud_shading = mix(cloud_shading, vec3(0.08, 0.09, 0.11), storm_weight * 0.85);
-			
-			sky_back = mix(sky_back, cloud_shading, dens * fade * (1.0 - storm_weight * 0.35));
-		}
-	} else {
-		sky_back = mix(ground_color_top, ground_color_bottom, -EYEDIR.y);
 	}
 	
-	COLOR = sky_back;
+	// 3. SUN DISC & SOLAR GLOW CORONA
+	vec3 s_dir = normalize(sun_direction);
+	float sun_dot = dot(dir, s_dir);
+	if (sun_dot > 0.0) {
+		float sun_disc = smoothstep(0.9985, 0.9995, sun_dot);
+		float sun_halo = pow(max(0.0, sun_dot), 32.0) * 0.45;
+		vec3 sun_color = vec3(1.0, 0.95, 0.85) * (1.0 - storm_weight * 0.8);
+		sky_color += (sun_disc * 4.0 + sun_halo) * sun_color * day_weight;
+	}
 	
-	vec3 overcast_color = vec3(0.12, 0.13, 0.15);
-	COLOR = mix(COLOR, overcast_color, storm_weight * 0.72);
+	// 4. MOON DISC
+	vec3 m_dir = normalize(moon_direction);
+	float moon_dot = dot(dir, m_dir);
+	if (moon_dot > 0.998) {
+		float moon_disc = smoothstep(0.998, 0.999, moon_dot);
+		vec3 moon_color = vec3(0.85, 0.92, 1.0) * night_factor * 2.5;
+		sky_color += moon_disc * moon_color;
+	}
+	
+	// 5. WIND-DRIVEN 3D VOLUMETRIC CLOUDS (100% Seamless)
+	if (dir.y > 0.02) {
+		vec3 cloud_pos = (dir / (dir.y + 0.15)) * 2.5;
+		
+		// Driven naturally by global wind direction and velocity
+		vec2 active_wind = (length(wind_vector) > 0.01) ? wind_vector : vec2(0.3, 0.1);
+		float active_speed = (wind_strength > 0.0) ? wind_strength : 0.4;
+		
+		cloud_pos.xz += active_wind * (TIME * 0.05 * active_speed);
+		
+		float cloud_density = fbm3D(cloud_pos);
+		float cloud_mask = smoothstep(0.48, 0.72, cloud_density) * smoothstep(0.02, 0.25, dir.y);
+		
+		vec3 cloud_color = mix(vec3(0.12, 0.14, 0.20), vec3(0.98, 0.98, 1.0), day_weight);
+		cloud_color = mix(cloud_color, vec3(0.10, 0.11, 0.14), storm_weight);
+		
+		sky_color = mix(sky_color, cloud_color, cloud_mask * 0.92);
+	}
+	
+	COLOR = sky_color;
 }

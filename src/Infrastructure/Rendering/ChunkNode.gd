@@ -2,20 +2,15 @@
 # Pathfile: res://src/Infrastructure/Rendering/ChunkNode.gd
 # Description: Infrastructure Rendering Node representing a single 3D Chunk.
 #              Manages MultiMesh instances, custom geometry, and LOD transitions.
-#              Delegates material PBR compilation to VoxelMaterialFactory (SRP).
-#              STABILIZATION FIX: Prevents "already has a parent" C++ errors 
-#              by checking for identical collider instances before reassignment.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ChunkNode
 extends Node3D
 
-## Reference to the logical domain chunk data
 var chunk: Chunk
-
 var _collision_body: StaticBody3D
-var _multimeshes: Dictionary = {} # block_id (int) -> Node
+var _multimeshes: Dictionary = {}
 
 static var _shared_box_mesh: BoxMesh
 
@@ -29,11 +24,12 @@ func _init(p_chunk: Chunk) -> void:
 static func _get_shared_box_mesh() -> BoxMesh:
 	if _shared_box_mesh == null:
 		_shared_box_mesh = BoxMesh.new()
-		_shared_box_mesh.size = Vector3(1.002, 1.002, 1.002) 
+		# SEAM FIX: Exact 1.0 unit dimensions prevent Z-fighting artifacts on chunk borders
+		_shared_box_mesh.size = Vector3.ONE
 	return _shared_box_mesh
 
 
-## Updates Level-of-Detail materials across all sub-meshes polymorphically
+## Updates Level-of-Detail materials across all sub-meshes polymorphically.
 func update_lod_materials(is_distant: bool) -> void:
 	for b_id: int in _multimeshes.keys():
 		var node := _multimeshes[b_id] as Node
@@ -43,11 +39,10 @@ func update_lod_materials(is_distant: bool) -> void:
 				(node as GeometryInstance3D).material_override = mat
 
 
-## Public API: Configures or recycles multimesh segments and physics bodies
+## Configures or recycles multimesh segments and physics bodies.
 func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticBody3D, p_custom_meshes: Dictionary = {}, p_is_distant: bool = false) -> void:
 	var active_ids: Dictionary = {}
 	
-	# 1. Update/Recycle MultiMeshes
 	for b_id: int in p_multimesh_data.keys():
 		var bulk_array: PackedFloat32Array = p_multimesh_data[b_id]
 		var count := int(bulk_array.size() / 12.0)
@@ -55,14 +50,17 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 		active_ids[b_id] = true
 		_ensure_multimesh_instance(b_id, count, bulk_array, p_is_distant)
 
-	# 2. Update Custom Meshes (Liquids/Slabs)
 	for b_id: int in p_custom_meshes.keys():
 		var mesh := p_custom_meshes[b_id] as ArrayMesh
 		if mesh == null: continue
 		active_ids[b_id] = true
 		_ensure_mesh_instance(b_id, mesh, p_is_distant)
 
-	# 3. Clean-up inactive segments
+	_cleanup_inactive_segments(active_ids)
+	_update_collision(p_collision_body)
+
+
+func _cleanup_inactive_segments(active_ids: Dictionary) -> void:
 	var registered_keys := _multimeshes.keys()
 	for b_id: int in registered_keys:
 		if not active_ids.has(b_id):
@@ -70,8 +68,6 @@ func setup_chunk_visuals(p_multimesh_data: Dictionary, p_collision_body: StaticB
 			if is_instance_valid(node):
 				node.queue_free() 
 			_multimeshes.erase(b_id)
-
-	_update_collision(p_collision_body)
 
 
 func has_collision_body() -> bool:
@@ -83,14 +79,7 @@ func set_collision_body(body: StaticBody3D) -> void:
 
 
 func _ensure_multimesh_instance(b_id: int, count: int, buffer: PackedFloat32Array, is_distant: bool) -> void:
-	var mm_inst: MultiMeshInstance3D
-	
-	if _multimeshes.has(b_id) and is_instance_valid(_multimeshes[b_id]) and _multimeshes[b_id] is MultiMeshInstance3D:
-		mm_inst = _multimeshes[b_id] as MultiMeshInstance3D
-	else:
-		mm_inst = MultiMeshInstance3D.new()
-		add_child(mm_inst)
-		_multimeshes[b_id] = mm_inst
+	var mm_inst: MultiMeshInstance3D = _get_or_create_multimesh_instance(b_id)
 		
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -105,16 +94,18 @@ func _ensure_multimesh_instance(b_id: int, count: int, buffer: PackedFloat32Arra
 	mm_inst.visible = true
 
 
-func _ensure_mesh_instance(b_id: int, mesh: ArrayMesh, is_distant: bool) -> void:
-	var mi: MeshInstance3D
-	
-	if _multimeshes.has(b_id) and is_instance_valid(_multimeshes[b_id]) and _multimeshes[b_id] is MeshInstance3D:
-		mi = _multimeshes[b_id] as MeshInstance3D
-	else:
-		mi = MeshInstance3D.new()
-		add_child(mi)
-		_multimeshes[b_id] = mi
+func _get_or_create_multimesh_instance(b_id: int) -> MultiMeshInstance3D:
+	if _multimeshes.has(b_id) and is_instance_valid(_multimeshes[b_id]) and _multimeshes[b_id] is MultiMeshInstance3D:
+		return _multimeshes[b_id] as MultiMeshInstance3D
 		
+	var mm_inst := MultiMeshInstance3D.new()
+	add_child(mm_inst)
+	_multimeshes[b_id] = mm_inst
+	return mm_inst
+
+
+func _ensure_mesh_instance(b_id: int, mesh: ArrayMesh, is_distant: bool) -> void:
+	var mi: MeshInstance3D = _get_or_create_mesh_instance(b_id)
 	mi.mesh = mesh
 	var mat := VoxelMaterialFactory.get_material(b_id, is_distant)
 	if mat != null:
@@ -122,9 +113,17 @@ func _ensure_mesh_instance(b_id: int, mesh: ArrayMesh, is_distant: bool) -> void
 	mi.visible = true
 
 
+func _get_or_create_mesh_instance(b_id: int) -> MeshInstance3D:
+	if _multimeshes.has(b_id) and is_instance_valid(_multimeshes[b_id]) and _multimeshes[b_id] is MeshInstance3D:
+		return _multimeshes[b_id] as MeshInstance3D
+		
+	var mi := MeshInstance3D.new()
+	add_child(mi)
+	_multimeshes[b_id] = mi
+	return mi
+
+
 func _update_collision(new_body: StaticBody3D) -> void:
-	# SCENE TREE FIX: If the new body is identically the same instance as the current one,
-	# skip the operation entirely to avoid "already has a parent" C++ errors.
 	if _collision_body == new_body:
 		return
 		
@@ -132,8 +131,5 @@ func _update_collision(new_body: StaticBody3D) -> void:
 		_collision_body.queue_free()
 		
 	_collision_body = new_body
-	
-	if is_instance_valid(_collision_body):
-		# Additional safety guardrail just in case
-		if _collision_body.get_parent() == null:
-			add_child(_collision_body)
+	if is_instance_valid(_collision_body) and _collision_body.get_parent() == null:
+		add_child(_collision_body)

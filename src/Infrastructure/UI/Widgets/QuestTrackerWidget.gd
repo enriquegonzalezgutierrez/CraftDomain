@@ -1,15 +1,13 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
-# Description: Infrastructure UI Widget responsible ONLY for updating the 
-#              active quest objectives, distance, and inventory progress texts.
-#              Layout and styling are strictly delegated to its .tscn scene.
+# Description: Infrastructure UI Widget managing active quest objective displays,
+#              distance calculations, progress bars, and reactive notifications.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name QuestTrackerWidget
 extends Control
 
-# Dependency injected by the HUD orchestrator
 var player: CharacterBody3D
 
 @onready var _header_label: Label = $MarginContainer/VBoxContainer/HeaderLabel
@@ -22,11 +20,22 @@ var _is_first_frame: bool = true
 
 
 func _ready() -> void:
-	# Start hidden until a quest is actively loaded
-	visible = false 
+	visible = false
+	_connect_domain_quest_signals()
 
 
-## Real-time metric updater: Decoupled quest evaluation loop
+func _connect_domain_quest_signals() -> void:
+	QuestService._ensure_initialized()
+	if is_instance_valid(QuestService.instance):
+		QuestService.instance.active_quest_changed.connect(_on_active_quest_changed)
+
+
+func _on_active_quest_changed(_new_quest: Quest) -> void:
+	AudioService.play_sfx_static("loot_pickup")
+	update_widget()
+
+
+## Real-time metric updater called from HUD loop.
 func update_widget() -> void:
 	if not is_instance_valid(player):
 		return
@@ -36,56 +45,49 @@ func update_widget() -> void:
 	
 	if active_quest != null:
 		visible = true
-		_title_label.text = tr(active_quest.title) # Localize dynamic JSON title
-		_header_label.text = tr("HUD_ACTIVE_MISSION") # Localize heading
-		
-		var p_pos := player.global_position
-		var dist_q := int(p_pos.distance_to(active_quest.target_position))
-		
-		# --- CASE A: SPECIAL HEIGHT COMPLETION ---
-		if active_quest.quest_id == "cloud_ascent":
-			var current_y := int(round(p_pos.y))
-			_objective_label.text = "%s\n%s: Y=%d / 18" % [
-				tr(active_quest.objective_text), 
-				tr("QUEST_CURRENT_HEIGHT"), 
-				current_y
-			]
-			if current_y >= 18:
-				QuestService.complete_active_quest(player)
-				
-		# --- CASE B: INVENTORY GATHERING COMPLETION (UNIFIED WITH DISTANCE) ---
-		elif active_quest.required_item_index >= 0 and active_quest.required_quantity > 0:
-			# Render both: current stock progress AND current distance to natural resources hotspot
-			_objective_label.text = "%s\n%s: %d / %d\n%s: %dm" % [
-				tr(active_quest.objective_text), 
-				tr("QUEST_PROGRESS"),
-				active_quest.progress_counter, 
-				active_quest.required_quantity,
-				tr("QUEST_DISTANCE_PREFIX"),
-				dist_q
-			]
-			
-			if active_quest.progress_counter >= active_quest.required_quantity:
-				QuestService.complete_active_quest(player)
-				
-		# --- CASE C: GEOGRAPHIC ARRIVAL COMPLETION ---
-		else:
-			if dist_q <= active_quest.target_range:
-				if active_quest.autocomplete_on_arrival:
-					QuestService.complete_active_quest(player)
-				else:
-					_objective_label.text = "%s\n[ %s ]" % [
-						tr(active_quest.objective_text), 
-						tr("QUEST_REACHED_INTERACT")
-					]
-			else:
-				_objective_label.text = "%s\n%s: %dm" % [
-					tr(active_quest.objective_text), 
-					tr("QUEST_DISTANCE_PREFIX"), 
-					dist_q
-				]
+		_title_label.text = tr(active_quest.title)
+		_header_label.text = tr("HUD_ACTIVE_MISSION")
+		_evaluate_active_quest_objective(active_quest)
 	else:
 		visible = false
+
+
+func _evaluate_active_quest_objective(active_quest: Quest) -> void:
+	var p_pos := player.global_position
+	var dist_q := int(p_pos.distance_to(active_quest.target_position))
+	
+	if active_quest.quest_id == "cloud_ascent":
+		_process_height_objective(active_quest, int(round(p_pos.y)))
+	elif active_quest.required_item_index >= 0 and active_quest.required_quantity > 0:
+		_process_gathering_objective(active_quest, dist_q)
+	else:
+		_process_arrival_objective(active_quest, dist_q)
+
+
+func _process_height_objective(active_quest: Quest, current_y: int) -> void:
+	_objective_label.text = "%s\n%s: Y=%d / 18" % [tr(active_quest.objective_text), tr("QUEST_CURRENT_HEIGHT"), current_y]
+	if current_y >= 18:
+		QuestService.complete_active_quest(player)
+
+
+func _process_gathering_objective(active_quest: Quest, dist_q: int) -> void:
+	_objective_label.text = "%s\n%s: %d / %d\n%s: %dm" % [
+		tr(active_quest.objective_text), tr("QUEST_PROGRESS"),
+		active_quest.progress_counter, active_quest.required_quantity,
+		tr("QUEST_DISTANCE_PREFIX"), dist_q
+	]
+	if active_quest.progress_counter >= active_quest.required_quantity:
+		QuestService.complete_active_quest(player)
+
+
+func _process_arrival_objective(active_quest: Quest, dist_q: int) -> void:
+	if dist_q <= active_quest.target_range:
+		if active_quest.autocomplete_on_arrival:
+			QuestService.complete_active_quest(player)
+		else:
+			_objective_label.text = "%s\n[ %s ]" % [tr(active_quest.objective_text), tr("QUEST_REACHED_INTERACT")]
+	else:
+		_objective_label.text = "%s\n%s: %dm" % [tr(active_quest.objective_text), tr("QUEST_DISTANCE_PREFIX"), dist_q]
 
 
 func _process_quest_notification_dispatch(active_quest: Quest) -> void:
@@ -96,20 +98,17 @@ func _process_quest_notification_dispatch(active_quest: Quest) -> void:
 		_is_first_frame = false
 		return
 		
-	# Case 1: Active quest transitioned from valid to null (Final quest of campaign complete)
 	if active_quest == null and _last_active_quest_id != "":
-		# Explicit static typing on parent HUD reference
-		var parent_hud: PlayerHUD = get_parent() as PlayerHUD
-		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
-			parent_hud.call("show_quest_notification", "CAMPAIGN_COMPLETE_TOAST_HEADER", _last_active_quest_title)
+		_notify_hud("CAMPAIGN_COMPLETE_TOAST_HEADER", _last_active_quest_title)
 		_last_active_quest_id = ""
 		_last_active_quest_title = ""
-		
-	# Case 2: Active quest transitioned to a new campaign link
 	elif active_quest != null and active_quest.quest_id != _last_active_quest_id:
-		# Explicit static typing on parent HUD reference
-		var parent_hud: PlayerHUD = get_parent() as PlayerHUD
-		if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
-			parent_hud.call("show_quest_notification", "QUEST_COMPLETED_TOAST_HEADER", _last_active_quest_title)
+		_notify_hud("QUEST_COMPLETED_TOAST_HEADER", _last_active_quest_title)
 		_last_active_quest_id = active_quest.quest_id
 		_last_active_quest_title = active_quest.title
+
+
+func _notify_hud(header_key: String, title: String) -> void:
+	var parent_hud := get_parent() as PlayerHUD
+	if is_instance_valid(parent_hud) and parent_hud.has_method("show_quest_notification"):
+		parent_hud.call("show_quest_notification", header_key, title)

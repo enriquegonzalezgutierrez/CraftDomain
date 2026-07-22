@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical character controller representing mobile entities.
-#              Coordinates locomotion, buoyancy, damage reactions, and telemetry.
+#              Coordinates locomotion, buoyancy, damage reactions, and quest targets.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -12,7 +12,7 @@ extends CharacterBody3D
 const BASE_SPEED: float = 2.6
 const JUMP_VELOCITY: float = 5.0
 const GROUND_SNAP_VELOCITY: float = -1.2
-const SLEEP_DISTANCE_SQ: float = 1600.0 # 40 meters squared sleep distance
+const SLEEP_DISTANCE_SQ: float = 1600.0
 const THREAT_SEARCH_RADIUS_SQ: float = 64.0
 const REPUTATION_DAMAGE_PENALTY: int = -15
 const REPUTATION_MURDER_PENALTY: int = -35
@@ -397,6 +397,13 @@ func _update_quest_bubble_state() -> void:
 		return
 		
 	if ws.active_quest_target_node == self:
+		# UNBINDING FIX: If active quest changed, release ownership of active_quest_target_node
+		if active_quest.quest_id != quest_target_id:
+			ws.active_quest_target_node = null
+			quest_target_id = ""
+			_ui_component.update_ui_state(active_quest, "")
+			return
+			
 		active_quest.target_position = global_position
 		_ui_component.update_ui_state(active_quest, active_quest.quest_id)
 	else:

@@ -1,95 +1,55 @@
 // ==============================================================================
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/liquid_water.gdshader
-// Description: Advanced procedural liquid shader supporting water and lava.
-//              Features dynamic depth blending, physical shore foam/lava glow lines,
-//              Fresnel reflections, and high-frequency procedural normal ripples.
-// SOLID COMPLIANCE: Exclusively handles fluid pixel shading and vertex wave displacement.
+// Description: High-Fidelity Voxel Water Shader featuring animated surface UV waves,
+//              subtle shore foam, and crystal-clear depth transparency.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
 shader_type spatial;
-render_mode blend_mix, depth_draw_always, specular_schlick_ggx, diffuse_burley;
+render_mode cull_back, depth_draw_always, blend_mix;
 
-global uniform vec2 wind_vector;
-global uniform float wind_strength;
+uniform vec4 shallow_water_color : source_color = vec4(0.12, 0.52, 0.82, 0.55);
+uniform vec4 deep_water_color : source_color = vec4(0.04, 0.18, 0.48, 0.85);
+uniform vec4 foam_color : source_color = vec4(0.95, 0.98, 1.0, 0.90);
 
-uniform vec4 shallow_water_color : source_color;
-uniform vec4 deep_water_color : source_color;
+uniform float foam_threshold : hint_range(0.1, 2.0) = 0.35;
+uniform float wave_speed : hint_range(0.1, 5.0) = 0.8;
 
-uniform sampler2D depth_texture : hint_depth_texture;
+uniform sampler2D depth_texture : hint_depth_texture, filter_nearest;
 
-varying float wave_weight;
-varying vec3 world_pos;
-
+varying vec3 v_world_pos;
 
 void vertex() {
-	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	vec2 wind_dir = normalize(wind_vector);
-	float time = TIME * (1.2 + wind_strength * 1.5);
-	
-	// Animated multi-sine wave cluster for organic ocean displacement
-	float wave = sin(world_pos.x * 2.0 + time * wind_dir.x) * cos(world_pos.z * 2.0 + time * wind_dir.y);
-	float displacement = wave * 0.06 * (1.0 + wind_strength);
-	
-	if (NORMAL.y > 0.5) {
-		VERTEX.y += displacement;
-		wave_weight = clamp((wave + 1.0) / 2.0, 0.0, 1.0);
-	} else {
-		wave_weight = 0.5;
-	}
+	v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
-
 void fragment() {
-	// 1. Core Color Blending based on Wave Weight
-	vec4 base_color = mix(deep_water_color, shallow_water_color, wave_weight);
+	// 1. Calculate perspective linear depth difference for shore foam
+	float depth_raw = texture(depth_texture, SCREEN_UV).r;
+	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, depth_raw);
+	vec4 view_pos = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
+	view_pos.xyz /= view_pos.w;
 	
-	// 2. Depth Buffer Blending (Soft Shore Fading)
-	float depth = textureLod(depth_texture, SCREEN_UV, 0.0).r;
-	vec4 upscaled_pos = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, depth, 1.0);
-	upscaled_pos.xyz /= upscaled_pos.w;
-	float depth_diff = -upscaled_pos.z + VERTEX.z;
+	float linear_depth = -view_pos.z;
+	float surface_depth = -VERTEX.z;
+	float water_depth = max(0.0, linear_depth - surface_depth);
 	
-	// Symmetrical Soft Depth Fade: opaque deep water, transparent at shore
-	float depth_fade = clamp(depth_diff / 0.8, 0.0, 1.0);
+	// 2. Animated UV wave ripples (Surface motion without mesh vertex displacement)
+	vec2 uv_wave = v_world_pos.xz * 0.25;
+	float wave1 = sin(TIME * wave_speed + uv_wave.x * 4.0 + uv_wave.y * 2.0) * 0.5 + 0.5;
+	float wave2 = cos(TIME * wave_speed * 1.3 - uv_wave.x * 2.0 + uv_wave.y * 5.0) * 0.5 + 0.5;
+	float combined_wave = (wave1 + wave2) * 0.5;
 	
-	// 3. Dynamic Shore Foam / Magma Glow
-	bool is_lava = deep_water_color.r > 0.8;
-	vec3 foam_color = is_lava ? vec3(1.0, 0.35, 0.0) : vec3(0.95, 0.98, 1.0);
-	float foam_thickness = is_lava ? 0.35 : 0.18;
+	// 3. Smooth depth color transition
+	float depth_factor = clamp(water_depth / 3.0, 0.0, 1.0);
+	vec4 water_color = mix(shallow_water_color, deep_water_color, depth_factor);
 	
-	float foam_weight = clamp(1.0 - (depth_diff / foam_thickness), 0.0, 1.0);
-	// Add animated ripple wave noise to the foam edge
-	foam_weight *= smoothstep(0.3, 0.7, sin(TIME * 4.0 + (world_pos.x + world_pos.z) * 8.0) * 0.5 + 0.5);
+	// 4. Subtle shore foam calculation
+	float foam_factor = clamp((foam_threshold - water_depth) / foam_threshold, 0.0, 1.0);
+	float final_foam = step(0.40, foam_factor * combined_wave);
 	
-	// 4. Procedural Normal Ripples (Sum of 3 scrolling waves)
-	float time_sec = TIME * 1.5;
-	vec2 scroll_uv = world_pos.xz * 6.0;
-	
-	float r1 = sin(scroll_uv.x + time_sec) * 0.08;
-	float r2 = cos(scroll_uv.y - time_sec * 1.2) * 0.08;
-	float r3 = sin((scroll_uv.x + scroll_uv.y) * 1.5 + time_sec * 0.8) * 0.05;
-	
-	vec3 ripple_normal = normalize(vec3(r1, 1.0 - (r1*r1 + r2*r2), r2));
-	NORMAL = mix(NORMAL, ripple_normal, 0.35);
-	
-	// 5. Fresnel Reflection
-	float fresnel = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 5.0);
-	
-	// Final Color Construction
-	vec3 final_albedo = mix(base_color.rgb, foam_color, foam_weight);
-	
-	// If water, blend with Fresnel sky reflections. If lava, add super-heated glow
-	if (is_lava) {
-		ALBEDO = final_albedo;
-		EMISSION = final_albedo * 1.6; // Emissive magma glow
-		ALPHA = 1.0;
-		ROUGHNESS = 0.9;
-		METALLIC = 0.0;
-	} else {
-		ALBEDO = mix(final_albedo, vec3(0.9, 0.95, 1.0), fresnel * 0.45);
-		ALPHA = base_color.a * depth_fade;
-		ROUGHNESS = 0.04;
-		METALLIC = 0.12;
-	}
+	ALBEDO = mix(water_color.rgb, foam_color.rgb, final_foam * foam_color.a);
+	ALPHA = mix(water_color.a, 1.0, final_foam * 0.8);
+	ROUGHNESS = 0.02;
+	METALLIC = 0.15;
 }

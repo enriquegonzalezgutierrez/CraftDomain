@@ -34,45 +34,45 @@ static func _register_default_strategies() -> void:
 
 
 static func _register_block_strategies() -> void:
-	var script_res := load(PLACEABLE_BLOCK_PATH) as GDScript
-	if script_res == null:
+	var placeable_res := load(PLACEABLE_BLOCK_PATH) as GDScript
+	if placeable_res == null:
 		return
 		
-	register_strategy(1, script_res.new(1, BlockType.Type.STONE))
-	register_strategy(2, script_res.new(2, BlockType.Type.DIRT))
-	register_strategy(3, script_res.new(3, BlockType.Type.GRASS))
-	register_strategy(4, script_res.new(4, BlockType.Type.WOOD))
-	register_strategy(5, script_res.new(5, BlockType.Type.LEAVES))
-	register_strategy(15, script_res.new(15, BlockType.Type.LAVA))
-	register_strategy(28, script_res.new(28, BlockType.Type.DIAMOND_ORE))
-	register_strategy(29, script_res.new(29, BlockType.Type.OAK_PLANKS))
-	register_strategy(30, script_res.new(30, BlockType.Type.GLOWSTONE))
+	register_strategy(1, placeable_res.new(1, BlockType.Type.STONE))
+	register_strategy(2, placeable_res.new(2, BlockType.Type.DIRT))
+	register_strategy(3, placeable_res.new(3, BlockType.Type.GRASS))
+	register_strategy(4, placeable_res.new(4, BlockType.Type.WOOD))
+	register_strategy(5, placeable_res.new(5, BlockType.Type.LEAVES))
+	register_strategy(15, placeable_res.new(15, BlockType.Type.LAVA))
+	register_strategy(28, placeable_res.new(28, BlockType.Type.DIAMOND_ORE))
+	register_strategy(29, placeable_res.new(29, BlockType.Type.OAK_PLANKS))
+	register_strategy(30, placeable_res.new(30, BlockType.Type.GLOWSTONE))
 
 
 static func _register_consumable_and_crop_strategies() -> void:
-	var consumable_script := load(CONSUMABLE_ITEM_PATH) as GDScript
-	var plantable_script := load(PLANTABLE_ITEM_PATH) as GDScript
-	var slab_script := load(SLAB_PLACEMENT_PATH) as GDScript
+	var consumable_res := load(CONSUMABLE_ITEM_PATH) as GDScript
+	var plantable_res := load(PLANTABLE_ITEM_PATH) as GDScript
+	var slab_res := load(SLAB_PLACEMENT_PATH) as GDScript
 	
-	if consumable_script != null:
-		register_strategy(16, consumable_script.new(16, 1))
-	if plantable_script != null:
-		register_strategy(18, plantable_script.new(18, BlockType.Type.CROP_SEED))
-	if slab_script != null:
-		register_strategy(26, slab_script.new(26))
+	if consumable_res != null:
+		register_strategy(16, consumable_res.new(16, 1))
+	if plantable_res != null:
+		register_strategy(18, plantable_res.new(18, BlockType.Type.CROP_SEED))
+	if slab_res != null:
+		register_strategy(26, slab_res.new(26))
 
 
 static func _register_relic_and_tool_strategies() -> void:
-	var scythe_script := load(CHRONO_SCYTHE_PATH) as GDScript
-	var shift_script := load(CHRONO_SHIFT_PATH) as GDScript
-	var linker_script := load(DATA_LINKER_PATH) as GDScript
+	var scythe_res := load(CHRONO_SCYTHE_PATH) as GDScript
+	var shift_res := load(CHRONO_SHIFT_PATH) as GDScript
+	var linker_res := load(DATA_LINKER_PATH) as GDScript
 	
-	if scythe_script != null:
-		register_strategy(85, scythe_script.new())
-	if shift_script != null:
-		register_strategy(86, shift_script.new())
-	if linker_script != null:
-		register_strategy(87, linker_script.new())
+	if scythe_res != null:
+		register_strategy(85, scythe_res.new())
+	if shift_res != null:
+		register_strategy(86, shift_res.new())
+	if linker_res != null:
+		register_strategy(87, linker_res.new())
 
 
 ## Public Registry API: Binds a custom usage strategy to an item ID.
