@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates magma sniffing, lava 
 #   tracking, and playful tail-chasing behaviors into independent actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows new tricks 
-#   and lures (e.g. bone items) to be registered dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,12 +12,11 @@
 class_name CanineAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA COMPORTAMIENTO CANINO ÁGIL
 const SPEED_WALK: float = 2.0
 const SPEED_TROT: float = 3.2
 const COOLDOWN_BARK_SEC: float = 4.0
@@ -70,23 +67,38 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("bark_cooldown", 0.0)
+		_blackboard.set_memory("magma_scan_cooldown", 0.0)
+		_blackboard.set_memory("tail_chase_cooldown", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
 
 func _update_blackboard_cooldowns(delta: float) -> void:
 	var cd := _blackboard.get_float("bark_cooldown") - delta
 	_blackboard.set_memory("bark_cooldown", maxf(0.0, cd))
+	
+	var m_cd := _blackboard.get_float("magma_scan_cooldown") - delta
+	_blackboard.set_memory("magma_scan_cooldown", maxf(0.0, m_cd))
+	
+	var t_cd := _blackboard.get_float("tail_chase_cooldown") - delta
+	_blackboard.set_memory("tail_chase_cooldown", maxf(0.0, t_cd))
 
 
-func _evaluate_active_plan(host: Object) -> void:
+func _evaluate_active_plan(_host: Object) -> void:
 	if _active_plan.is_empty():
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -142,6 +154,9 @@ class ScanMagmaAction extends GOAPAction:
 		super("ScanMagma", 1.0)
 		add_effect("has_magma_target", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("magma_scan_cooldown") <= 0.0
+		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var lava_coord := _scan_for_nearby_lava(host)
@@ -149,7 +164,9 @@ class ScanMagmaAction extends GOAPAction:
 		if lava_coord != Vector3i(0, -999, 0):
 			bb.set_memory("target_lava", lava_coord)
 			return true
-		return false
+			
+		bb.set_memory("magma_scan_cooldown", 10.0)
+		return true
 		
 	func _scan_for_nearby_lava(host: CharacterBody3D) -> Vector3i:
 		var parent := host.get_parent() as Node
@@ -162,7 +179,7 @@ class ScanMagmaAction extends GOAPAction:
 			for y in range(-2, 3):
 				for z in range(-5, 6):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 15: # 15 = BlockType.Type.LAVA
+					if ws.get_block(c) == 15:
 						return c
 		return Vector3i(0, -999, 0)
 
@@ -224,19 +241,28 @@ class TailChaseAction extends GOAPAction:
 		super("TailChase", 1.0)
 		add_effect("is_playing", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("tail_chase_cooldown") <= 0.0
+		
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("action_timer", 3.0)
+		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
 			
-		var timer := bb.get_float("wander_timer") - delta
-		bb.set_memory("wander_timer", timer)
+		var timer := bb.get_float("action_timer") - delta
+		bb.set_memory("action_timer", timer)
 		
 		var elapsed := float(Time.get_ticks_msec()) / 100.0
 		var spin_dir := Vector3(cos(elapsed), 0.0, sin(elapsed)).normalized()
 		VoxelKinematicService.apply_motion_vectors(host, ai, spin_dir, SPEED_WALK)
 		
-		return timer <= 0.0
+		if timer <= 0.0:
+			bb.set_memory("tail_chase_cooldown", 15.0)
+			return true
+		return false
 
 
 class SniffWanderAction extends GOAPAction:
@@ -253,17 +279,9 @@ class SniffWanderAction extends GOAPAction:
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
-			var roll := randf()
-			if roll < 0.4:
-				var angle := randf() * TAU
-				wander_dir = Vector3(cos(angle), 0.0, sin(angle))
-				timer = randf_range(1.5, 4.0)
-			elif roll < 0.65:
-				bb.set_memory("wander_timer", 1.5) # Time-slice tail chase trigger
-				return true # End action to re-evaluate and trigger TailChase Goal!
-			else:
-				wander_dir = Vector3.ZERO
-				timer = randf_range(1.5, 4.0)
+			var angle := randf() * TAU
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
+			timer = randf_range(2.0, 5.0)
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)

@@ -22,7 +22,7 @@ var _model_node: Node3D
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 10)
 	entity_habitat = 0 
-	humanoid_role = 0 # Standard Humanoid
+	humanoid_role = 0 
 	is_conversational_npc = true
 	name = "Entity_QUIQUE"
 
@@ -32,7 +32,10 @@ func _ready() -> void:
 	_bind_scene_components()
 	_sanitize_visual_model()
 	_setup_nameplate_height()
-	
+	_initialize_ai_behavior()
+
+
+func _initialize_ai_behavior() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = QuiqueAIBehavior.new()
 

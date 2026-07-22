@@ -1,9 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/TurtleEntity.gd
 # Description: Physical character controller for the Amphibious Sea Turtle.
-#              Sustains strict shore and water limits polymorphically.
-#              STABILIZATION FIX: Replaced inherited bird '_is_avian' flag with
-#              'false' to restore normal gravity attraction and prevent flying.
+#              Instantiates AmphibiousAIBehavior dynamically on ready.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates physical translations,
+#   coastal boundaries, and visual sanitization, binding to AmphibiousAIBehavior.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -28,6 +30,12 @@ func _ready() -> void:
 		GLBModelSanitizer.sanitize_model(model_node)
 	
 	_setup_nameplate_height()
+	_initialize_ai_behavior()
+
+
+func _initialize_ai_behavior() -> void:
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = AmphibiousAIBehavior.new()
 
 
 func _get_entity_name_key() -> String:
@@ -38,8 +46,6 @@ func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2)
 
 
-## Polymorphic Override (OCP/LSP Compliant): Restricts habitat to coasts/oceans.
-## Includes AIR as a habitable transition block to allow gravity drops.
 func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
 	return (
 		block_type == BlockType.Type.WATER or 
@@ -50,13 +56,8 @@ func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
 
 
 func _drop_loot(inv: IInventory) -> void:
-	inv.add_item(7, 1) # Sand block
+	inv.add_item(7, 1)
 
 
-# ==============================================================================
-# PHYSICAL GRAVITY FIX (LSP Compliant)
-# ==============================================================================
-
-## Symmetrical Fix: Turtles cannot fly! Returns false to enforce gravity.
 func _is_avian() -> bool:
 	return false

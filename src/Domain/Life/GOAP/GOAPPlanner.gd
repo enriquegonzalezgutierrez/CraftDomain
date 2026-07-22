@@ -5,9 +5,8 @@
 #              complex state-space graph reconstructions.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively executes the planning 
-#   algorithm. Does not store state.
-# - Robustness Fix: Correctly handles cases where the initial state already 
-#   satisfies the goal, allowing behaviors to rotate through motivations.
+#   algorithm without storing dynamic agent state.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -30,8 +29,6 @@ class PlanNode:
 
 ## Calculates the optimal sequence of actions to satisfy the given Goal.
 static func plan(goal: GOAPGoal, available_actions: Array[GOAPAction], initial_state: Dictionary) -> Array[GOAPAction]:
-	# VALIDACIÓN PREVIA: Si la meta ya está satisfecha por el estado inicial,
-	# devolvemos una lista vacía pero indicamos éxito (en el flujo del behavior).
 	if _are_conditions_met(goal.desired_state, initial_state):
 		return []
 		
@@ -50,17 +47,14 @@ static func _build_graph(parent: PlanNode, leaves: Array[PlanNode], usable_actio
 	var found_path := false
 	
 	for action: GOAPAction in usable_actions:
-		# Verificamos si podemos ejecutar esta acción desde el estado del nodo actual
 		if _are_conditions_met(action.preconditions, parent.state):
 			var next_state := _apply_effects(parent.state, action.effects)
 			var node := PlanNode.new(parent, parent.running_cost + action.cost, next_state, action)
 			
-			# ¿Esta acción nos lleva a la meta?
 			if _are_conditions_met(goal_state, next_state):
 				leaves.append(node)
 				found_path = true
 			else:
-				# Si no, seguimos buscando en profundidad (excluyendo la acción actual para evitar bucles)
 				var remaining := usable_actions.duplicate()
 				remaining.erase(action)
 				
@@ -70,16 +64,12 @@ static func _build_graph(parent: PlanNode, leaves: Array[PlanNode], usable_actio
 	return found_path
 
 
-## Validates if all required conditions exist within the current simulated state.
 static func _are_conditions_met(conditions: Dictionary, state: Dictionary) -> bool:
 	if conditions.is_empty():
 		return true
 		
 	for key: String in conditions.keys():
-		if not state.has(key):
-			# Si la meta pide algo que no está en el estado, asumimos que no se cumple.
-			return false
-		if state[key] != conditions[key]:
+		if not state.has(key) or state[key] != conditions[key]:
 			return false
 	return true
 

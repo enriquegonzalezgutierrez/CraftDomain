@@ -5,21 +5,20 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates royal strolling, elegant 
 #   resting, and absolute panic into decoupled, cohesive GOAP actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name QuiqueAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
 
-# VELOCIDADES: Quique camina despacio pero corre extremadamente rápido al asustarse
 const SPEED_STROLL: float = 1.8
 const SPEED_PANIC: float = 6.5
-const SENSORY_RANGE_SQ: float = 144.0 # 12 metros de rango visual (muy asustadizo)
+const SENSORY_RANGE_SQ: float = 144.0
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -97,10 +96,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal: GOAPGoal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -119,7 +125,7 @@ func _detect_threat_proximity(host: CharacterBody3D) -> bool:
 		
 	var closest := _scan_for_hostiles(host)
 	if is_instance_valid(closest):
-		_blackboard.set_memory("panic_timer", 5.0) # Entra en pánico por 5 segundos
+		_blackboard.set_memory("panic_timer", 5.0)
 		var escape_dir := (host.global_position - closest.global_position).normalized()
 		escape_dir.y = 0.0
 		_blackboard.set_memory("wander_direction", escape_dir)
@@ -197,12 +203,10 @@ class QuiquePanicAction extends GOAPAction:
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
 		
-		# Quique corre erráticamente
 		if timer <= 0.0:
 			timer = randf_range(0.4, 1.2) 
 			var angle := randf() * TAU
-			var candidate := Vector3(cos(angle), 0.0, sin(angle))
-			wander_dir = candidate
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
@@ -260,7 +264,7 @@ class QuiqueStrollAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(2.0, 6.0)
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) 
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
@@ -279,6 +283,7 @@ class QuiqueStrollAction extends GOAPAction:
 				var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
 				if flat_normal != Vector3.ZERO:
 					var bounce := wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
+					bounce.y = 0.0
 					bb.set_memory("wander_direction", bounce)
 		else:
 			stuck = 0.0

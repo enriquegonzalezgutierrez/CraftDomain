@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates dry shore crawling, 
 #   hydrodynamic swimming, and rapid panic flusters into independent actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   coastal triggers (e.g. egg laying, mud digging) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,11 +12,10 @@
 class_name AmphibiousAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA TRANSICIONES COSTERAS ÁGILES
 const SPEED_CRAWL: float = 0.8
 const SPEED_SWIM: float = 2.2
 const SPEED_PANIC_MULTIPLIER: float = 2.5
@@ -76,15 +73,22 @@ func _update_blackboard_timers(delta: float) -> void:
 	_blackboard.set_memory("panic_timer", maxf(0.0, panic))
 
 
-func _evaluate_active_plan(host: Object) -> void:
+func _evaluate_active_plan(_host: Object) -> void:
 	if _active_plan.is_empty():
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -161,7 +165,7 @@ class AmphibiousPanicAction extends GOAPAction:
 			
 		var timer := bb.get_float("panic_timer")
 		if timer <= 0.0:
-			bb.set_memory("panic_timer", 3.0) # Force escape sprint for 3.0s
+			bb.set_memory("panic_timer", 3.0)
 			
 		var wander_dir := bb.get_vector3("wander_direction")
 		if wander_dir == Vector3.ZERO:
@@ -205,15 +209,21 @@ class CrawlShoreAction extends GOAPAction:
 		
 		if timer <= 0.0 or wander_dir == Vector3.ZERO:
 			timer = randf_range(2.0, 5.0)
-			var angle := randf() * TAU
-			var parent := host.get_parent() as Node
-			var candidate := Vector3(cos(angle), 0.0, sin(angle))
-			wander_dir = candidate if _is_safe(host, candidate, parent) else Vector3.ZERO
+			wander_dir = _find_shore_direction(host)
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
 		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_CRAWL)
 		return false
+		
+	func _find_shore_direction(host: CharacterBody3D) -> Vector3:
+		var parent := host.get_parent() as Node
+		for i: int in range(6):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			if _is_safe(host, candidate, parent):
+				return candidate
+		return Vector3(cos(randf() * TAU), 0.0, sin(randf() * TAU))
 		
 	func _detect_water_state(host: CharacterBody3D) -> bool:
 		return AmphibiousPanicAction.new()._detect_water_state(host)
@@ -224,7 +234,7 @@ class CrawlShoreAction extends GOAPAction:
 		if ws == null: return true
 		var p := host.global_position + dir * 1.5
 		var below := ws.get_block(Vector3i(floori(p.x), floori(p.y - 0.5), floori(p.z)))
-		return below == 6 or below == 7 or below == 11 # Water, Sand, Mud
+		return below == 6 or below == 7 or below == 11
 
 
 class SwimWaterAction extends GOAPAction:
@@ -246,10 +256,7 @@ class SwimWaterAction extends GOAPAction:
 		
 		if timer <= 0.0 or wander_dir == Vector3.ZERO:
 			timer = randf_range(2.0, 5.0)
-			var angle := randf() * TAU
-			var parent := host.get_parent() as Node
-			var candidate := Vector3(cos(angle), 0.0, sin(angle))
-			wander_dir = candidate if _is_safe(host, candidate, parent) else Vector3.ZERO
+			wander_dir = CrawlShoreAction.new()._find_shore_direction(host)
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
@@ -258,9 +265,6 @@ class SwimWaterAction extends GOAPAction:
 		
 	func _detect_water_state(host: CharacterBody3D) -> bool:
 		return AmphibiousPanicAction.new()._detect_water_state(host)
-		
-	func _is_safe(host: CharacterBody3D, dir: Vector3, parent: Node) -> bool:
-		return CrawlShoreAction.new()._is_safe(host, dir, parent)
 		
 	func _apply_swim_physics(host: CharacterBody3D, ai: Object, wander_dir: Vector3, delta: float) -> void:
 		var vel := host.velocity

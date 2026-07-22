@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Isolates sleep dormancy, heavy march, 
 #   rage charge, and volcanic stomp ground-pounds into distinct action classes.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows custom magma
-#   environmental triggers to be registered without modifying core navigation.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,11 +12,10 @@
 class_name ObsidianColossusAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA UN JEFE COLOSAL AMENAZANTE
 const SPEED_WALK: float = 2.2
 const SPEED_CHARGE: float = 6.4
 
@@ -35,7 +32,7 @@ var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
-	overrides_wandering = true # Colossal bosses remain anchored to their arenas
+	overrides_wandering = true
 	_setup_goap_profile()
 
 
@@ -49,13 +46,15 @@ func _setup_goap_profile() -> void:
 
 
 func _setup_goals() -> void:
-	var sleep_goal := GOAPGoal.new("DormantSleep", 10.0)
-	sleep_goal.add_desired_state("is_sleeping", true)
-	
+	# Priority 2.0: Attack intruders when detected
 	var obliterate_goal := GOAPGoal.new("ObliterateIntruder", 2.0)
 	obliterate_goal.add_desired_state("intruder_obliterated", true)
 	
-	_goals.append_array([sleep_goal, obliterate_goal])
+	# Priority 0.5: Fallback sleep when no intruders are near
+	var sleep_goal := GOAPGoal.new("DormantSleep", 0.5)
+	sleep_goal.add_desired_state("is_sleeping", true)
+	
+	_goals.append_array([obliterate_goal, sleep_goal])
 
 
 func evaluate_and_execute(host: Object, delta: float) -> void:
@@ -74,12 +73,16 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("stomp_cooldown", 0.0)
+		_blackboard.set_memory("scan_cooldown", 0.0)
 		_blackboard.set_memory("is_dormant", true)
 
 
 func _update_blackboard_timers(host: Object, delta: float) -> void:
 	var cd := _blackboard.get_float("stomp_cooldown") - delta
 	_blackboard.set_memory("stomp_cooldown", maxf(0.0, cd))
+	
+	var s_cd := _blackboard.get_float("scan_cooldown") - delta
+	_blackboard.set_memory("scan_cooldown", maxf(0.0, s_cd))
 	
 	var domain: Object = host.get("domain_entity")
 	var hp := domain.get("health") as int if is_instance_valid(domain) else 0
@@ -91,10 +94,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -166,20 +176,23 @@ class ColossusLocateAction extends GOAPAction:
 		super("ColossusLocate", 1.0)
 		add_effect("has_intruder_target", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("scan_cooldown") <= 0.0
+		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var parent := host.get_parent() as Node
 		var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
 		
-		if is_instance_valid(player) and player.get("is_active"):
-			var dist_sq := host.global_position.distance_squared_to(player.global_position)
-			if dist_sq <= RANGE_SIGHT_SQ:
-				bb.set_memory("intruder_player", player)
-				bb.set_memory("is_dormant", false)
-				if host.has_method("_play_colossus_awaken_growl"):
-					host.call("_play_colossus_awaken_growl")
-				return true
-		return false
+		if is_instance_valid(player):
+			bb.set_memory("intruder_player", player)
+			bb.set_memory("is_dormant", false)
+			if host.has_method("_play_colossus_awaken_growl"):
+				host.call("_play_colossus_awaken_growl")
+			return true
+				
+		bb.set_memory("scan_cooldown", 4.0)
+		return true
 
 
 class HeavyMarchAction extends GOAPAction:
@@ -196,6 +209,9 @@ class HeavyMarchAction extends GOAPAction:
 		var player := bb.get_object("intruder_player") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
 		
+		if not is_instance_valid(player):
+			return true
+			
 		var diff := player.global_position - host.global_position
 		diff.y = 0.0
 		var dist_sq := diff.length_squared()
@@ -235,6 +251,9 @@ class RageChargeAction extends GOAPAction:
 		var player := bb.get_object("intruder_player") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
 		
+		if not is_instance_valid(player):
+			return true
+			
 		var diff := player.global_position - host.global_position
 		diff.y = 0.0
 		var dist_sq := diff.length_squared()
@@ -260,6 +279,9 @@ class VolcanicStompAction extends GOAPAction:
 		add_precondition("is_at_player", true)
 		add_effect("intruder_obliterated", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("stomp_cooldown") <= 0.0
+		
 	func on_enter(bb: AIBlackboard) -> void:
 		bb.set_memory("stomp_cooldown", COOLDOWN_STOMP_SEC)
 		
@@ -268,13 +290,13 @@ class VolcanicStompAction extends GOAPAction:
 		var ai: Object = host.get("ai_component")
 		
 		host.velocity.x = 0.0; host.velocity.z = 0.0
-		var target_dir := (player.global_position - host.global_position).normalized()
-		target_dir.y = 0.0
-		
-		if is_instance_valid(ai):
-			ai.set("wander_direction", target_dir)
-			ai.set("current_task", TASK_WORKING)
-			
+		if is_instance_valid(player):
+			var target_dir := (player.global_position - host.global_position).normalized()
+			target_dir.y = 0.0
+			if is_instance_valid(ai):
+				ai.set("wander_direction", target_dir)
+				ai.set("current_task", TASK_WORKING)
+				
 		if host.has_method("_execute_lava_stomp_attack"):
 			host.call("_execute_lava_stomp_attack")
 			

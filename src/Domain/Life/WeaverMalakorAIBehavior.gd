@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Isolates distinct boss stages 
 #   (Static Beams, Gravity Inversions, and Arena Fracture) into decoupled actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows new cinematic 
-#   phase transitions or scripts to be added without modifying the core FSM.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,10 +12,9 @@
 class_name WeaverMalakorAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA UN COMBATE FINAL FLUIDO Y EXIGENTE
 const SPEED_HOVER: float = 3.2
 const SPEED_ORBIT: float = 7.0
 const RANGE_SIGHT_SQ: float = 576.0
@@ -36,7 +33,7 @@ var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
-	overrides_wandering = true # The final weaver remains bound to the Chrono-Loom
+	overrides_wandering = true
 	_setup_goap_profile()
 
 
@@ -50,13 +47,15 @@ func _setup_goap_profile() -> void:
 
 
 func _setup_goals() -> void:
-	var sleep_goal := GOAPGoal.new("DormantSleep", 10.0)
-	sleep_goal.add_desired_state("is_sleeping", true)
-	
+	# Priority 2.0: Attack intruders when detected
 	var destroy_goal := GOAPGoal.new("DestroyIntruder", 2.0)
 	destroy_goal.add_desired_state("intruder_destroyed", true)
 	
-	_goals.append_array([sleep_goal, destroy_goal])
+	# Priority 0.5: Fallback sleep when no intruders are near
+	var sleep_goal := GOAPGoal.new("DormantSleep", 0.5)
+	sleep_goal.add_desired_state("is_sleeping", true)
+	
+	_goals.append_array([destroy_goal, sleep_goal])
 
 
 func evaluate_and_execute(host: Object, delta: float) -> void:
@@ -77,6 +76,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard.set_memory("beam_cooldown", 0.0)
 		_blackboard.set_memory("summon_cooldown", 0.0)
 		_blackboard.set_memory("mutation_cooldown", 0.0)
+		_blackboard.set_memory("scan_cooldown", 0.0)
 
 
 func _update_blackboard_timers(host: Object, delta: float) -> void:
@@ -89,6 +89,9 @@ func _update_blackboard_timers(host: Object, delta: float) -> void:
 	var m_cd := _blackboard.get_float("mutation_cooldown") - delta
 	_blackboard.set_memory("mutation_cooldown", maxf(0.0, m_cd))
 	
+	var sc_cd := _blackboard.get_float("scan_cooldown") - delta
+	_blackboard.set_memory("scan_cooldown", maxf(0.0, sc_cd))
+	
 	var domain: Object = host.get("domain_entity")
 	var hp := domain.get("health") as int if is_instance_valid(domain) else 0
 	_blackboard.set_memory("health", hp)
@@ -99,10 +102,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -116,10 +126,11 @@ func _build_initial_state() -> Dictionary:
 
 func _detect_intruder_proximity() -> bool:
 	var host := _blackboard.get_object("host") as CharacterBody3D
+	if not is_instance_valid(host): return false
 	var parent := host.get_parent() as Node
 	var player_node := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
 	
-	if is_instance_valid(player_node) and player_node.get("is_active"):
+	if is_instance_valid(player_node):
 		var dist_sq := host.global_position.distance_squared_to(player_node.global_position)
 		return dist_sq <= RANGE_SIGHT_SQ
 	return false
@@ -155,10 +166,11 @@ func get_active_state_name(host: Object) -> String:
 	var _h := host
 	if _active_plan.size() > 0:
 		var action_name := _active_plan[0].action_name
-		if action_name == "HoverShootBeam": return "SCANNING_TREES"
-		elif action_name == "InvertGravityOrbit": return "BACKFLIP_PLAY"  
-		elif action_name == "FractureArena": return "LAUNCH_ATTACK"
-	return "IDLE"
+		if action_name == "LocateIntruder": return "LOCATING_TARGET"
+		elif action_name == "HoverShootBeam": return "STATIC_BEAM"
+		elif action_name == "InvertGravityOrbit": return "GRAVITY_INVERSION"  
+		elif action_name == "FractureArena": return "ARENA_FRACTURE"
+	return "DORMANT"
 
 
 # ==============================================================================
@@ -188,17 +200,22 @@ class LocateIntruderAction extends GOAPAction:
 		super("LocateIntruder", 1.0)
 		add_effect("has_intruder_target", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("scan_cooldown") <= 0.0
+		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var parent := host.get_parent() as Node
 		var player_node := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
 		
-		if is_instance_valid(player_node) and player_node.get("is_active"):
+		if is_instance_valid(player_node):
 			bb.set_memory("intruder_player", player_node)
 			if host.has_method("_play_malakor_awaken_voice"):
 				host.call("_play_malakor_awaken_voice")
 			return true
-		return false
+				
+		bb.set_memory("scan_cooldown", 4.0)
+		return true
 
 
 class HoverShootBeamAction extends GOAPAction:
@@ -215,12 +232,17 @@ class HoverShootBeamAction extends GOAPAction:
 		var player_node := bb.get_object("intruder_player") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
 		
+		if not is_instance_valid(player_node):
+			return true
+			
 		var diff := player_node.global_position - host.global_position
 		diff.y = 0.0
 		
 		_apply_hover_movement(host, ai, diff.normalized())
 		_process_laser_fire(bb, player_node, delta)
-		return player_node.domain_entity.is_dead
+		
+		var domain := player_node.get("domain_entity") as VoxelEntity
+		return is_instance_valid(domain) and domain.is_dead
 		
 	func _apply_hover_movement(host: CharacterBody3D, ai: Object, chase_dir: Vector3) -> void:
 		var velocity := host.velocity
@@ -261,9 +283,14 @@ class InvertGravityOrbitAction extends GOAPAction:
 		var host := bb.get_object("host") as CharacterBody3D
 		var player_node := bb.get_object("intruder_player") as CharacterBody3D
 		
+		if not is_instance_valid(player_node):
+			return true
+			
 		_apply_orbit_flight_mechanic(host, delta)
 		_process_gargoyle_summons(bb, player_node, delta)
-		return player_node.domain_entity.is_dead
+		
+		var domain := player_node.get("domain_entity") as VoxelEntity
+		return is_instance_valid(domain) and domain.is_dead
 		
 	func _apply_orbit_flight_mechanic(host: CharacterBody3D, _delta: float) -> void:
 		var time := Time.get_ticks_msec() / 1000.0
@@ -304,9 +331,14 @@ class FractureArenaAction extends GOAPAction:
 		var host := bb.get_object("host") as CharacterBody3D
 		var player_node := bb.get_object("intruder_player") as CharacterBody3D
 		
+		if not is_instance_valid(player_node):
+			return true
+			
 		_apply_unstable_shaking(host, delta)
 		_process_floor_mutations(bb, delta)
-		return player_node.domain_entity.is_dead
+		
+		var domain := player_node.get("domain_entity") as VoxelEntity
+		return is_instance_valid(domain) and domain.is_dead
 		
 	func _apply_unstable_shaking(host: CharacterBody3D, _delta: float) -> void:
 		var time := Time.get_ticks_msec() / 1000.0

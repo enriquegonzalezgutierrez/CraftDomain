@@ -5,21 +5,18 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates marketing shoutouts, 
 #   nightly accounting, guard seeking, and casual market wandering into decoupled actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Working routines 
-#   are now cyclical (Cooldown-driven) to allow the merchant to walk around 
-#   the village organically instead of being permanently frozen at the stall.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MerchantAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA TRANSICIONES COMERCIALES DINÁMICAS
 const SPEED_PATROL: float = 2.0
 const SPEED_RETREAT: float = 3.2
 const SPEED_PANIC: float = 4.8
@@ -115,10 +112,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal: GOAPGoal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -146,7 +150,6 @@ func _detect_threat_proximity(host: CharacterBody3D) -> bool:
 
 
 func _get_sorted_goals() -> Array[GOAPGoal]:
-	# Si el puesto está en cooldown o es de noche, anula el goal de comercio para que deambule
 	var is_night := _blackboard.get_bool("is_night")
 	var on_cooldown := _blackboard.get_float("shop_cooldown") > 0.0
 	
@@ -245,7 +248,7 @@ class GoToShelterAction extends GOAPAction:
 			if shortcut_distance_check(host, shelter_pos):
 				return true
 				
-		return false
+		return true
 		
 	func shortcut_distance_check(host: CharacterBody3D, shelter_pos: Vector3) -> bool:
 		if shelter_pos != Vector3.ZERO:
@@ -281,7 +284,7 @@ class CountCoinsAction extends GOAPAction:
 			if host.has_method("_play_counting_coins"):
 				host.call("_play_counting_coins")
 				
-		return not bb.get_bool("is_night") # Termina cuando vuelve el día
+		return not bb.get_bool("is_night")
 
 
 class GoToStallAction extends GOAPAction:
@@ -294,7 +297,7 @@ class GoToStallAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
-		var spawn_point := host.get("_spawn_point") as Vector3
+		var spawn_point: Vector3 = host.get("_spawn_point") as Vector3 if "_spawn_point" in host else host.global_position
 		var diff := spawn_point - host.global_position
 		diff.y = 0.0
 		
@@ -342,8 +345,8 @@ class OpenShopAction extends GOAPAction:
 		return false
 		
 	func _finish_shift(bb: AIBlackboard) -> void:
-		bb.set_memory("shop_cooldown", randf_range(20.0, 45.0)) # Cierra temporalmente la tienda
-		bb.erase_memory("is_at_stall") # Permite que vuelva a requerir el viaje a la tienda después
+		bb.set_memory("shop_cooldown", randf_range(20.0, 45.0))
+		bb.erase_memory("is_at_stall")
 		
 	func _execute_advertise_spin(host: CharacterBody3D, ai: Object) -> void:
 		var angle := float(Time.get_ticks_msec() / 150.0)

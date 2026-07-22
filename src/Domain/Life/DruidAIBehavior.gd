@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates protective retreats, 
 #   animal healing, and natural shrine meditations into cohesive action classes.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   magical spell types dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,12 +12,11 @@
 class_name DruidAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA LABORES MÁGICAS FLUIDAS
 const SPEED_PATROL: float = 2.2
 const SPEED_PANIC: float = 4.8
 
@@ -84,7 +81,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("spell_cooldown", 0.0)
-		_blackboard.set_memory("meditate_cooldown", 5.0) # Initial grace period
+		_blackboard.set_memory("meditate_cooldown", 5.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
 
@@ -109,10 +106,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -229,7 +233,9 @@ class ScanFaunaAction extends GOAPAction:
 		if is_instance_valid(target):
 			bb.set_memory("heal_target", target)
 			return true
-		return false
+			
+		bb.set_memory("spell_cooldown", COOLDOWN_SPELL_SEC)
+		return true
 		
 	func _scan_for_injured_animals(host: CharacterBody3D) -> Node3D:
 		var passives := host.get_tree().get_nodes_in_group("passives")
@@ -328,12 +334,12 @@ class CastHealAction extends GOAPAction:
 	func _complete_healing(bb: AIBlackboard, host: CharacterBody3D, target: Node3D) -> void:
 		var domain := target.get("domain_entity") as VoxelEntity
 		if is_instance_valid(domain):
-			domain.health = 6 # Fully restored
+			domain.health = 6
 			
 		var vis := host.get("visual_representation") as IEntityVisualRepresentation
 		if is_instance_valid(vis): vis.trigger_attack_visuals()
 		
-		host.velocity.y = 4.0 # Hop with joy
+		host.velocity.y = 4.0
 		bb.set_memory("spell_cooldown", COOLDOWN_SPELL_SEC)
 		bb.erase_memory("heal_target")
 		bb.erase_memory("has_heal_target")
@@ -385,7 +391,7 @@ class DruidPatrolAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(2.0, 5.0)
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() > 0.3 else Vector3.ZERO
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)

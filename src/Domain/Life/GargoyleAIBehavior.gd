@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates daytime petrification, 
 #   nocturnal target spotting, aerial pursuit, and close biting into distinct actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   stone hardening variations dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,11 +12,10 @@
 class_name GargoyleAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA ACECHOS AÉREOS AGRESIVOS
 const SPEED_CHASE: float = 6.0
 const SPEED_WANDER: float = 3.0
 
@@ -75,6 +72,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("attack_cooldown", 0.0)
+		_blackboard.set_memory("locate_cooldown", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
 
@@ -84,6 +82,9 @@ func _update_blackboard_timers(delta: float) -> void:
 	
 	var cd := _blackboard.get_float("attack_cooldown") - delta
 	_blackboard.set_memory("attack_cooldown", maxf(0.0, cd))
+	
+	var loc_cd := _blackboard.get_float("locate_cooldown") - delta
+	_blackboard.set_memory("locate_cooldown", maxf(0.0, loc_cd))
 
 
 func _evaluate_active_plan(_host: Object) -> void:
@@ -91,10 +92,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -147,6 +155,8 @@ func get_active_state_name(host: Object) -> String:
 		var action_name := _active_plan[0].action_name
 		if action_name == "SoarChase": return "WANDERING"
 		elif action_name == "BiteAttack": return "WORKING"
+		elif action_name == "Soar": return "SOARING"
+		elif action_name == "DayPetrify": return "PETRIFIED"
 	return "IDLE"
 
 
@@ -162,19 +172,19 @@ class DayPetrifyAction extends GOAPAction:
 	func on_enter(bb: AIBlackboard) -> void:
 		var host := bb.get_object("host") as CharacterBody3D
 		if host.has_method("_set_gargoyle_stone_appearance"):
-			host.call("_set_gargoyle_stone_appearance", true) # Hardens to gray stone
+			host.call("_set_gargoyle_stone_appearance", true)
 			
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai := host.get("ai_component")
 		VoxelKinematicService.halt_movement(host, ai)
 		if is_instance_valid(ai): ai.set("current_task", TASK_IDLE)
-		return bb.get_bool("is_night") # Done when night returns
+		return bb.get_bool("is_night")
 		
 	func on_exit(bb: AIBlackboard) -> void:
 		var host := bb.get_object("host") as CharacterBody3D
 		if host.has_method("_set_gargoyle_stone_appearance"):
-			host.call("_set_gargoyle_stone_appearance", false) # Restores organic flesh
+			host.call("_set_gargoyle_stone_appearance", false)
 
 
 class NightLocateAction extends GOAPAction:
@@ -183,7 +193,7 @@ class NightLocateAction extends GOAPAction:
 		add_effect("has_prey_target", true)
 		
 	func is_contextually_valid(bb: AIBlackboard) -> bool:
-		return bb.get_bool("is_night")
+		return bb.get_bool("is_night") and bb.get_float("locate_cooldown") <= 0.0
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
@@ -191,7 +201,9 @@ class NightLocateAction extends GOAPAction:
 		if is_instance_valid(target):
 			bb.set_memory("prey_target", target)
 			return true
-		return false
+			
+		bb.set_memory("locate_cooldown", 5.0)
+		return true
 		
 	func _scan_for_prey_target(host: CharacterBody3D) -> Node3D:
 		var parent := host.get_parent() as Node
@@ -257,7 +269,7 @@ class BiteAttackAction extends GOAPAction:
 		var diff := target.global_position - host.global_position
 		diff.y = 0.0
 		if diff.length_squared() > RANGE_ATTACK_SQ:
-			return true # Target moved; re-plan to chase
+			return true
 			
 		_execute_bite(bb, host, ai, diff.normalized())
 		return false
@@ -290,11 +302,19 @@ class SoarPatrolAction extends GOAPAction:
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
+			wander_dir = _find_valid_soar_direction(host)
 			timer = randf_range(2.0, 5.0)
-			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() > 0.4 else Vector3.ZERO
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
 		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_WANDER)
 		return false
+		
+	func _find_valid_soar_direction(host: CharacterBody3D) -> Vector3:
+		for i: int in range(6):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
+				return candidate
+		var fallback_angle := randf() * TAU
+		return Vector3(cos(fallback_angle), 0.0, sin(fallback_angle))

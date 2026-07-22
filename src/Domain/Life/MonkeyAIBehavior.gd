@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates canopy climbing, ground 
 #   acrobatics, and vocal chatters into independent, testable actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   acrobatic stunts (e.g., branch swings) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,12 +12,11 @@
 class_name MonkeyAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA ACROBACIAS SELVÁTICAS ÁGILES
 const SPEED_PATROL: float = 4.4
 const SPEED_CLIMB: float = 5.6
 
@@ -78,6 +75,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("flip_cooldown", 0.0)
+		_blackboard.set_memory("tree_scan_cooldown", 0.0)
 		_blackboard.set_memory("chat_timer", randf_range(5.0, 15.0))
 		_blackboard.set_memory("wander_timer", 0.0)
 
@@ -85,6 +83,9 @@ func _initialize_agent(host: Object) -> void:
 func _update_blackboard_timers(delta: float) -> void:
 	var flip := _blackboard.get_float("flip_cooldown") - delta
 	_blackboard.set_memory("flip_cooldown", maxf(0.0, flip))
+	
+	var t_cd := _blackboard.get_float("tree_scan_cooldown") - delta
+	_blackboard.set_memory("tree_scan_cooldown", maxf(0.0, t_cd))
 	
 	var chat := _blackboard.get_float("chat_timer") - delta
 	_blackboard.set_memory("chat_timer", chat)
@@ -95,15 +96,22 @@ func _update_blackboard_timers(delta: float) -> void:
 			host.call("_play_monkey_chatter")
 
 
-func _evaluate_active_plan(host: Object) -> void:
+func _evaluate_active_plan(_host: Object) -> void:
 	if _active_plan.is_empty():
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -161,6 +169,9 @@ class ScanTreesAction extends GOAPAction:
 		super("ScanTrees", 1.0)
 		add_effect("has_tree_target", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("tree_scan_cooldown") <= 0.0
+		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var leaves_coord := _scan_for_nearby_leaves(host.global_position, host)
@@ -168,7 +179,9 @@ class ScanTreesAction extends GOAPAction:
 		if leaves_coord != Vector3i(0, -999, 0):
 			bb.set_memory("target_leaves", leaves_coord)
 			return true
-		return false
+			
+		bb.set_memory("tree_scan_cooldown", 8.0)
+		return true
 		
 	func _scan_for_nearby_leaves(host_pos: Vector3, host: CharacterBody3D) -> Vector3i:
 		var parent := host.get_parent() as Node
@@ -181,7 +194,7 @@ class ScanTreesAction extends GOAPAction:
 			for y in range(-1, 4):
 				for z in range(-4, 5):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 5: # 5 = BlockType.Type.LEAVES
+					if ws.get_block(c) == 5:
 						return c
 		return Vector3i(0, -999, 0)
 
@@ -232,7 +245,7 @@ class ClimbBranchAction extends GOAPAction:
 		if is_instance_valid(ai): ai.set("wander_direction", climb_dir)
 		
 		if host.is_on_floor():
-			host.velocity.y = 5.5 # Vertical climb leap
+			host.velocity.y = 5.5
 			host.velocity.x = climb_dir.x * (SPEED_CLIMB * 0.6)
 			host.velocity.z = climb_dir.z * (SPEED_CLIMB * 0.6)
 			return false
@@ -289,7 +302,7 @@ class MonkeyWanderAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(1.5, 4.0)
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.45 else Vector3.ZERO
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)

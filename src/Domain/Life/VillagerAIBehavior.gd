@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Decouples social, survival, shelter,
 #   active patrolling, and idle resting into strictly distinct goals and actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows new interactions
-#   to be registered without modifying the planner or movement systems.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,12 +12,11 @@
 class_name VillagerAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA FLUIDEZ DE TRASLACIÓN
 const SPEED_PATROL: float = 2.0
 const SPEED_RETREAT: float = 3.2
 const SPEED_PANIC: float = 4.8
@@ -52,7 +49,8 @@ func _setup_goals() -> void:
 	var survive_goal := GOAPGoal.new("Survive", 10.0)
 	survive_goal.add_desired_state("is_safe", true)
 	
-	var sleep_goal := GOAPGoal.new("Sleep", 2.0)
+	# Custom Sleep Goal: Only valid during nighttime
+	var sleep_goal := VillagerSleepGoal.new("Sleep", 2.0)
 	sleep_goal.add_desired_state("is_sheltered", true)
 	
 	var socialize_goal := GOAPGoal.new("Socialize", 1.0)
@@ -115,10 +113,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal: GOAPGoal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -195,8 +200,13 @@ func get_active_state_name(host: Object) -> String:
 
 
 # ==============================================================================
-# INNER CLASSES: GOAP ACTIONS (Decoupled civilian behaviors)
+# INNER CLASSES: GOAP GOALS & ACTIONS
 # ==============================================================================
+
+class VillagerSleepGoal extends GOAPGoal:
+	func is_valid(bb: AIBlackboard) -> bool:
+		return bb.get_bool("is_night")
+
 
 class FleeToGuardAction extends GOAPAction:
 	func _init() -> void:
@@ -248,7 +258,7 @@ class SeekShelterAction extends GOAPAction:
 			if shortcut_distance_check(host, shelter_pos):
 				return true
 				
-		return false
+		return true
 		
 	func shortcut_distance_check(host: CharacterBody3D, shelter_pos: Vector3) -> bool:
 		if shelter_pos != Vector3.ZERO:
@@ -276,7 +286,9 @@ class FindPeerAction extends GOAPAction:
 		if is_instance_valid(peer):
 			bb.set_memory("gossip_partner", peer)
 			return true
-		return false
+			
+		bb.set_memory("chat_cooldown", 6.0)
+		return true
 		
 	func _scan_for_nearby_peer(host: CharacterBody3D) -> Node3D:
 		var passives := host.get_tree().get_nodes_in_group("passives")
@@ -326,7 +338,7 @@ class GossipAction extends GOAPAction:
 		VoxelKinematicService.halt_movement(host, ai)
 		if is_instance_valid(ai):
 			ai.set("wander_direction", look_dir)
-			ai.set("current_task", 4) # TASK_CHATTING (mapped to CHAT in UI)
+			ai.set("current_task", 4)
 			
 		var timer := bb.get_float("gossip_timer") - delta
 		bb.set_memory("gossip_timer", timer)
@@ -374,7 +386,6 @@ class PatrolAction extends GOAPAction:
 		add_effect("is_patrolling", true)
 		
 	func on_enter(bb: AIBlackboard) -> void:
-		# Establece un turno de patrullaje finito para asegurar que se detenga a descansar eventualmente
 		bb.set_memory("patrol_duration", randf_range(10.0, 20.0))
 		bb.set_memory("wander_timer", 0.0)
 		
@@ -386,16 +397,14 @@ class PatrolAction extends GOAPAction:
 		var duration := bb.get_float("patrol_duration") - delta
 		bb.set_memory("patrol_duration", duration)
 		if duration <= 0.0:
-			return true # Termina el turno de patrulla, re-evaluará metas (y probablemente elija Rest)
+			return true
 			
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
+			wander_dir = _find_valid_wander_direction(host)
 			timer = randf_range(2.0, 5.0)
-			var angle := randf() * TAU
-			# SRP FIX: ¡Nunca asigna Vector3.ZERO! Si está patrullando, siempre se mueve.
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) 
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
@@ -403,6 +412,15 @@ class PatrolAction extends GOAPAction:
 		
 		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
 		return false
+		
+	func _find_valid_wander_direction(host: CharacterBody3D) -> Vector3:
+		for i: int in range(6):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
+				return candidate
+		var fallback_angle := randf() * TAU
+		return Vector3(cos(fallback_angle), 0.0, sin(fallback_angle))
 		
 	func _check_and_resolve_wall_collisions(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
 		var stuck := bb.get_float("stuck_timer")
@@ -414,6 +432,7 @@ class PatrolAction extends GOAPAction:
 				var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
 				if flat_normal != Vector3.ZERO:
 					var bounce := wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
+					bounce.y = 0.0
 					bb.set_memory("wander_direction", bounce)
 		else:
 			stuck = 0.0

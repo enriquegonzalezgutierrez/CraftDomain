@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates road pathing, security 
 #   sweeps, data transmissions, and tactical retreats into decoupled actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   hacking or network encryption actions dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,12 +12,11 @@
 class_name CyberCitizenAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA DESPLAZAMIENTOS CIBERNÉTICOS FLUIDOS
 const SPEED_PATROL: float = 2.2
 const SPEED_RETREAT: float = 3.2
 
@@ -85,7 +82,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("scan_timer", SCAN_INTERVAL_SEC)
-		_blackboard.set_memory("upload_cooldown", 5.0) # Initial grace period
+		_blackboard.set_memory("upload_cooldown", 5.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
 
@@ -110,10 +107,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -196,7 +200,6 @@ class TacticalFleeAction extends GOAPAction:
 		var run_dir := (host.global_position - threat.global_position).normalized()
 		run_dir.y = 0.0
 		
-		# Proactive Wall Bounce
 		if host.is_on_wall():
 			var normal := host.get_wall_normal()
 			var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
@@ -241,7 +244,8 @@ class ScanTerminalsAction extends GOAPAction:
 				bb.set_memory("target_terminal", terminal)
 				return true
 				
-		return false
+		bb.set_memory("upload_cooldown", UPLOAD_INTERVAL_SEC)
+		return true
 		
 	func _scan_for_nearby_terminal(host_pos: Vector3, ws: WorldState) -> Vector3i:
 		var my_coord := Vector3i(floori(host_pos.x), floori(host_pos.y), floori(host_pos.z))
@@ -249,7 +253,7 @@ class ScanTerminalsAction extends GOAPAction:
 			for y in range(-2, 3):
 				for z in range(-3, 4):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 13: # 13 = Neon Magenta Terminal
+					if ws.get_block(c) == 13:
 						return c
 		return Vector3i(0, -999, 0)
 
@@ -318,7 +322,7 @@ class Perform360ScanAction extends GOAPAction:
 		
 		_sub_timer -= delta
 		if _sub_timer <= 0.0:
-			_sub_timer = SCAN_DURATION_SEC / 4.0 # Break into 4 stepped turns
+			_sub_timer = SCAN_DURATION_SEC / 4.0
 			_rot_step += 1
 			if _rot_step >= 4:
 				bb.set_memory("scan_timer", SCAN_INTERVAL_SEC)
@@ -327,7 +331,7 @@ class Perform360ScanAction extends GOAPAction:
 			var angle := float(_rot_step) * (PI / 2.0)
 			if is_instance_valid(ai): ai.set("wander_direction", Vector3(cos(angle), 0.0, sin(angle)))
 			if host.has_method("_play_security_scan"):
-				host.call("_play_security_scan") # Emit cyan scanner laser
+				host.call("_play_security_scan")
 				
 		return false
 
@@ -365,7 +369,7 @@ class RoadPatrolAction extends GOAPAction:
 		for x in range(-2, 3):
 			for z in range(-2, 3):
 				var c := my_coord + Vector3i(x, -1, z)
-				if ws.get_block(c) == 25: # 25 = Paved Road
+				if ws.get_block(c) == 25:
 					var diff := (Vector3(c) + Vector3(0.5, 1.0, 0.5)) - host_pos
 					diff.y = 0.0
 					if diff.length() > 0.8:

@@ -1,7 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/CatEntity.gd
 # Description: Physical character controller for the domestic companion Cat.
-#              Delegates model and material sanitization to GLBModelSanitizer (DRY).
+#              Instantiates CatAIBehavior dynamically on ready.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates physical interactions 
+#   and visual sanitization, binding to CatAIBehavior.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -31,6 +35,12 @@ func _ready() -> void:
 		GLBModelSanitizer.sanitize_model(model_node)
 	
 	_setup_nameplate_height()
+	_initialize_ai_behavior()
+
+
+func _initialize_ai_behavior() -> void:
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = CatAIBehavior.new()
 
 
 func _get_entity_name_key() -> String:

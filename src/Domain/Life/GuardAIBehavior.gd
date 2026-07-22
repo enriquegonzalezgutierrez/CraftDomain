@@ -1,25 +1,26 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/GuardAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
-#              Planning (GOAP) for the Armored Guard Knight.
+#              Planning (GOAP) for the Armored Guard Knight with reactive threat scans.
 # SOLID COMPLIANCE:
-# - Motivational Progression: Cycles through security and patrol goals if satisfied.
-# - Stability Fix: Uses direct return values from VoxelKinematicService instead 
-#   of querying unsafe Node metadata, preventing "meta key not found" crashes.
+# - Single Responsibility Principle (SRP): Segregates threat discovery, A* chase 
+#   pursuit, melee elimination, and border patrol into decoupled action classes.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GuardAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_WORKING: int = 6
 
 const SPEED_CHASE: float = 4.6
 const SPEED_PATROL: float = 2.6
 
-const RANGE_SIGHT_SQ: float = 100.0
+# Expanded sight range: 20 blocks (400.0 m^2)
+const RANGE_SIGHT_SQ: float = 400.0
 const RANGE_ATTACK_SQ: float = 2.56
 const COOLDOWN_ATTACK_SEC: float = 1.2
 const PATH_RECALC_INTERVAL_SEC: float = 0.4
@@ -63,8 +64,18 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		_handle_conversation_interrupt(host)
 		return
 		
+	_check_and_interrupt_patrol_if_threat_detected(host as CharacterBody3D)
 	_evaluate_active_plan()
 	_execute_current_action(delta)
+
+
+func _check_and_interrupt_patrol_if_threat_detected(host: CharacterBody3D) -> void:
+	# If currently patrolling, interrupt instantly if a hostile enters sight range!
+	if not _active_plan.is_empty() and _active_plan[0] is GuardPatrolAction:
+		var threat := FindThreatAction._scan_for_active_targets_static(host)
+		if is_instance_valid(threat):
+			_active_plan.clear()
+			_blackboard.set_memory("combat_target", threat)
 
 
 func _initialize_agent(host: Object) -> void:
@@ -72,6 +83,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("attack_cooldown", 0.0)
+		_blackboard.set_memory("threat_scan_cooldown", 0.0)
 		_blackboard.set_memory("path_recalc_timer", 0.0)
 		_blackboard.set_memory("active_path", [])
 		_blackboard.set_memory("path_index", 0)
@@ -80,6 +92,9 @@ func _initialize_agent(host: Object) -> void:
 func _update_blackboard_cooldowns(delta: float) -> void:
 	var cd := _blackboard.get_float("attack_cooldown") - delta
 	_blackboard.set_memory("attack_cooldown", maxf(0.0, cd))
+	
+	var t_cd := _blackboard.get_float("threat_scan_cooldown") - delta
+	_blackboard.set_memory("threat_scan_cooldown", maxf(0.0, t_cd))
 	
 	var recalc := _blackboard.get_float("path_recalc_timer") - delta
 	_blackboard.set_memory("path_recalc_timer", maxf(0.0, recalc))
@@ -99,21 +114,20 @@ func _evaluate_active_plan() -> void:
 	var initial_state := _build_initial_state()
 	var sorted_goals := _get_sorted_goals()
 	
+	var usable_actions: Array[GOAPAction] = []
+	for action: GOAPAction in _actions:
+		if action.is_contextually_valid(_blackboard):
+			usable_actions.append(action)
+	
 	for goal in sorted_goals:
 		if not goal.is_valid(_blackboard): continue
-		if _is_goal_satisfied(goal, initial_state): continue
+		if goal.is_satisfied(initial_state): continue
 			
-		_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-		if not _active_plan.is_empty():
+		var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+		if not candidate_plan.is_empty():
+			_active_plan = candidate_plan
 			_active_plan[0].on_enter(_blackboard)
 			break
-
-
-func _is_goal_satisfied(goal: GOAPGoal, state: Dictionary) -> bool:
-	for key: String in goal.desired_state.keys():
-		if not state.has(key) or state[key] != goal.desired_state[key]:
-			return false
-	return true
 
 
 func _build_initial_state() -> Dictionary:
@@ -144,13 +158,16 @@ func _execute_current_action(delta: float) -> void:
 		
 	var current_action := _active_plan[0]
 	if not current_action.is_contextually_valid(_blackboard):
-		current_action.on_exit(_blackboard); _active_plan.clear()
+		current_action.on_exit(_blackboard)
+		_active_plan.clear()
 		return
 		
 	var is_finished := current_action.execute_step(_blackboard, delta)
 	if is_finished:
-		current_action.on_exit(_blackboard); _active_plan.pop_front()
-		if not _active_plan.is_empty(): _active_plan[0].on_enter(_blackboard)
+		current_action.on_exit(_blackboard)
+		_active_plan.pop_front()
+		if not _active_plan.is_empty():
+			_active_plan[0].on_enter(_blackboard)
 
 
 func get_active_state_name(host: Object) -> String:
@@ -169,88 +186,125 @@ func get_active_state_name(host: Object) -> String:
 
 class FindThreatAction extends GOAPAction:
 	func _init() -> void:
-		super("FindThreat", 1.0); add_effect("has_threat", true)
+		super("FindThreat", 1.0)
+		add_effect("has_threat", true)
+		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("threat_scan_cooldown") <= 0.0 or bb.has_memory("combat_target")
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
-		var threat := _scan_for_active_targets(host)
+		var threat := _scan_for_active_targets_static(host)
 		if is_instance_valid(threat):
-			bb.set_memory("combat_target", threat); return true
-		return false
+			bb.set_memory("combat_target", threat)
+			return true
+			
+		bb.set_memory("threat_scan_cooldown", 3.0)
+		return true
 		
-	func _scan_for_active_targets(host: CharacterBody3D) -> Node3D:
-		var host_pos := host.global_position; var closest: Node3D = null; var min_dist_sq := RANGE_SIGHT_SQ
+	static func _scan_for_active_targets_static(host: CharacterBody3D) -> Node3D:
+		var host_pos := host.global_position
+		var closest: Node3D = null
+		var min_dist_sq := RANGE_SIGHT_SQ
 		var rep := VillageReputationService.instance
-		if is_instance_valid(rep) and rep.is_player_wanted():
-			closest = _get_player_target(host)
-			if is_instance_valid(closest): min_dist_sq = host_pos.distance_squared_to(closest.global_position)
-		return _scan_for_zombies(host, closest, min_dist_sq)
 		
-	func _get_player_target(host: CharacterBody3D) -> Node3D:
+		if is_instance_valid(rep) and rep.is_player_wanted():
+			closest = _get_player_target_static(host)
+			if is_instance_valid(closest):
+				min_dist_sq = host_pos.distance_squared_to(closest.global_position)
+				
+		return _scan_for_zombies_static(host, closest, min_dist_sq)
+		
+	static func _get_player_target_static(host: CharacterBody3D) -> Node3D:
 		var parent := host.get_parent()
 		if is_instance_valid(parent):
 			var player := parent.get_node_or_null("Player") as Node3D
 			if is_instance_valid(player):
 				var p_domain := player.get("domain_entity") as VoxelEntity
-				if is_instance_valid(p_domain) and not p_domain.is_dead: return player
+				if is_instance_valid(p_domain) and not p_domain.is_dead:
+					return player
 		return null
 		
-	func _scan_for_zombies(host: CharacterBody3D, current_closest: Node3D, min_dist_sq: float) -> Node3D:
-		var closest := current_closest; var hostiles := host.get_tree().get_nodes_in_group("hostiles")
+	static func _scan_for_zombies_static(host: CharacterBody3D, current_closest: Node3D, min_dist_sq: float) -> Node3D:
+		var closest := current_closest
+		var hostiles := host.get_tree().get_nodes_in_group("hostiles")
+		
 		for child in hostiles:
 			if is_instance_valid(child) and child is Node3D:
 				var domain := child.get("domain_entity") as VoxelEntity
 				if is_instance_valid(domain) and not domain.is_dead:
 					var dist_sq := host.global_position.distance_squared_to(child.global_position)
-					if dist_sq < min_dist_sq: min_dist_sq = dist_sq; closest = child as Node3D
+					if dist_sq < min_dist_sq:
+						min_dist_sq = dist_sq
+						closest = child as Node3D
 		return closest
 
 
 class ChaseThreatAction extends GOAPAction:
 	func _init() -> void:
-		super("ChaseThreat", 1.0); add_precondition("has_threat", true); add_effect("is_at_threat", true)
+		super("ChaseThreat", 1.0)
+		add_precondition("has_threat", true)
+		add_effect("is_at_threat", true)
 		
 	func is_contextually_valid(bb: AIBlackboard) -> bool:
 		var target := bb.get_object("combat_target") as Node3D
-		return is_instance_valid(target) and not target.get("domain_entity").is_dead
+		if is_instance_valid(target):
+			var domain := target.get("domain_entity") as VoxelEntity
+			return is_instance_valid(domain) and not domain.is_dead
+		return false
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var target := bb.get_object("combat_target") as Node3D
 		var diff := target.global_position - host.global_position
+		
 		if diff.length_squared() <= RANGE_ATTACK_SQ:
-			bb.set_memory("active_path", []); bb.set_memory("path_index", 0); return true
+			bb.set_memory("active_path", [])
+			bb.set_memory("path_index", 0)
+			return true
+			
 		_execute_astar_navigation(bb, host, target.global_position)
 		return false
 		
 	func _execute_astar_navigation(bb: AIBlackboard, host: CharacterBody3D, target_pos: Vector3) -> void:
 		var path: Array = bb.get_memory("active_path", []) as Array
 		var p_idx := bb.get_int("path_index")
+		
 		if bb.get_float("path_recalc_timer") <= 0.0 or path.is_empty():
 			bb.set_memory("path_recalc_timer", PATH_RECALC_INTERVAL_SEC)
 			var parent := host.get_parent() as Node
 			if is_instance_valid(parent) and "navigation_service" in parent:
 				var nav := parent.get("navigation_service") as VoxelNavigationService
 				path = nav.find_path(host.global_position, target_pos) if is_instance_valid(nav) else []
-			p_idx = 0; bb.set_memory("active_path", path)
-		# FIX: Usamos el retorno directo para evitar consultas de metadatos inseguras
-		p_idx = VoxelNavigationService.new()._proxy_pathing(host, path, p_idx, SPEED_CHASE)
+			p_idx = 0
+			bb.set_memory("active_path", path)
+			
+		var ai: Object = host.get("ai_component")
+		p_idx = VoxelKinematicService.navigate_along_path(host, ai, path, p_idx, SPEED_CHASE, "path_index")
 		bb.set_memory("path_index", p_idx)
 
 
 class EliminateThreatAction extends GOAPAction:
 	func _init() -> void:
-		super("EliminateThreat", 1.0); add_precondition("is_at_threat", true); add_effect("is_secure", true)
+		super("EliminateThreat", 1.0)
+		add_precondition("is_at_threat", true)
+		add_effect("is_secure", true)
 		
 	func is_contextually_valid(bb: AIBlackboard) -> bool:
 		var target := bb.get_object("combat_target") as Node3D
-		return is_instance_valid(target) and not target.get("domain_entity").is_dead
+		if is_instance_valid(target):
+			var domain := target.get("domain_entity") as VoxelEntity
+			return is_instance_valid(domain) and not domain.is_dead
+		return false
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var target := bb.get_object("combat_target") as Node3D
 		var diff := target.global_position - host.global_position
-		if diff.length_squared() > RANGE_ATTACK_SQ: return true
+		
+		if diff.length_squared() > RANGE_ATTACK_SQ:
+			return true
+			
 		_execute_proximity_strike(bb, host, target, diff.normalized())
 		return false
 		
@@ -258,38 +312,45 @@ class EliminateThreatAction extends GOAPAction:
 		var ai: Object = host.get("ai_component")
 		VoxelKinematicService.halt_movement(host, ai)
 		if is_instance_valid(ai): ai.set("wander_direction", dir)
+			
 		if bb.get_float("attack_cooldown") <= 0.0:
 			bb.set_memory("attack_cooldown", COOLDOWN_ATTACK_SEC)
-			var kb := dir * 4.5; kb.y = 2.0
-			if target.has_method("take_damage"): target.call("take_damage", 1, kb, host)
+			var kb := dir * 4.5
+			kb.y = 2.0
+			if target.has_method("take_damage"):
+				target.call("take_damage", 1, kb, host)
+				
 			var vis := host.get("visual_representation") as IEntityVisualRepresentation
 			if is_instance_valid(vis): vis.trigger_attack_visuals()
 
 
 class GuardPatrolAction extends GOAPAction:
 	func _init() -> void:
-		super("Patrol", 1.0); add_effect("is_patrolling", true)
+		super("Patrol", 1.0)
+		add_effect("is_patrolling", true)
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
-		var path: Array = bb.get_memory("active_path", []) as Array
-		var p_idx := bb.get_int("path_index")
-		if path.is_empty() or p_idx >= path.size():
-			path = _generate_random_patrol_path(host)
-			p_idx = 0; bb.set_memory("active_path", path)
+			
+		var timer := bb.get_float("wander_timer") - _delta
+		var wander_dir := bb.get_vector3("wander_direction")
 		
-		# FIX: Actualización de índice mediante retorno directo de la función
-		p_idx = VoxelKinematicService.navigate_along_path(host, ai, path, p_idx, SPEED_PATROL, "path_index")
-		bb.set_memory("path_index", p_idx)
+		if timer <= 0.0:
+			wander_dir = _find_valid_patrol_direction(host)
+			timer = randf_range(2.0, 5.0)
+			bb.set_memory("wander_direction", wander_dir)
+			
+		bb.set_memory("wander_timer", timer)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
 		return false
 		
-	func _generate_random_patrol_path(host: CharacterBody3D) -> Array:
-		var parent := host.get_parent() as Node
-		if is_instance_valid(parent) and "navigation_service" in parent:
-			var nav := parent.get("navigation_service") as VoxelNavigationService
-			if is_instance_valid(nav):
-				var target_pos := host.global_position + Vector3(randf_range(-10, 10), 0, randf_range(-10, 10))
-				return nav.find_path(host.global_position, target_pos)
-		return []
+	func _find_valid_patrol_direction(host: CharacterBody3D) -> Vector3:
+		for i: int in range(6):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
+				return candidate
+		var fallback_angle := randf() * TAU
+		return Vector3(cos(fallback_angle), 0.0, sin(fallback_angle))

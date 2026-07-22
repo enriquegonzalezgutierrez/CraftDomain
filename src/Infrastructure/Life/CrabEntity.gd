@@ -1,7 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/CrabEntity.gd
 # Description: Physical character controller for the Amphibious Beach Crab.
-#              Sustains strict shore and water limits polymorphically (OCP/LSP).
+#              Instantiates AmphibiousAIBehavior dynamically on ready.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates physical translations,
+#   shore boundaries, and visual sanitization, binding to AmphibiousAIBehavior.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -26,6 +30,12 @@ func _ready() -> void:
 		GLBModelSanitizer.sanitize_model(model_node)
 	
 	_setup_nameplate_height()
+	_initialize_ai_behavior()
+
+
+func _initialize_ai_behavior() -> void:
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = AmphibiousAIBehavior.new()
 
 
 func _get_entity_name_key() -> String:
@@ -36,8 +46,6 @@ func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2)
 
 
-## Polymorphic Override (OCP/LSP Compliant): Restricts habitat to shores/oceans.
-## Includes AIR as a habitable transition block to allow gravity drops.
 func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
 	return (
 		block_type == BlockType.Type.WATER or 
@@ -48,4 +56,4 @@ func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
 
 
 func _drop_loot(inv: IInventory) -> void:
-	inv.add_item(16, 1) # Crab meat
+	inv.add_item(16, 1)

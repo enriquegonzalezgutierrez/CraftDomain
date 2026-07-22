@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates defensive ink spraying 
 #   and hydrodynamic, gravity-safe jet propulsion into independent actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   marine behaviors (such as camouflage/cloaking) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,12 +12,11 @@
 class_name OctopusAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA PROPULSIÓN ACUÁTICA ÁGIL
 const SPEED_JET: float = 5.6
 const SPEED_DRIFT: float = 0.8
 const SPEED_PANIC_JET: float = 8.4
@@ -174,7 +171,7 @@ class InkFleeAction extends GOAPAction:
 		var cd := bb.get_float("ink_cooldown")
 		if cd <= 0.0:
 			bb.set_memory("ink_cooldown", COOLDOWN_INK_SEC)
-			bb.set_memory("flee_timer", 3.5) # Force panic flight for 3.5s
+			bb.set_memory("flee_timer", 3.5)
 			if host.has_method("_play_ink_spray"):
 				host.call("_play_ink_spray")
 				
@@ -190,7 +187,7 @@ class InkFleeAction extends GOAPAction:
 		vel.z = wander_dir.z * SPEED_PANIC_JET
 		var in_liquid: bool = host.call("is_in_liquid") as bool if host.has_method("is_in_liquid") else true
 		if in_liquid:
-			vel.y = randf_range(-0.5, 0.5) # Dynamic depth dive
+			vel.y = randf_range(-0.5, 0.5)
 		host.velocity = vel
 		if is_instance_valid(ai): ai.set("wander_direction", wander_dir)
 
@@ -211,7 +208,7 @@ class SwimPulseAction extends GOAPAction:
 		if jet_timer <= 0.0 or wander_dir == Vector3.ZERO:
 			jet_timer = JET_CYCLE_DURATION_SEC
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.6 else Vector3.ZERO
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("jet_timer", jet_timer)
@@ -231,7 +228,7 @@ class SwimPulseAction extends GOAPAction:
 		if wander_dir != Vector3.ZERO:
 			vel.x = wander_dir.x * speed_coef
 			vel.z = wander_dir.z * speed_coef
-			if in_liquid: vel.y = lerp(vel.y, sin(Time.get_ticks_msec() / 1000.0 * 2.0) * 0.08, delta * 3.0)
+			if in_liquid: vel.y = lerp(vel.y, sin(Time.get_ticks_msec() / 1000.0 * 2.0) * 0.15, delta * 3.0)
 		else:
 			vel.x = move_toward(vel.x, 0.0, SPEED_DRIFT)
 			vel.z = move_toward(vel.z, 0.0, SPEED_DRIFT)

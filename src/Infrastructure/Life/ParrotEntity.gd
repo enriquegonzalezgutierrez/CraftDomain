@@ -1,11 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/ParrotEntity.gd
 # Description: Physical character controller for the flying Tropical Parrot.
+#              Instantiates AvianAIBehavior dynamically on ready.
 # SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates first-person visual bobs 
-#   and flight physics, delegating decisions to AvianAIBehavior.
-# - Dependency Inversion Principle (DIP): Uses local decoupled metadata keys 
-#   to break Godot 4's cyclic preloader compile locks with its behavior script.
+# - Single Responsibility Principle (SRP): Coordinates visual bobs and flight physics, 
+#   delegating AI decisions to AvianAIBehavior.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -20,7 +19,6 @@ var _model_base_y: float = 0.0
 const COOLDOWN_CHAT_MIN_SEC: float = 15.0
 const COOLDOWN_CHAT_MAX_SEC: float = 25.0
 
-## Decoupled local metadata key to prevent cyclic compile locks with AvianAIBehavior
 const META_STATE = "avian_flight_state"
 
 var _chat_timer: float = randf_range(5.0, 15.0)
@@ -44,6 +42,12 @@ func _ready() -> void:
 		GLBModelSanitizer.sanitize_model(_model_node)
 	
 	_setup_nameplate_height()
+	_initialize_ai_behavior()
+
+
+func _initialize_ai_behavior() -> void:
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = AvianAIBehavior.new()
 
 
 func _get_entity_name_key() -> String:
@@ -65,10 +69,6 @@ func _can_fly() -> bool:
 func _drop_loot(inv: IInventory) -> void:
 	inv.add_item(16, 1)
 
-
-# ==============================================================================
-# HUMAN BEHAVIOR: RENDERING ANIMATION LOOPS (SRP Compliant)
-# ==============================================================================
 
 func _process(delta: float) -> void:
 	if domain_entity.is_dead:
@@ -99,7 +99,7 @@ func _animate_flight_node(delta: float) -> void:
 	if has_meta(META_STATE):
 		flight_state = get_meta(META_STATE) as int
 		
-	if flight_state == 2: # STATE_PERCHED
+	if flight_state == 2:
 		_model_node.position.y = _model_base_y
 		_model_node.rotation = Vector3.ZERO
 	else:

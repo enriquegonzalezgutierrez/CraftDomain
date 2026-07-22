@@ -1,7 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/FarmerEntity.gd
 # Description: Physical character controller representing an agricultural Farmer NPC.
-#              Updated to use native, highly-portable .glb static meshes.
+#              Instantiates FarmerAIBehavior dynamically on ready.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates physical translations
+#   and visual animations, binding to FarmerAIBehavior.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -12,12 +16,14 @@ const BASE_MODEL_PATH := "res://assets/models/mobs/farmer.glb"
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
 
+
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 6)
 	entity_habitat = 0 
 	humanoid_role = 3 
 	is_conversational_npc = true
 	name = "Entity_FARMER"
+
 
 func _ready() -> void:
 	add_to_group("passives")
@@ -28,9 +34,13 @@ func _ready() -> void:
 	_build_visual_representation()
 	_locate_player()
 	_setup_nameplate_height()
-	
+	_initialize_ai_behavior()
+
+
+func _initialize_ai_behavior() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = FarmerAIBehavior.new()
+
 
 func _build_visual_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
@@ -43,30 +53,24 @@ func _build_visual_representation() -> void:
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
+
 func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
 
+
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_FARMER"
+
 
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2) 
 
+
 func _is_eligible_for_quest(_quest_id: String) -> bool:
 	return false 
 
-func _physics_process(delta: float) -> void:
-	if domain_entity.is_dead: 
-		return
-		
-	if is_talking:
-		velocity = Vector3.ZERO
-		super(delta)
-		return
-		
-	super(delta)
 
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD
@@ -76,6 +80,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		intro_node.text = _select_procedural_greeting_key()
 		
 		hud.open_dialogue(intro_node, "NPC_NAME_FARMER", self)
+
 
 func _select_procedural_greeting_key() -> String:
 	var is_night: bool = CelestialService.is_night_time_static()

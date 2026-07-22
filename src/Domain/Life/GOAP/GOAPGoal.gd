@@ -7,7 +7,7 @@
 # - Single Responsibility Principle (SRP): Exclusively defines motivations and 
 #   desired outcomes, delegating the "how to get there" to the GOAP Planner.
 # - Open-Closed Principle (OCP): Designed to be extended by concrete goals 
-#   (e.g., 'SleepGoal', 'WorkGoal') without modifying the planner algorithm.
+#   without modifying the planner algorithm.
 # - Liskov Substitution Principle (LSP): Fully polymorphic priority evaluation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -37,19 +37,28 @@ func add_desired_state(key: String, value: Variant) -> void:
 	desired_state[key] = value
 
 
+## Evaluates if the current state satisfies all desired conditions for this goal.
+func is_satisfied(current_state: Dictionary) -> bool:
+	if desired_state.is_empty():
+		return true
+		
+	for key: String in desired_state.keys():
+		if not current_state.has(key) or current_state[key] != desired_state[key]:
+			return false
+	return true
+
+
 # ==============================================================================
 # VIRTUAL EVALUATION CONTRACTS (LSP Compliant)
 # ==============================================================================
 
 ## Dynamic Validator: Determines if this goal is currently relevant.
-## For example, a "Sleep" goal is only valid if CelestialService says it's night.
 func is_valid(blackboard: AIBlackboard) -> bool:
-	var _bb := blackboard # Avoid unused parameter warning in abstract base
+	var _bb := blackboard
 	return true
 
 
 ## Priority Scaling: Evaluates the urgency of this goal dynamically.
-## For example, a "EatFood" goal's priority might increase as the NPC gets hungrier.
 func get_priority(blackboard: AIBlackboard) -> float:
 	var _bb := blackboard
 	return base_priority

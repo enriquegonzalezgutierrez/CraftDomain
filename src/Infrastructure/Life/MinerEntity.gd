@@ -1,7 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MinerEntity.gd
 # Description: Physical character controller for the cave Miner NPC.
-#              Updated to use native, highly-portable .glb static meshes.
+#              Instantiates MinerAIBehavior dynamically on ready.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates physical interactions 
+#   and visual animations, binding to MinerAIBehavior.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -12,10 +16,12 @@ const BASE_MODEL_PATH := "res://assets/models/mobs/miner.glb"
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
 
+
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 8)
 	entity_habitat = 0 
 	name = "Entity_MINER"
+
 
 func _ready() -> void:
 	add_to_group("passives")
@@ -26,10 +32,13 @@ func _ready() -> void:
 	_setup_graphics_representation()
 	_locate_player()
 	_setup_nameplate_height()
-	_execute_lifecycle_initialization()
-	
+	_initialize_ai_behavior()
+
+
+func _initialize_ai_behavior() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = MinerAIBehavior.new()
+
 
 func _setup_graphics_representation() -> void:
 	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
@@ -42,19 +51,24 @@ func _setup_graphics_representation() -> void:
 	visual_representation = strategy as IEntityVisualRepresentation
 	visual_representation.build_representation(self, visual_component.body_bob_node)
 
+
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_MINER"
+
 
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2) 
 
+
 func _get_humanoid_role() -> int:
 	return 4 
+
 
 func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
+
 
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD
@@ -63,6 +77,7 @@ func interact(player_node: CharacterBody3D) -> void:
 		intro_node.node_id = "miner_intro_temp"
 		intro_node.text = _select_procedural_greeting_key()
 		hud.open_dialogue(intro_node, "NPC_NAME_MINER", self)
+
 
 func _select_procedural_greeting_key() -> String:
 	var is_night: bool = CelestialService.is_night_time_static()
@@ -74,6 +89,7 @@ func _select_procedural_greeting_key() -> String:
 	if variety_index == 0:
 		return "DIALOGUE_MINER_PLAINS_A"
 	return "DIALOGUE_MINER_PLAINS_B"
+
 
 func _can_socialize() -> bool:
 	return true

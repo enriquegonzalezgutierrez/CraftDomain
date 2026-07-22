@@ -5,22 +5,18 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates aquatic patrolling, 
 #   hydrodynamic stalking, and violent leap-bites into distinct action classes.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   marine hunting maneuvers (such as tail-swipes) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SharkAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA DEPREDADORES MARINOS LETALES
 const SPEED_CHASE: float = 8.4
 const SPEED_SWIM: float = 3.6
 
@@ -160,7 +156,7 @@ class DetectPreyAction extends GOAPAction:
 		if is_instance_valid(target):
 			bb.set_memory("prey_target", target)
 			return true
-		return false
+		return true
 		
 	func _scan_for_swimming_prey(host: CharacterBody3D) -> Node3D:
 		var parent := host.get_parent() as Node

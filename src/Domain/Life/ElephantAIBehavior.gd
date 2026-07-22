@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates colossal panic flight 
 #   and slow ponderous heavy-stomp locomotion into independent actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   heavy-impact triggers (such as trunk slaps) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,11 +12,10 @@
 class_name ElephantAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
 
-# VELOCIDADES ESCALADAS AL DOBLE Y RITMO DE PASO SINCRONIZADO
 const SPEED_WALK: float = 1.2
 const STRIDE_INTERVAL_SEC: float = 0.9
 const RANGE_SIGHT_SQ: float = 144.0
@@ -67,15 +64,22 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard.set_memory("stride_timer", 0.4)
 
 
-func _evaluate_active_plan(host: Object) -> void:
+func _evaluate_active_plan(_host: Object) -> void:
 	if _active_plan.is_empty():
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -185,17 +189,23 @@ class HeavyStrollAction extends GOAPAction:
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
-			var parent := host.get_parent() as Node
-			var angle := randf() * TAU
-			var candidate := Vector3(cos(angle), 0.0, sin(angle))
-			var is_safe := _is_direction_safe_elephant(host, candidate, parent)
-			wander_dir = candidate if is_safe else Vector3.ZERO
-			timer = randf_range(4.0, 8.0) if is_safe else randf_range(2.0, 5.0)
+			wander_dir = _find_safe_direction(host)
+			timer = randf_range(4.0, 8.0)
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
 		_apply_heavy_stroll_locomotion(bb, host, ai, wander_dir, delta)
 		return false
+		
+	func _find_safe_direction(host: CharacterBody3D) -> Vector3:
+		var parent := host.get_parent() as Node
+		for i: int in range(6):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			if _is_direction_safe_elephant(host, candidate, parent):
+				return candidate
+		var fallback_angle := randf() * TAU
+		return Vector3(cos(fallback_angle), 0.0, sin(fallback_angle))
 		
 	func _apply_heavy_stroll_locomotion(bb: AIBlackboard, host: CharacterBody3D, ai: Object, wander_dir: Vector3, delta: float) -> void:
 		var vel := host.velocity
@@ -217,6 +227,7 @@ class HeavyStrollAction extends GOAPAction:
 			var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
 			if flat_normal != Vector3.ZERO:
 				var bounce := wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.2, 0.2)).normalized()
+				bounce.y = 0.0
 				bb.set_memory("wander_direction", bounce)
 				
 	func _is_direction_safe_elephant(host: CharacterBody3D, dir: Vector3, world_node: Node) -> bool:

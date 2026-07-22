@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates ore scanning, tunneling, 
 #   resting, and wandering processes into highly cohesive, decoupled action classes.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   mineable resource types (such as iron or diamonds) without altering the planner.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,11 +12,10 @@
 class_name MinerAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA LABORES SUBTERRÁNEAS EFICIENTES
 const SPEED_WANDER: float = 2.2
 const SPEED_TUNNEL: float = 2.6
 
@@ -103,10 +100,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal: GOAPGoal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -165,6 +169,9 @@ class ScanVeinsAction extends GOAPAction:
 		super("ScanVeins", 1.0)
 		add_effect("has_ore_target", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("scan_timer") <= 0.0
+		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ore_coord := _scan_for_coal_veins(host)
@@ -174,7 +181,8 @@ class ScanVeinsAction extends GOAPAction:
 				bb.set_memory("target_ore", ore_coord)
 				return true
 				
-		return false
+		bb.set_memory("scan_timer", SCAN_INTERVAL_SEC * 2.0)
+		return true
 		
 	func _scan_for_coal_veins(host: CharacterBody3D) -> Vector3i:
 		var parent := host.get_parent() as Node
@@ -189,7 +197,7 @@ class ScanVeinsAction extends GOAPAction:
 			for y in range(-2, 3):
 				for z in range(-5, 6):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 21: # 21 = BlockType.Type.COAL_ORE
+					if ws.get_block(c) == 21:
 						if not job_service.is_job_claimed(c): return c
 		return Vector3i(0, -999, 0)
 
@@ -238,7 +246,7 @@ class ExtractOreAction extends GOAPAction:
 		
 		var vis: Resource = host.get("visual_representation") as Resource
 		if is_instance_valid(vis) and vis.has_method("trigger_attack_visuals"):
-			vis.call("trigger_attack_visuals") # Play pickaxe swing
+			vis.call("trigger_attack_visuals")
 			
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var timer := bb.get_float("mine_timer") - delta
@@ -257,10 +265,10 @@ class ExtractOreAction extends GOAPAction:
 		var parent := host.get_parent() as Node
 		
 		if is_instance_valid(parent) and parent.has_method("set_block_globally"):
-			parent.call("set_block_globally", target, 1) # STONE
+			parent.call("set_block_globally", target, 1)
 			AudioService.play_sfx_static("block_break", Vector3(target))
 			
-		host.velocity.y = 5.0 # Joy Hop
+		host.velocity.y = 5.0
 		bb.erase_memory("target_ore")
 		bb.erase_memory("has_ore_target")
 		bb.erase_memory("is_at_ore")
@@ -275,7 +283,7 @@ class RestAction extends GOAPAction:
 		return bb.get_float("rest_timer") <= 0.0
 		
 	func on_enter(bb: AIBlackboard) -> void:
-		bb.set_memory("action_timer", 5.0) # Rest for 5 seconds
+		bb.set_memory("action_timer", 5.0)
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai := host.get("ai_component")
 		VoxelKinematicService.halt_movement(host, ai)

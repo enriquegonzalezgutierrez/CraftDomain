@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates generic wandering, 
 #   resting/idling, stuck recovery, and threat panic escapes into distinct actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Standardized 
-#   base behavior for fallback wildlife without rigid state machines.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,11 +12,10 @@
 class_name FaunaAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA MANADAS ÁGILES Y REALISTAS
 const SPEED_PANIC: float = 5.0
 const SPEED_WANDER: float = 1.6
 const SENSORY_RANGE_SQ: float = 64.0
@@ -114,7 +111,7 @@ func _detect_threat_proximity(host: CharacterBody3D) -> bool:
 		
 		var host_pos := host.global_position
 		var escape_dir := (host_pos - closest.global_position).normalized()
-		escape_dir.y = 0.0
+		escape_dir.y = 0.0 # Force strictly horizontal escape on XZ plane
 		_blackboard.set_memory("wander_direction", escape_dir)
 		return true
 		
@@ -192,8 +189,9 @@ class FaunaPanicAction extends GOAPAction:
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
-			timer = randf_range(0.3, 0.8) 
+			timer = randf_range(0.3, 0.8)
 			var angle := randf() * TAU
+			# XZ plane horizontal direction (Y = 0.0)
 			var candidate := Vector3(cos(angle), 0.0, sin(angle))
 			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
 				wander_dir = candidate
@@ -213,7 +211,7 @@ class FaunaRestAction extends GOAPAction:
 		return bb.get_float("rest_timer") <= 0.0
 		
 	func on_enter(bb: AIBlackboard) -> void:
-		bb.set_memory("action_timer", randf_range(3.0, 6.0)) # Stands still for 3 to 6 seconds
+		bb.set_memory("action_timer", randf_range(3.0, 6.0))
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai := host.get("ai_component")
 		VoxelKinematicService.halt_movement(host, ai)
@@ -224,7 +222,7 @@ class FaunaRestAction extends GOAPAction:
 		bb.set_memory("action_timer", timer)
 		
 		if timer <= 0.0:
-			bb.set_memory("rest_timer", randf_range(12.0, 24.0)) # Enforces a cooldown before resting again
+			bb.set_memory("rest_timer", randf_range(12.0, 24.0))
 			return true
 		return false
 
@@ -246,20 +244,24 @@ class FaunaWanderAction extends GOAPAction:
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
-			if randf() < 0.5:
-				var angle := randf() * TAU
-				var candidate := Vector3(cos(angle), 0.0, sin(angle))
-				wander_dir = candidate if FaunaAIBehavior._is_direction_safe_fauna(host, candidate) else Vector3.ZERO
-				timer = randf_range(2.0, 5.0)
-			else:
-				wander_dir = Vector3.ZERO
-				timer = randf_range(1.5, 4.0)
+			wander_dir = _find_valid_horizontal_direction(host)
+			timer = randf_range(2.0, 5.0)
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
 		_check_and_resolve_wall_collisions(bb, host, wander_dir, delta)
 		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, FaunaAIBehavior.SPEED_WANDER)
 		return false
+		
+	func _find_valid_horizontal_direction(host: CharacterBody3D) -> Vector3:
+		# Sample 6 random angles on the horizontal XZ plane (Y = 0.0)
+		for i: int in range(6):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
+				return candidate
+		var fallback_angle := randf() * TAU
+		return Vector3(cos(fallback_angle), 0.0, sin(fallback_angle))
 		
 	func _check_and_resolve_wall_collisions(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
 		var stuck := bb.get_float("stuck_timer")
@@ -271,6 +273,7 @@ class FaunaWanderAction extends GOAPAction:
 				var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
 				if flat_normal != Vector3.ZERO:
 					var bounce := wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
+					bounce.y = 0.0 # Force horizontal direction
 					bb.set_memory("wander_direction", bounce)
 		else:
 			stuck = 0.0
@@ -278,7 +281,7 @@ class FaunaWanderAction extends GOAPAction:
 
 
 # ==============================================================================
-# SPATIAL TERRAIN FILTER HELPER (Decomposed for Rule 4.2 Limits)
+# SPATIAL TERRAIN FILTER HELPER (Horizontal XZ Plane Checks)
 # ==============================================================================
 
 static func _is_direction_safe_fauna(host: CharacterBody3D, dir: Vector3) -> bool:

@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates thermal soaring, forest 
 #   scanning, and vertical panic takeoffs into independent actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows new roost 
-#   block types (such as custom nest props) to be registered dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,16 +12,15 @@
 class_name AvianAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-const STATE_SOARING = 0
-const STATE_LANDING = 1
-const STATE_PERCHED = 2
+const STATE_SOARING: int = 0
+const STATE_LANDING: int = 1
+const STATE_PERCHED: int = 2
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA UN VUELO DINÁMICO Y FLUIDO
 const FLIGHT_SPEED_SOAR: float = 3.2
 const FLIGHT_SPEED_GLIDE: float = 4.8
 const PERCH_DURATION_SEC: float = 5.0
@@ -77,6 +74,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("wander_timer", 0.0)
 		_blackboard.set_memory("rest_timer", 0.0)
+		_blackboard.set_memory("roost_scan_cooldown", 0.0)
 		
 		if not host.has_meta("avian_flight_state"):
 			host.set_meta("avian_flight_state", STATE_SOARING)
@@ -85,17 +83,27 @@ func _initialize_agent(host: Object) -> void:
 func _update_blackboard_timers(delta: float) -> void:
 	var rest := _blackboard.get_float("rest_timer") - delta
 	_blackboard.set_memory("rest_timer", maxf(0.0, rest))
+	
+	var r_cd := _blackboard.get_float("roost_scan_cooldown") - delta
+	_blackboard.set_memory("roost_scan_cooldown", maxf(0.0, r_cd))
 
 
-func _evaluate_active_plan(host: Object) -> void:
+func _evaluate_active_plan(_host: Object) -> void:
 	if _active_plan.is_empty():
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -170,7 +178,6 @@ class AvianPanicAction extends GOAPAction:
 		var host := bb.get_object("host") as CharacterBody3D
 		host.set_meta("avian_flight_state", STATE_SOARING)
 		
-		# Erase nesting targets to force immediate, high-altitude takeoff
 		bb.erase_memory("roost_target")
 		bb.erase_memory("has_roost_target")
 		bb.set_memory("rest_timer", 0.0)
@@ -188,7 +195,7 @@ class ScanLeavesAction extends GOAPAction:
 		add_effect("has_roost_target", true)
 		
 	func is_contextually_valid(bb: AIBlackboard) -> bool:
-		return bb.get_float("rest_timer") <= 0.0
+		return bb.get_float("rest_timer") <= 0.0 and bb.get_float("roost_scan_cooldown") <= 0.0
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
@@ -198,7 +205,8 @@ class ScanLeavesAction extends GOAPAction:
 			bb.set_memory("roost_target", leaf_coord)
 			return true
 			
-		return false
+		bb.set_memory("roost_scan_cooldown", 8.0)
+		return true
 		
 	func _scan_for_leaves(host: CharacterBody3D) -> Vector3i:
 		var parent := host.get_parent() as Node
@@ -211,7 +219,7 @@ class ScanLeavesAction extends GOAPAction:
 			for y in range(-4, 5):
 				for z in range(-5, 6):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 5 and ws.get_block(c + Vector3i(0, 1, 0)) == 0: # 5=Leaves, 0=Air
+					if ws.get_block(c) == 5 and ws.get_block(c + Vector3i(0, 1, 0)) == 0:
 						return c
 		return Vector3i(0, -999, 0)
 
@@ -252,7 +260,7 @@ class GlideToRoostAction extends GOAPAction:
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai):
 			ai.set("wander_direction", glide_dir)
-			ai.set("current_task", TASK_WORKING) # LANDING (represented by WORKING in UI)
+			ai.set("current_task", TASK_WORKING)
 
 
 class SoarAction extends GOAPAction:

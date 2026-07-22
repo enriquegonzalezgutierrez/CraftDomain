@@ -6,10 +6,8 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Exclusively coordinates physical 
 #   kinematics and spatial raycasts, completely decoupled from GOAP goal planning.
-# - Open-Closed Principle (OCP): Works polymorphically across all NPC shapes
-#   and sizes by dynamically querying their collision boundaries.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
+# - Scene Tree Guardrail: Verifies is_inside_tree before reading global_transform.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -26,13 +24,11 @@ var ai_component: Node
 var _yield_timer: float = 0.0
 
 
-## Injects references to coordinate steering with physics and active task states
 func initialize(p_host: CharacterBody3D, p_ai_component: Node) -> void:
 	host = p_host
 	ai_component = p_ai_component
 
 
-## Main Execution Router: Processes un-throttled context steering and kinematics
 func process_steering(delta: float) -> void:
 	if not is_instance_valid(host) or not is_instance_valid(ai_component):
 		return
@@ -56,8 +52,6 @@ func process_steering(delta: float) -> void:
 # HUMAN BEHAVIOR: GAZE ANTICIPATION & DECELERATION
 # ==============================================================================
 
-## Slows down translation speed until the NPC's body has visually rotated 
-## towards the intended path, simulating natural human shifting weight.
 func _enforce_turn_before_walk() -> void:
 	var dir: Vector3 = ai_component.get("wander_direction") as Vector3
 	if dir == Vector3.ZERO:
@@ -67,7 +61,7 @@ func _enforce_turn_before_walk() -> void:
 	var vis_comp := host.get_node_or_null("NPCVisualComponent")
 	if is_instance_valid(vis_comp) and "visual_root" in vis_comp:
 		var v_root: Node3D = vis_comp.get("visual_root") as Node3D
-		if is_instance_valid(v_root):
+		if is_instance_valid(v_root) and v_root.is_inside_tree():
 			var current_facing := -v_root.global_transform.basis.z.normalized()
 			var alignment := current_facing.dot(dir.normalized())
 			
@@ -80,7 +74,6 @@ func _enforce_turn_before_walk() -> void:
 				host.set_meta("diag_turn_thr", 1.0)
 
 
-## Senses upcoming drops and naturally decelerates before jumping or falling
 func _process_edge_anticipation(space_state: PhysicsDirectSpaceState3D, delta: float) -> void:
 	var flat_vel := Vector2(host.velocity.x, host.velocity.z)
 	var habitat: int = host.get("entity_habitat") if "entity_habitat" in host else 0
@@ -108,8 +101,6 @@ func _process_edge_anticipation(space_state: PhysicsDirectSpaceState3D, delta: f
 # COOPERATIVE YIELDING (Dynamic Collision Resolution)
 # ==============================================================================
 
-## Detects if a player or another NPC is blocking the path. Stops and waits 
-## patiently for 1.5s before attempting to maneuver around them.
 func _process_dynamic_yielding(space_state: PhysicsDirectSpaceState3D, delta: float) -> bool:
 	var dir: Vector3 = ai_component.get("wander_direction") as Vector3
 	if dir == Vector3.ZERO:
@@ -205,7 +196,6 @@ func _handle_step_climbing_and_unsticking(delta: float) -> void:
 		ai_component.set("stuck_timer", 0.0)
 
 
-## Physics Solver: Returns true if colliding with static world geometry or low-level Chunk RIDs
 func _is_touching_solid_block() -> bool:
 	if not host.is_on_wall():
 		return false

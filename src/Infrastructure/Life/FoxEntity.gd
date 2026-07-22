@@ -1,7 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/FoxEntity.gd
 # Description: Physical character controller for the forest predator Fox.
-#              Sanitization is delegated strictly to GLBModelSanitizer (DRY).
+#              Instantiates FoxAIBehavior dynamically on ready.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates physical interactions 
+#   and visual animations, binding to FoxAIBehavior.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -31,6 +35,12 @@ func _ready() -> void:
 		GLBModelSanitizer.sanitize_model(model_node)
 	
 	_setup_nameplate_height()
+	_initialize_ai_behavior()
+
+
+func _initialize_ai_behavior() -> void:
+	if is_instance_valid(ai_component):
+		ai_component.active_behavior = FoxAIBehavior.new()
 
 
 func _get_entity_name_key() -> String:
@@ -47,7 +57,7 @@ func _on_domain_entity_took_damage(amount: int) -> void:
 
 
 func _drop_loot(inv: IInventory) -> void:
-	inv.add_item(16, 1) # Meat
+	inv.add_item(16, 1)
 
 
 func _set_crouch_height(is_crouched: bool) -> void:
@@ -65,7 +75,7 @@ func _execute_pounce_strike(target: Node3D) -> void:
 	if target.has_method("take_damage"):
 		var direction_vec := (target.global_position - global_position).normalized()
 		var pounce_knockback := direction_vec * 4.2 + Vector3(0.0, 1.8, 0.0)
-		target.call("take_damage", 2, pounce_knockback, self) 
+		target.call("take_damage", 2, pounce_knockback, self)
 
 
 func _process(delta: float) -> void:

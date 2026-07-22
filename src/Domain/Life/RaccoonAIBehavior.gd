@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates daytime sleep, nighttime 
 #   scanning, and interactive barrel breakout behaviors into independent actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows new lootable 
-#   props (such as food crates) to be registered without code rewrites.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,12 +12,11 @@
 class_name RaccoonAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA UN RECOLECTOR ÁGIL Y ESCURRIDIZO
 const SPEED_SNEAK: float = 2.2
 const SPEED_RUN: float = 4.8
 
@@ -74,23 +71,34 @@ func _initialize_agent(host: Object) -> void:
 	if _blackboard == null:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
+		_blackboard.set_memory("barrel_scan_cooldown", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
 
-func _update_blackboard_timers(_delta: float) -> void:
+func _update_blackboard_timers(delta: float) -> void:
 	var is_night := CelestialService.is_night_time_static()
 	_blackboard.set_memory("is_night", is_night)
+	
+	var b_cd := _blackboard.get_float("barrel_scan_cooldown") - delta
+	_blackboard.set_memory("barrel_scan_cooldown", maxf(0.0, b_cd))
 
 
-func _evaluate_active_plan(host: Object) -> void:
+func _evaluate_active_plan(_host: Object) -> void:
 	if _active_plan.is_empty():
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -155,7 +163,7 @@ class DaySleepAction extends GOAPAction:
 		var ai := host.get("ai_component")
 		VoxelKinematicService.halt_movement(host, ai)
 		if is_instance_valid(ai): ai.set("current_task", TASK_IDLE)
-		return bb.get_bool("is_night") # Awake when night falls
+		return bb.get_bool("is_night")
 
 
 class ScanBarrelsAction extends GOAPAction:
@@ -164,7 +172,7 @@ class ScanBarrelsAction extends GOAPAction:
 		add_effect("has_scavenge_target", true)
 		
 	func is_contextually_valid(bb: AIBlackboard) -> bool:
-		return bb.get_bool("is_night")
+		return bb.get_bool("is_night") and bb.get_float("barrel_scan_cooldown") <= 0.0
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
@@ -176,7 +184,8 @@ class ScanBarrelsAction extends GOAPAction:
 				bb.set_memory("scavenge_target", closest)
 				return true
 				
-		return false
+		bb.set_memory("barrel_scan_cooldown", 10.0)
+		return true
 		
 	func _detect_closest_barrel(host_pos: Vector3, world_node: Node) -> Node3D:
 		var closest: Node3D = null
@@ -208,7 +217,7 @@ class SneakToBarrelAction extends GOAPAction:
 		var diff := target.global_position - host.global_position
 		diff.y = 0.0
 		
-		if diff.length_squared() <= 1.44: # 1.2m range
+		if diff.length_squared() <= 1.44:
 			VoxelKinematicService.halt_movement(host, ai)
 			return true
 			
@@ -252,9 +261,9 @@ class ScratchBarrelAction extends GOAPAction:
 		
 	func _shatter_barrel(bb: AIBlackboard, host: CharacterBody3D, target: Node3D) -> void:
 		if target.has_method("interact"):
-			target.call("interact", host) # Interacting shatters barrel & gives loot
+			target.call("interact", host)
 			
-		host.velocity.y = 5.0 # Joy Hop
+		host.velocity.y = 5.0
 		bb.erase_memory("scavenge_target")
 		bb.erase_memory("has_scavenge_target")
 		bb.erase_memory("is_at_barrel")
@@ -276,7 +285,7 @@ class RaccoonWanderAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(1.5, 4.0)
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.4 else Vector3.ZERO
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)

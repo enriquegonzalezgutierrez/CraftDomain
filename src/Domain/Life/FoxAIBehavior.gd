@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates woodland exploration, 
 #   stealth creeping, crouch scaling, and pounce leaps into distinct actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   prey types (such as domestic cats or rabbits) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,10 +12,10 @@
 class_name FoxAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
 const SPEED_PATROL: float = 1.1
 const SPEED_SNEAK: float = 0.7
@@ -80,15 +78,22 @@ func _update_blackboard_timers(delta: float) -> void:
 	_blackboard.set_memory("pounce_cooldown", maxf(0.0, cd))
 
 
-func _evaluate_active_plan(host: Object) -> void:
+func _evaluate_active_plan(_host: Object) -> void:
 	if _active_plan.is_empty():
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -161,7 +166,9 @@ class ScanPreyAction extends GOAPAction:
 		if is_instance_valid(target):
 			bb.set_memory("prey_target", target)
 			return true
-		return false
+			
+		bb.set_memory("pounce_cooldown", 6.0)
+		return true
 		
 	func _scan_for_peaceful_prey(host: CharacterBody3D) -> Node3D:
 		var passives := host.get_tree().get_nodes_in_group("passives")
@@ -194,7 +201,7 @@ class SneakToPreyAction extends GOAPAction:
 	func on_enter(bb: AIBlackboard) -> void:
 		var host := bb.get_object("host") as CharacterBody3D
 		if host.has_method("_set_crouch_height"):
-			host.call("_set_crouch_height", true) # Smoothly crawl close to ground
+			host.call("_set_crouch_height", true)
 			
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
@@ -242,17 +249,17 @@ class PounceLeapAction extends GOAPAction:
 		var vel := host.velocity
 		vel.x = leap_dir.x * SPEED_POUNCE
 		vel.z = leap_dir.z * SPEED_POUNCE
-		vel.y = 5.8 # Arc jump trajectory
+		vel.y = 5.8
 		host.velocity = vel
 		
 		if host.has_method("_execute_pounce_strike"):
-			host.call("_execute_pounce_strike", target) # Inflicts heavy pounce damage
+			host.call("_execute_pounce_strike", target)
 			
 		_restore_crouch_state(host)
 		
 	func _restore_crouch_state(host: CharacterBody3D) -> void:
 		if host.has_method("_set_crouch_height"):
-			host.call("_set_crouch_height", false) # Restores standard height on land
+			host.call("_set_crouch_height", false)
 
 
 class FoxPatrolAction extends GOAPAction:
@@ -271,22 +278,9 @@ class FoxPatrolAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(1.5, 4.5)
 			var angle := randf() * TAU
-			var parent := host.get_parent() as Node
-			var candidate := Vector3(cos(angle), 0.0, sin(angle))
-			wander_dir = candidate if _is_direction_safe_fox(host, candidate, parent) else Vector3.ZERO
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
 		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
 		return false
-		
-	func _is_direction_safe_fox(host: CharacterBody3D, dir: Vector3, world_node: Node) -> bool:
-		if not is_instance_valid(world_node) or not "world_state" in world_node: return true
-		var ws: WorldState = world_node.get("world_state") as WorldState
-		if ws == null: return true
-			
-		var check_pos := host.global_position + dir * 1.5
-		var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
-		var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
-		
-		return ws.get_block(block_below_coord) != 6 and ws.get_block(block_at_coord) != 6 and ws.get_block(block_below_coord) != 0

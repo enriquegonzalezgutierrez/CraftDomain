@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates predator evasion, crop 
 #   eating, and dynamic soil tilling into highly decoupled actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows new crop types 
-#   or soil parameters to be registered without modifying core loops.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,12 +12,11 @@
 class_name PigAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA COMPORTAMIENTO PORCINO VELOZ
 const SPEED_WALK: float = 1.6
 const SPEED_PANIC: float = 4.8
 const SPEED_TROT: float = 2.6
@@ -84,13 +81,17 @@ func _initialize_agent(host: Object) -> void:
 	if _blackboard == null:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
-		_blackboard.set_memory("till_cooldown", 5.0) # Initial grace period
+		_blackboard.set_memory("till_cooldown", 5.0)
+		_blackboard.set_memory("crop_scan_cooldown", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
 
 func _update_blackboard_timers(delta: float) -> void:
 	var cd := _blackboard.get_float("till_cooldown") - delta
 	_blackboard.set_memory("till_cooldown", maxf(0.0, cd))
+	
+	var crop_cd := _blackboard.get_float("crop_scan_cooldown") - delta
+	_blackboard.set_memory("crop_scan_cooldown", maxf(0.0, crop_cd))
 
 
 func _evaluate_active_plan(_host: Object) -> void:
@@ -98,10 +99,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		for goal in sorted_goals:
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
+		for goal: GOAPGoal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -205,6 +213,9 @@ class ScanCropsAction extends GOAPAction:
 		super("ScanCrops", 1.0)
 		add_effect("has_crop_target", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("crop_scan_cooldown") <= 0.0
+		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var parent := host.get_parent() as Node
@@ -216,7 +227,8 @@ class ScanCropsAction extends GOAPAction:
 				bb.set_memory("target_crop", crop_coord)
 				return true
 				
-		return false
+		bb.set_memory("crop_scan_cooldown", 10.0)
+		return true
 		
 	func _scan_for_nearby_crops(host_pos: Vector3, ws: WorldState) -> Vector3i:
 		var my_coord := Vector3i(floori(host_pos.x), floori(host_pos.y), floori(host_pos.z))
@@ -225,7 +237,7 @@ class ScanCropsAction extends GOAPAction:
 				for z in range(-3, 4):
 					var c := my_coord + Vector3i(x, y, z)
 					var block_type := ws.get_block(c)
-					if block_type == 20 or block_type == 19: # Ripe or Growing crops
+					if block_type == 20 or block_type == 19:
 						return c
 		return Vector3i(0, -999, 0)
 
@@ -284,11 +296,11 @@ class EatCropAction extends GOAPAction:
 		var parent := host.get_parent() as Node
 		
 		if is_instance_valid(parent) and parent.has_method("set_block_globally"):
-			parent.call("set_block_globally", target, 0) # Clear crop to AIR
+			parent.call("set_block_globally", target, 0)
 			
 			var domain_entity := host.get("domain_entity") as VoxelEntity
 			if is_instance_valid(domain_entity):
-				domain_entity.health = min(4, domain_entity.health + 1) # Heal self
+				domain_entity.health = min(4, domain_entity.health + 1)
 				
 			if host.has_method("_play_tilling_joy_hop"):
 				host.call("_play_tilling_joy_hop")
@@ -325,7 +337,7 @@ class SniffSoilAction extends GOAPAction:
 			if ws != null:
 				var h_pos := host.global_position
 				var coord := Vector3i(floori(h_pos.x), floori(h_pos.y - 0.5), floori(h_pos.z))
-				if ws.get_block(coord) == 3: # Grass
+				if ws.get_block(coord) == 3:
 					return true
 			bb.set_memory("till_cooldown", randf_range(COOLDOWN_TILL_MIN_SEC, COOLDOWN_TILL_MAX_SEC))
 			return false
@@ -361,7 +373,7 @@ class TillSoilAction extends GOAPAction:
 		if ws != null and parent.has_method("set_block_globally"):
 			var coord := Vector3i(floori(host.global_position.x), floori(host.global_position.y - 0.5), floori(host.global_position.z))
 			if ws.get_block(coord) == 3 and randf() < 0.40:
-				parent.call("set_block_globally", coord, 2) # GRASS -> DIRT
+				parent.call("set_block_globally", coord, 2)
 				if host.has_method("_play_tilling_joy_hop"):
 					host.call("_play_tilling_joy_hop")
 					
@@ -383,11 +395,19 @@ class PigWanderAction extends GOAPAction:
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
+			wander_dir = _find_valid_wander_direction(host)
 			timer = randf_range(2.0, 5.0)
-			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.5 else Vector3.ZERO
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
 		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_WALK)
 		return false
+		
+	func _find_valid_wander_direction(host: CharacterBody3D) -> Vector3:
+		for i: int in range(6):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
+				return candidate
+		var fallback_angle := randf() * TAU
+		return Vector3(cos(fallback_angle), 0.0, sin(fallback_angle))

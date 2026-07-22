@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Segregates guerrilla retreating, 
 #   player stalking, and interactive item thievery into distinct action classes.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Supports adding new 
-#   thievery types (such as stealing coins or food) dynamically.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,11 +12,10 @@
 class_name GoblinAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA GUERRILLAS DINÁMICAS Y ÁGILES
 const SPEED_CHASE: float = 7.0
 const SPEED_WANDER: float = 3.2
 const SPEED_RETREAT: float = 9.0
@@ -76,6 +73,7 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("attack_cooldown", 0.0)
+		_blackboard.set_memory("stalk_cooldown", 0.0)
 		_blackboard.set_memory("retreat_timer", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
@@ -83,6 +81,9 @@ func _initialize_agent(host: Object) -> void:
 func _update_blackboard_timers(delta: float) -> void:
 	var cd := _blackboard.get_float("attack_cooldown") - delta
 	_blackboard.set_memory("attack_cooldown", maxf(0.0, cd))
+	
+	var s_cd := _blackboard.get_float("stalk_cooldown") - delta
+	_blackboard.set_memory("stalk_cooldown", maxf(0.0, s_cd))
 	
 	var retreat := _blackboard.get_float("retreat_timer") - delta
 	_blackboard.set_memory("retreat_timer", maxf(0.0, retreat))
@@ -93,10 +94,17 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -160,12 +168,12 @@ class GuerrillaFleeAction extends GOAPAction:
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING) # Fast running anims
+		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
 			
 		var parent := host.get_parent() as Node
 		var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
 		
-		if is_instance_valid(player) and player.get("is_active"):
+		if is_instance_valid(player):
 			var opposite_dir := (host.global_position - player.global_position).normalized()
 			opposite_dir.y = 0.0
 			
@@ -174,6 +182,7 @@ class GuerrillaFleeAction extends GOAPAction:
 				var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
 				if flat_normal != Vector3.ZERO:
 					opposite_dir = opposite_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
+					opposite_dir.y = 0.0
 					
 			VoxelKinematicService.apply_motion_vectors(host, ai, opposite_dir, SPEED_RETREAT)
 			
@@ -185,12 +194,15 @@ class StalkPlayerAction extends GOAPAction:
 		super("StalkPlayer", 1.0)
 		add_effect("is_at_player", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("stalk_cooldown") <= 0.0
+		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var parent := host.get_parent() as Node
 		var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
 		
-		if is_instance_valid(player) and player.get("is_active"):
+		if is_instance_valid(player):
 			var diff := player.global_position - host.global_position
 			diff.y = 0.0
 			var dist_sq := diff.length_squared()
@@ -202,9 +214,13 @@ class StalkPlayerAction extends GOAPAction:
 					
 				var ai: Object = host.get("ai_component")
 				VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_CHASE)
-				if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
+				if is_instance_valid(ai): 
+					ai.set("current_task", TASK_WORKING)
+					ai.set("wander_direction", diff.normalized())
+				return false
 				
-		return false
+		bb.set_memory("stalk_cooldown", 5.0)
+		return true
 
 
 class ThieveBiteAction extends GOAPAction:
@@ -235,12 +251,11 @@ class ThieveBiteAction extends GOAPAction:
 		
 	func _execute_robbery(bb: AIBlackboard, host: CharacterBody3D, _player: CharacterBody3D) -> void:
 		if host.has_method("_bite_player"):
-			host.call("_bite_player") # Bites, giggles & steals 1x Stone Block (ID 1)
+			host.call("_bite_player")
 			
 		var vis := host.get("visual_representation") as IEntityVisualRepresentation
 		if is_instance_valid(vis): vis.trigger_attack_visuals()
 		
-		# Immediately initiate high-velocity tactical retreat for 1.4s
 		bb.set_memory("retreat_timer", RETREAT_DURATION_SEC)
 		bb.erase_memory("is_at_player")
 
@@ -259,24 +274,19 @@ class GoblinWanderAction extends GOAPAction:
 		var wander_dir := bb.get_vector3("wander_direction")
 		
 		if timer <= 0.0:
+			wander_dir = _find_valid_wander_direction(host)
 			timer = randf_range(1.5, 4.0)
-			var angle := randf() * TAU
-			var parent := host.get_parent() as Node
-			var candidate := Vector3(cos(angle), 0.0, sin(angle))
-			wander_dir = candidate if _is_direction_safe_goblin(host, candidate, parent) else Vector3.ZERO
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
 		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_WANDER)
 		return false
 		
-	func _is_direction_safe_goblin(host: CharacterBody3D, dir: Vector3, world_node: Node) -> bool:
-		if not is_instance_valid(world_node) or not "world_state" in world_node: return true
-		var ws: WorldState = world_node.get("world_state") as WorldState
-		if ws == null: return true
-			
-		var check_pos := host.global_position + dir * 1.5
-		var block_below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
-		var block_at_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
-		
-		return ws.get_block(block_below_coord) != 6 and ws.get_block(block_at_coord) != 6 and ws.get_block(block_below_coord) != 0
+	func _find_valid_wander_direction(host: CharacterBody3D) -> Vector3:
+		for i: int in range(6):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
+				return candidate
+		var fallback_angle := randf() * TAU
+		return Vector3(cos(fallback_angle), 0.0, sin(fallback_angle))

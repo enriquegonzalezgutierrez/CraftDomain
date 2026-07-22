@@ -1,19 +1,17 @@
 # ==============================================================================
-# Pathfile: res://src/Infrastructure/NPCVisualComponent.gd
+# Pathfile: res://src/Infrastructure/Life/NPCVisualComponent.gd
 # Description: Rigging component managing visual joints, parent bobbing, 
-#              gaze slerping, and role-based 180-degree rotation compensations.
-# SOLID COMPLIANCE: Decomposed into short, specialized sub-methods (Rule 4.2).
-#              VISUAL UPGRADE: Allows body rotation during idle conversations 
-#              and greetings to prevent NPCs from staring blankly at walls.
-#              COMPILER FIX: Safe null-checks for 'gaze_rotation_offset' property 
-#              to prevent crashes on animal entities (Octopus, Turtles).
+#              gaze slerping, and role-based rotation compensations.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Handles strictly visual joints.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# - Thread-Safety Fix: Uses call_deferred for adding root visual nodes.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NPCVisualComponent
 extends Node
 
-# Joint Nodes for sub-mesh groupings
 var visual_root: Node3D
 var body_bob_node: Node3D 
 var head_node: Node3D
@@ -21,23 +19,19 @@ var arms_node: Node3D
 var left_eye: MeshInstance3D
 var right_eye: MeshInstance3D
 
-# Procedural variant colors calculated from coordinate seeds
 var variant_skin_color: Color
 var variant_clothing_color: Color
 var variant_hair_color: Color
 var variant_height_scale: float = 1.0
 
-# Blinking cycle trackers
 var _blink_timer: float = randf_range(2.5, 5.0)
 var _blink_duration: float = 0.0
 var _is_blinking: bool = false
 var _animation_time: float = 0.0
 
-# COMPILER FIX: Typed statically as PassiveEntity to bypass slow Variant lookups
 var _host: PassiveEntity
 var _ai_component: NPCAIComponent
 
-# Static visual cache for shared high-frequency pixel grain textures
 static var _shared_grain_texture: NoiseTexture2D = null
 static var _material_cache_by_color: Dictionary = {}
 
@@ -58,13 +52,13 @@ func _setup_joints() -> void:
 		if visual_root.has_node("BodyBobJoint"):
 			body_bob_node = visual_root.get_node("BodyBobJoint") as Node3D
 			_setup_appendage_joints()
-			return 
+			return
 
-	# Fallback: Create programmatically for procedural voxel villagers
+	# Fallback: Create programmatically using call_deferred to avoid C++ tree locking
 	visual_root = Node3D.new()
 	visual_root.name = "Visuals"
-	_host.add_child(visual_root)
 	visual_root.position.y = 0.02
+	_host.add_child.call_deferred(visual_root)
 	
 	body_bob_node = Node3D.new()
 	body_bob_node.name = "BodyBobJoint"
@@ -124,7 +118,6 @@ func _preload_shared_grain_texture() -> void:
 	_shared_grain_texture.noise = noise
 
 
-## Programmatic builder: Reuses cached materials instead of allocating new instances
 func create_box(parent: Node, size: Vector3, box_pos: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
@@ -175,7 +168,6 @@ func _set_eyes_vertical_scale(y_scale: float) -> void:
 	if is_instance_valid(right_eye): right_eye.scale.y = y_scale
 
 
-## Clean Dispatcher: Decomposed to remain strictly under the 20-line method limit
 func _process_procedural_animations(delta: float) -> void:
 	_animation_time += delta
 	
@@ -211,13 +203,9 @@ func _calculate_gaze_direction(is_talking: bool) -> Vector3:
 	return wander_dir
 
 
-## Gaze Rotation Solver: Rotates body towards talk partners even at 0.0 translation velocity
 func _apply_gaze_body_rotation(wander_dir: Vector3, active_task: int, is_talking: bool, delta: float) -> void:
 	var is_moving := wander_dir.length_squared() > 0.01
-	
-	# SOLID UPGRADE: Allow body rotation during conversations or greetings to prevent wall-staring
-	var should_rotate: bool = is_moving or is_talking or \
-		active_task == 3 or active_task == 4 # 3 = GREETING, 4 = CHATTING
+	var should_rotate: bool = is_moving or is_talking or active_task == 3 or active_task == 4
 		
 	if is_instance_valid(visual_root) and should_rotate and wander_dir != Vector3.ZERO:
 		var target_angle := atan2(wander_dir.x, wander_dir.z)
@@ -226,7 +214,6 @@ func _apply_gaze_body_rotation(wander_dir: Vector3, active_task: int, is_talking
 		if is_humanoid:
 			target_angle += PI
 			
-		# COMPILER FIX: Safely retrieve property dynamically using .get() to prevent crashes on non-humanoid fauna
 		var offset_val: Variant = _host.get("gaze_rotation_offset")
 		if offset_val != null:
 			target_angle += float(offset_val)
@@ -239,7 +226,7 @@ func _apply_gaze_body_rotation(wander_dir: Vector3, active_task: int, is_talking
 func _apply_vertical_bobbing_and_joints(active_task: int, is_moving: bool, is_talking: bool, delta: float) -> void:
 	if is_instance_valid(body_bob_node):
 		if is_moving and _host.is_on_floor() and not is_talking:
-			var speed_mult := 18.0 if active_task == 5 else (12.0 if _host.call("_is_avian") else 10.0) # 5 = PANIC
+			var speed_mult := 18.0 if active_task == 5 else (12.0 if _host.call("_is_avian") else 10.0)
 			var bounce_height := 0.05 if _host.call("_is_avian") else 0.035
 			body_bob_node.position.y = abs(sin(_animation_time * speed_mult)) * bounce_height
 		else:
@@ -250,14 +237,14 @@ func _apply_vertical_bobbing_and_joints(active_task: int, is_moving: bool, is_ta
 
 
 func _animate_arm_and_head_joints(active_task: int, is_moving: bool, is_talking: bool, delta: float) -> void:
-	if active_task == 3 or active_task == 4 or is_talking: # 3 = GREETING, 4 = CHATTING
+	if active_task == 3 or active_task == 4 or is_talking:
 		if is_instance_valid(head_node):
 			head_node.rotation.x = sin(_animation_time * 6.0) * 0.15
 			head_node.rotation.y = 0.0
 		if is_instance_valid(arms_node):
 			arms_node.rotation.x = 0.0
 			arms_node.position.y = -0.21
-	elif active_task == 2: # 2 = EXAMINING
+	elif active_task == 2:
 		if is_instance_valid(head_node):
 			head_node.rotation.x = lerp(head_node.rotation.x, deg_to_rad(25), delta * 5.0)
 			head_node.rotation.y = sin(_animation_time * 2.0) * 0.05
@@ -270,7 +257,7 @@ func _animate_arm_and_head_joints(active_task: int, is_moving: bool, is_talking:
 
 func _animate_default_movement_joints(active_task: int, is_moving: bool, delta: float) -> void:
 	if is_moving:
-		var speed_mult := 12.0 if active_task == 5 else (8.0 if _host.call("_is_avian") else 5.0) # 5 = PANIC
+		var speed_mult := 12.0 if active_task == 5 else (8.0 if _host.call("_is_avian") else 5.0)
 		var sway_amount := 0.2 if _host.call("_is_avian") else 0.08
 		
 		if is_instance_valid(head_node):

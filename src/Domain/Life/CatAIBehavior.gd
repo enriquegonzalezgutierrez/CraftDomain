@@ -5,8 +5,6 @@
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Isolates predator evasion, food 
 #   luring, and campfire snuggling into distinct, cohesive actions.
-# - Open-Closed Principle (OCP): Inherits from IAIBehavior. Allows new lures 
-#   (e.g., raw fish) to be added as decoupled actions without code rewrites.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -14,12 +12,11 @@
 class_name CatAIBehavior
 extends IAIBehavior
 
-const TASK_IDLE = 0
-const TASK_WANDERING = 1
-const TASK_PANIC = 5
-const TASK_WORKING = 6
+const TASK_IDLE: int = 0
+const TASK_WANDERING: int = 1
+const TASK_PANIC: int = 5
+const TASK_WORKING: int = 6
 
-# VELOCIDADES ESCALADAS AL DOBLE PARA COMPORTAMIENTO FELINO VELOZ
 const SPEED_RUN: float = 4.4
 const SPEED_WALK: float = 2.0
 const SPEED_CREEP: float = 1.2
@@ -81,23 +78,38 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard = AIBlackboard.new()
 		_blackboard.set_memory("host", host)
 		_blackboard.set_memory("hiss_cooldown", 0.0)
+		_blackboard.set_memory("food_scan_cooldown", 0.0)
+		_blackboard.set_memory("warmth_scan_cooldown", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
 
 
 func _update_blackboard_timers(delta: float) -> void:
 	var cd := _blackboard.get_float("hiss_cooldown") - delta
 	_blackboard.set_memory("hiss_cooldown", maxf(0.0, cd))
+	
+	var f_cd := _blackboard.get_float("food_scan_cooldown") - delta
+	_blackboard.set_memory("food_scan_cooldown", maxf(0.0, f_cd))
+	
+	var w_cd := _blackboard.get_float("warmth_scan_cooldown") - delta
+	_blackboard.set_memory("warmth_scan_cooldown", maxf(0.0, w_cd))
 
 
-func _evaluate_active_plan(host: Object) -> void:
+func _evaluate_active_plan(_host: Object) -> void:
 	if _active_plan.is_empty():
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
+		# Filter usable actions dynamically by contextual validity
+		var usable_actions: Array[GOAPAction] = []
+		for action: GOAPAction in _actions:
+			if action.is_contextually_valid(_blackboard):
+				usable_actions.append(action)
+		
 		for goal in sorted_goals:
 			if goal.is_valid(_blackboard):
-				_active_plan = GOAPPlanner.plan(goal, _actions, initial_state)
-				if not _active_plan.is_empty():
+				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+				if not candidate_plan.is_empty():
+					_active_plan = candidate_plan
 					_active_plan[0].on_enter(_blackboard)
 					break
 
@@ -207,6 +219,9 @@ class LureFoodAction extends GOAPAction:
 		super("LureFood", 1.0)
 		add_effect("has_food_target", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("food_scan_cooldown") <= 0.0
+		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var parent := host.get_parent() as Node
@@ -218,14 +233,15 @@ class LureFoodAction extends GOAPAction:
 				bb.set_memory("food_lure_player", player)
 				return true
 				
-		return false
+		bb.set_memory("food_scan_cooldown", 8.0)
+		return true
 		
 	func _is_player_holding_chicken(player_node: CharacterBody3D) -> bool:
 		var inventory := player_node.get("inventory") as InventoryComponent
 		if is_instance_valid(inventory):
 			var active_slot: int = player_node.get("active_slot_index") as int
 			var slot := inventory.get_slot_data(active_slot)
-			return slot != null and slot.item_id == 16 # 16 = Fried Chicken
+			return slot != null and slot.item_id == 16
 		return false
 
 
@@ -249,7 +265,7 @@ class FollowPlayerAction extends GOAPAction:
 		
 		if diff.length_squared() <= 2.25:
 			VoxelKinematicService.halt_movement(host, ai)
-			return true # Reached player, begging complete!
+			return true
 			
 		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_WALK * 1.5)
 		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
@@ -261,6 +277,9 @@ class FindWarmthAction extends GOAPAction:
 		super("FindWarmth", 1.0)
 		add_effect("has_warmth_target", true)
 		
+	func is_contextually_valid(bb: AIBlackboard) -> bool:
+		return bb.get_float("warmth_scan_cooldown") <= 0.0
+		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var parent := host.get_parent() as Node
@@ -271,7 +290,8 @@ class FindWarmthAction extends GOAPAction:
 				bb.set_memory("campfire_target", fire)
 				return true
 				
-		return false
+		bb.set_memory("warmth_scan_cooldown", 12.0)
+		return true
 		
 	func _detect_closest_campfire(host_pos: Vector3, world_node: Node) -> Node3D:
 		var closest: Node3D = null
@@ -302,9 +322,9 @@ class SnuggleAction extends GOAPAction:
 		var diff := fire.global_position - host.global_position
 		diff.y = 0.0
 		
-		if diff.length_squared() <= 3.24: # Sits comfortably at ~1.8m
+		if diff.length_squared() <= 3.24:
 			VoxelKinematicService.halt_movement(host, ai)
-			if is_instance_valid(ai): ai.set("current_task", TASK_IDLE) # Sits
+			if is_instance_valid(ai): ai.set("current_task", TASK_IDLE)
 			return true
 			
 		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_CREEP)
@@ -328,7 +348,7 @@ class DefaultWanderAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(1.5, 4.0)
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) if randf() < 0.45 else Vector3.ZERO
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)

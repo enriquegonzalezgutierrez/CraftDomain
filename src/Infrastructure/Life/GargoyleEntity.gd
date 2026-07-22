@@ -2,18 +2,19 @@
 # Pathfile: res://src/Infrastructure/Life/GargoyleEntity.gd
 # Description: Physical character controller for the hostile nocturnal Gargoyle.
 #              Manages day/night petrification state transitions and flight physics.
-#              REFACTORED: Purged all skeletal animations to use static procedural swaying.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates physical translations,
+#   delegating decision-making to GargoyleAIBehavior.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name GargoyleEntity
 extends PassiveEntity
 
-# VELOCIDAD ESCALADA AL DOBLE PARA SINCRONIZACIÓN CON EL DOMINIO
 const SPEED: float = 6.0
 const MODEL_BASE_Y: float = 0.8982
 
-## Decoupled local metadata key to prevent cyclic compile locks with GargoyleAIBehavior
 const META_STATE = "gargoyle_nocturnal_state"
 
 var player: CharacterBody3D
@@ -35,15 +36,19 @@ func _ready() -> void:
 		remove_from_group("passives")
 		
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
-	_model_node = get_node_or_null("Visuals/BodyBobJoint/gargoyle") as Node3D
+	ai_component = get_node_or_null("NPCAIComponent") as NPCAIComponent
 	
+	_model_node = get_node_or_null("Visuals/BodyBobJoint/gargoyle") as Node3D
 	if is_instance_valid(_model_node):
 		_model_base_rot = _model_node.rotation
 		GLBModelSanitizer.sanitize_model(_model_node)
 		
 	_locate_player()
-	_execute_lifecycle_initialization()
-	
+	_setup_nameplate_height()
+	_initialize_ai_behavior()
+
+
+func _initialize_ai_behavior() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = GargoyleAIBehavior.new()
 
@@ -109,7 +114,6 @@ func _bite_player() -> void:
 			player.call("take_damage", 1, knockback)
 
 
-## High-Frequency Physics Loop (Runs at 120Hz on the physics thread)
 func _physics_tick(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
@@ -170,48 +174,6 @@ func _spawn_basalt_dust_particles() -> void:
 	particles.emitting = true
 
 
-func _physics_process(delta: float) -> void:
-	if domain_entity.is_dead:
-		return
-
-	var state := 0
-	if has_meta(META_STATE):
-		state = get_meta(META_STATE) as int
-
-	if state == 0: 
-		_process_petrified_state(delta)
-	else: 
-		_process_awakened_state(delta)
-
-	_apply_absolute_boundary_forcefield(delta)
-	_process_timers_and_gaze(delta)
-	move_and_slide()
-
-
-func _process_petrified_state(delta: float) -> void:
-	if not is_on_floor():
-		velocity.y -= gravity * delta
-	else:
-		velocity.y = -1.2
-
-
-func _process_awakened_state(delta: float) -> void:
-	velocity.y = move_toward(velocity.y, 0.0, SPEED * delta)
-	if is_instance_valid(ai_component):
-		ai_component.process_ai(delta)
-
-
-func _process_timers_and_gaze(delta: float) -> void:
-	quest_check_timer -= delta
-	if quest_check_timer <= 0.0:
-		quest_check_timer = 0.5
-		_update_quest_bubble_state()
-
-
-# ==============================================================================
-# HUMAN BEHAVIOR: RENDERING ANIMATION LOOPS (SRP Compliant)
-# ==============================================================================
-
 func _process(delta: float) -> void:
 	if domain_entity.is_dead:
 		return
@@ -228,9 +190,9 @@ func _animate_gargoyle_nocturnal_state(delta: float) -> void:
 	if has_meta(META_STATE):
 		state = get_meta(META_STATE) as int
 		
-	if state == 1: # AWAKENED (Night flight)
+	if state == 1:
 		_animate_awakened_flight()
-	else: # PETRIFIED (Day stone)
+	else:
 		_animate_petrified_dormancy(delta)
 
 

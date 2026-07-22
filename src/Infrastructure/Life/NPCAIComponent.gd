@@ -1,12 +1,11 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
-# Description: Infrastructure NPC Sensory AI Brain. Coordinates GOAP tick 
-#              routing, steering execution, and physical locomotion vectors.
+# Description: Infrastructure NPC Sensory AI Brain with diagnostic logging.
+#              Coordinates GOAP tick routing, steering, and locomotion vectors.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly physics and 
-#   sensory loops, ensuring correct sequential execution (GOAP -> Locomotion -> Steering).
+#   sensory loops with diagnostic output tracing.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - BUG FIX: Allowed linear movement during active tasks, preventing self-deceleration.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -43,6 +42,7 @@ var _ai_tick_rate: float = 0.25
 
 var _steering_component: NPCObstacleSteering
 var _last_pos_for_stuck: Vector3 = Vector3.ZERO
+var _log_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -51,6 +51,19 @@ func _ready() -> void:
 	_ai_timer_accum = randf_range(0.0, _ai_tick_rate)
 	_setup_steering_component()
 	_subscribe_to_world_modifications()
+	_log_initial_state()
+
+
+func _log_initial_state() -> void:
+	var h_name: String = "NULL_HOST"
+	if is_instance_valid(_host):
+		h_name = str(_host.name)
+		
+	var b_name: String = "NULL_BEHAVIOR"
+	if active_behavior != null:
+		b_name = active_behavior.get_class()
+		
+	print("[AI_DIAGNOSTIC] Ready for '%s' | Active Behavior: %s" % [h_name, b_name])
 
 
 func _setup_steering_component() -> void:
@@ -75,10 +88,9 @@ func _on_world_block_modified(global_pos: Vector3i, _type: BlockType.Type) -> vo
 	var host_coord := Vector3i(floori(h_pos.x), floori(h_pos.y), floori(h_pos.z))
 	
 	if host_coord.distance_to(global_pos) < 15:
-		_ai_timer_accum = _ai_tick_rate 
+		_ai_timer_accum = _ai_tick_rate
 
 
-## Master Loop: Executes correct sequential data pipeline (GOAP -> Locomotion -> Steering)
 func process_ai(delta: float) -> void:
 	if not is_instance_valid(_host) or _host.domain_entity.is_dead: 
 		return
@@ -92,6 +104,30 @@ func process_ai(delta: float) -> void:
 	
 	if is_instance_valid(_steering_component):
 		_steering_component.process_steering(delta)
+		
+	_process_periodic_diagnostic_logging(delta)
+
+
+func _process_periodic_diagnostic_logging(delta: float) -> void:
+	_log_timer += delta
+	if _log_timer >= 1.0:
+		_log_timer = 0.0
+		_print_ai_diagnostic_snapshot()
+
+
+func _print_ai_diagnostic_snapshot() -> void:
+	if not is_instance_valid(_host): return
+	var h_name := str(_host.name)
+	var task_str := get_task_state_name(int(current_task))
+	var vel := _host.velocity
+	var is_on_flr := _host.is_on_floor()
+	var b_state: String = "NO_BEHAVIOR"
+	if active_behavior != null:
+		b_state = active_behavior.get_active_state_name(_host)
+	
+	print("[AI_DIAGNOSTIC] '%s' | Task: %s | BehaviorState: %s | Manual: %s | Dir: %s | Vel: (%.2f, %.2f, %.2f) | Floor: %s" % [
+		h_name, task_str, b_state, str(is_manual_override), str(wander_direction), vel.x, vel.y, vel.z, str(is_on_flr)
+	])
 
 
 func _calculate_base_desired_direction(delta: float) -> void:
@@ -118,10 +154,12 @@ func _verify_active_plan_presence() -> void:
 
 
 func _apply_movement_vectors(delta: float) -> void:
-	var base_speed: float = _host.get("BASE_SPEED") as float if "BASE_SPEED" in _host else 1.3
+	var base_speed: float = 1.3
+	if "BASE_SPEED" in _host:
+		base_speed = _host.get("BASE_SPEED") as float
+		
 	var is_trying_to_move := wander_direction.length_squared() > 0.01
 	
-	# BUG FIX: Allow linear movement during active tasks if a direction is set
 	if is_trying_to_move and current_task != TaskState.IDLE:
 		_execute_linear_walk(base_speed, delta)
 	else:
@@ -132,8 +170,10 @@ func _apply_movement_vectors(delta: float) -> void:
 
 func _execute_linear_walk(base_speed: float, delta: float) -> void:
 	var final_dir := wander_direction
-	var speed_mult: float = 2.4 if current_task == TaskState.PANIC else 1.0
-	
+	var speed_mult: float = 1.0
+	if current_task == TaskState.PANIC:
+		speed_mult = 2.4
+		
 	_host.velocity.x = final_dir.x * base_speed * speed_mult
 	_host.velocity.z = final_dir.z * base_speed * speed_mult
 	
@@ -170,7 +210,10 @@ func _resolve_stuck_state() -> void:
 
 func _keep_gaze_within_tether() -> void:
 	if _host.has_method("_has_ui_decorations") and _host.call("_has_ui_decorations") as bool:
-		var spawn_pt: Vector3 = _host.get("_spawn_point") if "_spawn_point" in _host else _host.global_position
+		var spawn_pt: Vector3 = _host.global_position
+		if "_spawn_point" in _host:
+			spawn_pt = _host.get("_spawn_point") as Vector3
+			
 		if _host.global_position.distance_squared_to(spawn_pt) > 144.0: 
 			wander_direction = (spawn_pt - _host.global_position).normalized()
 			wander_direction.y = 0.0
