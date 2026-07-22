@@ -1,24 +1,39 @@
 # ==============================================================================
-# Project: CraftDomain
-# Description: Git ignore configuration for Godot 4.6 projects.
+# Pathfile: .gitignore
+# Description: Git ignore configuration for Godot 4.6+ Dolores project.
 # Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: .gitignore
 # ==============================================================================
 
-# Godot-specific ignores
+# Executable and export build artifacts
 CraftDomain.console.exe
 CraftDomain.exe
-.godot/
-*.translation
+*.pck
+*.x86_64
+*.sh
+*.exe
+*.apk
+*.aab
+*.zip
 
-# Editor-specific ignores
+# Specific exported game builds
+"Dolores: Chronicles of the Grid.pck"
+"Dolores: Chronicles of the Grid.sh"
+"Dolores: Chronicles of the Grid.x86_64"
+
+# Godot engine cache and imports
+.godot/
 .import/
+*.translation
 export_presets.cfg
 
-# Mono/C# specific (if added in the future)
+# Mono/C# specific
 .mono/
 data_*/
 mono_crash*.log
+
+# Local user save data & telemetry logs
+user_save/
+*.log
 
 # System/OS files
 .DS_Store

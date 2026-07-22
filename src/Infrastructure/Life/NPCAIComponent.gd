@@ -1,10 +1,10 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
-# Description: Infrastructure NPC Sensory AI Brain with diagnostic logging.
-#              Coordinates GOAP tick routing, steering, and locomotion vectors.
+# Description: Infrastructure NPC Sensory AI Brain managing high-performance 
+#              GOAP tick routing, obstacle steering, and locomotion vectors.
 # SOLID COMPLIANCE:
 # - Single Responsibility Principle (SRP): Coordinates strictly physics and 
-#   sensory loops with diagnostic output tracing.
+#   sensory loops with zero console print overhead.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
@@ -42,7 +42,6 @@ var _ai_tick_rate: float = 0.25
 
 var _steering_component: NPCObstacleSteering
 var _last_pos_for_stuck: Vector3 = Vector3.ZERO
-var _log_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -51,19 +50,6 @@ func _ready() -> void:
 	_ai_timer_accum = randf_range(0.0, _ai_tick_rate)
 	_setup_steering_component()
 	_subscribe_to_world_modifications()
-	_log_initial_state()
-
-
-func _log_initial_state() -> void:
-	var h_name: String = "NULL_HOST"
-	if is_instance_valid(_host):
-		h_name = str(_host.name)
-		
-	var b_name: String = "NULL_BEHAVIOR"
-	if active_behavior != null:
-		b_name = active_behavior.get_class()
-		
-	print("[AI_DIAGNOSTIC] Ready for '%s' | Active Behavior: %s" % [h_name, b_name])
 
 
 func _setup_steering_component() -> void:
@@ -104,30 +90,6 @@ func process_ai(delta: float) -> void:
 	
 	if is_instance_valid(_steering_component):
 		_steering_component.process_steering(delta)
-		
-	_process_periodic_diagnostic_logging(delta)
-
-
-func _process_periodic_diagnostic_logging(delta: float) -> void:
-	_log_timer += delta
-	if _log_timer >= 1.0:
-		_log_timer = 0.0
-		_print_ai_diagnostic_snapshot()
-
-
-func _print_ai_diagnostic_snapshot() -> void:
-	if not is_instance_valid(_host): return
-	var h_name := str(_host.name)
-	var task_str := get_task_state_name(int(current_task))
-	var vel := _host.velocity
-	var is_on_flr := _host.is_on_floor()
-	var b_state: String = "NO_BEHAVIOR"
-	if active_behavior != null:
-		b_state = active_behavior.get_active_state_name(_host)
-	
-	print("[AI_DIAGNOSTIC] '%s' | Task: %s | BehaviorState: %s | Manual: %s | Dir: %s | Vel: (%.2f, %.2f, %.2f) | Floor: %s" % [
-		h_name, task_str, b_state, str(is_manual_override), str(wander_direction), vel.x, vel.y, vel.z, str(is_on_flr)
-	])
 
 
 func _calculate_base_desired_direction(delta: float) -> void:
