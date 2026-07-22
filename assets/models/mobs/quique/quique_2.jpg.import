@@ -2,11 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://qwti81p3xvx4"
+uid="uid://cuwoevd5wpes"
 path.s3tc="res://.godot/imported/quique_2.jpg-d0405b5acce881a16d1d80b775a68944.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
+}
+generator_parameters={
+"md5": "2bea8c8c13e930b8487e5c6f72b271ef"
 }
 
 [deps]

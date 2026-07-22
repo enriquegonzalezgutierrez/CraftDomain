@@ -113,6 +113,11 @@ static func _preload_vegetation_props() -> void:
 	_props_scenes[233] = load("res://src/Infrastructure/World/tulip_white_prop.tscn")
 	_props_scenes[234] = load("res://src/Infrastructure/World/cornflower_prop.tscn")
 	_props_scenes[235] = load("res://src/Infrastructure/World/daisy_prop.tscn")
+	_props_scenes[236] = load("res://src/Infrastructure/World/palm_bush_prop.tscn")
+	_props_scenes[237] = load("res://src/Infrastructure/World/glowing_mushroom_prop.tscn")
+	_props_scenes[238] = load("res://src/Infrastructure/World/sakura_bush_prop.tscn")
+	_props_scenes[239] = load("res://src/Infrastructure/World/water_lily_prop.tscn")
+	_props_scenes[240] = load("res://src/Infrastructure/World/frost_crystal_flower_prop.tscn")
 
 
 static func _preload_static_meshes_cache() -> void:

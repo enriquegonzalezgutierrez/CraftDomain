@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://qn7ynaoc7wnj"]
+
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://den47d42yo052" path="res://assets/models/decorations/frost_crystal_flower.glb" id="2_glb"]
+
+[node name="FrostCrystalFlowerProp" type="Node3D" unique_id=642036747]
+script = ExtResource("1_prop")
+
+[node name="frost_crystal_flower" parent="." unique_id=2007961228 instance=ExtResource("2_glb")]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1.0071228, 0)

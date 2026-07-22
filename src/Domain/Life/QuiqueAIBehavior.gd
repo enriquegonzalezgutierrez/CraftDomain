@@ -206,7 +206,8 @@ class QuiquePanicAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(0.4, 1.2) 
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
+			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			wander_dir = candidate
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
@@ -264,7 +265,7 @@ class QuiqueStrollAction extends GOAPAction:
 		if timer <= 0.0:
 			timer = randf_range(2.0, 6.0)
 			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle))
+			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) 
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)

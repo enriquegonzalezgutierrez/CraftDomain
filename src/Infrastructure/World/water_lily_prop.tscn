@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://bm3awlmbkwn2d"]
+
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://csxt31usomoyu" path="res://assets/models/decorations/water_lily.glb" id="2_glb"]
+
+[node name="WaterLilyProp" type="Node3D" unique_id=259115929]
+script = ExtResource("1_prop")
+
+[node name="water_lily" parent="." unique_id=548734276 instance=ExtResource("2_glb")]
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, 0, 0.24649891, 0)

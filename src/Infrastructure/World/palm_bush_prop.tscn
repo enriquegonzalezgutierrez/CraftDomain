@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://6ww8q13ca2st"]
+
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://dxocomw5gqtgq" path="res://assets/models/decorations/palm_bush.glb" id="2_glb"]
+
+[node name="PalmBushProp" type="Node3D" unique_id=1217226063]
+script = ExtResource("1_prop")
+
+[node name="palm_bush" parent="." unique_id=348276852 instance=ExtResource("2_glb")]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1.0064809, 0)

@@ -3,6 +3,9 @@
 # Description: Concrete Biome Strategy implementing geographical, geological,
 #              meteorological, and scaled population parameters for the 
 #              celestial floating Cloud Kingdom.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly Cloud Kingdom parameters.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -34,37 +37,34 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 	return 0
 
 
+func get_wilderness_prop_id(scatter_hash: int) -> int:
+	var type_roll: int = scatter_hash % 10
+	if type_roll < 6:
+		return 240 # 3D Glacial Frost Flower (NEW!)
+	return 0
+
+
 func get_wilderness_wildlife_ids() -> Array[int]:
-	# Primarily flying fauna for the stratospheric islands
 	var celestial_wildlife: Array[int] = [205, 207]
 	return celestial_wildlife
 
 
-# ==============================================================================
-# SOLID OCP SCALED POPULATION CONFIGURATION (OCP Compliance)
-# ==============================================================================
-
 func get_spawn_probability() -> float:
-	return 0.40 # High altitude birds are common in the clouds
+	return 0.40
 
 
 func get_max_group_size() -> int:
-	return 6 # Large, beautiful flocks of birds
+	return 6
 
 
 func get_village_civilian_ids() -> Array[int]:
-	# Sky travelers and watchers
 	var sky_outpost_roster: Array[int] = [100, 102]
 	return sky_outpost_roster
 
 
 func get_village_population_density() -> int:
-	return 4 # Small celestial observation posts
+	return 4
 
-
-# ==============================================================================
-# METEOROLOGICAL & CLIMATE CONFIGURATION
-# ==============================================================================
 
 func get_climate_weights() -> Dictionary:
 	return {

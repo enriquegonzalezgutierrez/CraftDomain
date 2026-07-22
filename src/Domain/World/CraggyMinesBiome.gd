@@ -2,8 +2,9 @@
 # Pathfile: res://src/Domain/World/CraggyMinesBiome.gd
 # Description: Concrete Biome Strategy implementing the geographical, block-depth,
 #              and vegetation scatter rules for the Craggy Peaks & Caves.
-# SOLID COMPLIANCE: Class limits set < 100 lines (SRP). All monolithic
-#              loops decomposed. Every method strictly remains below 20 lines.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly Craggy Mines parameters.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -41,16 +42,16 @@ func get_scatter_blueprint_id(scatter_hash: int) -> int:
 	return 0
 
 
-## Concrete Override (OCP): Dynamically returns mountainous vegetation prop IDs
 func get_wilderness_prop_id(scatter_hash: int) -> int:
 	var type_roll: int = scatter_hash % 10
 	if type_roll < 4:
-		return 223 # Tall Grass Prop (.tscn)
-	elif type_roll < 8:
-		return 224 # Dead Bush Prop (.tscn)
+		return 223 # 3D Beach Grass
+	elif type_roll < 7:
+		var item_hash := (scatter_hash + 11) % 2
+		return 226 if item_hash == 0 else 227 # 3D Allium or 3D Bluebell (NEW!)
 	elif type_roll < 9:
-		return 227 # Bluebell Prop (.tscn)
-	return 0       # Bare stone peaks
+		return 224 # 3D Dead Bush
+	return 0       
 
 
 func get_outpost_population_ids() -> Array[int]:

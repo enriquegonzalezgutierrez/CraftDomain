@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://dhe437ktiherp"]
+
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://cpqt8be2vetj3" path="res://assets/models/decorations/glowing_mushroom.glb" id="2_glb"]
+
+[node name="GlowingMushroomProp" type="Node3D" unique_id=585420541]
+script = ExtResource("1_prop")
+
+[node name="glowing_mushroom" parent="." unique_id=1489123573 instance=ExtResource("2_glb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5023277, 0)

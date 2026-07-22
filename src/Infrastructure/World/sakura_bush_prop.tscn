@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://dwl85m56p4wx8"]
+
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://dyop5su4wcy2g" path="res://assets/models/decorations/sakura_bush.glb" id="2_glb"]
+
+[node name="SakuraBushProp" type="Node3D" unique_id=1099615358]
+script = ExtResource("1_prop")
+
+[node name="sakura_bush" parent="." unique_id=1612008243 instance=ExtResource("2_glb")]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1.0082874, 0)

@@ -3,8 +3,6 @@
 # Description: Central composition root of the application. Orchestrates the 
 #              asynchronous initialization of global systems, unified scene transitions,
 #              Vulkan pre-warming, and 100% Offline Socket Isolation.
-#              REFACTORED: Converted compile-time preloads to runtime load calls
-#              to immunize the startup compiler from Windows file-locking race conditions.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -202,8 +200,6 @@ func _register_civilian_professions(h_land: int) -> void:
 	_register_scene_mob(101, MerchantEntity, h_land)
 	_register_scene_mob(105, MinerEntity, h_land)
 	_register_scene_mob(106, CyberCitizenEntity, h_land)
-	
-	# Integración OCP de Quique como Residente Especial (ID 110)
 	_register_scene_mob(110, QuiqueEntity, h_land)
 
 
@@ -233,7 +229,8 @@ func _setup_prop_registry() -> void:
 	_register_prop(213, WishingWellEntity)
 	_register_prop(215, BarrelEntity)
 	
-	for prop_id: int in range(220, 236):
+	# Range expanded to 241 to include all exotic 3D plant props (IDs 220 to 240)
+	for prop_id: int in range(220, 241):
 		_register_prop(prop_id, null)
 
 
@@ -243,7 +240,7 @@ func _register_prop(prop_id: int, _prop_class: Variant) -> void:
 		if is_instance_valid(scene):
 			var inst := scene.instantiate() as Node3D
 			inst.position = pos
-			if prop_id >= 220 and prop_id <= 235:
+			if prop_id >= 220 and prop_id <= 240:
 				var script_res := load(VEGETATION_PROP_SCRIPT_PATH) as GDScript
 				if is_instance_valid(script_res):
 					inst.set_script(script_res)

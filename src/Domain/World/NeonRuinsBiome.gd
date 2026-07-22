@@ -3,6 +3,9 @@
 # Description: Concrete Biome Strategy implementing geographical, geological,
 #              meteorological, and scaled population parameters for the 
 #              post-apocalyptic tech-noir Neon Ruins.
+# SOLID COMPLIANCE:
+# - Single Responsibility Principle (SRP): Coordinates strictly Neon Ruins parameters.
+# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -47,56 +50,57 @@ func get_block_for_depth(y: int, base_height: int) -> BlockType.Type:
 
 func get_landmark_type(spawn_hash: int, _base_height: int) -> int:
 	if spawn_hash % 240 == 33:
-		return 6 # Neon Pyramid
+		return 6 
 	return 0
 
 
 func get_scatter_blueprint_id(scatter_hash: int) -> int:
 	if scatter_hash % 70 == 9:
-		return 11 # Underworld Fungus
+		return 11 
 	return 0
 
 
-# ==============================================================================
-# SOLID OCP SCALED POPULATION CONFIGURATION (OCP Compliance)
-# ==============================================================================
+func get_wilderness_prop_id(scatter_hash: int) -> int:
+	var type_roll: int = scatter_hash % 10
+	if type_roll < 4:
+		return 237 # 3D Glowing Bio-Mushroom (NEW!)
+	elif type_roll < 7:
+		return 224 # 3D Dead Bush
+	elif type_roll < 9:
+		return 225 # 3D Cactus
+	return 0       
+
 
 func get_spawn_probability() -> float:
-	return 0.35 # Decaying urban environment, moderate-high spawn rate
+	return 0.35
 
 
 func get_max_group_size() -> int:
-	return 4 # Small tactical squads of scavengers and droids
+	return 4
 
 
 func get_wilderness_wildlife_ids() -> Array[int]:
-	# A mix of tech-husks, nocturnal statues, and urban scavengers
 	var ruins_wildlife_roster: Array[int] = [10, 12, 13, 206, 211]
 	return ruins_wildlife_roster
 
 
 func get_village_civilian_ids() -> Array[int]:
-	# High-tech city roster: Cyber Citizens, Security Bots, and Scrap Miners
 	var cyber_city_roster: Array[int] = [102, 105, 106]
 	return cyber_city_roster
 
 
 func get_village_population_density() -> int:
-	return 6 # Moderate active city feel
+	return 6
 
-
-# ==============================================================================
-# METEOROLOGICAL & CLIMATE CONFIGURATION
-# ==============================================================================
 
 func get_streetlight_theme() -> Dictionary:
 	return {
-		"stone_dark": Color(0.12, 0.12, 0.15),       # Dark matte obsidian-steel base
-		"stone_light": Color(0.08, 0.08, 0.1),       # Charcoal-black shaft
-		"wood_pole": Color(0.0, 0.95, 0.95),         # Glowing cyan neon post
-		"iron_black": Color(0.12, 0.12, 0.15),       # Wrought iron cap
-		"lantern_glow": Color(0.95, 0.0, 0.95),      # Glowing magenta bulb emission
-		"light_tint": Color(0.0, 0.95, 0.95)         # High-contrast cyan OmniLight3D color
+		"stone_dark": Color(0.12, 0.12, 0.15),       
+		"stone_light": Color(0.08, 0.08, 0.1),       
+		"wood_pole": Color(0.0, 0.95, 0.95),         
+		"iron_black": Color(0.12, 0.12, 0.15),       
+		"lantern_glow": Color(0.95, 0.0, 0.95),      
+		"light_tint": Color(0.0, 0.95, 0.95)         
 	}
 
 

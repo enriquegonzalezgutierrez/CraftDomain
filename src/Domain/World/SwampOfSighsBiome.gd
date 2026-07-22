@@ -38,46 +38,30 @@ func get_landmark_type(_spawn_hash: int, _base_height: int) -> int:
 
 func get_wilderness_prop_id(scatter_hash: int) -> int:
 	var type_roll: int = scatter_hash % 10
-	if type_roll < 4:
-		return 228 # Swamp Fern
+	if type_roll < 3:
+		return 228 # 3D Swamp Fern
+	elif type_roll < 5:
+		return 229 # 3D Sugar Cane
 	elif type_roll < 7:
-		return 229 # Sugar Cane
+		return 237 # 3D Glowing Bio-Mushroom (NEW!)
 	elif type_roll < 9:
-		return 222 # Blue Orchid
-	return 224     # Dead Bush
-
-
-# ==============================================================================
-# SOLID OCP SCALED POPULATION CONFIGURATION (OCP Compliance)
-# ==============================================================================
-
-func get_spawn_probability() -> float:
-	return 0.55 # Teeming wetland environment, high spawning rate
-
-
-func get_max_group_size() -> int:
-	return 4 # Balanced groups for both land and water predators
+		return 239 # 3D Water Lily Pad (NEW!)
+	return 222     # 3D Blue Orchid
 
 
 func get_wilderness_wildlife_ids() -> Array[int]:
-	# Specialized amphibious fauna: Turtles, Crabs, Pigs, and murky-water Sharks!
 	var swamp_wildlife_roster: Array[int] = [0, 3, 11, 201, 208]
 	return swamp_wildlife_roster
 
 
 func get_village_civilian_ids() -> Array[int]:
-	# Swamp research outpost roster: Apothecary Druids, Villagers, and Clay Miners
 	var swamp_outpost_roster: Array[int] = [100, 104, 105]
 	return swamp_outpost_roster
 
 
 func get_village_population_density() -> int:
-	return 5 # Compact and busy investigation settlement
+	return 5
 
-
-# ==============================================================================
-# METEOROLOGICAL & CLIMATE CONFIGURATION
-# ==============================================================================
 
 func get_streetlight_theme() -> Dictionary:
 	return {

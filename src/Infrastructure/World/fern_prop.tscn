@@ -1,25 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene format=3 uid="uid://dgxepgixss70v"]
 
-[ext_resource type="Shader" path="res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader" id="1_shader"]
-[ext_resource type="Texture2D" path="res://assets/textures/fern.png" id="2_tex"]
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://bpfu55ojgn3yk" path="res://assets/models/decorations/fern.glb" id="2_glb"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_sway"]
-render_priority = 0
-shader = ExtResource("1_shader")
-shader_parameter/block_color = Color(1, 1, 1, 1)
-shader_parameter/roughness_val = 1.0
-shader_parameter/albedo_texture = ExtResource("2_tex")
+[node name="FernProp" type="Node3D" unique_id=6451171]
+script = ExtResource("1_prop")
 
-[sub_resource type="QuadMesh" id="QuadMesh_fern"]
-material = SubResource("ShaderMaterial_sway")
-size = Vector2(0.8, 0.8)
-
-[node name="FernProp" type="Node3D"]
-
-[node name="QuadA" type="MeshInstance3D" parent="."]
-transform = Transform3D(0.707107, 0, 0.707107, 0, 1, 0, -0.707107, 0, 0.707107, 0, 0.4, 0)
-mesh = SubResource("QuadMesh_fern")
-
-[node name="QuadB" type="MeshInstance3D" parent="."]
-transform = Transform3D(0.707107, 0, -0.707107, 0, 1, 0, 0.707107, 0, 0.707107, 0, 0.4, 0)
-mesh = SubResource("QuadMesh_fern")
+[node name="fern" parent="." unique_id=1698644703 instance=ExtResource("2_glb")]
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, 0, 0.4542536, 0)
