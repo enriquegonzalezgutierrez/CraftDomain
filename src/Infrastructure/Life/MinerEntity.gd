@@ -1,18 +1,16 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MinerEntity.gd
-# Description: Physical character controller for the cave Miner NPC.
-#              Instantiates MinerAIBehavior dynamically on ready.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates physical interactions 
-#   and visual animations, binding to MinerAIBehavior.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique Gonzalez Gutierrez
+# Description: Physical character controller for the cavern Miner NPC.
+#              Manages mining routines, subterranean dialogues, and 3D rigs.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MinerEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/miner.glb"
+const VISUAL_STRATEGY_SCRIPT_PATH := "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
+
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
 
@@ -41,7 +39,7 @@ func _initialize_ai_behavior() -> void:
 
 
 func _setup_graphics_representation() -> void:
-	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
+	var strategy_script := load(VISUAL_STRATEGY_SCRIPT_PATH) as GDScript
 	if strategy_script == null:
 		return
 		
@@ -49,7 +47,8 @@ func _setup_graphics_representation() -> void:
 	strategy.set("base_model_path", BASE_MODEL_PATH)
 	
 	visual_representation = strategy as IEntityVisualRepresentation
-	visual_representation.build_representation(self, visual_component.body_bob_node)
+	if is_instance_valid(visual_component) and is_instance_valid(visual_component.body_bob_node):
+		visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
 func _get_entity_name_key() -> String:
@@ -80,14 +79,11 @@ func interact(player_node: CharacterBody3D) -> void:
 
 
 func _select_procedural_greeting_key() -> String:
-	var is_night: bool = CelestialService.is_night_time_static()
-	if is_night: 
+	if CelestialService.is_night_time_static():
 		return "DIALOGUE_MINER_NIGHT"
 		
-	var _biome_id := BiomeService.get_biome_id_at_position(global_position, get_parent())
 	var variety_index := npc_seed % 2
-	if variety_index == 0:
-		return "DIALOGUE_MINER_PLAINS_A"
+	if variety_index == 0: return "DIALOGUE_MINER_PLAINS_A"
 	return "DIALOGUE_MINER_PLAINS_B"
 
 

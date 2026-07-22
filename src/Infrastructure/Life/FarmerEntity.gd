@@ -1,18 +1,16 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/FarmerEntity.gd
 # Description: Physical character controller representing an agricultural Farmer NPC.
-#              Instantiates FarmerAIBehavior dynamically on ready.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates physical translations
-#   and visual animations, binding to FarmerAIBehavior.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique Gonzalez Gutierrez
+#              Manages crop interactions, farm routines, and 3D visual rigs.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name FarmerEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/farmer.glb"
+const VISUAL_STRATEGY_SCRIPT_PATH := "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
+
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
 
@@ -43,7 +41,7 @@ func _initialize_ai_behavior() -> void:
 
 
 func _build_visual_representation() -> void:
-	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
+	var strategy_script := load(VISUAL_STRATEGY_SCRIPT_PATH) as GDScript
 	if strategy_script == null:
 		return
 		
@@ -51,7 +49,8 @@ func _build_visual_representation() -> void:
 	strategy.set("base_model_path", BASE_MODEL_PATH)
 	
 	visual_representation = strategy as IEntityVisualRepresentation
-	visual_representation.build_representation(self, visual_component.body_bob_node)
+	if is_instance_valid(visual_component) and is_instance_valid(visual_component.body_bob_node):
+		visual_representation.build_representation(self, visual_component.body_bob_node)
 
 
 func _locate_player() -> void:
@@ -78,13 +77,11 @@ func interact(player_node: CharacterBody3D) -> void:
 		var intro_node := DialogueNode.new()
 		intro_node.node_id = "farmer_intro_temp"
 		intro_node.text = _select_procedural_greeting_key()
-		
 		hud.open_dialogue(intro_node, "NPC_NAME_FARMER", self)
 
 
 func _select_procedural_greeting_key() -> String:
-	var is_night: bool = CelestialService.is_night_time_static()
-	if is_night:
+	if CelestialService.is_night_time_static():
 		return "DIALOGUE_FARMER_NIGHT"
 		
 	var biome_id := BiomeService.get_biome_id_at_position(global_position, get_parent())
@@ -93,6 +90,5 @@ func _select_procedural_greeting_key() -> String:
 		7: return "DIALOGUE_FARMER_NEON"       
 		_:
 			var variety_index := npc_seed % 2
-			if variety_index == 0:
-				return "DIALOGUE_FARMER_PLAINS_A"
+			if variety_index == 0: return "DIALOGUE_FARMER_PLAINS_A"
 			return "DIALOGUE_FARMER_PLAINS_B"

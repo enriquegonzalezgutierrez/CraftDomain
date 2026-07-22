@@ -1,15 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Dialogue/DialogueRegistry.gd
-# Description: Pure Domain Registry responsible for managing conversation nodes, 
-#              routing options, and compiling dynamic interactive dialogue trees.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Isolates dialogue compilation and 
-#   declarative node linking away from visual and text rendering overlays.
-# - Open-Closed Principle (OCP): Decoupled from hardcoded source code lines. 
-#   Conversations are loaded dynamically from an external JSON file.
-# - Dependency Inversion Principle (DIP): Resolves dialogue nodes polymorphically 
-#   by storing references to abstract domain resources.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Description: Pure Domain Registry managing conversation nodes and parsing
+#              interactive dialogue trees dynamically from JSON database assets.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -18,35 +10,29 @@ extends RefCounted
 
 const DIALOGUES_FILE_PATH := "res://assets/dialogues/dialogues.json"
 
-## Static map holding registered conversation nodes: String (node_id) -> DialogueNode
 static var _nodes: Dictionary = {}
 
 
-## Startup Initializer: Parses and registers the standard 
-## dialogue trees from the external JSON database.
+## Parses and registers the standard dialogue database on startup.
 static func initialize_dialogue_database() -> void:
 	_nodes.clear()
 	_load_dialogues_from_json()
 
 
-## Public OCP Extension API: Registers a custom DialogueNode dynamically.
-## Can be called from data-loaders, story expansions, or mods at runtime.
+## Registers a custom DialogueNode dynamically at runtime.
 static func register_dialogue_node(node: DialogueNode) -> void:
 	if node != null and node.node_id != "":
 		_nodes[node.node_id] = node
-		
-		# Synchronize the node cleanly with DialogueService (DIP Adapter sync)
 		DialogueService.register_node(node)
 
 
-## Public Reader API: Queries and retrieves a registered dialogue node by its ID.
+## Retrieves a registered dialogue node by its ID.
 static func get_dialogue_node(node_id: String) -> DialogueNode:
 	if _nodes.has(node_id):
 		return _nodes[node_id] as DialogueNode
 	return null
 
 
-## Internal Parser: Reads the JSON definition file and builds the concrete resources.
 static func _load_dialogues_from_json() -> void:
 	if not FileAccess.file_exists(DIALOGUES_FILE_PATH):
 		push_error("[DialogueRegistry ERROR] Dialogues configuration file missing.")
@@ -60,16 +46,10 @@ static func _load_dialogues_from_json() -> void:
 	file.close()
 	
 	var json := JSON.new()
-	if json.parse(json_string) != OK:
-		return
-		
-	var nodes_array := json.data as Array
-	if nodes_array == null:
-		return
-		
-	for node_any: Variant in nodes_array:
-		if node_any is Dictionary:
-			_parse_and_register_node(node_any as Dictionary)
+	if json.parse(json_string) == OK and json.data is Array:
+		for node_any: Variant in (json.data as Array):
+			if node_any is Dictionary:
+				_parse_and_register_node(node_any as Dictionary)
 
 
 static func _parse_and_register_node(node_data: Dictionary) -> void:
@@ -79,8 +59,7 @@ static func _parse_and_register_node(node_data: Dictionary) -> void:
 	
 	var choices_list: Array = []
 	if node_data.has("choices") and node_data["choices"] is Array:
-		var choices_array := node_data["choices"] as Array
-		for choice_any: Variant in choices_array:
+		for choice_any: Variant in (node_data["choices"] as Array):
 			if choice_any is Dictionary:
 				choices_list.append(_parse_dialogue_choice(choice_any as Dictionary))
 				

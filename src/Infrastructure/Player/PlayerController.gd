@@ -1,11 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/PlayerController.gd
-# Description: First-person player physics controller managing movements,
-#              LOD views, and stable gravity-free startup phases.
-#              REFACTORED: Converted compile-time preloads to runtime load calls
-#              to immunize the startup compiler from Windows file-locking race conditions.
-#              COMPLIANCE: Decomposed monolithic methods into < 20 line helpers.
-# Author: Enrique Gonzalez Gutierrez
+# Description: First-person player physics controller managing locomotion,
+#              camera rotation, hotbar actions, and Voxel Glider aerodynamics.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PlayerController
@@ -14,6 +11,13 @@ extends CharacterBody3D
 signal sword_swung
 
 const GLIDER_ITEM_ID: int = 210
+const INTERACTION_COMPONENT_PATH: String = "res://src/Infrastructure/Player/VoxelInteractionComponent.gd"
+const HUD_SCENE_PATH: String = "res://src/Infrastructure/UI/player_hud.tscn"
+
+const DEFAULT_SPAWN_POSITION := Vector3(8.5, 14.0, 8.5)
+const CAMERA_DEFAULT_OFFSET := Vector3(0.0, 1.6, 0.0)
+const CAMERA_PITCH_MIN: float = deg_to_rad(-85.0)
+const CAMERA_PITCH_MAX: float = deg_to_rad(85.0)
 
 const SPEED: float = 6.0
 const JUMP_VELOCITY: float = 6.5
@@ -40,7 +44,6 @@ var viewmodel: PlayerViewModel
 var interaction_component: Node3D 
 var visual_component: PlayerVisualComponent
 
-# Proxies connected to PlayerEquipmentComponent (SRP Compliance)
 var equipment_component: PlayerEquipmentComponent
 
 var active_slot_index: int:
@@ -70,21 +73,29 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	_configure_physics_parameters()
+	_setup_player_geometry()
+	
+	if is_multiplayer_authority():
+		_setup_sub_components()
+		_bind_inventory_signals()
+
+
+func _configure_physics_parameters() -> void:
 	floor_block_on_wall = false         
 	floor_constant_speed = true         
 	floor_max_angle = deg_to_rad(45.0)   
 	floor_snap_length = 0.25           
 	wall_min_slide_angle = 0.0         
 	safe_margin = 0.015                
-	
-	_setup_player_geometry()
-	if is_multiplayer_authority():
-		_setup_sub_components()
-		var inv_comp := inventory as InventoryComponent
-		if is_instance_valid(inv_comp):
-			inv_comp.inventory_changed.connect(_on_inventory_changed)
-		if is_instance_valid(equipment_component):
-			equipment_component.apply_hotbar_selection(0)
+
+
+func _bind_inventory_signals() -> void:
+	var inv_comp := inventory as InventoryComponent
+	if is_instance_valid(inv_comp):
+		inv_comp.inventory_changed.connect(_on_inventory_changed)
+	if is_instance_valid(equipment_component):
+		equipment_component.apply_hotbar_selection(0)
 
 
 func swing_sword() -> void:
@@ -109,7 +120,7 @@ func _setup_player_geometry() -> void:
 	if is_multiplayer_authority():
 		camera = Camera3D.new()
 		camera.name = "PlayerCamera"
-		camera.position = Vector3(0, 1.6, 0) 
+		camera.position = CAMERA_DEFAULT_OFFSET 
 		camera.current = true
 		_apply_camera_attributes()
 
@@ -139,8 +150,7 @@ func _setup_viewmodel() -> void:
 
 
 func _setup_interaction_component() -> void:
-	var path := "res://src/Infrastructure/Player/VoxelInteractionComponent.gd"
-	var inter_script := load(path) as GDScript
+	var inter_script := load(INTERACTION_COMPONENT_PATH) as GDScript
 	if is_instance_valid(inter_script) and is_instance_valid(camera):
 		interaction_component = inter_script.new() as Node3D
 		interaction_component.set("player", self)
@@ -149,7 +159,7 @@ func _setup_interaction_component() -> void:
 
 
 func _setup_hud() -> void:
-	player_hud_scene = load("res://src/Infrastructure/UI/player_hud.tscn") as PackedScene
+	player_hud_scene = load(HUD_SCENE_PATH) as PackedScene
 	if is_instance_valid(player_hud_scene):
 		hud = player_hud_scene.instantiate() as PlayerHUD
 		hud.player = self
@@ -238,7 +248,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and is_instance_valid(camera):
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
-		camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
+		camera.rotation.x = clamp(camera.rotation.x, CAMERA_PITCH_MIN, CAMERA_PITCH_MAX)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP: 
 			equipment_component.scroll_hotbar(-1)
@@ -263,6 +273,10 @@ func _process_local_player(delta: float) -> void:
 		_process_frozen_physics_movement(delta)
 		return
 
+	_process_active_gameplay_tick(delta)
+
+
+func _process_active_gameplay_tick(delta: float) -> void:
 	if is_instance_valid(equipment_component):
 		equipment_component.process_hotbar_inputs(_input_component)
 		
@@ -276,7 +290,6 @@ func _process_local_player(delta: float) -> void:
 
 	move_and_slide()
 	_apply_physics_effects(delta)
-	
 	RenderingServer.global_shader_parameter_set("player_position", global_position)
 
 
@@ -293,7 +306,7 @@ func _update_interactions_and_gamepad(delta: float) -> void:
 		if pad_look != Vector2.ZERO and is_instance_valid(camera):
 			rotate_y(-pad_look.x * delta)
 			camera.rotate_x(-pad_look.y * delta)
-			camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
+			camera.rotation.x = clamp(camera.rotation.x, CAMERA_PITCH_MIN, CAMERA_PITCH_MAX)
 
 
 func _apply_physics_effects(delta: float) -> void:
@@ -402,7 +415,7 @@ func _on_domain_entity_died() -> void:
 	is_glider_deployed = false
 	if is_instance_valid(visual_component): visual_component.set_glider_wings_visible(false)
 	if is_instance_valid(hud): hud.show_loading_screen()
-	position = Vector3(8.5, 14.0, 8.5)
+	position = DEFAULT_SPAWN_POSITION
 	velocity = Vector3.ZERO
 	if is_instance_valid(world_controller):
 		world_controller.set("is_teleport_spawn", true)

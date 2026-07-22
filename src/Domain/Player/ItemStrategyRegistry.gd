@@ -1,67 +1,89 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Player/ItemStrategyRegistry.gd
-# Description: Domain Registry mapping item IDs to their respective usage strategies.
-#              Integrates the Chrono-Scythe, Chrono-Shift, and Data-Linker tools.
+# Description: Pure Domain Registry mapping item IDs to their respective usage
+#              strategies (Block placement, food consumption, relics, tools).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ItemStrategyRegistry
 extends RefCounted
 
-## Dynamic registry mapping item_id (int) to its concrete ItemUsageStrategy.
+const PLACEABLE_BLOCK_PATH: String = "res://src/Domain/Player/PlaceableBlockStrategy.gd"
+const CONSUMABLE_ITEM_PATH: String = "res://src/Domain/Player/ConsumableItemStrategy.gd"
+const PLANTABLE_ITEM_PATH: String = "res://src/Domain/Player/PlantableItemStrategy.gd"
+const SLAB_PLACEMENT_PATH: String = "res://src/Domain/Player/SlabPlacementStrategy.gd"
+const CHRONO_SCYTHE_PATH: String = "res://src/Domain/Player/ChronoScytheStrategy.gd"
+const CHRONO_SHIFT_PATH: String = "res://src/Domain/Player/ChronoShiftStrategy.gd"
+const DATA_LINKER_PATH: String = "res://src/Domain/Player/DataLinkerStrategy.gd"
+
 static var _strategies: Dictionary = {}
+static var _initialized: bool = false
 
 
-## Static constructor: Executed automatically on boot by Godot.
-static func _static_init() -> void:
-	# 1. Structural blocks placements (Item ID -> Strategy mapping)
-	register_strategy(1, PlaceableBlockStrategy.new(1, BlockType.Type.STONE))
-	register_strategy(2, PlaceableBlockStrategy.new(2, BlockType.Type.DIRT))
-	register_strategy(3, PlaceableBlockStrategy.new(3, BlockType.Type.GRASS))
-	register_strategy(4, PlaceableBlockStrategy.new(4, BlockType.Type.WOOD))
-	register_strategy(5, PlaceableBlockStrategy.new(5, BlockType.Type.LEAVES))
-	
-	# 2. Liquids placement (Lava Bucket)
-	register_strategy(15, PlaceableBlockStrategy.new(15, BlockType.Type.LAVA))
-	
-	# 3. Consumable food healing (Fried Chicken)
-	register_strategy(16, ConsumableItemStrategy.new(16, 1))
-	
-	# 4. Agricultural crop planting (Seeds)
-	register_strategy(18, PlantableItemStrategy.new(18, BlockType.Type.CROP_SEED))
-	
-	# 5. Advanced Slab Placement and Fusion (Item ID 26: Stone Slab)
-	register_strategy(26, SlabPlacementStrategy.new(26))
-	
-	# 6. Caves & Desert Expansion Block Strategies
-	register_strategy(28, PlaceableBlockStrategy.new(28, BlockType.Type.DIAMOND_ORE))
-	register_strategy(29, PlaceableBlockStrategy.new(29, BlockType.Type.OAK_PLANKS))
-	register_strategy(30, PlaceableBlockStrategy.new(30, BlockType.Type.GLOWSTONE))
-	
-	# ==========================================================================
-	# PHASE 14: CHRONO-SCYTHE INTEGRATION
-	# ==========================================================================
-	register_strategy(85, ChronoScytheStrategy.new())
-	
-	# ==========================================================================
-	# PHASE 14: TIME-SHIFT RELIC INTEGRATION
-	# ==========================================================================
-	register_strategy(86, ChronoShiftStrategy.new())
-	
-	# ==========================================================================
-	# PHASE 14: SILICON HACKING DATA-LINKER INTEGRATION
-	# ==========================================================================
-	register_strategy(87, DataLinkerStrategy.new())
+static func _ensure_initialized() -> void:
+	if _initialized:
+		return
+	_initialized = true
+	_register_default_strategies()
 
 
-## Public Registry API: Binds a custom strategy to an item ID.
+static func _register_default_strategies() -> void:
+	_register_block_strategies()
+	_register_consumable_and_crop_strategies()
+	_register_relic_and_tool_strategies()
+
+
+static func _register_block_strategies() -> void:
+	var script_res := load(PLACEABLE_BLOCK_PATH) as GDScript
+	if script_res == null:
+		return
+		
+	register_strategy(1, script_res.new(1, BlockType.Type.STONE))
+	register_strategy(2, script_res.new(2, BlockType.Type.DIRT))
+	register_strategy(3, script_res.new(3, BlockType.Type.GRASS))
+	register_strategy(4, script_res.new(4, BlockType.Type.WOOD))
+	register_strategy(5, script_res.new(5, BlockType.Type.LEAVES))
+	register_strategy(15, script_res.new(15, BlockType.Type.LAVA))
+	register_strategy(28, script_res.new(28, BlockType.Type.DIAMOND_ORE))
+	register_strategy(29, script_res.new(29, BlockType.Type.OAK_PLANKS))
+	register_strategy(30, script_res.new(30, BlockType.Type.GLOWSTONE))
+
+
+static func _register_consumable_and_crop_strategies() -> void:
+	var consumable_script := load(CONSUMABLE_ITEM_PATH) as GDScript
+	var plantable_script := load(PLANTABLE_ITEM_PATH) as GDScript
+	var slab_script := load(SLAB_PLACEMENT_PATH) as GDScript
+	
+	if consumable_script != null:
+		register_strategy(16, consumable_script.new(16, 1))
+	if plantable_script != null:
+		register_strategy(18, plantable_script.new(18, BlockType.Type.CROP_SEED))
+	if slab_script != null:
+		register_strategy(26, slab_script.new(26))
+
+
+static func _register_relic_and_tool_strategies() -> void:
+	var scythe_script := load(CHRONO_SCYTHE_PATH) as GDScript
+	var shift_script := load(CHRONO_SHIFT_PATH) as GDScript
+	var linker_script := load(DATA_LINKER_PATH) as GDScript
+	
+	if scythe_script != null:
+		register_strategy(85, scythe_script.new())
+	if shift_script != null:
+		register_strategy(86, shift_script.new())
+	if linker_script != null:
+		register_strategy(87, linker_script.new())
+
+
+## Public Registry API: Binds a custom usage strategy to an item ID.
 static func register_strategy(item_id: int, strategy: ItemUsageStrategy) -> void:
 	if strategy != null:
 		_strategies[item_id] = strategy
 
 
-## Public Router API: Retrieves the strategy associated with an item ID (Returns null if none).
+## Public Router API: Retrieves the strategy associated with an item ID.
 static func get_strategy(item_id: int) -> ItemUsageStrategy:
+	_ensure_initialized()
 	if _strategies.has(item_id):
 		return _strategies[item_id] as ItemUsageStrategy
 	return null

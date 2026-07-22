@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Player/VoxelInteractionComponent.gd
-# Description: Component managing first-person raycasting, target highlights,
-#              mining ticks, placing blocks, eating, and planting (DIP).
+# Description: Infrastructure Component managing first-person raycasting, target
+#              highlights, mining ticks, block placement, and item interactions.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -120,12 +120,10 @@ func _update_placement_preview_geometry(resolved: Dictionary) -> void:
 		_evaluate_preview_placement(world_ctrl.world_state, target_coord, hit_normal, build_coord)
 
 
-# DIP/OCP: Typado como RefCounted para evitar el bloqueo cíclico del compilador de Godot 4.7
 func _evaluate_preview_placement(ws: RefCounted, target_coord: Vector3i, hit_normal: Vector3, build_coord: Vector3i) -> void:
 	var block_at_build: BlockType.Type = ws.call("get_block", build_coord) as BlockType.Type
 	var is_spot_free: bool = (block_at_build == BlockType.Type.AIR or block_at_build == BlockType.Type.WATER)
 	
-	# Fallback cast para evitar el acoplamiento cíclico en la firma estática
 	var world_state_obj := ws as WorldState
 	var is_mergeable := VoxelInteractionSolver.is_slab_mergeable(world_state_obj, target_coord, hit_normal)
 	var player_collides := VoxelInteractionSolver.does_block_collide_with_player(build_coord, player)
@@ -179,8 +177,6 @@ func _process_mining_strike(inventory_comp: InventoryComponent) -> void:
 	if resolved.is_empty(): return
 		
 	var block_coord: Vector3i = resolved["target_coord"]
-	
-	# DIP/OCP: Se utiliza call() para obtener el bloque síncronamente, evitando el acoplamiento directo
 	var mined_type: BlockType.Type = BlockType.Type.AIR
 	if is_instance_valid(world_ctrl.world_state):
 		mined_type = world_ctrl.world_state.call("get_block", block_coord) as BlockType.Type
@@ -246,22 +242,7 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 	if def == null: return
 		
 	var particles := CPUParticles3D.new()
-	particles.name = "MinedDebrisParticles"
-	particles.emitting = false
-	particles.amount = 12
-	particles.one_shot = true
-	particles.explosiveness = 0.95
-	particles.lifetime = 0.45
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	particles.emission_box_extents = Vector3(0.35, 0.35, 0.35)
-	particles.direction = Vector3(0.0, 1.0, 0.0) 
-	particles.spread = 50.0
-	particles.initial_velocity_min = 2.5
-	particles.initial_velocity_max = 4.5
-	particles.gravity = Vector3(0.0, -9.8, 0.0) 
-	particles.scale_amount_min = 0.6
-	particles.scale_amount_max = 1.3
+	_configure_debris_particle_properties(particles)
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.12, 0.12, 0.12)
@@ -277,6 +258,24 @@ func _spawn_mining_particles(global_pos: Vector3, block_type: BlockType.Type) ->
 		world_controller.add_child(particles)
 		particles.global_position = global_pos + Vector3(0.5, 0.5, 0.5)
 	particles.emitting = true
+
+
+func _configure_debris_particle_properties(particles: CPUParticles3D) -> void:
+	particles.name = "MinedDebrisParticles"
+	particles.emitting = false
+	particles.amount = 12
+	particles.one_shot = true
+	particles.explosiveness = 0.95
+	particles.lifetime = 0.45
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	particles.emission_box_extents = Vector3(0.35, 0.35, 0.35)
+	particles.direction = Vector3(0.0, 1.0, 0.0) 
+	particles.spread = 50.0
+	particles.initial_velocity_min = 2.5
+	particles.initial_velocity_max = 4.5
+	particles.gravity = Vector3(0.0, -9.8, 0.0) 
+	particles.scale_amount_min = 0.6
+	particles.scale_amount_max = 1.3
 
 
 func _build_or_interact() -> void:
@@ -322,8 +321,11 @@ func _execute_item_usage_strategy(strategy: ItemUsageStrategy, _item_id: int, in
 	_inject_last_hit_fraction(resolved["hit_pos_y"], world_ctrl)
 	
 	if strategy.can_use(player.domain_entity, inventory_comp, target_coord, hit_normal, world_ctrl.world_state):
-		if strategy is PlaceableBlockStrategy and VoxelInteractionSolver.does_block_collide_with_player(build_coord, player):
+		# DIP Duck Typing check: Block placement strategies declare 'block_type' but not 'crop_block_type'
+		var is_placeable_block := ("block_type" in strategy) and not ("crop_block_type" in strategy)
+		if is_placeable_block and VoxelInteractionSolver.does_block_collide_with_player(build_coord, player):
 			return
+			
 		strategy.use(player.domain_entity, inventory_comp, target_coord, hit_normal, world_ctrl.world_modifier)
 		_display_usage_toasts(strategy)
 
@@ -337,10 +339,10 @@ func _inject_last_hit_fraction(hit_pos_y: float, world_ctrl: WorldController) ->
 
 func _display_usage_toasts(strategy: ItemUsageStrategy) -> void:
 	if is_instance_valid(hud):
-		if strategy is ConsumableItemStrategy:
+		if "heal_amount" in strategy:
 			hud.update_health_display(player.domain_entity.health)
 			hud.show_quest_notification("NOTIFICATION_CONSUME_FOOD_HEADER", "NOTIFICATION_CONSUME_FOOD_DESC")
-		elif strategy is PlantableItemStrategy:
+		elif "crop_block_type" in strategy:
 			hud.show_quest_notification("NOTIFICATION_PLANTED_SEED_HEADER", "NOTIFICATION_PLANTED_SEED_DESC")
 
 

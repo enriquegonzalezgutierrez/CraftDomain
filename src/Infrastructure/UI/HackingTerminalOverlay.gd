@@ -1,10 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/HackingTerminalOverlay.gd
-# Description: Infrastructure UI Coordinator managing the Cyber Hacking minigame.
-#              SOLID COMPLIANCE:
-#              - Rule 7.1 (Declarative UI): Purged procedural Button and StyleBoxFlat 
-#                generation. Now loads a decoupled .tscn for grid nodes.
-#              - Rule 5.2 (Zero Hardcoded Strings): All UI text replaced with tr() keys.
+# Description: Infrastructure UI Coordinator managing the Cyber Hacking minigame,
+#              interactive puzzle matrix states, and victory/failure conditions.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,8 +13,6 @@ signal closed
 
 const GRID_SIZE: int = 4
 const TIME_LIMIT_SEC: float = 60.0
-
-# Declarative UI node injection to prevent procedural rendering overhead
 const NODE_BTN_SCENE := preload("res://src/Infrastructure/UI/Widgets/hacking_node_button.tscn")
 
 const COLOR_LOCKED := Color(0.95, 0.15, 0.15)
@@ -73,8 +68,7 @@ func _scramble_grid() -> void:
 		
 	var simulation_clicks := randi_range(8, 15)
 	for i in range(simulation_clicks):
-		var random_index := randi() % _grid_state.size()
-		_toggle_node_and_neighbors(random_index)
+		_toggle_node_and_neighbors(randi() % _grid_state.size())
 		
 	_refresh_grid_visuals()
 
@@ -109,32 +103,21 @@ func _toggle_cell(x: int, y: int) -> void:
 func _refresh_grid_visuals() -> void:
 	for i in range(_buttons.size()):
 		var btn: Button = _buttons[i]
-		var is_cyan: bool = _grid_state[i]
-		
-		# Delegate style manipulation to the child UI component safely
 		if btn.has_method("set_node_state"):
-			btn.call("set_node_state", is_cyan)
+			btn.call("set_node_state", _grid_state[i])
 
 
 func _update_timer_display() -> void:
 	var seconds := max(0, int(ceil(_time_remaining)))
 	_timer_label.text = tr("HACKING_TIMER_FORMAT") % seconds
-	
-	if seconds <= 10:
-		_timer_label.label_settings.font_color = COLOR_LOCKED
-	else:
-		_timer_label.label_settings.font_color = COLOR_NORMAL
+	_timer_label.label_settings.font_color = COLOR_LOCKED if seconds <= 10 else COLOR_NORMAL
 
 
 func _check_win_condition() -> void:
-	var is_won := true
 	for state: bool in _grid_state:
 		if not state:
-			is_won = false
-			break
-			
-	if is_won:
-		_execute_hack_success()
+			return
+	_execute_hack_success()
 
 
 func _execute_hack_success() -> void:

@@ -1,8 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/Widgets/MultiplayerLobbyWidget.gd
-# Description: Symmetrical glassmorphic controller managing responsive P2P 
-#              Host and Join Code inputs.
-#              Corrected: Client now waits for server handshake before launching (UX).
+# Description: Glassmorphic UI Controller managing peer-to-peer multiplayer
+#              hosting, join code input validation, and connection handshakes.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -37,10 +36,8 @@ func _refresh_localized_ui() -> void:
 func _on_host_pressed() -> void:
 	if is_instance_valid(_net_service) and _net_service.host_game() == OK:
 		var upnp := NetworkUPnPService.new()
-		_net_service.add_child(upnp) 
+		_net_service.add_child(upnp)
 		upnp.start_upnp_and_ip_lookup()
-		
-		# Host doesn't need to wait for handshake, launches world instantly
 		_trigger_world_launch()
 
 
@@ -48,22 +45,26 @@ func _on_join_pressed() -> void:
 	var res := NetworkJoinCodeSolver.decode_to_ip_and_port(_code_edit.text)
 	if res.is_empty():
 		_code_edit.text = ""
-		_code_edit.placeholder_text = "INVALID CODE!"
+		_code_edit.placeholder_text = tr("LOBBY_INVALID_CODE").to_upper()
 		return
 		
-	if is_instance_valid(_net_service) and _net_service.join_game(res["ip"] as String, res["port"] as int) == OK:
-		# Lock UI while awaiting server handshake response
+	_attempt_network_join(res)
+
+
+func _attempt_network_join(res: Dictionary) -> void:
+	var ip_str := res.get("ip", "") as String
+	var port_val := res.get("port", 25565) as int
+	
+	if is_instance_valid(_net_service) and _net_service.join_game(ip_str, port_val) == OK:
 		_join_btn.disabled = true
 		_host_btn.disabled = true
-		_join_btn.text = "CONNECTING..."
+		_join_btn.text = tr("LOBBY_CONNECTING").to_upper()
 		
-		# Bind safely using Godot 4 Callables
 		_net_service.connection_successful.connect(_on_client_connected, CONNECT_ONE_SHOT)
 		_net_service.connection_failed.connect(_on_client_connection_failed, CONNECT_ONE_SHOT)
 
 
 func _on_client_connected() -> void:
-	# Safe disconnect of the failure signal to prevent memory leaks
 	if _net_service.connection_failed.is_connected(_on_client_connection_failed):
 		_net_service.connection_failed.disconnect(_on_client_connection_failed)
 		
@@ -79,10 +80,10 @@ func _on_client_connection_failed() -> void:
 	_join_btn.text = tr("LOBBY_JOIN_GAME").to_upper()
 	
 	_code_edit.text = ""
-	_code_edit.placeholder_text = "CONNECTION FAILED!"
+	_code_edit.placeholder_text = tr("LOBBY_CONNECTION_FAILED").to_upper()
 
 
 func _trigger_world_launch() -> void:
-	var pm := get_parent() as MainMenu
-	if is_instance_valid(pm): 
-		pm.play_pressed.emit()
+	var parent_menu := get_parent() as MainMenu
+	if is_instance_valid(parent_menu):
+		parent_menu.play_pressed.emit()

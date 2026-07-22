@@ -1,16 +1,19 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/CyberCitizenEntity.gd
 # Description: Physical character controller for the tech-noir Cyber Citizen Android.
-#              Updated to use native, highly-portable .glb static meshes.
-# Author: Enrique Gonzalez Gutierrez
+#              Manages cybernetic security scans, dialogues, and 3D visual rigs.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name CyberCitizenEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/cyber.glb"
+const VISUAL_STRATEGY_SCRIPT_PATH := "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
+
 var gaze_rotation_offset: float = PI
 var player: CharacterBody3D
+
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 10)
@@ -18,6 +21,7 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	humanoid_role = 0 
 	is_conversational_npc = true
 	name = "Entity_CYBER"
+
 
 func _ready() -> void:
 	add_to_group("passives")
@@ -32,8 +36,9 @@ func _ready() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = CyberCitizenAIBehavior.new()
 
+
 func _setup_graphics_representation() -> void:
-	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
+	var strategy_script := load(VISUAL_STRATEGY_SCRIPT_PATH) as GDScript
 	if strategy_script == null:
 		return
 		
@@ -41,21 +46,27 @@ func _setup_graphics_representation() -> void:
 	strategy.set("base_model_path", BASE_MODEL_PATH)
 	
 	visual_representation = strategy as IEntityVisualRepresentation
-	visual_representation.build_representation(self, visual_component.body_bob_node)
+	if is_instance_valid(visual_component) and is_instance_valid(visual_component.body_bob_node):
+		visual_representation.build_representation(self, visual_component.body_bob_node)
+
 
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_ANDROID"
 
+
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2)
 
+
 func _is_eligible_for_quest(_quest_id: String) -> bool:
 	return false 
+
 
 func _locate_player() -> void:
 	var world_node := get_parent()
 	if is_instance_valid(world_node) and "player" in world_node:
 		player = world_node.get("player") as CharacterBody3D
+
 
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD
@@ -65,44 +76,53 @@ func interact(player_node: CharacterBody3D) -> void:
 		intro_node.text = _select_procedural_greeting_key()
 		hud.open_dialogue(intro_node, "NPC_NAME_ANDROID", self)
 
+
 func _select_procedural_greeting_key() -> String:
-	var is_night: bool = CelestialService.is_night_time_static()
-	if is_night: 
+	if CelestialService.is_night_time_static():
 		return "DIALOGUE_CYBER_NIGHT"
 		
-	var _biome_id := BiomeService.get_biome_id_at_position(global_position, get_parent())
 	var variety_index := npc_seed % 2
-	if variety_index == 0:
-		return "DIALOGUE_CYBER_PLAINS_A"
+	if variety_index == 0: return "DIALOGUE_CYBER_PLAINS_A"
 	return "DIALOGUE_CYBER_PLAINS_B"
+
 
 func _can_socialize() -> bool:
 	if is_instance_valid(ai_component):
 		return ai_component.current_task != 6 
 	return true
 
+
 func _play_security_scan() -> void:
 	_spawn_cyan_laser_particles()
 
+
 func _spawn_cyan_laser_particles() -> void:
 	var particles := CPUParticles3D.new()
+	var forward_dir := ai_component.wander_direction if is_instance_valid(ai_component) else Vector3.FORWARD
+	
+	_configure_laser_particle_properties(particles, forward_dir)
+	_attach_laser_mesh_and_material(particles)
+	
+	add_child(particles)
+	particles.position = Vector3(0.0, _collision_height - 0.2, -0.2) 
+	particles.emitting = true
+
+
+func _configure_laser_particle_properties(particles: CPUParticles3D, forward_dir: Vector3) -> void:
 	particles.amount = 12
 	particles.one_shot = true
 	particles.explosiveness = 0.95
 	particles.lifetime = 0.35
-	
-	var forward_dir := Vector3.FORWARD
-	if is_instance_valid(ai_component):
-		forward_dir = ai_component.wander_direction
-		
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	particles.emission_box_extents = Vector3(0.08, 0.08, 0.12)
 	particles.direction = forward_dir
 	particles.spread = 15.0
 	particles.initial_velocity_min = 4.5
 	particles.initial_velocity_max = 6.0
-	particles.gravity = Vector3(0.0, 0.0, 0.0) 
-	
+	particles.gravity = Vector3.ZERO
+
+
+func _attach_laser_mesh_and_material(particles: CPUParticles3D) -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.04, 0.04, 0.12) 
 	var mat := StandardMaterial3D.new()
@@ -111,7 +131,3 @@ func _spawn_cyan_laser_particles() -> void:
 	mesh.material = mat
 	particles.mesh = mesh
 	particles.finished.connect(particles.queue_free)
-	
-	add_child(particles)
-	particles.position = Vector3(0.0, _collision_height - 0.2, -0.2) 
-	particles.emitting = true

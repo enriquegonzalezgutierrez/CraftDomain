@@ -1,9 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Core/Bootstrap/Bootstrap.gd
-# Description: Central composition root of the application. Orchestrates the 
-#              asynchronous initialization of global systems, unified scene transitions,
-#              Vulkan pre-warming, and 100% Offline Socket Isolation.
-# Author: Enrique Gonzalez Gutierrez
+# Description: Central composition root orchestrating asynchronous system init,
+#              scene transitions, Vulkan pre-warming, and offline isolation.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name Bootstrap
@@ -11,6 +10,8 @@ extends Node
 
 const LIGHT_RECOVERY_SECTOR_Y: float = 12.0
 const VEGETATION_PROP_SCRIPT_PATH: String = "res://src/Infrastructure/World/VegetationProp.gd"
+const MAIN_MENU_SCENE_PATH: String = "res://src/Infrastructure/UI/main_menu.tscn"
+const LOADING_SCREEN_SCENE_PATH: String = "res://src/Infrastructure/UI/loading_screen.tscn"
 
 var main_menu: MainMenu
 var world_controller: Node3D
@@ -71,8 +72,8 @@ func _initialize_application_async() -> void:
 
 
 func _load_runtime_scenes() -> void:
-	main_menu_scene = load("res://src/Infrastructure/UI/main_menu.tscn") as PackedScene
-	loading_screen_scene = load("res://src/Infrastructure/UI/loading_screen.tscn") as PackedScene
+	main_menu_scene = load(MAIN_MENU_SCENE_PATH) as PackedScene
+	loading_screen_scene = load(LOADING_SCREEN_SCENE_PATH) as PackedScene
 
 
 func _execute_vulkan_prewarming() -> void:
@@ -229,7 +230,6 @@ func _setup_prop_registry() -> void:
 	_register_prop(213, WishingWellEntity)
 	_register_prop(215, BarrelEntity)
 	
-	# Range expanded to 241 to include all exotic 3D plant props (IDs 220 to 240)
 	for prop_id: int in range(220, 241):
 		_register_prop(prop_id, null)
 

@@ -1,18 +1,14 @@
 # ==============================================================================
-# Project: CraftDomain
-# Description: Concrete Domain Strategy implementing the behavior of consumable items.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Exclusively manages the 
-#                resource deduction and player healing transaction.
-#              - Open-Closed Principle (OCP): Fully generic and open to any new 
-#                food or potion items by parameterizing IDs and heal amounts.
-#              - Liskov Substitution Principle (LSP): Fully matches the signature 
-#                and contract defined by the parent ItemUsageStrategy class.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Player/ConsumableItemStrategy.gd
+# Pathfile: res://src/Domain/Player/ConsumableItemStrategy.gd
+# Description: Concrete Domain Strategy managing consumable food and potion usage.
+#              Deducts item stocks and applies health restorations to entities.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ConsumableItemStrategy
 extends ItemUsageStrategy
+
+const MAX_PLAYER_HEALTH: int = 3
 
 var item_id: int
 var heal_amount: int
@@ -23,13 +19,15 @@ func _init(p_item_id: int, p_heal_amount: int) -> void:
 	heal_amount = p_heal_amount
 
 
-## Concrete implementation: Returns true if the player is damaged and has stock.
+## Evaluates if the player is damaged and holds available stock of this item.
 func can_use(player_health: VoxelEntity, inventory: IInventory, _target_coord: Vector3i, _normal: Vector3, _world_state: WorldState) -> bool:
-	return player_health.health < 3 and inventory.get_item_total_quantity(item_id) > 0
+	if player_health == null or inventory == null:
+		return false
+	return player_health.health < MAX_PLAYER_HEALTH and inventory.get_item_total_quantity(item_id) > 0
 
 
-## Concrete implementation: Deducts food stock and restores player health.
-## LSP COMPLIANCE: Signature updated to match the parent class contract.
+## Consumes one item unit from inventory and restores target entity health.
 func use(player_health: VoxelEntity, inventory: IInventory, _target_coord: Vector3i, _normal: Vector3, _world_modifier: IWorldModifier) -> void:
-	inventory.consume_item(item_id, 1)
-	player_health.health = min(3, player_health.health + heal_amount)
+	if inventory != null and player_health != null:
+		inventory.consume_item(item_id, 1)
+		player_health.health = min(MAX_PLAYER_HEALTH, player_health.health + heal_amount)

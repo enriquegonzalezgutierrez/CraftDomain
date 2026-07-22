@@ -1,15 +1,9 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Quest/CampaignRegistry.gd
-# Description: Domain Registry/Loader responsible for parsing and instantiating 
-#              quests from external JSON data.
-# SOLID COMPLIANCE: Adheres strictly to the Open-Closed Principle (OCP).
-# STRICT MODE FIX: Implemented safe type parsing for JSON variants.
-# WARNING FIX:
-# - Added explicit static typing `Dictionary` to the `item` loop iterator 
-#   on line 70 to completely resolve `UNTYPED_DECLARATION` compiler warnings.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/Quest/CampaignRegistry.gd
+# Description: Pure Domain Registry parsing campaign quests from JSON files
+#              and registering their objective state machines into QuestService.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name CampaignRegistry
 extends RefCounted
@@ -17,12 +11,12 @@ extends RefCounted
 const QUEST_DIR := "res://assets/quests/"
 
 
-## Scans the directory and loads all present JSON quest files (OCP compliant)
+## Scans the quest directory and activates starter campaign state.
 static func initialize_campaign() -> void:
 	_scan_and_load_all_quest_files()
+	_activate_starter_quest_if_needed()
 
 
-## Scans the quest directory and parses every single .json file present (OCP)
 static func _scan_and_load_all_quest_files() -> void:
 	var dir := DirAccess.open(QUEST_DIR)
 	if dir == null:
@@ -34,20 +28,17 @@ static func _scan_and_load_all_quest_files() -> void:
 	
 	while file_name != "":
 		if not dir.current_is_dir() and file_name.ends_with(".json"):
-			var full_path := QUEST_DIR + file_name
-			_load_quests_from_file(full_path)
+			_load_quests_from_file(QUEST_DIR + file_name)
 		file_name = dir.get_next()
 		
 	dir.list_dir_end()
-	
-	# Automatically activate the starter quest to begin the campaign
-	if QuestService.get_quest("lost_bazaar") != null:
-		# Only activate if the player hasn't already loaded an active quest from their save file
-		if QuestService.get_active_quest() == null:
-			QuestService.set_active_quest("lost_bazaar")
 
 
-## Parses a specific JSON file and registers its instantiated Quests
+static func _activate_starter_quest_if_needed() -> void:
+	if QuestService.get_quest("lost_bazaar") != null and QuestService.get_active_quest() == null:
+		QuestService.set_active_quest("lost_bazaar")
+
+
 static func _load_quests_from_file(file_path: String) -> void:
 	var file := FileAccess.open(file_path, FileAccess.READ)
 	if file == null:
@@ -58,15 +49,9 @@ static func _load_quests_from_file(file_path: String) -> void:
 	file.close()
 	
 	var json := JSON.new()
-	if json.parse(json_string) != OK:
-		return
-		
-	var quest_array := json.data as Array
-	if quest_array == null:
-		return
-	
-	for item: Dictionary in quest_array:
-		_parse_and_register_quest(item)
+	if json.parse(json_string) == OK and json.data is Array:
+		for item: Dictionary in (json.data as Array):
+			_parse_and_register_quest(item)
 
 
 static func _parse_and_register_quest(q_data: Dictionary) -> void:
@@ -79,6 +64,11 @@ static func _parse_and_register_quest(q_data: Dictionary) -> void:
 	if q_data.has("target_position"):
 		q.target_position = _parse_quest_target_position(q_data["target_position"] as Dictionary)
 		
+	_populate_quest_metadata(q, q_data)
+	QuestService.register_quest(q)
+
+
+static func _populate_quest_metadata(q: Quest, q_data: Dictionary) -> void:
 	q.target_range = float(q_data.get("target_range", 8.0))
 	q.autocomplete_on_arrival = bool(q_data.get("autocomplete_on_arrival", false))
 	q.next_quest_id = str(q_data.get("next_quest_id", ""))
@@ -86,8 +76,6 @@ static func _parse_and_register_quest(q_data: Dictionary) -> void:
 	q.reward_quantity = int(q_data.get("reward_quantity", 0))
 	q.required_item_index = int(q_data.get("required_item_index", -1))
 	q.required_quantity = int(q_data.get("required_quantity", 0))
-	
-	QuestService.register_quest(q)
 
 
 static func _parse_quest_target_position(pos_dict: Dictionary) -> Vector3:

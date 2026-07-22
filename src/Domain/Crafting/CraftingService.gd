@@ -1,60 +1,48 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Crafting System / Services)
-# Class: CraftingService
+# Pathfile: res://src/Domain/Crafting/CraftingService.gd
+# Description: Pure Domain Service orchestrating recipe validation and execution.
+#              Consumes ingredients and awards output items on inventory grids.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
-# Description: Pure Domain Service orchestrating recipe execution.
-#              Checks ingredient requirements and modifies inventory stocks.
-# SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Only manages crafting logic.
-# - Dependency Inversion Principle (DIP): Depends strictly on the abstract 
-#   interface `IInventory`, separating recipe evaluations from implementation.
 # ==============================================================================
 class_name CraftingService
 extends RefCounted
 
+
 ## Validates if the given inventory contains enough ingredients to craft the recipe.
-## Returns true if all criteria are satisfied, false otherwise.
 static func can_craft(inventory: IInventory, recipe: Recipe) -> bool:
 	if inventory == null or recipe == null:
 		return false
 		
-	# 1. Validate if the inventory contains the total aggregate sum of each ingredient
 	for item_id: int in recipe.inputs.keys():
 		var required_qty := recipe.inputs[item_id] as int
-		
-		# DIP INVERSION: Query generic total quantity of this ID, regardless of slot placement
 		if inventory.get_item_total_quantity(item_id) < required_qty:
 			return false
 			
-	# 2. Validate if the inventory has enough open slot capacity to receive the manufactured output
-	if not inventory.can_receive_item(recipe.output_item_index, recipe.output_quantity):
-		return false
-		
-	return true
+	return inventory.can_receive_item(recipe.output_item_index, recipe.output_quantity)
 
 
-## Executes the crafting transaction, consuming the inputs and granting the output.
-## Returns true if the operation completed successfully, false otherwise.
+## Executes the crafting transaction, consuming inputs and granting the output.
 static func craft(inventory: IInventory, recipe: Recipe) -> bool:
 	if not can_craft(inventory, recipe):
 		return false
 		
-	# 1. Consume input ingredients across the entire backpack grid
-	for item_id: int in recipe.inputs.keys():
-		var required_qty := recipe.inputs[item_id] as int
-		inventory.consume_item(item_id, required_qty)
-		
-	# 2. Grant manufactured output item (appends to existing stack or fills an empty slot)
+	_consume_recipe_inputs(inventory, recipe)
 	inventory.add_item(recipe.output_item_index, recipe.output_quantity)
-	
-	# ==========================================================================
-	# INCREMENT ACTIVE QUEST PROGRESSION ON CRAFTING
-	# ==========================================================================
-	var active_q := QuestService.get_active_quest()
-	if active_q != null and active_q.required_item_index == recipe.output_item_index:
-		active_q.progress_counter = min(active_q.required_quantity, active_q.progress_counter + recipe.output_quantity)
+	_update_quest_progress_on_craft(recipe)
 	
 	print("[CraftingService] Crafted successfully: ", recipe.recipe_name)
 	return true
+
+
+static func _consume_recipe_inputs(inventory: IInventory, recipe: Recipe) -> void:
+	for item_id: int in recipe.inputs.keys():
+		var required_qty := recipe.inputs[item_id] as int
+		inventory.consume_item(item_id, required_qty)
+
+
+static func _update_quest_progress_on_craft(recipe: Recipe) -> void:
+	var active_q := QuestService.get_active_quest()
+	if active_q != null and active_q.required_item_index == recipe.output_item_index:
+		var new_progress := active_q.progress_counter + recipe.output_quantity
+		active_q.progress_counter = min(active_q.required_quantity, new_progress)

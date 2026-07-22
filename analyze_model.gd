@@ -1,15 +1,14 @@
 # ==============================================================================
-# Tool: Godot 4 Headless Model Analyzer & Telemetry Diagnostics
-# Description: Command-line script to inspect FBX and GLB skeletal meshes.
-#              Extracts precise physical bounding box sizes, offsets, and skeleton 
-#              animation lists directly using Godot's native rendering servers.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively asset 
-#   geometry telemetry extraction.
+# Pathfile: res://analyze_model.gd
+# Description: Godot 4 Headless Model Analyzer & Telemetry Diagnostics Tool.
+#              Command-line script to inspect FBX and GLB skeletal meshes,
+#              extracting physical bounding box sizes, offsets, and skeleton 
+#              animation lists directly using native rendering servers.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 extends SceneTree
 
-# Global variables (Class scope to prevent local pass-by-value copy errors)
 var _root_node: Node3D
 var _combined_aabb := AABB()
 var _has_valid_mesh := false
@@ -21,14 +20,7 @@ func _init() -> void:
 	print("             CRAFTDOMAIN STATIC FBX/GLB MODEL ANALYZER V1.0.0")
 	print("================================================================================")
 	
-	var args := OS.get_cmdline_args()
-	var target_path := ""
-	
-	for arg: String in args:
-		if arg.ends_with(".fbx") or arg.ends_with(".glb"):
-			target_path = arg
-			break
-			
+	var target_path := _extract_target_file_argument()
 	if target_path == "":
 		push_error("[Analyzer ERROR] Please specify a valid .fbx or .glb file as an argument.")
 		quit(1)
@@ -41,6 +33,14 @@ func _init() -> void:
 		
 	_analyze_target_asset(target_path)
 	quit(0)
+
+
+func _extract_target_file_argument() -> String:
+	var args := OS.get_cmdline_args()
+	for arg: String in args:
+		if arg.ends_with(".fbx") or arg.ends_with(".glb"):
+			return arg
+	return ""
 
 
 func _analyze_target_asset(file_path: String) -> void:
@@ -58,12 +58,8 @@ func _analyze_target_asset(file_path: String) -> void:
 	
 	var anim_player := _root_node.get_node_or_null("AnimationPlayer") as AnimationPlayer
 	_print_hierarchy_summary(anim_player)
+	_print_mesh_evaluation_results()
 	
-	if _has_valid_mesh:
-		_print_geometry_metrics()
-	else:
-		print("\n  ❌ [ERROR] No valid mesh instances discovered in the scene hierarchy.")
-		
 	print("================================================================================\n")
 	_root_node.free()
 
@@ -101,6 +97,13 @@ func _print_hierarchy_summary(anim_player: AnimationPlayer) -> void:
 		print("  Skeletal AnimationPlayer: NOT FOUND (Static Mesh)")
 
 
+func _print_mesh_evaluation_results() -> void:
+	if _has_valid_mesh:
+		_print_geometry_metrics()
+	else:
+		print("\n  ❌ [ERROR] No valid mesh instances discovered in the scene hierarchy.")
+
+
 func _print_geometry_metrics() -> void:
 	var w := _combined_aabb.size.x
 	var h := _combined_aabb.size.y
@@ -127,25 +130,21 @@ func _print_suggested_calibrations(min_y: float) -> void:
 	print("--------------------------------------------------------------------------------")
 	
 	if abs(min_y) > 0.02:
-		print("  ⚠️  [PIVOT SHIFT DETECTED] The model's origin is NOT on its feet (Min Y is ", sprintf("%.4f", min_y), "m).")
-		print("  -> Set this offset on the 3D model node inside '_build_glb_representation()':")
+		print("  ⚠️  [PIVOT SHIFT DETECTED] Origin is NOT on feet (Min Y is ", sprintf("%.4f", min_y), "m).")
+		print("  -> Set this offset inside '_build_glb_representation()':")
 		print("     model_node.position = Vector3(0.0, ", sprintf("%.4f", -min_y), ", 0.0)")
 	else:
-		print("  ✔  [PIVOT OK] The model's origin sits flat on its feet (Y = 0.0).")
+		print("  ✔  [PIVOT OK] Model origin sits flat on feet (Y = 0.0).")
 		print("  -> Set this offset inside '_build_glb_representation()':")
 		print("     model_node.position = Vector3(0.0, 0.0, 0.0)")
 
 
 func _print_scale_multipliers(h: float) -> void:
 	print("\n  📐 SUGGESTED HEIGHT MULTIPLIERS:")
-	print("    * Humanoid / Zombie (1.8m):")
-	print("      -> Scale multiplier: Vector3(", sprintf("%.4f", 1.8 / h), ", ", sprintf("%.4f", 1.8 / h), ", ", sprintf("%.4f", 1.8 / h), ")")
-	print("    * Medium Mob (0.75m):")
-	print("      -> Scale multiplier: Vector3(", sprintf("%.4f", 0.75 / h), ", ", sprintf("%.4f", 0.75 / h), ", ", sprintf("%.4f", 0.75 / h), ")")
-	print("    * Small Pet / Bird (0.35m):")
-	print("      -> Scale multiplier: Vector3(", sprintf("%.4f", 0.35 / h), ", ", sprintf("%.4f", 0.35 / h), ", ", sprintf("%.4f", 0.35 / h), ")")
-	print("    * Colossal Giant / Boss (3.5m):")
-	print("      -> Scale multiplier: Vector3(", sprintf("%.4f", 3.5 / h), ", ", sprintf("%.4f", 3.5 / h), ", ", sprintf("%.4f", 3.5 / h), ")")
+	print("    * Humanoid / Zombie (1.8m): Vector3(", sprintf("%.4f", 1.8 / h), ", ", sprintf("%.4f", 1.8 / h), ", ", sprintf("%.4f", 1.8 / h), ")")
+	print("    * Medium Mob (0.75m):      Vector3(", sprintf("%.4f", 0.75 / h), ", ", sprintf("%.4f", 0.75 / h), ", ", sprintf("%.4f", 0.75 / h), ")")
+	print("    * Small Pet / Bird (0.35m):  Vector3(", sprintf("%.4f", 0.35 / h), ", ", sprintf("%.4f", 0.35 / h), ", ", sprintf("%.4f", 0.35 / h), ")")
+	print("    * Colossal Boss (3.5m):     Vector3(", sprintf("%.4f", 3.5 / h), ", ", sprintf("%.4f", 3.5 / h), ", ", sprintf("%.4f", 3.5 / h), ")")
 
 
 func _scan_hierarchy_recursive(node: Node) -> void:
@@ -191,16 +190,6 @@ func _get_relative_transform(node: Node) -> Transform3D:
 			t = current.transform * t
 		current = current.get_parent()
 	return t
-
-
-func _find_animation_player_recursive(node: Node) -> AnimationPlayer:
-	if node is AnimationPlayer:
-		return node as AnimationPlayer
-	for child in node.get_children():
-		var found := _find_animation_player_recursive(child)
-		if is_instance_valid(found):
-			return found
-	return null
 
 
 func sprintf(format_str: String, val: float) -> String:

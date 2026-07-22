@@ -1,15 +1,18 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/DruidEntity.gd
 # Description: Physical character controller for the forest guardian Druid.
-#              Provides specialized state behaviors and conversational dialogs.
-# Author: Enrique Gonzalez Gutierrez
+#              Manages healing particle effects, nature routines, and dialogue.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name DruidEntity
 extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/druid.glb"
+const VISUAL_STRATEGY_SCRIPT_PATH := "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
+
 var gaze_rotation_offset: float = PI
+
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	super(spawn_pos, 8)
@@ -17,6 +20,7 @@ func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:
 	humanoid_role = 5 
 	is_conversational_npc = true
 	name = "Entity_DRUID"
+
 
 func _ready() -> void:
 	super()
@@ -30,8 +34,9 @@ func _ready() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.active_behavior = DruidAIBehavior.new()
 
+
 func _build_visual_representation() -> void:
-	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
+	var strategy_script := load(VISUAL_STRATEGY_SCRIPT_PATH) as GDScript
 	if strategy_script == null:
 		return
 		
@@ -42,14 +47,18 @@ func _build_visual_representation() -> void:
 	if is_instance_valid(visual_component) and is_instance_valid(visual_component.body_bob_node):
 		visual_representation.build_representation(self, visual_component.body_bob_node)
 
+
 func _get_entity_name_key() -> String:
 	return "NPC_NAME_DRUID"
+
 
 func _get_nameplate_color() -> Color:
 	return Color(0.2, 0.85, 0.2) 
 
+
 func _is_eligible_for_quest(_quest_id: String) -> bool:
 	return false 
+
 
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD
@@ -57,48 +66,34 @@ func interact(player_node: CharacterBody3D) -> void:
 		var intro_node := DialogueNode.new()
 		intro_node.node_id = "druid_intro_temp"
 		intro_node.text = _select_procedural_greeting_key()
-			
 		hud.open_dialogue(intro_node, "NPC_NAME_DRUID", self)
 
+
 func _select_procedural_greeting_key() -> String:
-	var is_night: bool = CelestialService.is_night_time_static()
-	if is_night:
+	if CelestialService.is_night_time_static():
 		return "DIALOGUE_DRUID_NIGHT"
 		
-	var _biome_id := BiomeService.get_biome_id_at_position(global_position, get_parent())
 	var variety_index := npc_seed % 2
-	if variety_index == 0:
-		return "DIALOGUE_DRUID_PLAINS_A"
+	if variety_index == 0: return "DIALOGUE_DRUID_PLAINS_A"
 	return "DIALOGUE_DRUID_PLAINS_B"
+
 
 func _can_socialize() -> bool:
 	if is_instance_valid(ai_component):
 		return ai_component.current_task != 6 
 	return true
 
+
 func _play_healing_visuals(target_node: Node3D) -> void:
 	if not is_instance_valid(target_node):
 		return
-	var frame_stamp := Engine.get_physics_frames()
-	if frame_stamp % 12 == 0:
+	if Engine.get_physics_frames() % 12 == 0:
 		_spawn_magical_heal_particle(target_node.global_position)
+
 
 func _spawn_magical_heal_particle(target_pos: Vector3) -> void:
 	var particles := CPUParticles3D.new()
-	particles.amount = 6
-	particles.one_shot = true
-	particles.explosiveness = 0.85
-	particles.lifetime = 0.55
-	
-	var direction_vec := (target_pos - global_position).normalized()
-	
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 0.15
-	particles.direction = direction_vec
-	particles.spread = 25.0
-	particles.initial_velocity_min = 3.5
-	particles.initial_velocity_max = 5.0
-	particles.gravity = Vector3(0.0, -1.0, 0.0) 
+	_configure_heal_particle_emission(particles, (target_pos - global_position).normalized())
 	
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.06, 0.06, 0.06)
@@ -107,10 +102,24 @@ func _spawn_magical_heal_particle(target_pos: Vector3) -> void:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED 
 	mesh.material = mat
 	particles.mesh = mesh
-	particles.finished.connect(particles.queue_free)
 	
+	particles.finished.connect(particles.queue_free)
 	var parent := get_parent()
 	if is_instance_valid(parent):
 		parent.add_child(particles)
 		particles.global_position = global_position + Vector3(0.0, 1.1, 0.0)
 		particles.emitting = true
+
+
+func _configure_heal_particle_emission(particles: CPUParticles3D, direction_vec: Vector3) -> void:
+	particles.amount = 6
+	particles.one_shot = true
+	particles.explosiveness = 0.85
+	particles.lifetime = 0.55
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	particles.emission_sphere_radius = 0.15
+	particles.direction = direction_vec
+	particles.spread = 25.0
+	particles.initial_velocity_min = 3.5
+	particles.initial_velocity_max = 5.0
+	particles.gravity = Vector3(0.0, -1.0, 0.0)

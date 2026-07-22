@@ -1,14 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Crafting System / Value Objects)
-# Class: Recipe
+# Pathfile: res://src/Domain/Crafting/Recipe.gd
+# Description: Pure Domain Resource defining a crafting recipe.
+#              Encapsulates input ingredient requirements and output parameters.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
-# Description: Pure Domain Resource defining a crafting recipe.
-#              Contains the required input ingredients and the resulting output.
-# SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Pure data structure completely 
-#   decoupled from JSON parsing, inventory logic, or UI.
 # ==============================================================================
 class_name Recipe
 extends Resource
@@ -16,16 +11,15 @@ extends Resource
 ## Unique identifier for the recipe (e.g., "craft_sword", "craft_planks")
 @export var recipe_id: String = ""
 
-## Human-readable name for the UI (e.g., "Wooden Sword")
+## Human-readable localization key or name for the UI (e.g., "ITEM_WOODEN_SWORD")
 @export var recipe_name: String = ""
 
-## Maps required inventory slot index (int) to the required quantity (int).
-## Example: { 3: 2 } means "Requires 2 units of Wood Log (Slot 3)"
+## Maps required item ID (int) to the required quantity (int).
+## Example: { 4: 2 } means "Requires 2 units of Wood Log (ID 4)"
 @export var inputs: Dictionary = {}
 
-## The inventory slot index where the crafted item will be placed.
-## Example: 7 (Wooden Sword) or 0 (Stone Block)
+## The item ID produced by crafting this recipe (e.g., 17 for Wooden Sword).
 @export var output_item_index: int = -1
 
-## The amount of items produced by a single crafting execution.
+## The amount of items produced by a single crafting transaction.
 @export var output_quantity: int = 1

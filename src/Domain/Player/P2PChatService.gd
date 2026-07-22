@@ -1,12 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Player/P2PChatService.gd
 # Description: Pure Domain Service responsible for text chat message sanitization,
-#              command parsing, and formatting rules.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively text parsing and 
-#   formatting rules, completely isolated from rendering and networking.
-# - Open-Closed Principle (OCP): Easily extendable with new commands (e.g., mute, 
-#   admin permissions) without modifying existing structures.
+#              command parsing, and BBCode formatting rules.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -14,12 +9,12 @@ class_name P2PChatService
 extends RefCounted
 
 enum Channel {
-	GLOBAL,  # Standard public room
-	PRIVATE, # Direct whisper to another peer
-	SYSTEM   # Server/Host game notices
+	GLOBAL,  
+	PRIVATE, 
+	SYSTEM   
 }
 
-## Inner class representing the data state of a single message
+## Inner value class representing the data state of a single message.
 class ChatMessage:
 	var sender_id: int
 	var sender_name: String
@@ -37,12 +32,12 @@ class ChatMessage:
 		timestamp = Time.get_time_string_from_system()
 
 
-## Escapes/Strips BBCode characters to prevent rich-text UI injection exploits
+## Escapes/Strips BBCode characters to prevent rich-text UI injection exploits.
 static func sanitize_text(input: String) -> String:
 	return input.replace("[", "").replace("]", "").strip_edges()
 
 
-## Parses raw user inputs, sorting them into either global chats or whispers
+## Parses raw user inputs, sorting them into either global chats or whispers.
 static func parse_incoming_text(sender_id: int, sender_name: String, raw_text: String) -> ChatMessage:
 	var text := raw_text.strip_edges()
 	
@@ -53,7 +48,7 @@ static func parse_incoming_text(sender_id: int, sender_name: String, raw_text: S
 	return ChatMessage.new(sender_id, sender_name, sanitized, Channel.GLOBAL)
 
 
-## Bakes a ChatMessage into an elegant BBCode formatted string for the presentation layer
+## Bakes a ChatMessage into an elegant BBCode formatted string.
 static func format_message(msg: ChatMessage) -> String:
 	match msg.channel:
 		Channel.PRIVATE:
@@ -68,7 +63,7 @@ static func _parse_whisper_command(sender_id: int, sender_name: String, text: St
 	var parts := text.split(" ", false, 2)
 	
 	if parts.size() < 3:
-		var error_msg := "ERROR: INVALID WHISPER FORMAT. USE: /w [player] [msg]"
+		var error_msg := TranslationServer.translate("CHAT_ERROR_INVALID_WHISPER")
 		return ChatMessage.new(1, "SYSTEM", error_msg, Channel.SYSTEM)
 		
 	var target_name := parts[1].strip_edges()
