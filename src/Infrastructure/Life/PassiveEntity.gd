@@ -1,33 +1,27 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
-# Description: Abstract physical base class representing NPCs and Wildlife.
-#              Coordinates physical movements, gravity slides, and fluid states.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   translations, physical structures, and sensory nameplates.
-# - Liskov Substitution Principle (LSP): Serves as a robust base class contract; 
-#   its API conforms perfectly across humans and quadruped species.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - COMPILER SHIELD: Replaced dynamic class-call reflections with 100% compile-time
-#   type-safe casts and public method bindings.
-# Author: Enrique Gonzalez Gutierrez
+# Description: Abstract physical character controller representing mobile entities.
+#              Coordinates locomotion, buoyancy, damage reactions, and telemetry.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 @warning_ignore("unused_private_class_variable")
 class_name PassiveEntity
 extends CharacterBody3D
 
-var entity_name_key: String = ""
+const BASE_SPEED: float = 2.6
+const JUMP_VELOCITY: float = 5.0
+const GROUND_SNAP_VELOCITY: float = -1.2
+const SLEEP_DISTANCE_SQ: float = 1600.0 # 40 meters squared sleep distance
+const THREAT_SEARCH_RADIUS_SQ: float = 64.0
+const REPUTATION_DAMAGE_PENALTY: int = -15
+const REPUTATION_MURDER_PENALTY: int = -35
 
 @export var is_conversational_npc: bool = false
 @export var humanoid_role: int = -1
 @export var entity_habitat: int = 0
 
-# INCREMENTO DE VELOCIDAD BASE AL DOBLE (Antes: 1.3)
-const BASE_SPEED: float = 2.6
-const JUMP_VELOCITY: float = 5.0
-const ANIM_DIR := "res://assets/models/mobs/"
-
+var entity_name_key: String = ""
 var ai_component: NPCAIComponent
 var visual_component: NPCVisualComponent
 var domain_entity: VoxelEntity
@@ -42,16 +36,13 @@ var _collision_height: float = 1.5
 
 var is_talking: bool = false
 var _talking_partner: CharacterBody3D = null
-
 var _last_attacker: Node = null
 var _is_physically_sleeping: bool = false
 
-# Set exclusively and explicitly by the Spawning Service (SOLID Compliant)
 var quest_target_id: String = ""
 var _is_lifecycle_initialized: bool = false
 var _ui_component: EntityUIComponent
 
-# Procedural slope tilt accumulators
 var _slope_pitch: float = 0.0
 var _slope_roll: float = 0.0
 
@@ -99,9 +90,7 @@ func _setup_nameplate_height() -> void:
 		elif col.shape is BoxShape3D:
 			shape_height = col.shape.size.y
 			
-		var local_y_center := col.position.y
-		var scaled_half_height := (shape_height * col.scale.y) / 2.0
-		_collision_height = local_y_center + scaled_half_height
+		_collision_height = col.position.y + ((shape_height * col.scale.y) / 2.0)
 	else:
 		_collision_height = 1.5
 
@@ -151,13 +140,11 @@ func _can_fly() -> bool:
 
 
 func _can_jump_to(target_coord: Vector3i) -> bool:
-	var habitat := _get_habitat()
-	if habitat == 2: 
-		var world_controller_ref := get_parent()
-		if is_instance_valid(world_controller_ref) and "world_state" in world_controller_ref:
-			var ws: WorldState = world_controller_ref.world_state
-			if is_instance_valid(ws):
-				return ws.get_block(target_coord) == BlockType.Type.WATER 
+	if _get_habitat() == 2: 
+		var parent_node := get_parent()
+		if is_instance_valid(parent_node) and "world_state" in parent_node:
+			var ws: WorldState = parent_node.world_state
+			if is_instance_valid(ws): return ws.get_block(target_coord) == BlockType.Type.WATER 
 		return false
 	return true 
 
@@ -187,9 +174,7 @@ func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -
 	if domain_entity.is_dead: return
 	if is_talking: stop_talking()
 		
-	if is_instance_valid(attacker):
-		_last_attacker = attacker
-		
+	if is_instance_valid(attacker): _last_attacker = attacker
 	_is_physically_sleeping = false
 	velocity += knockback_force
 	domain_entity.take_damage(amount)
@@ -197,20 +182,28 @@ func take_damage(amount: int, knockback_force: Vector3, attacker: Node = null) -
 
 func _on_domain_entity_took_damage(_amount: int) -> void:
 	velocity.y = JUMP_VELOCITY
-	
+	_trigger_damage_panic_state()
+	_broadcast_threat_alarm()
+
+
+func _trigger_damage_panic_state() -> void:
 	if is_instance_valid(ai_component):
 		ai_component.current_task = NPCAIComponent.TaskState.PANIC
 		ai_component.task_timer = randf_range(3.0, 5.0)
 		var angle := randf() * TAU
 		ai_component.wander_direction = Vector3(cos(angle), 0, sin(angle))
-		
-		var role := _get_humanoid_role()
-		var is_civilian: bool = (role == 0 or role == 1 or role == 3 or role == 4 or role == 5)
-		
-		if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
-			var rep := VillageReputationService.instance
-			if is_instance_valid(rep): rep.modify_reputation(-15)
-			
+		_apply_civilian_reputation_penalty(REPUTATION_DAMAGE_PENALTY)
+
+
+func _apply_civilian_reputation_penalty(penalty: int) -> void:
+	var role := _get_humanoid_role()
+	var is_civilian: bool = (role == 0 or role == 1 or role == 3 or role == 4 or role == 5)
+	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
+		var rep := VillageReputationService.instance
+		if is_instance_valid(rep): rep.modify_reputation(penalty)
+
+
+func _broadcast_threat_alarm() -> void:
 	var closest_attacker := _find_closest_hostile_threat()
 	if is_instance_valid(closest_attacker):
 		AlertNetworkService.broadcast_alarm(closest_attacker, global_position)
@@ -218,15 +211,13 @@ func _on_domain_entity_took_damage(_amount: int) -> void:
 
 func _find_closest_hostile_threat() -> CharacterBody3D:
 	if not is_inside_tree(): return null
-		
-	var hostiles := get_tree().get_nodes_in_group("hostiles")
 	var closest: CharacterBody3D = null
-	var min_dist_sq := 64.0
+	var min_dist_sq := THREAT_SEARCH_RADIUS_SQ
 	
-	for child: Node in hostiles:
+	for child: Node in get_tree().get_nodes_in_group("hostiles"):
 		if child == self or not is_instance_valid(child): continue
-		var zombie_entity: VoxelEntity = child.get("domain_entity") as VoxelEntity
-		if zombie_entity != null and not zombie_entity.is_dead:
+		var domain: VoxelEntity = child.get("domain_entity") as VoxelEntity
+		if domain != null and not domain.is_dead:
 			var dist_sq := global_position.distance_squared_to(child.global_position)
 			if dist_sq < min_dist_sq:
 				min_dist_sq = dist_sq
@@ -239,7 +230,6 @@ func _on_domain_entity_died() -> void:
 	_try_drop_player_loot()
 	remove_from_group("passives")
 	set_physics_process(false)
-	
 	_cleanup_physics_shapes()
 	_spawn_death_particles()
 	_apply_death_animations_and_free()
@@ -260,16 +250,7 @@ func _cleanup_physics_shapes() -> void:
 	if is_instance_valid(job_service):
 		job_service.release_all_jobs_for_worker(get_instance_id())
 		
-	_deduct_reputation_on_murder()
-
-
-func _deduct_reputation_on_murder() -> void:
-	var role := _get_humanoid_role()
-	var is_civilian: bool = (role == 0 or role == 1 or role == 3 or role == 4 or role == 5)
-	
-	if is_civilian and is_instance_valid(_last_attacker) and _last_attacker.name == "Player":
-		var rep := VillageReputationService.instance
-		if is_instance_valid(rep): rep.modify_reputation(-35)
+	_apply_civilian_reputation_penalty(REPUTATION_MURDER_PENALTY)
 
 
 func _apply_death_animations_and_free() -> void:
@@ -283,15 +264,18 @@ func _apply_death_animations_and_free() -> void:
 
 func _spawn_death_particles() -> void:
 	var particles := CPUParticles3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.15, 0.15, 0.15)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED 
-	mesh.material = mat
-	particles.mesh = mesh
+	_configure_death_particle_properties(particles)
+	_attach_death_particle_mesh(particles)
 	
+	particles.finished.connect(particles.queue_free)
+	var world_node := get_parent()
+	if is_instance_valid(world_node):
+		world_node.add_child(particles)
+		particles.global_position = global_position + Vector3(0, 0.5, 0)
+		particles.emitting = true
+
+
+func _configure_death_particle_properties(particles: CPUParticles3D) -> void:
 	particles.amount = 15
 	particles.one_shot = true
 	particles.explosiveness = 0.95
@@ -303,13 +287,17 @@ func _spawn_death_particles() -> void:
 	particles.initial_velocity_min = 2.0
 	particles.initial_velocity_max = 4.0
 	particles.gravity = Vector3(0, 2.0, 0)
-	
-	particles.finished.connect(particles.queue_free)
-	var world_node := get_parent()
-	if is_instance_valid(world_node):
-		world_node.add_child(particles)
-		particles.global_position = global_position + Vector3(0, 0.5, 0)
-		particles.emitting = true
+
+
+func _attach_death_particle_mesh(particles: CPUParticles3D) -> void:
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.15, 0.15, 0.15)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED 
+	mesh.material = mat
+	particles.mesh = mesh
 
 
 func _try_drop_player_loot() -> void:
@@ -327,9 +315,7 @@ func _drop_loot(_inv: IInventory) -> void:
 
 func _physics_process(delta: float) -> void:
 	if domain_entity.is_dead: return
-		
-	if not _is_lifecycle_initialized:
-		_execute_lifecycle_initialization()
+	if not _is_lifecycle_initialized: _execute_lifecycle_initialization()
 		
 	_update_sleeping_state()
 	if _is_physically_sleeping:
@@ -344,47 +330,30 @@ func _physics_process(delta: float) -> void:
 
 func _update_sleeping_state() -> void:
 	if Engine.get_physics_frames() % 15 == 0:
-		var player_node: CharacterBody3D = null
 		var parent_node := get_parent()
-		if is_instance_valid(parent_node) and "player" in parent_node:
-			player_node = parent_node.get("player") as CharacterBody3D
-			
-		if is_instance_valid(player_node):
-			_is_physically_sleeping = global_position.distance_squared_to(player_node.global_position) > 1600.0
-		else:
-			_is_physically_sleeping = false
+		var player_node: CharacterBody3D = parent_node.get("player") as CharacterBody3D if is_instance_valid(parent_node) and "player" in parent_node else null
+		_is_physically_sleeping = is_instance_valid(player_node) and global_position.distance_squared_to(player_node.global_position) > SLEEP_DISTANCE_SQ
 
 
 func _apply_environmental_physics(delta: float) -> void:
 	var is_submerged := _check_in_liquid_state()
-	
 	if _can_fly() and not is_submerged:
-		var flight_state := 0
-		if has_meta("avian_flight_state"):
-			flight_state = get_meta("avian_flight_state") as int
-		if flight_state != 2:
-			return
+		var flight_state := get_meta("avian_flight_state") as int if has_meta("avian_flight_state") else 0
+		if flight_state != 2: return
 			
 	if (not is_on_floor() or is_submerged) and _get_habitat() != 2 and not is_submerged:
 		velocity.y -= gravity * delta
 	elif is_submerged:
 		_apply_liquid_buoyancy(delta)
 	else:
-		_apply_grounded_snap(delta)
+		velocity.y = GROUND_SNAP_VELOCITY
 
 
 func _apply_liquid_buoyancy(delta: float) -> void:
 	var habitat := _get_habitat()
-	if habitat == 2: 
-		velocity.y = move_toward(velocity.y, 0.0, gravity * 0.5 * delta)
-	elif habitat == 1: 
-		velocity.y = move_toward(velocity.y, -0.2, gravity * 0.5 * delta)
-	else: 
-		velocity.y = move_toward(velocity.y, -1.8, gravity * 0.5 * delta)
-
-
-func _apply_grounded_snap(_delta: float) -> void:
-	velocity.y = -1.2
+	if habitat == 2: velocity.y = move_toward(velocity.y, 0.0, gravity * 0.5 * delta)
+	elif habitat == 1: velocity.y = move_toward(velocity.y, -0.2, gravity * 0.5 * delta)
+	else: velocity.y = move_toward(velocity.y, -1.8, gravity * 0.5 * delta)
 
 
 func is_in_liquid() -> bool:
@@ -397,15 +366,12 @@ func _check_in_liquid_state() -> bool:
 		var ws: WorldState = parent_node_ref.world_state
 		if ws != null:
 			var my_coord := Vector3i(floori(global_position.x), floori(global_position.y + 0.2), floori(global_position.z))
-			return (ws.get_block(my_coord) == 6 or ws.get_block(my_coord) == 15 or \
-					ws.get_block(my_coord + Vector3i(0, -1, 0)) == 6 or ws.get_block(my_coord + Vector3i(0, -1, 0)) == 15)
+			return (ws.get_block(my_coord) == 6 or ws.get_block(my_coord) == 15 or ws.get_block(my_coord + Vector3i(0, -1, 0)) == 6 or ws.get_block(my_coord + Vector3i(0, -1, 0)) == 15)
 	return false
 
 
 func _process_ai_and_boundaries(delta: float) -> void:
-	if is_instance_valid(ai_component):
-		ai_component.process_ai(delta)
-		
+	if is_instance_valid(ai_component): ai_component.process_ai(delta)
 	_apply_absolute_boundary_forcefield(delta)
 	
 	quest_check_timer -= delta
@@ -417,14 +383,11 @@ func _process_ai_and_boundaries(delta: float) -> void:
 
 func _update_floating_nameplate_unconditional() -> void:
 	if is_instance_valid(_ui_component):
-		var active_quest := QuestService.get_active_quest() as Quest
-		_ui_component.update_ui_state(active_quest, quest_target_id)
+		_ui_component.update_ui_state(QuestService.get_active_quest() as Quest, quest_target_id)
 
 
 func _update_quest_bubble_state() -> void:
-	if not is_instance_valid(_ui_component):
-		return
-		
+	if not is_instance_valid(_ui_component): return
 	var active_quest := QuestService.get_active_quest() as Quest
 	var ws := _get_world_state_ref()
 	
@@ -436,16 +399,18 @@ func _update_quest_bubble_state() -> void:
 	if ws.active_quest_target_node == self:
 		active_quest.target_position = global_position
 		_ui_component.update_ui_state(active_quest, active_quest.quest_id)
-		return
-		
+	else:
+		_evaluate_quest_target_proximity(active_quest, ws)
+
+
+func _evaluate_quest_target_proximity(active_quest: Quest, ws: WorldState) -> void:
 	var target_node := ws.active_quest_target_node
 	if is_instance_valid(target_node) and not target_node.domain_entity.is_dead:
 		quest_target_id = ""
 		_ui_component.update_ui_state(active_quest, "")
 		return
 		
-	var dist := global_position.distance_to(active_quest.target_position)
-	if dist <= 25.0 and _is_eligible_for_quest(active_quest.quest_id):
+	if global_position.distance_to(active_quest.target_position) <= 25.0 and _is_eligible_for_quest(active_quest.quest_id):
 		quest_target_id = active_quest.quest_id
 		ws.active_quest_target_node = self
 		active_quest.target_position = global_position
@@ -463,25 +428,19 @@ func _get_world_state_ref() -> WorldState:
 
 
 func _apply_absolute_boundary_forcefield(delta: float) -> void:
-	var world_controller_ref := get_parent()
-	if not is_instance_valid(world_controller_ref) or not "world_state" in world_controller_ref:
-		return
-		
-	var ws: WorldState = world_controller_ref.world_state
+	var world_ctrl := get_parent()
+	if not is_instance_valid(world_ctrl) or not "world_state" in world_ctrl: return
+	var ws: WorldState = world_ctrl.world_state
 	if ws == null: return
 		
 	var next_pos := global_position + velocity * delta
 	var feet_coord := Vector3i(floori(next_pos.x), floori(next_pos.y + 0.1), floori(next_pos.z))
-	
 	_enforce_habitat_boundary(ws, feet_coord)
 
 
 func _enforce_habitat_boundary(ws: WorldState, feet_coord: Vector3i) -> void:
-	var block_at_feet := ws.get_block(feet_coord)
-	var block_below_feet := ws.get_block(feet_coord + Vector3i(0, -1, 0))
-	
-	var is_feet_safe := _is_block_type_habitable(block_at_feet)
-	var is_below_safe := _is_block_type_habitable(block_below_feet)
+	var is_feet_safe := _is_block_type_habitable(ws.get_block(feet_coord))
+	var is_below_safe := _is_block_type_habitable(ws.get_block(feet_coord + Vector3i(0, -1, 0)))
 	
 	if not is_feet_safe and not is_below_safe:
 		velocity.x = 0.0
@@ -490,7 +449,7 @@ func _enforce_habitat_boundary(ws: WorldState, feet_coord: Vector3i) -> void:
 	else:
 		set_meta("diag_hab_blk", false)
 		
-	if _get_habitat() == 2 and block_at_feet == BlockType.Type.AIR:
+	if _get_habitat() == 2 and ws.get_block(feet_coord) == BlockType.Type.AIR:
 		velocity.y = -2.5
 
 
@@ -507,7 +466,6 @@ func _apply_procedural_slope_tilt(delta: float) -> void:
 		if is_instance_valid(visual_root):
 			var forward := -visual_root.global_transform.basis.z.normalized()
 			var right := visual_root.global_transform.basis.x.normalized()
-			
 			target_pitch = -forward.dot(normal) * 0.95
 			target_roll = right.dot(normal) * 0.95
 			
@@ -546,7 +504,6 @@ func _dispatch_deep_telemetry(vel_b4: Vector3, vel_aft: Vector3, collided: bool)
 		else:
 			task_name = ai_component.get_task_state_name(int(ai_component.current_task))
 			
-	var custom_name := _generate_telemetry_name()
 	var flags: Dictionary = {
 		"hab_blk": bool(get_meta("diag_hab_blk")) if has_meta("diag_hab_blk") else false,
 		"turn_thr": float(get_meta("diag_turn_thr")) if has_meta("diag_turn_thr") else 1.0,
@@ -554,7 +511,7 @@ func _dispatch_deep_telemetry(vel_b4: Vector3, vel_aft: Vector3, collided: bool)
 		"yield": bool(get_meta("diag_yield")) if has_meta("diag_yield") else false,
 		"whisk": bool(get_meta("diag_whisk")) if has_meta("diag_whisk") else false
 	}
-	AITelemetryService.log_deep_diagnostics(self, custom_name, task_name, dir, vel_b4, vel_aft, collided, flags)
+	AITelemetryService.log_deep_diagnostics(self, _generate_telemetry_name(), task_name, dir, vel_b4, vel_aft, collided, flags)
 
 
 func _generate_telemetry_name() -> String:
