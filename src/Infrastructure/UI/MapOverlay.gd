@@ -192,7 +192,7 @@ func _draw_radar_active_quest(p_map_pos: Vector2) -> void:
 	if active_q == null or active_q.target_position == Vector3.ZERO: return
 		
 	var draw_target := _world_to_map_space(Vector2(active_q.target_position.x, active_q.target_position.z))
-	var pulse_radius := 10.0 + abs(sin(_pulse_timer * 1.5)) * 6.0
+	var pulse_radius: float = 10.0 + absf(sin(_pulse_timer * 1.5)) * 6.0
 	_radar_canvas.draw_circle(draw_target, pulse_radius, Color(COLOR_QUEST.r, COLOR_QUEST.g, COLOR_QUEST.b, 0.22))
 	
 	var diamond_points := PackedVector2Array([
@@ -208,7 +208,7 @@ func _draw_radar_player_indicator(p_map_pos: Vector2) -> void:
 	if p_map_pos.x < 0 or p_map_pos.x > _map_panel_size or p_map_pos.y < 0 or p_map_pos.y > _map_panel_size:
 		return
 		
-	var p_pulse := 12.0 + abs(sin(_pulse_timer)) * 6.0
+	var p_pulse: float = 12.0 + absf(sin(_pulse_timer)) * 6.0
 	_radar_canvas.draw_circle(p_map_pos, p_pulse, COLOR_PULSE)
 	_radar_canvas.draw_circle(p_map_pos, 4.0, Color.BLACK)
 	_radar_canvas.draw_circle(p_map_pos, 3.0, COLOR_PLAYER)
@@ -255,8 +255,8 @@ func _instantiate_single_pin(landmark: IMegaStructure) -> void:
 	_apply_pin_styles(btn, landmark)
 	btn.pressed.connect(_on_landmark_pin_pressed.bind(landmark))
 	
-	var is_visible := pin_pos.x >= 0 and pin_pos.x <= _map_panel_size and pin_pos.y >= 0 and pin_pos.y <= _map_panel_size
-	btn.visible = is_visible
+	var is_pin_visible := pin_pos.x >= 0 and pin_pos.x <= _map_panel_size and pin_pos.y >= 0 and pin_pos.y <= _map_panel_size
+	btn.visible = is_pin_visible
 	_radar_canvas.add_child(btn)
 
 
@@ -277,6 +277,26 @@ func _apply_pin_styles(btn: Button, landmark: IMegaStructure) -> void:
 	btn.add_theme_stylebox_override("normal", style_normal)
 	btn.add_theme_stylebox_override("hover", style_hover)
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	
+	_attach_pin_label(btn, landmark)
+
+
+func _attach_pin_label(btn: Button, landmark: IMegaStructure) -> void:
+	var label := Label.new()
+	label.text = tr(landmark.get_name()).to_upper()
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	label.custom_minimum_size = Vector2(140, 36)
+	label.size = Vector2(140, 36)
+	label.position = Vector2(-56, 22)
+	
+	var ls := LabelSettings.new()
+	ls.font_size = 10
+	ls.font_color = Color(0.95, 0.95, 0.95)
+	ls.outline_size = 4
+	ls.outline_color = Color.BLACK
+	label.label_settings = ls
+	btn.add_child(label)
 
 
 func _reposition_landmark_pins() -> void:
@@ -285,7 +305,8 @@ func _reposition_landmark_pins() -> void:
 		if is_instance_valid(btn):
 			var pin_pos := _world_to_map_space(Vector2(landmark.global_center.x, landmark.global_center.y))
 			btn.position = pin_pos - Vector2(14, 14)
-			btn.visible = pin_pos.x >= 0 and pin_pos.x <= _map_panel_size and pin_pos.y >= 0 and pin_pos.y <= _map_panel_size
+			var is_pin_visible := pin_pos.x >= 0 and pin_pos.x <= _map_panel_size and pin_pos.y >= 0 and pin_pos.y <= _map_panel_size
+			btn.visible = is_pin_visible
 
 
 func _on_landmark_pin_pressed(landmark: IMegaStructure) -> void:
