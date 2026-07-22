@@ -1,11 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/AvianAIBehavior.gd
-# Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
-#              Planning (GOAP) for Avian Mobs (Birds and Parrots).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Segregates thermal soaring, forest 
-#   scanning, and vertical panic takeoffs into independent actions.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Description: Pure Domain GOAP AI behavior strategy for Avian Mobs (Birds, Parrots).
+#              Manages thermal soaring, tree scanning, and roost gliding.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -24,6 +20,7 @@ const STATE_PERCHED: int = 2
 const FLIGHT_SPEED_SOAR: float = 3.2
 const FLIGHT_SPEED_GLIDE: float = 4.8
 const PERCH_DURATION_SEC: float = 5.0
+const THREAT_SENSORY_RANGE_SQ: float = 64.0
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -63,7 +60,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 	_initialize_agent(host)
 	_update_blackboard_timers(delta)
-	
 	_evaluate_active_plan(host)
 	_execute_current_action(delta)
 
@@ -89,43 +85,47 @@ func _update_blackboard_timers(delta: float) -> void:
 
 
 func _evaluate_active_plan(_host: Object) -> void:
-	if _active_plan.is_empty():
-		var initial_state := _build_initial_state()
-		var sorted_goals := _get_sorted_goals()
+	if not _active_plan.is_empty():
+		return
 		
-		# Filter usable actions dynamically by contextual validity
-		var usable_actions: Array[GOAPAction] = []
-		for action: GOAPAction in _actions:
-			if action.is_contextually_valid(_blackboard):
-				usable_actions.append(action)
-		
-		for goal in sorted_goals:
-			if goal.is_valid(_blackboard):
-				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
-				if not candidate_plan.is_empty():
-					_active_plan = candidate_plan
-					_active_plan[0].on_enter(_blackboard)
-					break
+	var initial_state := _build_initial_state()
+	var usable_actions: Array[GOAPAction] = []
+	for action: GOAPAction in _actions:
+		if action.is_contextually_valid(_blackboard):
+			usable_actions.append(action)
+			
+	for goal in _get_sorted_goals():
+		if goal.is_valid(_blackboard):
+			var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+			if not candidate_plan.is_empty():
+				_active_plan = candidate_plan
+				_active_plan[0].on_enter(_blackboard)
+				break
 
 
 func _build_initial_state() -> Dictionary:
 	var state: Dictionary = {}
-	state["is_safe"] = not _detect_threat_proximity(_blackboard.get_object("host") as CharacterBody3D)
+	state["is_safe"] = not _detect_threat_proximity(_blackboard.get_object("host"))
 	state["is_roosted"] = (_blackboard.get_float("rest_timer") > 0.0)
 	state["is_soaring"] = false
 	return state
 
 
-func _detect_threat_proximity(host: CharacterBody3D) -> bool:
-	if not is_instance_valid(host) or not host.is_inside_tree():
+func _detect_threat_proximity(host: Object) -> bool:
+	if not is_instance_valid(host) or not host.call("is_inside_tree"):
 		return false
-	var hostiles := host.get_tree().get_nodes_in_group("hostiles")
-	for child in hostiles:
-		if is_instance_valid(child) and child is Node3D:
-			var domain := child.get("domain_entity") as VoxelEntity
-			if is_instance_valid(domain) and not domain.is_dead:
-				if host.global_position.distance_squared_to(child.global_position) <= 64.0:
-					return true
+		
+	var tree: SceneTree = host.call("get_tree") as SceneTree
+	if tree == null:
+		return false
+		
+	var host_pos: Vector3 = host.get("global_position")
+	for child: Object in tree.get_nodes_in_group("hostiles"):
+		if is_instance_valid(child):
+			var domain: Object = child.get("domain_entity")
+			var is_dead: bool = domain.get("is_dead") as bool if is_instance_valid(domain) else true
+			if not is_dead and host_pos.distance_squared_to(child.get("global_position") as Vector3) <= THREAT_SENSORY_RANGE_SQ:
+				return true
 	return false
 
 
@@ -147,8 +147,7 @@ func _execute_current_action(delta: float) -> void:
 		_active_plan.clear()
 		return
 		
-	var is_finished := current_action.execute_step(_blackboard, delta)
-	if is_finished:
+	if current_action.execute_step(_blackboard, delta):
 		current_action.on_exit(_blackboard)
 		_active_plan.pop_front()
 		if not _active_plan.is_empty():
@@ -175,17 +174,16 @@ class AvianPanicAction extends GOAPAction:
 		add_effect("is_safe", true)
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
-		host.set_meta("avian_flight_state", STATE_SOARING)
-		
+		var host := bb.get_object("host")
+		if is_instance_valid(host):
+			host.set_meta("avian_flight_state", STATE_SOARING)
+			var ai: Object = host.get("ai_component")
+			if is_instance_valid(ai):
+				ai.set("current_task", TASK_PANIC)
+				
 		bb.erase_memory("roost_target")
 		bb.erase_memory("has_roost_target")
 		bb.set_memory("rest_timer", 0.0)
-		
-		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai):
-			ai.set("current_task", TASK_PANIC)
-			
 		return true
 
 
@@ -198,8 +196,8 @@ class ScanLeavesAction extends GOAPAction:
 		return bb.get_float("rest_timer") <= 0.0 and bb.get_float("roost_scan_cooldown") <= 0.0
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
-		var leaf_coord := _scan_for_leaves(host)
+		var host := bb.get_object("host")
+		var leaf_coord := _scan_for_leaves(host) if is_instance_valid(host) else Vector3i(0, -999, 0)
 		
 		if leaf_coord != Vector3i(0, -999, 0):
 			bb.set_memory("roost_target", leaf_coord)
@@ -208,13 +206,15 @@ class ScanLeavesAction extends GOAPAction:
 		bb.set_memory("roost_scan_cooldown", 8.0)
 		return true
 		
-	func _scan_for_leaves(host: CharacterBody3D) -> Vector3i:
-		var parent := host.get_parent() as Node
+	func _scan_for_leaves(host: Object) -> Vector3i:
+		var parent: Object = host.call("get_parent")
 		if not is_instance_valid(parent) or not "world_state" in parent: return Vector3i(0, -999, 0)
 		var ws: WorldState = parent.get("world_state") as WorldState
 		if ws == null: return Vector3i(0, -999, 0)
 			
-		var my_coord := Vector3i(floori(host.global_position.x), floori(host.global_position.y), floori(host.global_position.z))
+		var host_pos: Vector3 = host.get("global_position")
+		var my_coord := Vector3i(floori(host_pos.x), floori(host_pos.y), floori(host_pos.z))
+		
 		for x in range(-5, 6):
 			for y in range(-4, 5):
 				for z in range(-5, 6):
@@ -234,14 +234,16 @@ class GlideToRoostAction extends GOAPAction:
 		return bb.has_memory("roost_target")
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
-		var target := bb.get_vector3i("roost_target")
+		var host := bb.get_object("host")
+		if not is_instance_valid(host): return true
 		
+		var target := bb.get_vector3i("roost_target")
 		var target_pos := Vector3(target) + Vector3(0.5, 1.05, 0.5)
-		var diff := target_pos - host.global_position
+		var host_pos: Vector3 = host.get("global_position")
+		var diff := target_pos - host_pos
 		
 		if diff.length_squared() <= 0.4:
-			host.velocity = Vector3.ZERO
+			host.set("velocity", Vector3.ZERO)
 			host.set_meta("avian_flight_state", STATE_PERCHED)
 			bb.set_memory("rest_timer", PERCH_DURATION_SEC)
 			return true
@@ -249,13 +251,13 @@ class GlideToRoostAction extends GOAPAction:
 		_apply_glide_physics(host, diff, delta)
 		return false
 		
-	func _apply_glide_physics(host: CharacterBody3D, diff: Vector3, delta: float) -> void:
+	func _apply_glide_physics(host: Object, diff: Vector3, delta: float) -> void:
 		var glide_dir := diff.normalized()
-		var vel := host.velocity
+		var vel: Vector3 = host.get("velocity")
 		vel.x = glide_dir.x * FLIGHT_SPEED_GLIDE
 		vel.z = glide_dir.z * FLIGHT_SPEED_GLIDE
 		vel.y = lerp(vel.y, glide_dir.y * FLIGHT_SPEED_GLIDE, delta * 6.0)
-		host.velocity = vel
+		host.set("velocity", vel)
 		
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai):
@@ -269,7 +271,9 @@ class SoarAction extends GOAPAction:
 		add_effect("is_soaring", true)
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
+		var host := bb.get_object("host")
+		if not is_instance_valid(host): return true
+		
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
 			
@@ -286,15 +290,16 @@ class SoarAction extends GOAPAction:
 		_apply_soar_physics(host, ai, wander_dir, delta)
 		return false
 		
-	func _apply_soar_physics(host: CharacterBody3D, ai: Object, soar_dir: Vector3, delta: float) -> void:
-		var vel := host.velocity
+	func _apply_soar_physics(host: Object, ai: Object, soar_dir: Vector3, delta: float) -> void:
+		var vel: Vector3 = host.get("velocity")
 		vel.x = soar_dir.x * FLIGHT_SPEED_SOAR
 		vel.z = soar_dir.z * FLIGHT_SPEED_SOAR
 		
-		var vertical_drift := (18.0 - host.global_position.y) * 0.15
+		var host_pos: Vector3 = host.get("global_position")
+		var vertical_drift := (18.0 - host_pos.y) * 0.15
 		var wave_offset := sin(float(Time.get_ticks_msec()) / 1000.0 * 2.5) * 0.25
 		vel.y = lerp(vel.y, vertical_drift + wave_offset, delta * 4.0)
 		
-		host.velocity = vel
+		host.set("velocity", vel)
 		if is_instance_valid(ai):
 			ai.set("wander_direction", soar_dir)

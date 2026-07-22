@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Core/Bootstrap/Bootstrap.gd
-# Description: Central composition root orchestrating asynchronous system init,
-#              scene transitions, Vulkan pre-warming, and offline isolation.
+# Description: Central composition root of the application. Orchestrates the 
+#              asynchronous initialization of global systems, unified scene transitions,
+#              Vulkan pre-warming, and 100% Offline Socket Isolation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -229,7 +230,10 @@ func _setup_prop_registry() -> void:
 	_register_prop(203, CampfireEntity)
 	_register_prop(213, WishingWellEntity)
 	_register_prop(215, BarrelEntity)
-	
+	_register_vegetation_prop_range()
+
+
+func _register_vegetation_prop_range() -> void:
 	for prop_id: int in range(220, 241):
 		_register_prop(prop_id, null)
 
@@ -424,12 +428,16 @@ func _inject_dependencies() -> void:
 		world_controller.repository = world_repository
 		world_controller.player = player_controller
 		player_controller.world_controller = world_controller
-		if is_instance_valid(weather_service):
-			weather_service.player = player_controller
-			weather_service.world_controller = world_controller
-		if is_instance_valid(audio_service):
-			audio_service.player = player_controller
-			audio_service.world_controller = world_controller
+		_inject_service_dependencies()
+
+
+func _inject_service_dependencies() -> void:
+	if is_instance_valid(weather_service):
+		weather_service.player = player_controller
+		weather_service.world_controller = world_controller
+	if is_instance_valid(audio_service):
+		audio_service.player = player_controller
+		audio_service.world_controller = world_controller
 
 
 func return_to_main_menu() -> void:

@@ -1,11 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/CatAIBehavior.gd
-# Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
-#              Planning (GOAP) for the Domestic Cat.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Isolates predator evasion, food 
-#   luring, and campfire snuggling into distinct, cohesive actions.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+# Description: Pure Domain GOAP AI behavior strategy for the domestic Cat.
+#              Handles predator evasion, food attraction, and warmth seeking.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -68,7 +64,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 	_initialize_agent(host)
 	_update_blackboard_timers(delta)
-	
 	_evaluate_active_plan(host)
 	_execute_current_action(delta)
 
@@ -95,28 +90,27 @@ func _update_blackboard_timers(delta: float) -> void:
 
 
 func _evaluate_active_plan(_host: Object) -> void:
-	if _active_plan.is_empty():
-		var initial_state := _build_initial_state()
-		var sorted_goals := _get_sorted_goals()
+	if not _active_plan.is_empty():
+		return
 		
-		# Filter usable actions dynamically by contextual validity
-		var usable_actions: Array[GOAPAction] = []
-		for action: GOAPAction in _actions:
-			if action.is_contextually_valid(_blackboard):
-				usable_actions.append(action)
-		
-		for goal in sorted_goals:
-			if goal.is_valid(_blackboard):
-				var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
-				if not candidate_plan.is_empty():
-					_active_plan = candidate_plan
-					_active_plan[0].on_enter(_blackboard)
-					break
+	var initial_state := _build_initial_state()
+	var usable_actions: Array[GOAPAction] = []
+	for action: GOAPAction in _actions:
+		if action.is_contextually_valid(_blackboard):
+			usable_actions.append(action)
+			
+	for goal in _get_sorted_goals():
+		if goal.is_valid(_blackboard):
+			var candidate_plan := GOAPPlanner.plan(goal, usable_actions, initial_state)
+			if not candidate_plan.is_empty():
+				_active_plan = candidate_plan
+				_active_plan[0].on_enter(_blackboard)
+				break
 
 
 func _build_initial_state() -> Dictionary:
 	var state: Dictionary = {}
-	state["is_safe"] = not _detect_threat_proximity(_blackboard.get_object("host") as CharacterBody3D)
+	state["is_safe"] = not _detect_threat_proximity(_blackboard.get_object("host"))
 	state["is_fed"] = false
 	state["is_warm"] = false
 	state["is_wandering"] = false
@@ -141,24 +135,28 @@ func _execute_current_action(delta: float) -> void:
 		_active_plan.clear()
 		return
 		
-	var is_finished := current_action.execute_step(_blackboard, delta)
-	if is_finished:
+	if current_action.execute_step(_blackboard, delta):
 		current_action.on_exit(_blackboard)
 		_active_plan.pop_front()
 		if not _active_plan.is_empty():
 			_active_plan[0].on_enter(_blackboard)
 
 
-func _detect_threat_proximity(host: CharacterBody3D) -> bool:
-	if not is_instance_valid(host) or not host.is_inside_tree():
+func _detect_threat_proximity(host: Object) -> bool:
+	if not is_instance_valid(host) or not host.call("is_inside_tree"):
 		return false
-	var hostiles := host.get_tree().get_nodes_in_group("hostiles")
-	for child in hostiles:
-		if is_instance_valid(child) and child is Node3D:
-			var domain := child.get("domain_entity") as VoxelEntity
-			if is_instance_valid(domain) and not domain.is_dead:
-				if host.global_position.distance_squared_to(child.global_position) <= RANGE_ZOMBIE_SQ:
-					return true
+		
+	var tree: SceneTree = host.call("get_tree") as SceneTree
+	if tree == null:
+		return false
+		
+	var host_pos: Vector3 = host.get("global_position")
+	for child: Object in tree.get_nodes_in_group("hostiles"):
+		if is_instance_valid(child):
+			var domain: Object = child.get("domain_entity")
+			var is_dead: bool = domain.get("is_dead") as bool if is_instance_valid(domain) else true
+			if not is_dead and host_pos.distance_squared_to(child.get("global_position") as Vector3) <= RANGE_ZOMBIE_SQ:
+				return true
 	return false
 
 
@@ -181,7 +179,9 @@ class CatPanicAction extends GOAPAction:
 		add_effect("is_safe", true)
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
+		var host := bb.get_object("host")
+		if not is_instance_valid(host): return true
+		
 		var zombie := _scan_for_zombie(host)
 		if not is_instance_valid(zombie): return true
 			
@@ -190,22 +190,25 @@ class CatPanicAction extends GOAPAction:
 			
 		_trigger_hiss_alarm(bb, host, zombie, delta)
 		
-		var diff := host.global_position - zombie.global_position
+		var diff: Vector3 = (host.get("global_position") as Vector3) - (zombie.get("global_position") as Vector3)
 		diff.y = 0.0
 		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_RUN)
 		return false
 		
-	func _scan_for_zombie(host: CharacterBody3D) -> Node3D:
-		var hostiles := host.get_tree().get_nodes_in_group("hostiles")
-		for child in hostiles:
-			if is_instance_valid(child) and child is Node3D:
-				var domain := child.get("domain_entity") as VoxelEntity
-				if is_instance_valid(domain) and not domain.is_dead:
-					if host.global_position.distance_squared_to(child.global_position) <= RANGE_ZOMBIE_SQ:
-						return child as Node3D
+	func _scan_for_zombie(host: Object) -> Object:
+		var tree: SceneTree = host.call("get_tree") as SceneTree
+		if tree == null: return null
+		
+		var host_pos: Vector3 = host.get("global_position")
+		for child: Object in tree.get_nodes_in_group("hostiles"):
+			if is_instance_valid(child):
+				var domain: Object = child.get("domain_entity")
+				var is_dead: bool = domain.get("is_dead") as bool if is_instance_valid(domain) else true
+				if not is_dead and host_pos.distance_squared_to(child.get("global_position") as Vector3) <= RANGE_ZOMBIE_SQ:
+					return child
 		return null
 		
-	func _trigger_hiss_alarm(bb: AIBlackboard, host: CharacterBody3D, zombie: Node3D, delta: float) -> void:
+	func _trigger_hiss_alarm(bb: AIBlackboard, host: Object, zombie: Object, delta: float) -> void:
 		var cd := bb.get_float("hiss_cooldown") - delta
 		bb.set_memory("hiss_cooldown", cd)
 		if cd <= 0.0:
@@ -223,25 +226,28 @@ class LureFoodAction extends GOAPAction:
 		return bb.get_float("food_scan_cooldown") <= 0.0
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
-		var parent := host.get_parent() as Node
-		var player := parent.get_node_or_null("Player") as CharacterBody3D if is_instance_valid(parent) else null
+		var host := bb.get_object("host")
+		if not is_instance_valid(host): return true
 		
-		if is_instance_valid(player) and player.get("is_active"):
-			var dist_sq := host.global_position.distance_squared_to(player.global_position)
-			if dist_sq <= RANGE_ATTRACTION_SQ and _is_player_holding_chicken(player):
+		var parent: Object = host.call("get_parent")
+		var player: Object = parent.call("get_node_or_null", "Player") if is_instance_valid(parent) else null
+		
+		if is_instance_valid(player) and bool(player.get("is_active")):
+			var host_pos: Vector3 = host.get("global_position")
+			var p_pos: Vector3 = player.get("global_position")
+			if host_pos.distance_squared_to(p_pos) <= RANGE_ATTRACTION_SQ and _is_player_holding_chicken(player):
 				bb.set_memory("food_lure_player", player)
 				return true
 				
 		bb.set_memory("food_scan_cooldown", 8.0)
 		return true
 		
-	func _is_player_holding_chicken(player_node: CharacterBody3D) -> bool:
-		var inventory := player_node.get("inventory") as InventoryComponent
+	func _is_player_holding_chicken(player_node: Object) -> bool:
+		var inventory: Object = player_node.get("inventory")
 		if is_instance_valid(inventory):
 			var active_slot: int = player_node.get("active_slot_index") as int
-			var slot := inventory.get_slot_data(active_slot)
-			return slot != null and slot.item_id == 16
+			var slot: Object = inventory.call("get_slot_data", active_slot)
+			return slot != null and int(slot.get("item_id")) == 16
 		return false
 
 
@@ -252,15 +258,16 @@ class FollowPlayerAction extends GOAPAction:
 		add_effect("is_fed", true)
 		
 	func is_contextually_valid(bb: AIBlackboard) -> bool:
-		var player := bb.get_object("food_lure_player") as CharacterBody3D
-		return is_instance_valid(player) and player.get("is_active")
+		var player := bb.get_object("food_lure_player")
+		return is_instance_valid(player) and bool(player.get("is_active"))
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
-		var player := bb.get_object("food_lure_player") as CharacterBody3D
-		var ai: Object = host.get("ai_component")
+		var host := bb.get_object("host")
+		var player := bb.get_object("food_lure_player")
+		if not is_instance_valid(host) or not is_instance_valid(player): return true
 		
-		var diff := player.global_position - host.global_position
+		var ai: Object = host.get("ai_component")
+		var diff: Vector3 = (player.get("global_position") as Vector3) - (host.get("global_position") as Vector3)
 		diff.y = 0.0
 		
 		if diff.length_squared() <= 2.25:
@@ -281,11 +288,12 @@ class FindWarmthAction extends GOAPAction:
 		return bb.get_float("warmth_scan_cooldown") <= 0.0
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
-		var parent := host.get_parent() as Node
+		var host := bb.get_object("host")
+		if not is_instance_valid(host): return true
 		
+		var parent: Object = host.call("get_parent")
 		if is_instance_valid(parent):
-			var fire := _detect_closest_campfire(host.global_position, parent)
+			var fire := _detect_closest_campfire(host.get("global_position"), parent)
 			if is_instance_valid(fire):
 				bb.set_memory("campfire_target", fire)
 				return true
@@ -293,15 +301,15 @@ class FindWarmthAction extends GOAPAction:
 		bb.set_memory("warmth_scan_cooldown", 12.0)
 		return true
 		
-	func _detect_closest_campfire(host_pos: Vector3, world_node: Node) -> Node3D:
-		var closest: Node3D = null
+	func _detect_closest_campfire(host_pos: Vector3, world_node: Object) -> Object:
+		var closest: Object = null
 		var min_dist_sq := RANGE_CAMPFIRE_SQ
-		for child in world_node.get_children():
-			if is_instance_valid(child) and child.name.begins_with("Prop_CAMPFIRE"):
-				var dist_sq := host_pos.distance_squared_to(child.global_position)
+		for child: Object in world_node.call("get_children"):
+			if is_instance_valid(child) and str(child.get("name")).begins_with("Prop_CAMPFIRE"):
+				var dist_sq := host_pos.distance_squared_to(child.get("global_position") as Vector3)
 				if dist_sq < min_dist_sq:
 					min_dist_sq = dist_sq
-					closest = child as Node3D
+					closest = child
 		return closest
 
 
@@ -315,11 +323,12 @@ class SnuggleAction extends GOAPAction:
 		return is_instance_valid(bb.get_object("campfire_target"))
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
-		var fire := bb.get_object("campfire_target") as Node3D
-		var ai: Object = host.get("ai_component")
+		var host := bb.get_object("host")
+		var fire := bb.get_object("campfire_target")
+		if not is_instance_valid(host) or not is_instance_valid(fire): return true
 		
-		var diff := fire.global_position - host.global_position
+		var ai: Object = host.get("ai_component")
+		var diff: Vector3 = (fire.get("global_position") as Vector3) - (host.get("global_position") as Vector3)
 		diff.y = 0.0
 		
 		if diff.length_squared() <= 3.24:
@@ -338,7 +347,9 @@ class DefaultWanderAction extends GOAPAction:
 		add_effect("is_wandering", true)
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
-		var host := bb.get_object("host") as CharacterBody3D
+		var host := bb.get_object("host")
+		if not is_instance_valid(host): return true
+		
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
 		
