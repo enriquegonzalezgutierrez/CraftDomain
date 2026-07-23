@@ -124,7 +124,6 @@ func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_s
 	var target_pos := active_q.target_position
 	if world_state.global_to_chunk_pos(Vector3i(target_pos)).x == chunk.position.x and world_state.global_to_chunk_pos(Vector3i(target_pos)).z == chunk.position.z:
 		var mob_id: int = QUEST_TARGET_MOBS[active_q.quest_id]
-		# DETECTOR FIX: Scan both integrated nodes and current frame spawned_nodes array to prevent duplicates
 		var existing := _find_eligible_entity_in_list(world_node, spawned_nodes, mob_id, target_pos)
 		
 		if existing != null:
@@ -149,6 +148,7 @@ func _find_eligible_entity_in_list(world_node: Node, spawned_nodes: Array[Node],
 
 
 func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node], quest_id: String) -> void:
+	# Quest mobs are spawned strictly at their exact predefined coordinates to preserve campaign logic
 	var spawn_pos := target_pos
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var mob := MobRegistry.create_mob(mob_id, spawn_pos)
@@ -164,12 +164,14 @@ func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vect
 func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
 	if not MobRegistry.has_mob(spawn_id): return
 		
-	var global_x := int(offset.x + lx)
-	var global_z := int(offset.z + lz)
+	# GRID ALIGNMENT FIX: Use exact rounded coordinates for ground calculations
+	var global_x := int(round(offset.x + lx))
+	var global_z := int(round(offset.z + lz))
 	var gy := _resolve_habitat_ground_y(world_state, global_x, global_z, spawn_id)
 	if gy < 0.0: return 
 		
-	var pos := Vector3(offset.x + lx, gy, offset.z + lz)
+	# Align coordinates precisely to the center of the block cell
+	var pos := Vector3(float(global_x) + 0.5, gy, float(global_z) + 0.5)
 	if _is_spawn_point_too_close(world_node, pos): return
 		
 	if _is_voxel_spawn_space_free(world_state, pos):

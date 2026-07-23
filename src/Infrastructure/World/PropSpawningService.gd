@@ -1,14 +1,9 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/PropSpawningService.gd
-# Description: Infrastructure Service managing the registration, coordinates, 
-#              and spawning of inert scenery props and interactive decorations.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates exclusively static props.
-# - Dependency Inversion Principle (DIP): Resolves coordinates through the pure 
-#   domain SpawnCoordinateSolver instead of carrying custom duplicate voxel loops.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
-# Author: Enrique Gonzalez Gutierrez
+# Description: Infrastructure Service managing the registration, coordinates,
+#              and perfectly grounded spawning of inert vegetation props (flowers, grass)
+#              and interactive decorations (chests, barrels, campfires).
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name PropSpawningService
@@ -22,10 +17,8 @@ func spawn_props_for_chunk(chunk: Chunk, world_node: Node, world_state: WorldSta
 	var entities_list: Array[Node] = []
 	var chunk_pos := chunk.position
 	
-	if chunk_pos.y == 0:
-		var upper_chunk := world_state.get_chunk(Vector3i(chunk_pos.x, 1, chunk_pos.z))
-		if upper_chunk == null:
-			return [] 
+	if chunk_pos.y == 0 and world_state.get_chunk(Vector3i(chunk_pos.x, 1, chunk_pos.z)) == null:
+		return [] 
 			
 	var chunk_offset := Vector3(chunk_pos * Chunk.SIZE)
 	_process_chunk_spawning(chunk, chunk_offset, world_state, world_node, entities_list)
@@ -73,9 +66,7 @@ func _spawn_random_vegetation_prop(chunk_offset: Vector3, world_state: WorldStat
 	
 	var global_x: float = chunk_offset.x + rx
 	var global_z: float = chunk_offset.z + rz
-	
-	if RoadGeneratorService.is_on_road(global_x, global_z):
-		return
+	if RoadGeneratorService.is_on_road(global_x, global_z): return
 		
 	var target_prop_id := 0
 	if is_instance_valid(biome) and biome.has_method("get_wilderness_prop_id"):
@@ -87,7 +78,6 @@ func _spawn_random_vegetation_prop(chunk_offset: Vector3, world_state: WorldStat
 
 func _spawn_megastructure_props(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, entities_list: Array[Node]) -> void:
 	var pop_points := StructurePopulationService.get_population_for_chunk(chunk_pos)
-	
 	for point: StructurePopulationService.PopulationPoint in pop_points:
 		if point.is_prop and PropRegistry.has_prop(point.spawn_id):
 			_spawn_decoupled_landmark_prop(point, world_state, world_node, entities_list)
@@ -99,8 +89,11 @@ func _spawn_decoupled_landmark_prop(point: StructurePopulationService.Population
 	
 	if BlockLibrary.is_solid(block_at_pos):
 		var gy := SpawnCoordinateSolver.solve_surface_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
-		if gy > 0.0:
-			spawn_pos.y = gy
+		if gy > 0.0: spawn_pos.y = gy
+			
+	# GRID ALIGNMENT: Force exact center cell coordinates to prevent offset floating/burial
+	spawn_pos.x = float(floori(spawn_pos.x)) + 0.5
+	spawn_pos.z = float(floori(spawn_pos.z)) + 0.5
 		
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var prop := PropRegistry.create_prop(point.spawn_id, spawn_pos)
@@ -118,16 +111,14 @@ func _spawn_roadside_streetlights(chunk_pos: Vector3i, world_state: WorldState, 
 func _evaluate_and_spawn_streetlight(lamp_pos: Vector3, chunk_pos: Vector3i, world_state: WorldState, world_node: Node, entities_list: Array[Node]) -> void:
 	var gx := floori(lamp_pos.x)
 	var gz := floori(lamp_pos.z)
-	
 	var gy := SpawnCoordinateSolver.solve_surface_y(world_state, gx, gz)
-	if gy <= 0.0: 
-		return
+	if gy <= 0.0: return
 	
 	var floor_block := world_state.get_block(Vector3i(gx, floori(gy - 1.0), gz))
 	if floor_block == BlockType.Type.WATER or floor_block == BlockType.Type.LAVA:
 		return
 		
-	var spawn_pos := Vector3(lamp_pos.x, gy, lamp_pos.z)
+	var spawn_pos := Vector3(float(gx) + 0.5, gy, float(gz) + 0.5)
 	_instantiate_streetlight(spawn_pos, chunk_pos, world_state, world_node, entities_list)
 
 
@@ -151,13 +142,13 @@ func _apply_streetlight_theme(prop: Node, chunk_pos: Vector3i, world_node: Node)
 func _spawn_and_register_prop(prop_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
 	if not PropRegistry.has_prop(prop_id): return
 		
-	var global_x := int(offset.x + lx)
-	var global_z := int(offset.z + lz)
-	
+	var global_x := int(round(offset.x + lx))
+	var global_z := int(round(offset.z + lz))
 	var gy := SpawnCoordinateSolver.solve_surface_y(world_state, global_x, global_z)
 	if gy < 0.0: return 
 		
-	var pos := Vector3(offset.x + lx, gy, offset.z + lz)
+	# GRID ALIGNMENT: Align prop exact center cell coords
+	var pos := Vector3(float(global_x) + 0.5, gy, float(global_z) + 0.5)
 	if _is_voxel_spawn_space_free(world_state, pos):
 		var prop := PropRegistry.create_prop(prop_id, pos)
 		if prop != null:
@@ -177,9 +168,7 @@ func _detect_chunk_biome_id(chunk_pos: Vector3i, world_node: Node) -> int:
 	if is_instance_valid(generator) and "_terrain_noise" in generator:
 		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if terrain_noise != null:
-			var center_x := chunk_pos.x * Chunk.SIZE + 8
-			var center_z := chunk_pos.z * Chunk.SIZE + 8
-			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
+			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(chunk_pos.x * Chunk.SIZE + 8, chunk_pos.z * Chunk.SIZE + 8, terrain_noise) as BiomeService.BiomeProfile
 			return profile.biome_id
 	return 2
 
@@ -189,8 +178,6 @@ func _is_village_chunk(chunk_pos: Vector3i, world_node: Node) -> bool:
 	if is_instance_valid(generator) and "_terrain_noise" in generator:
 		var terrain_noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if terrain_noise != null:
-			var center_x := chunk_pos.x * Chunk.SIZE + 8
-			var center_z := chunk_pos.z * Chunk.SIZE + 8
-			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(center_x, center_z, terrain_noise) as BiomeService.BiomeProfile
+			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(chunk_pos.x * Chunk.SIZE + 8, chunk_pos.z * Chunk.SIZE + 8, terrain_noise) as BiomeService.BiomeProfile
 			return profile.landmark_id == 3
 	return false

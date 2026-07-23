@@ -1,8 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/BayOfSailsBiome.gd
-# Description: Concrete Biome Strategy implementing geographical, geological,
-#              meteorological, and scaled population parameters for the 
-#              tropical starter Bay of Sails.
+# Description: Concrete Biome Strategy for the tropical starter Bay of Sails.
+#              Generates gradual sandy shores and deep underwater ocean trenches.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -22,7 +21,13 @@ func get_minimap_color() -> Color:
 	return Color(0.08, 0.45, 0.72)
 
 
+## GEOLOGICAL HEIGHT RESOLVER: Generates gradual shorelines and deep submarine valleys.
 func get_base_height(noise_value: float) -> int:
+	# Deep Ocean Trenches: Down to Y=1 (yielding 4-5 blocks of water depth)
+	if noise_value < -0.15:
+		return int(lerpf(1.0, 3.0, (noise_value + 1.0) / 0.85))
+		
+	# Shallow Sandbanks and Beaches: Sloping gently up to Y=6 (exposed land)
 	return int(3.0 + (noise_value + 1.0) * 1.5)
 
 
@@ -48,36 +53,27 @@ func get_wilderness_prop_id(scatter_hash: int) -> int:
 
 
 func get_wilderness_wildlife_ids() -> Array[int]:
-	# Specialized tropical and marine fauna: Turtles, Crabs, Octopus, and Sharks!
+	# Marine wildlife roster
 	var ocean_wildlife_roster: Array[int] = [201, 208, 210, 11]
 	return ocean_wildlife_roster
 
 
-# ==============================================================================
-# SOLID OCP SCALED POPULATION CONFIGURATION (OCP Compliance)
-# ==============================================================================
-
 func get_spawn_probability() -> float:
-	return 0.45 # Lively tropical shores and teeming oceans
+	return 0.45
 
 
 func get_max_group_size() -> int:
-	return 6 # Large groups of crabs and turtles on the beaches
+	return 6
 
 
 func get_village_civilian_ids() -> Array[int]:
-	# Sea-faring settlement roster: Sailor Villagers, Merchants, and Coast Guards
 	var harbor_roster: Array[int] = [100, 101, 102]
 	return harbor_roster
 
 
 func get_village_population_density() -> int:
-	return 6 # Busy starting harbor feel
+	return 6
 
-
-# ==============================================================================
-# METEOROLOGICAL & CLIMATE CONFIGURATION
-# ==============================================================================
 
 func get_climate_weights() -> Dictionary:
 	return {
