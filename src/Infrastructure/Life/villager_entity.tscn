@@ -7,13 +7,13 @@
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_villager"]
 radius = 0.22167969
-height = 1.7296542
+height = 1.726949
 
 [node name="VillagerEntity" type="CharacterBody3D" unique_id=1178049731]
 script = ExtResource("1_villager")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1786024236]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8648251, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.86617774, 0)
 shape = SubResource("CapsuleShape3D_villager")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=2109144369]
