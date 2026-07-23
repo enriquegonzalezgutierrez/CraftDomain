@@ -11,7 +11,10 @@ extends RefCounted
 const UPDATE_INTERVAL: float = 0.25
 const MAX_WATER_SPREAD: int = 4
 const MAX_LAVA_SPREAD: int = 2
-const MAX_UPDATES_PER_TICK: int = 64
+
+# TIME-SLICING BUDGETS: Strict limits to prevent CPU frame-pacing spikes
+const MAX_UPDATES_PER_TICK: int = 12
+const MAX_SORT_POOL_SIZE: int = 128
 
 var world_controller: Node3D
 var world_state: WorldState
@@ -87,11 +90,14 @@ func process_fluid_simulation(delta: float) -> void:
 		_simulate_cellular_tick()
 
 
+## SPATIAL TIME-SLICING: Prioritizes fluid updates closest to the player camera.
 func _simulate_cellular_tick() -> void:
 	if _active_fluids.size() == 0 or world_state == null or not is_instance_valid(world_controller):
 		return
 		
 	var active_keys := _active_fluids.keys()
+	_sort_active_keys_by_proximity(active_keys)
+	
 	var processed_count := 0
 	var next_tick_additions: Dictionary = {}
 	var current_tick_removals: Array[Vector3i] = []
@@ -102,6 +108,20 @@ func _simulate_cellular_tick() -> void:
 		_process_active_fluid_block(pos, next_tick_additions, current_tick_removals)
 			
 	_apply_tick_mutations(next_tick_additions, current_tick_removals)
+
+
+func _sort_active_keys_by_proximity(active_keys: Array) -> void:
+	var player_node := world_controller.get("player") as CharacterBody3D
+	if not is_instance_valid(player_node): return
+		
+	var player_pos: Vector3 = player_node.global_position
+	if active_keys.size() > MAX_SORT_POOL_SIZE:
+		# Slice to prevent high sorting CPU overhead
+		active_keys = active_keys.slice(0, MAX_SORT_POOL_SIZE)
+		
+	active_keys.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		return Vector3(a).distance_squared_to(player_pos) < Vector3(b).distance_squared_to(player_pos)
+	)
 
 
 func _process_active_fluid_block(pos: Vector3i, next_additions: Dictionary, current_removals: Array[Vector3i]) -> void:
