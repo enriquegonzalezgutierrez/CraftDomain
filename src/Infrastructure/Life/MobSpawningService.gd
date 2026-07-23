@@ -27,7 +27,7 @@ const OFFSET_D: float = 11.5
 const OFFSET_HALF_CHUNK: float = 8.0
 const HEIGHT_MAX_TERRAIN_LIMIT: int = 31
 const STRAY_PROBABILITY_THRESHOLD: float = 0.20
-const MIN_MOB_SEPARATION_SQ: float = 144.0 # 12 meters minimum spatial separation
+const MIN_MOB_SEPARATION_SQ: float = 144.0
 
 
 ## Spawns procedural wildlife and themed outpost entities inside a loaded chunk.
@@ -124,7 +124,8 @@ func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_s
 	var target_pos := active_q.target_position
 	if world_state.global_to_chunk_pos(Vector3i(target_pos)).x == chunk.position.x and world_state.global_to_chunk_pos(Vector3i(target_pos)).z == chunk.position.z:
 		var mob_id: int = QUEST_TARGET_MOBS[active_q.quest_id]
-		var existing := _find_eligible_entity_in_list(world_node, mob_id, target_pos)
+		# DETECTOR FIX: Scan both integrated nodes and current frame spawned_nodes array to prevent duplicates
+		var existing := _find_eligible_entity_in_list(world_node, spawned_nodes, mob_id, target_pos)
 		
 		if existing != null:
 			existing.quest_target_id = active_q.quest_id
@@ -132,11 +133,18 @@ func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_s
 			_spawn_exact_quest_mob(mob_id, target_pos, chunk_offset, world_state, world_node, spawned_nodes, active_q.quest_id)
 
 
-func _find_eligible_entity_in_list(world_node: Node, mob_id: int, target_pos: Vector3) -> CharacterBody3D:
-	if not is_instance_valid(world_node): return null
-	for child in world_node.get_children():
+func _find_eligible_entity_in_list(world_node: Node, spawned_nodes: Array[Node], mob_id: int, target_pos: Vector3) -> CharacterBody3D:
+	if is_instance_valid(world_node):
+		for child in world_node.get_children():
+			if child is CharacterBody3D and child.has_meta("spawn_id") and int(child.get_meta("spawn_id")) == mob_id:
+				if child.global_position.distance_squared_to(target_pos) <= 625.0: # 25m squared
+					return child as CharacterBody3D
+					
+	for child in spawned_nodes:
 		if child is CharacterBody3D and child.has_meta("spawn_id") and int(child.get_meta("spawn_id")) == mob_id:
-			if child.global_position.distance_squared_to(target_pos) <= 225.0: return child as CharacterBody3D
+			if child.global_position.distance_squared_to(target_pos) <= 625.0:
+				return child as CharacterBody3D
+				
 	return null
 
 
@@ -172,7 +180,6 @@ func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: f
 			list.append(mob)
 
 
-## Enforces a 12-meter minimum spatial separation distance between entity spawns.
 static func _is_spawn_point_too_close(world_node: Node, pos: Vector3) -> bool:
 	if not is_instance_valid(world_node): return false
 	for child in world_node.get_children():

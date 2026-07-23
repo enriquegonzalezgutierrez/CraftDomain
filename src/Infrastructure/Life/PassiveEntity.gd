@@ -5,13 +5,12 @@
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
-@warning_ignore("unused_private_class_variable")
 class_name PassiveEntity
 extends CharacterBody3D
 
 const BASE_SPEED: float = 2.6
 const JUMP_VELOCITY: float = 5.0
-const GROUND_SNAP_VELOCITY: float = -1.2
+const GROUND_SNAP_VELOCITY: float = 0.0 # STABILITY FIX: Avoid perpetual downward forces
 const SLEEP_DISTANCE_SQ: float = 1600.0
 const THREAT_SEARCH_RADIUS_SQ: float = 64.0
 const REPUTATION_DAMAGE_PENALTY: int = -15
@@ -346,7 +345,7 @@ func _apply_environmental_physics(delta: float) -> void:
 	elif is_submerged:
 		_apply_liquid_buoyancy(delta)
 	else:
-		velocity.y = GROUND_SNAP_VELOCITY
+		velocity.y = GROUND_SNAP_VELOCITY # GROUNDING STABILIZATION FIXED (0.0 m/s)
 
 
 func _apply_liquid_buoyancy(delta: float) -> void:
@@ -397,7 +396,6 @@ func _update_quest_bubble_state() -> void:
 		return
 		
 	if ws.active_quest_target_node == self:
-		# UNBINDING FIX: If active quest changed, release ownership of active_quest_target_node
 		if active_quest.quest_id != quest_target_id:
 			ws.active_quest_target_node = null
 			quest_target_id = ""
