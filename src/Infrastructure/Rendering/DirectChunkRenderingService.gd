@@ -1,20 +1,14 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/DirectChunkRenderingService.gd
 # Description: Infrastructure Service executing Direct Server-Side Architecture.
-#              Bypasses the SceneTree by communicating directly with Godot's 
+#              Bypasses the SceneTree by communicating directly with Godot's
 #              RenderingServer and PhysicsServer3D via RIDs.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates low-level server RIDs.
-# - Teardown Stability Fix: Explicitly detaches instances from scenarios and 
-#   material overrides prior to freeing RIDs, preventing Vulkan RD null-material
-#   shadow pass errors on world exits.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name DirectChunkRenderingService
 extends RefCounted
 
-## Inner class representing the low-level Server RIDs for a single chunk
 class ChunkRIDRecord:
 	var multimesh_rids: Array[RID] = []
 	var instance_rids: Array[RID] = []
@@ -38,17 +32,11 @@ func _init(p_controller: Node3D, scenario: RID, space: RID) -> void:
 	
 	if _shared_box_mesh == null:
 		_shared_box_mesh = BoxMesh.new()
-		_shared_box_mesh.size = Vector3(1.002, 1.002, 1.002)
+		_shared_box_mesh.size = Vector3.ONE
 
 
 ## Allocates server-side MultiMeshes, custom geometry instances, and physics bodies.
-func allocate_chunk_visuals(
-	chunk_pos: Vector3i, 
-	multimesh_data: Dictionary, 
-	custom_meshes: Dictionary, 
-	collision_shape: ConcavePolygonShape3D, 
-	is_distant: bool
-) -> void:
+func allocate_chunk_visuals(chunk_pos: Vector3i, multimesh_data: Dictionary, custom_meshes: Dictionary, collision_shape: ConcavePolygonShape3D, is_distant: bool) -> void:
 	free_chunk(chunk_pos)
 	
 	if not _world_scenario.is_valid() and is_instance_valid(controller):
@@ -67,7 +55,18 @@ func allocate_chunk_visuals(
 	_active_chunks[chunk_pos] = record
 
 
-## Safe Teardown Purge: Detaches instances from scenario before freeing RIDs
+## Toggles the low-level rendering server visibility for a specific chunk (LSP/OCP).
+func set_chunk_visible(chunk_pos: Vector3i, visible: bool) -> void:
+	if not _active_chunks.has(chunk_pos):
+		return
+		
+	var record: ChunkRIDRecord = _active_chunks[chunk_pos] as ChunkRIDRecord
+	for inst_rid: RID in record.instance_rids:
+		if inst_rid.is_valid():
+			RenderingServer.instance_set_visible(inst_rid, visible)
+
+
+## Safe Teardown Purge: Detaches instances from scenario before freeing RIDs.
 func free_chunk(chunk_pos: Vector3i) -> void:
 	if not _active_chunks.has(chunk_pos):
 		return
@@ -75,14 +74,12 @@ func free_chunk(chunk_pos: Vector3i) -> void:
 	var record: ChunkRIDRecord = _active_chunks[chunk_pos] as ChunkRIDRecord
 	_detach_and_free_instances(record)
 	_detach_and_free_physics(record)
-	
 	_active_chunks.erase(chunk_pos)
 
 
 func _detach_and_free_instances(record: ChunkRIDRecord) -> void:
 	for inst_rid: RID in record.instance_rids:
 		if inst_rid.is_valid():
-			# VULKAN TEARDOWN FIX: Detach from scenario & material BEFORE freeing
 			RenderingServer.instance_set_scenario(inst_rid, RID())
 			RenderingServer.instance_geometry_set_material_override(inst_rid, RID())
 			RenderingServer.free_rid(inst_rid)
@@ -138,7 +135,6 @@ func _allocate_custom_meshes(record: ChunkRIDRecord, transform: Transform3D, cus
 			RenderingServer.instance_geometry_set_material_override(inst_rid, mat.get_rid())
 			
 		RenderingServer.instance_set_base(inst_rid, mesh.get_rid())
-		
 		record.instance_rids.append(inst_rid)
 		record.instance_block_ids.append(b_id)
 		record.custom_meshes.append(mesh)
@@ -153,7 +149,6 @@ func _allocate_physics_body(record: ChunkRIDRecord, transform: Transform3D, shap
 	
 	PhysicsServer3D.body_set_param(body_rid, PhysicsServer3D.BODY_PARAM_FRICTION, 1.0)
 	PhysicsServer3D.body_set_param(body_rid, PhysicsServer3D.BODY_PARAM_BOUNCE, 0.0)
-	
 	PhysicsServer3D.body_set_collision_layer(body_rid, 1)
 	PhysicsServer3D.body_set_collision_mask(body_rid, 1)
 	

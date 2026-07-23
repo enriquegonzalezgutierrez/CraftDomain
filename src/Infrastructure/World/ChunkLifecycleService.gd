@@ -12,6 +12,11 @@ const CHUNK_MASK: int = 15
 const TIME_BUDGET_ACTIVE_USEC: int = 2000  
 const TIME_BUDGET_LOADING_USEC: int = 40000 
 
+# Generous 115-degree horizontal field of view to cover wide screens
+const FRUSTUM_CULL_THRESHOLD: float = -0.42 
+# 36 meters squared (approx 2 chunks radius) safe circle around player
+const SAFE_ZONE_DISTANCE_SQ: float = 1296.0 
+
 var controller: Node3D 
 var world_state: WorldState
 var task_scheduler: ChunkTaskScheduler
@@ -236,14 +241,13 @@ func _notify_controller_spawn(_chunk: Chunk) -> void:
 		controller.call("check_player_spawn_activation")
 
 
-## Multi-layer Chunk Proximity Scanner: Scans both Y=0 and Y=1 chunk layers.
 func spawn_entities_by_proximity(player_global_pos: Vector3, spawn_radius: int = 2) -> void:
 	var player_block_pos := Vector3i(floor(player_global_pos.x), floor(player_global_pos.y), floor(player_global_pos.z))
 	var current_viewer_chunk_pos := world_state.global_to_chunk_pos(player_block_pos)
 	
 	for x in range(-spawn_radius, spawn_radius + 1):
 		for z in range(-spawn_radius, spawn_radius + 1):
-			for y_layer in range(2): # Scans Y=0 and Y=1 chunk vertical layers
+			for y_layer in range(2): 
 				_evaluate_entity_spawn_for_chunk(current_viewer_chunk_pos, x, y_layer, z)
 
 
@@ -268,6 +272,9 @@ func _evaluate_entity_spawn_for_chunk(center: Vector3i, offset_x: int, y_layer: 
 
 
 func _execute_lod_scans() -> void:
+	var look_dir := _get_player_look_direction()
+	var player_pos := _get_player_position()
+	
 	for pos: Vector3i in _chunk_lod_states.keys():
 		var is_currently_distant := _calculate_is_chunk_distant(pos)
 		var was_distant: bool = _chunk_lod_states.get(pos, false) as bool
@@ -277,6 +284,45 @@ func _execute_lod_scans() -> void:
 			direct_renderer.update_lod_materials(pos, is_currently_distant)
 			if not is_currently_distant and not direct_renderer.has_collision_body(pos):
 				_request_chunk_rebuild(pos)
+				
+		_apply_frustum_culling_to_chunk(pos, player_pos, look_dir)
+
+
+## Balanced 2D Horizon-Plane Culling + Proximity Safe Zone Check.
+func _apply_frustum_culling_to_chunk(chunk_pos: Vector3i, player_pos: Vector3, look_dir: Vector3) -> void:
+	if look_dir == Vector3.ZERO: return
+		
+	var chunk_center := Vector3(chunk_pos * Chunk.SIZE) + Vector3(8.0, 8.0, 8.0)
+	var dist_sq := player_pos.distance_squared_to(chunk_center)
+	
+	# 1. Proximity Safe Zone: Avoid culling chunks immediately surrounding the player (Zero clipping)
+	if dist_sq <= SAFE_ZONE_DISTANCE_SQ:
+		direct_renderer.set_chunk_visible(chunk_pos, true)
+		return
+		
+	# 2. 2D Horizon-Plane Projection (XZ): Decouples vertical camera pitch angles (looking up/down)
+	var flat_look := Vector2(look_dir.x, look_dir.z).normalized()
+	var flat_to_chunk := Vector2(chunk_center.x - player_pos.x, chunk_center.z - player_pos.z).normalized()
+	
+	var is_visible := flat_look.dot(flat_to_chunk) >= FRUSTUM_CULL_THRESHOLD
+	direct_renderer.set_chunk_visible(chunk_pos, is_visible)
+
+
+func _get_player_look_direction() -> Vector3:
+	if is_instance_valid(controller) and is_instance_valid(controller.get("player")):
+		var p_node := controller.get("player") as CharacterBody3D
+		if is_instance_valid(p_node):
+			var camera_node := p_node.get_node_or_null("PlayerCamera") as Camera3D
+			if is_instance_valid(camera_node):
+				return -camera_node.global_transform.basis.z.normalized()
+	return Vector3.ZERO
+
+
+func _get_player_position() -> Vector3:
+	if is_instance_valid(controller) and is_instance_valid(controller.get("player")):
+		var p_node := controller.get("player") as CharacterBody3D
+		if is_instance_valid(p_node): return p_node.global_position
+	return Vector3.ZERO
 
 
 func _calculate_is_chunk_distant(chunk_pos: Vector3i) -> bool:
