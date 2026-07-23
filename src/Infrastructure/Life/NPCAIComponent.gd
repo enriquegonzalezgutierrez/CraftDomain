@@ -1,12 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
-# Description: Infrastructure NPC Sensory AI Brain managing high-performance 
-#              GOAP tick routing, obstacle steering, and locomotion vectors.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly physics and 
-#   sensory loops with zero console print overhead.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# Author: Enrique Gonzalez Gutierrez
+# Description: Infrastructure NPC Sensory AI Brain managing high-performance
+#              GOAP tick routing, dynamic AI LODs, and obstacle steering.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NPCAIComponent
@@ -24,12 +20,18 @@ enum TaskState {
 
 @export var active_behavior: IAIBehavior
 
+const DISTANCE_LOD_0_SQ: float = 256.0 # < 16 meters
+const DISTANCE_LOD_1_SQ: float = 1600.0 # < 40 meters
+
+const TICK_LOD_0: float = 0.1
+const TICK_LOD_1: float = 0.5
+const TICK_LOD_2: float = 2.0
+
 var current_task: TaskState = TaskState.IDLE
 var wander_direction: Vector3 = Vector3.ZERO
 var stuck_timer: float = 0.0
 var task_timer: float = 0.0
 var social_cooldown: float = 0.0
-
 var is_manual_override: bool = false
 
 var SIGHT_RANGE_SQ: float = 64.0
@@ -38,8 +40,6 @@ var GREET_DISTANCE_SQ: float = 12.25
 
 var _host: CharacterBody3D
 var _ai_timer_accum: float = 0.0
-var _ai_tick_rate: float = 0.25 
-
 var _steering_component: NPCObstacleSteering
 var _last_pos_for_stuck: Vector3 = Vector3.ZERO
 
@@ -47,7 +47,7 @@ var _last_pos_for_stuck: Vector3 = Vector3.ZERO
 func _ready() -> void:
 	name = "NPCAIComponent"
 	_host = get_parent() as CharacterBody3D
-	_ai_timer_accum = randf_range(0.0, _ai_tick_rate)
+	_ai_timer_accum = randf_range(0.0, TICK_LOD_1)
 	_setup_steering_component()
 	_subscribe_to_world_modifications()
 
@@ -60,9 +60,9 @@ func _setup_steering_component() -> void:
 
 func _subscribe_to_world_modifications() -> void:
 	var parent_node := get_parent()
-	if is_instance_valid(parent_node):
+	if is_instance_valid(parent_node) and is_instance_valid(parent_node.get_parent()):
 		var world_node := parent_node.get_parent()
-		if is_instance_valid(world_node) and world_node.has_signal("block_modified"):
+		if world_node.has_signal("block_modified"):
 			world_node.connect("block_modified", _on_world_block_modified)
 
 
@@ -72,9 +72,8 @@ func _on_world_block_modified(global_pos: Vector3i, _type: BlockType.Type) -> vo
 		
 	var h_pos := _host.global_position
 	var host_coord := Vector3i(floori(h_pos.x), floori(h_pos.y), floori(h_pos.z))
-	
 	if host_coord.distance_to(global_pos) < 15:
-		_ai_timer_accum = _ai_tick_rate
+		_ai_timer_accum = TICK_LOD_1
 
 
 func process_ai(delta: float) -> void:
@@ -96,15 +95,31 @@ func _calculate_base_desired_direction(delta: float) -> void:
 	if is_manual_override:
 		return
 		
+	var active_tick_rate := _calculate_dynamic_ai_lod_tick_rate()
 	_ai_timer_accum += delta
-	if _ai_timer_accum >= _ai_tick_rate:
+	
+	if _ai_timer_accum >= active_tick_rate:
 		_ai_timer_accum = 0.0
-		_execute_throttled_ai_tick()
+		if active_behavior != null:
+			active_behavior.evaluate_and_execute(_host, active_tick_rate)
 
 
-func _execute_throttled_ai_tick() -> void:
-	if active_behavior != null:
-		active_behavior.evaluate_and_execute(_host, _ai_tick_rate)
+func _calculate_dynamic_ai_lod_tick_rate() -> float:
+	if not is_instance_valid(_host): return TICK_LOD_2
+	var player_node := _get_player_node_ref()
+	if not is_instance_valid(player_node): return TICK_LOD_2
+		
+	var dist_sq := _host.global_position.distance_squared_to(player_node.global_position)
+	if dist_sq <= DISTANCE_LOD_0_SQ: return TICK_LOD_0
+	elif dist_sq <= DISTANCE_LOD_1_SQ: return TICK_LOD_1
+	return TICK_LOD_2
+
+
+func _get_player_node_ref() -> CharacterBody3D:
+	var parent := _host.get_parent()
+	if is_instance_valid(parent):
+		return parent.get_node_or_null("Player") as CharacterBody3D
+	return null
 
 
 func _verify_active_plan_presence() -> void:
@@ -121,7 +136,6 @@ func _apply_movement_vectors(delta: float) -> void:
 		base_speed = _host.get("BASE_SPEED") as float
 		
 	var is_trying_to_move := wander_direction.length_squared() > 0.01
-	
 	if is_trying_to_move and current_task != TaskState.IDLE:
 		_execute_linear_walk(base_speed, delta)
 	else:
@@ -145,7 +159,6 @@ func _execute_linear_walk(base_speed: float, delta: float) -> void:
 
 func _evaluate_stuck_state(delta: float) -> void:
 	var is_trying_to_move := wander_direction.length_squared() > 0.05
-	
 	if _last_pos_for_stuck == Vector3.ZERO:
 		_last_pos_for_stuck = _host.global_position
 		
@@ -154,8 +167,7 @@ func _evaluate_stuck_state(delta: float) -> void:
 	
 	if is_trying_to_move and dist_moved < 0.04 and _host.is_on_floor():
 		stuck_timer += delta
-		if stuck_timer >= 1.0: 
-			_resolve_stuck_state()
+		if stuck_timer >= 1.0: _resolve_stuck_state()
 	else:
 		stuck_timer = 0.0
 
