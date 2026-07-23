@@ -1,28 +1,29 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/Climates/SwampClimateProfile.gd
 # Description: Concrete Climatological Profile representing a humid swamp climate.
-#              Features stagnant wind conditions, damp mists, and heavy fogs.
-#              Uses typesafe domain enums to satisfy Liskov Substitution (LSP).
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+#              Features stagnant wind, damp mists, clouds, and heavy fogs.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SwampClimateProfile
 extends IClimateProfile
 
 
-## Symmetrical typed keys using the ClimateType Enum (LSP Compliant)
+## Returns the probability weights for each ClimateType in swamp biomes.
 func get_climate_weights() -> Dictionary:
 	return {
-		ClimateType.SUNNY: 0.3,
-		ClimateType.RAINY: 0.2,
+		ClimateType.SUNNY: 0.20,
+		ClimateType.CLOUDY: 0.15,
+		ClimateType.RAINY: 0.15,
 		ClimateType.SNOWY: 0.0,
 		ClimateType.SANDSTORM: 0.0,
-		ClimateType.FOGGY: 0.5       # Thick sulfurous mists are highly probable
+		ClimateType.FOGGY: 0.50
 	}
 
 
 func get_max_wind_strength() -> float:
-	return 0.35 # Stagnant, heavy air with very little wind movement
+	return 0.35
 
 
 func get_fog_density_multiplier() -> float:
-	return 2.8 # Super-thick ground hugging mist
+	return 2.8

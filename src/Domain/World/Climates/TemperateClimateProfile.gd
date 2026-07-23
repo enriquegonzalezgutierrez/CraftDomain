@@ -1,19 +1,20 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/Climates/TemperateClimateProfile.gd
 # Description: Concrete Climatological Profile representing a temperate climate.
-#              Features standard winds, clear atmosphere, and balanced rains.
-#              Uses typesafe domain enums to satisfy Liskov Substitution (LSP).
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
+#              Features standard winds, clear atmosphere, and balanced rains/clouds.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name TemperateClimateProfile
 extends IClimateProfile
 
 
-## Symmetrical typed keys using the ClimateType Enum (LSP Compliant)
+## Returns the probability weights for each ClimateType in temperate biomes.
 func get_climate_weights() -> Dictionary:
 	return {
-		ClimateType.SUNNY: 0.6,
-		ClimateType.RAINY: 0.4,
+		ClimateType.SUNNY: 0.50,
+		ClimateType.CLOUDY: 0.25,
+		ClimateType.RAINY: 0.25,
 		ClimateType.SNOWY: 0.0,
 		ClimateType.SANDSTORM: 0.0,
 		ClimateType.FOGGY: 0.0

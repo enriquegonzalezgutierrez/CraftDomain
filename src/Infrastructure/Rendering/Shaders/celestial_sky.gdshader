@@ -1,7 +1,8 @@
 // ==============================================================================
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader
 // Description: Complete Celestial Sky Shader featuring Sun disc, Moon phases,
-//              twinkling night stars, wind-driven 3D clouds, and atmosphere.
+//              twinkling night stars, dynamic wind-driven 3D clouds,
+//              and adjustable cloud coverage threshold parameter.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -12,6 +13,7 @@ uniform vec3 moon_direction = vec3(0.0, -1.0, 0.0);
 uniform float day_weight : hint_range(0.0, 1.0) = 0.5;
 uniform float storm_weight : hint_range(0.0, 1.0) = 0.0;
 uniform float moon_phase : hint_range(0.0, 1.0) = 0.5;
+uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.5;
 
 // Global wind synchronization
 global uniform vec2 wind_vector;
@@ -108,7 +110,7 @@ void sky() {
 	}
 	
 	// 5. WIND-DRIVEN 3D VOLUMETRIC CLOUDS (100% Seamless)
-	if (dir.y > 0.02) {
+	if (dir.y > 0.02 && cloud_coverage > 0.01) {
 		vec3 cloud_pos = (dir / (dir.y + 0.15)) * 2.5;
 		
 		// Driven naturally by global wind direction and velocity
@@ -118,7 +120,8 @@ void sky() {
 		cloud_pos.xz += active_wind * (TIME * 0.05 * active_speed);
 		
 		float cloud_density = fbm3D(cloud_pos);
-		float cloud_mask = smoothstep(0.48, 0.72, cloud_density) * smoothstep(0.02, 0.25, dir.y);
+		float cutoff = 1.0 - cloud_coverage;
+		float cloud_mask = smoothstep(cutoff, cutoff + 0.15, cloud_density) * smoothstep(0.02, 0.25, dir.y);
 		
 		vec3 cloud_color = mix(vec3(0.12, 0.14, 0.20), vec3(0.98, 0.98, 1.0), day_weight);
 		cloud_color = mix(cloud_color, vec3(0.10, 0.11, 0.14), storm_weight);
