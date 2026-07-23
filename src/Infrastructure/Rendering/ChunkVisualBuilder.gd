@@ -1,66 +1,60 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/ChunkVisualBuilder.gd
-# Description: Infrastructure Rendering Service responsible for evaluating raw
-#              chunk data, applying occlusion culling, and compiling transformation
-#              data for rendering and physics.
-#              PERFORMANCE UPGRADE: Implemented Zero-Allocation Buffers to 
-#              eliminate Garbage Collection (GC) stutters during mesh generation.
+# Description: Infrastructure Rendering Service evaluating chunk voxel grids,
+#              applying high-performance 2D Greedy Meshing, and packing transforms.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ChunkVisualBuilder
 extends RefCounted
 
-const CHUNK_MASK: int = 15 
+const CHUNK_MASK: int = 15
+const SLICE_SIZE: int = 16
 
-static var DIRECTIONS: Array[Vector3i] = [
-	Vector3i(0, 1, 0),   # UP
-	Vector3i(0, -1, 0),  # DOWN
-	Vector3i(1, 0, 0),   # RIGHT
-	Vector3i(-1, 0, 0),  # LEFT
-	Vector3i(0, 0, 1),   # FRONT
-	Vector3i(0, 0, -1)   # BACK
-]
-
-## Inner class for zero-allocation memory buffering (Eliminates GC stalls)
 class VoxelRenderBuffer:
 	var data: PackedFloat32Array
 	var pointer: int = 0
 	
 	func _init() -> void:
 		data = PackedFloat32Array()
-		data.resize(4096 * 12) # Maximum theoretical limit of blocks per chunk
+		data.resize(4096 * 12)
 		
-	func push_transform(cx: float, cy: float, cz: float) -> void:
+	func push_transform(cx: float, cy: float, cz: float, sx: float, sy: float, sz: float) -> void:
 		var p := pointer
-		# Hardcoded basis scaling identity matrix with position offsets
-		data[p] = 1.0; data[p+1] = 0.0; data[p+2] = 0.0; data[p+3] = cx;
-		data[p+4] = 0.0; data[p+5] = 1.0; data[p+6] = 0.0; data[p+7] = cy;
-		data[p+8] = 0.0; data[p+9] = 0.0; data[p+10] = 1.0; data[p+11] = cz;
+		data[p] = sx;  data[p+1] = 0.0; data[p+2] = 0.0; data[p+3] = cx;
+		data[p+4] = 0.0; data[p+5] = sy;  data[p+6] = 0.0; data[p+7] = cy;
+		data[p+8] = 0.0; data[p+9] = 0.0; data[p+10] = sz;  data[p+11] = cz;
 		pointer += 12
 		
 	func commit() -> PackedFloat32Array:
 		return data.slice(0, pointer)
 
 
-## Public API: Extracts, packages, and formats visual MultiMeshes and collision shapes
+## Extracts, merges and compiles raw chunk voxel data into optimized rendering arrays.
 static func extract_render_data(chunk: Chunk, world_state: WorldState, build_collision: bool = true) -> Dictionary:
 	var render_buffers: Dictionary = {}
 	var collision_vertices := PackedVector3Array()
-	var neighbors := _gather_boundary_neighbors(chunk, world_state)
 	
-	for x: int in range(Chunk.SIZE):
-		for y: int in range(Chunk.SIZE):
-			for z: int in range(Chunk.SIZE):
-				_evaluate_voxel_face_occlusion(
-					chunk, Vector3i(x, y, z), neighbors, 
-					build_collision, render_buffers, collision_vertices
-				)
-						
+	_execute_greedy_slice_sweep(chunk, world_state, build_collision, render_buffers, collision_vertices)
 	return {
 		"multimesh": _pack_multimesh_float_arrays(render_buffers),
 		"collision_vertices": collision_vertices
 	}
+
+
+static func _execute_greedy_slice_sweep(chunk: Chunk, world_state: WorldState, build_collision: bool, render_buffers: Dictionary, collision_vertices: PackedVector3Array) -> void:
+	var neighbors := _gather_boundary_neighbors(chunk, world_state)
+	
+	# Sweep horizontally along Y layers
+	for y in range(Chunk.SIZE):
+		var slice_ids := PackedInt32Array()
+		var visibility_mask := PackedByteArray()
+		slice_ids.resize(SLICE_SIZE * SLICE_SIZE)
+		visibility_mask.resize(SLICE_SIZE * SLICE_SIZE)
+		
+		_build_slice_exposure_maps(chunk, y, neighbors, slice_ids, visibility_mask)
+		var merged_quads := VoxelGreedyMesherSolver.solve_slice(slice_ids, visibility_mask)
+		_process_merged_quads(merged_quads, y, build_collision, render_buffers, collision_vertices)
 
 
 static func _gather_boundary_neighbors(chunk: Chunk, world_state: WorldState) -> Dictionary:
@@ -74,25 +68,28 @@ static func _gather_boundary_neighbors(chunk: Chunk, world_state: WorldState) ->
 	}
 
 
-static func _evaluate_voxel_face_occlusion(chunk: Chunk, local_pos: Vector3i, neighbors: Dictionary, build_collision: bool, render_buffers: Dictionary, collision_vertices: PackedVector3Array) -> void:
-	var block_type: BlockType.Type = chunk.get_block(local_pos.x, local_pos.y, local_pos.z)
+static func _build_slice_exposure_maps(chunk: Chunk, y: int, neighbors: Dictionary, slice_ids: PackedInt32Array, visibility_mask: PackedByteArray) -> void:
+	for z in range(Chunk.SIZE):
+		for x in range(Chunk.SIZE):
+			var idx := x + Chunk.SIZE * z
+			var b_id := chunk.get_block(x, y, z)
+			slice_ids[idx] = b_id
+			visibility_mask[idx] = 1 if _is_voxel_exposed(chunk, Vector3i(x, y, z), neighbors) else 0
+
+
+static func _is_voxel_exposed(chunk: Chunk, local_pos: Vector3i, neighbors: Dictionary) -> bool:
+	var block_type := chunk.get_block(local_pos.x, local_pos.y, local_pos.z)
 	if block_type == BlockType.Type.AIR or block_type == BlockType.Type.WATER or block_type == BlockType.Type.LAVA:
-		return
+		return false
 		
 	var def := BlockLibrary.get_definition(block_type)
-	var float_pos := Vector3(local_pos)
-	var is_exposed := false
-	
-	for dir: Vector3i in DIRECTIONS:
-		var is_face_exposed := _is_face_visible(chunk, local_pos, dir, neighbors)
+	if not def.geometry is FullCubeGeometry:
+		return false
 		
-		if is_face_exposed:
-			is_exposed = true
-			if build_collision and def.is_solid:
-				_append_collision_face_vertices(def, dir, float_pos, collision_vertices)
-				
-	if is_exposed and def.geometry is FullCubeGeometry:
-		_register_multimesh_transform(render_buffers, block_type, float_pos)
+	for dir: Vector3i in ChunkMesher.DIRECTIONS:
+		if _is_face_visible(chunk, local_pos, dir, neighbors):
+			return true
+	return false
 
 
 static func _is_face_visible(chunk: Chunk, local_pos: Vector3i, dir: Vector3i, neighbors: Dictionary) -> bool:
@@ -119,32 +116,53 @@ static func _get_neighbor_block_type(chunk: Chunk, local_pos: Vector3i, dir: Vec
 	return BlockType.Type.AIR
 
 
-static func _append_collision_face_vertices(def: BlockDefinition, dir: Vector3i, float_pos: Vector3, collision_vertices: PackedVector3Array) -> void:
-	var face_verts := def.geometry.get_face_collision_vertices(dir)
-	if face_verts.size() == 4:
-		var v0 := float_pos + face_verts[0]
-		var v1 := float_pos + face_verts[1]
-		var v2 := float_pos + face_verts[2]
-		var v3 := float_pos + face_verts[3]
+static func _process_merged_quads(quads: Array[VoxelGreedyMesherSolver.MergedQuad], y: int, build_col: bool, buffers: Dictionary, col_verts: PackedVector3Array) -> void:
+	for q in quads:
+		var cx := float(q.start_x) + float(q.width) / 2.0
+		var cy := float(y) + 0.5
+		var cz := float(q.start_z) + float(q.height) / 2.0
 		
-		collision_vertices.append(v2)
-		collision_vertices.append(v1)
-		collision_vertices.append(v0)
+		_register_multimesh_transform(buffers, q.block_id, cx, cy, cz, float(q.width), 1.0, float(q.height))
 		
-		collision_vertices.append(v3)
-		collision_vertices.append(v2)
-		collision_vertices.append(v0)
+		if build_col:
+			_append_merged_collision_box(q, y, col_verts)
 
 
-static func _register_multimesh_transform(render_buffers: Dictionary, block_type: BlockType.Type, float_pos: Vector3) -> void:
+static func _register_multimesh_transform(buffers: Dictionary, b_id: int, cx: float, cy: float, cz: float, sx: float, sy: float, sz: float) -> void:
 	var buffer: VoxelRenderBuffer
-	if not render_buffers.has(block_type):
+	if not buffers.has(b_id):
 		buffer = VoxelRenderBuffer.new()
-		render_buffers[block_type] = buffer
+		buffers[b_id] = buffer
 	else:
-		buffer = render_buffers[block_type] as VoxelRenderBuffer
+		buffer = buffers[b_id] as VoxelRenderBuffer
 		
-	buffer.push_transform(float_pos.x + 0.5, float_pos.y + 0.5, float_pos.z + 0.5)
+	buffer.push_transform(cx, cy, cz, sx, sy, sz)
+
+
+static func _append_merged_collision_box(q: VoxelGreedyMesherSolver.MergedQuad, y: int, col_verts: PackedVector3Array) -> void:
+	var x0 := float(q.start_x)
+	var x1 := float(q.start_x + q.width)
+	var y0 := float(y)
+	var y1 := float(y + 1)
+	var z0 := float(q.start_z)
+	var z1 := float(q.start_z + q.height)
+	
+	_add_collision_face(col_verts, Vector3(x0, y1, z1), Vector3(x1, y1, z1), Vector3(x1, y1, z0), Vector3(x0, y1, z0)) # TOP
+	_add_collision_face(col_verts, Vector3(x0, y0, z0), Vector3(x1, y0, z0), Vector3(x1, y0, z1), Vector3(x0, y0, z1)) # BOTTOM
+	_add_collision_face(col_verts, Vector3(x1, y0, z1), Vector3(x1, y1, z1), Vector3(x1, y1, z0), Vector3(x1, y0, z0)) # RIGHT
+	_add_collision_face(col_verts, Vector3(x0, y0, z0), Vector3(x0, y1, z0), Vector3(x0, y1, z1), Vector3(x0, y0, z1)) # LEFT
+	_add_collision_face(col_verts, Vector3(x0, y0, z1), Vector3(x0, y1, z1), Vector3(x1, y1, z1), Vector3(x1, y0, z1)) # FRONT
+	_add_collision_face(col_verts, Vector3(x1, y0, z0), Vector3(x1, y1, z0), Vector3(x0, y1, z0), Vector3(x0, y0, z0)) # BACK
+
+
+static func _add_collision_face(col_verts: PackedVector3Array, v0: Vector3, v1: Vector3, v2: Vector3, v3: Vector3) -> void:
+	col_verts.append(v2)
+	col_verts.append(v1)
+	col_verts.append(v0)
+	
+	col_verts.append(v3)
+	col_verts.append(v2)
+	col_verts.append(v0)
 
 
 static func _pack_multimesh_float_arrays(render_buffers: Dictionary) -> Dictionary:
