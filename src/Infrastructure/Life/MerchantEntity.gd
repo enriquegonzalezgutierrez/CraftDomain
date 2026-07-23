@@ -11,8 +11,8 @@ extends PassiveEntity
 const BASE_MODEL_PATH := "res://assets/models/mobs/merchant.glb"
 const VISUAL_STRATEGY_SCRIPT_PATH := "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
 
-## Rotation offset required for imported Blender 3D model orientation
-var gaze_rotation_offset: float = PI
+# Model is oriented correctly forward in the .tscn scene
+var gaze_rotation_offset: float = 0.0
 
 
 func _init(spawn_pos: Vector3 = Vector3.ZERO) -> void:

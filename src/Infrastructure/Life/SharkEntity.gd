@@ -4,14 +4,14 @@
 #              Manages 120Hz physics ticks, hydrodynamic tail sways, aquatic 
 #              bubble particles, and surface fin foam.
 # Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+# Email: Enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SharkEntity
 extends PassiveEntity
 
 # Scaled speeds synchronized with domain behaviors
-const SPEED_CHASE: float = 8.4
-const SPEED_SWIM: float = 3.6
+const SPEED_CHASE: float = 5.0
+const SPEED_SWIM: float = 2.2
 
 var player: CharacterBody3D
 var _model_node: Node3D
@@ -65,6 +65,11 @@ func _get_nameplate_color() -> Color:
 
 
 func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
+	# Symmetrical Showcase Room Bypass: Allow aquatic creatures to move freely
+	# during testing in the diagnostics sandbox.
+	if is_instance_valid(get_parent()) and get_parent().name == "AIShowcaseRoom":
+		return true
+		
 	return block_type == BlockType.Type.WATER
 
 
@@ -142,11 +147,11 @@ func _spawn_aquatic_bubble_particles() -> void:
 
 
 func _configure_bubble_particles(particles: CPUParticles3D) -> void:
+	var tail_offset := global_transform.basis.z.normalized() * 1.0
 	particles.amount = 4
 	particles.one_shot = true
 	particles.explosiveness = 0.8
 	particles.lifetime = 0.5
-	var tail_offset := global_transform.basis.z.normalized() * 1.0
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
 	particles.emission_sphere_radius = 0.2
 	particles.direction = Vector3.UP + tail_offset * 0.3
@@ -177,11 +182,11 @@ func _spawn_surface_foam_particles() -> void:
 
 
 func _configure_foam_particles(particles: CPUParticles3D) -> void:
+	var fin_offset := global_transform.basis.z.normalized() * 0.5
 	particles.amount = 3
 	particles.one_shot = true
 	particles.explosiveness = 0.9
 	particles.lifetime = 0.4
-	var fin_offset := global_transform.basis.z.normalized() * 0.5
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	particles.emission_box_extents = Vector3(0.1, 0.02, 0.2)
 	particles.direction = -fin_offset
@@ -204,3 +209,7 @@ func _process(delta: float) -> void:
 		if _attack_sound_timer <= 0.0:
 			_attack_sound_timer = randf_range(COOLDOWN_ATTACK_MIN_SEC, COOLDOWN_ATTACK_MAX_SEC)
 			_play_shark_vocal()
+
+
+func _is_avian() -> bool:
+	return false

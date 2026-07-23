@@ -12,8 +12,8 @@ const TASK_IDLE: int = 0
 const TASK_WANDERING: int = 1
 const TASK_WORKING: int = 6
 
-const SPEED_CHASE_MULT: float = 1.3
-const SPEED_PATROL: float = 2.6
+const SPEED_PATROL: float = 1.3
+const SPEED_CHASE: float = 2.4
 
 const RANGE_SIGHT_SQ: float = 400.0
 const RANGE_ATTACK_SQ: float = 4.84
@@ -188,13 +188,13 @@ class ScanForThreatsAction extends GOAPAction:
 		
 		var rep := VillageReputationService.instance
 		if is_instance_valid(rep) and rep.is_player_wanted():
-			closest = _get_player_target(host)
+			closest = _get_player_target_static(host)
 			if is_instance_valid(closest):
 				min_dist_sq = host_pos.distance_squared_to(closest.global_position)
 				
-		return _scan_for_zombies(host, closest, min_dist_sq)
+		return _scan_for_zombies_static(host, closest, min_dist_sq)
 		
-	func _get_player_target(host: CharacterBody3D) -> Node3D:
+	func _get_player_target_static(host: CharacterBody3D) -> Node3D:
 		var parent := host.get_parent()
 		if is_instance_valid(parent):
 			var player_node := parent.get_node_or_null("Player") as Node3D
@@ -204,7 +204,7 @@ class ScanForThreatsAction extends GOAPAction:
 					return player_node
 		return null
 		
-	func _scan_for_zombies(host: CharacterBody3D, current_closest: Node3D, min_dist_sq: float) -> Node3D:
+	func _scan_for_zombies_static(host: CharacterBody3D, current_closest: Node3D, min_dist_sq: float) -> Node3D:
 		var closest := current_closest
 		var hostiles := host.get_tree().get_nodes_in_group("hostiles")
 		
@@ -244,8 +244,7 @@ class SprintToThreatAction extends GOAPAction:
 			VoxelKinematicService.halt_movement(host, ai)
 			return true
 			
-		var base_speed: float = host.get("BASE_SPEED") as float if "BASE_SPEED" in host else 1.3
-		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), base_speed * SPEED_CHASE_MULT)
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_CHASE)
 		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
 		return false
 
@@ -313,8 +312,9 @@ class OverwatchPatrolAction extends GOAPAction:
 		return false
 
 	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
-		for i: int in range(12):
-			var angle := randf() * TAU
+		var start_angle := randf() * TAU
+		for i: int in range(16):
+			var angle := start_angle + (float(i) / 16.0) * TAU
 			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
 			if _is_direction_clear(host, candidate):
 				return candidate
@@ -337,9 +337,10 @@ class OverwatchPatrolAction extends GOAPAction:
 		var distances: Array[float] = [1.0, 2.0]
 		for dist: float in distances:
 			var check_pos: Vector3 = host.global_position + dir * dist
-			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
-			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.0), floori(check_pos.z))
-			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			var feet_y := floori(check_pos.y + 0.5)
+			var feet_coord := Vector3i(floori(check_pos.x), feet_y, floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), feet_y + 1, floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), feet_y - 1, floori(check_pos.z))
 			
 			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
 				return false
@@ -369,3 +370,10 @@ class OverwatchPatrolAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
+
+	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
+		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
+			return false
+		var wall_normal := host.get_wall_normal()
+		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

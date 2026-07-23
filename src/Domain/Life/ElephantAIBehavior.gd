@@ -12,7 +12,7 @@ const TASK_IDLE: int = 0
 const TASK_WANDERING: int = 1
 const TASK_PANIC: int = 5
 
-const SPEED_WALK: float = 2.0
+const SPEED_WALK: float = 1.0
 const STRIDE_INTERVAL_SEC: float = 0.9
 const RANGE_SIGHT_SQ: float = 144.0
 
@@ -194,8 +194,9 @@ class HeavyStrollAction extends GOAPAction:
 		return false
 
 	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
-		for i: int in range(12):
-			var angle := randf() * TAU
+		var start_angle := randf() * TAU
+		for i: int in range(16):
+			var angle := start_angle + (float(i) / 16.0) * TAU
 			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
 			if _is_direction_clear(host, candidate):
 				return candidate
@@ -215,12 +216,14 @@ class HeavyStrollAction extends GOAPAction:
 		if ws == null:
 			return true
 			
+		# Larger 1.5m and 2.5m scanning bounds specific to colossal elephant scale
 		var distances: Array[float] = [1.5, 2.5]
 		for dist: float in distances:
 			var check_pos: Vector3 = host.global_position + dir * dist
-			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
-			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.0), floori(check_pos.z))
-			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			var feet_y := floori(check_pos.y + 0.5)
+			var feet_coord := Vector3i(floori(check_pos.x), feet_y, floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), feet_y + 1, floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), feet_y - 1, floori(check_pos.z))
 			
 			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
 				return false
@@ -266,7 +269,8 @@ class HeavyStrollAction extends GOAPAction:
 
 
 static func _process_stride_impacts(bb: AIBlackboard, host: CharacterBody3D, delta: float) -> void:
-	var stride_timer := bb.get_float("stride_timer") - delta
+	var stride_timer := bb.get_float("stride_timer") if bb.has_memory("stride_timer") else 0.4
+	stride_timer -= delta
 	if stride_timer <= 0.0:
 		stride_timer = STRIDE_INTERVAL_SEC
 		if host.has_method("_play_heavy_step_impact"):

@@ -2,10 +2,6 @@
 # Pathfile: res://src/Domain/Life/LithicLurkerAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
 #              Planning (GOAP) for the Lithic Lurker (Act I Boss).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Isolates sleep dormancy, heavy chase, 
-#   and leap-slam ground pounds into decoupled action strategies.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -15,7 +11,7 @@ extends IAIBehavior
 const TASK_IDLE: int = 0
 const TASK_WORKING: int = 6
 
-const SPEED_CHASE: float = 5.2
+const SPEED_CHASE: float = 3.6
 const RANGE_SIGHT_SQ: float = 400.0
 const RANGE_POUND_SQ: float = 25.0
 
@@ -48,11 +44,9 @@ func _setup_goap_profile() -> void:
 
 
 func _setup_goals() -> void:
-	# Priority 2.0: Smash intruders when detected
 	var smash_goal := GOAPGoal.new("SmashIntruder", 2.0)
 	smash_goal.add_desired_state("intruder_smashed", true)
 	
-	# Priority 0.5: Fallback sleep when no intruders are near
 	var sleep_goal := GOAPGoal.new("DormantSleep", 0.5)
 	sleep_goal.add_desired_state("is_sleeping", true)
 	
@@ -97,7 +91,6 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		# Filter usable actions dynamically by contextual validity
 		var usable_actions: Array[GOAPAction] = []
 		for action: GOAPAction in _actions:
 			if action.is_contextually_valid(_blackboard):
@@ -166,10 +159,9 @@ class SleepAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
-		host.velocity.x = 0.0; host.velocity.z = 0.0
-		var ai: Object = host.get("ai_component")
+		var ai := host.get("ai_component")
+		VoxelKinematicService.halt_movement(host, ai)
 		if is_instance_valid(ai):
-			ai.set("wander_direction", Vector3.ZERO)
 			ai.set("current_task", TASK_IDLE)
 		return true
 
@@ -221,14 +213,8 @@ class ChasePlayerAction extends GOAPAction:
 		if diff.length_squared() <= RANGE_POUND_SQ and bb.get_float("pound_cooldown") <= 0.0:
 			return true
 			
-		var vel := host.velocity
-		var chase_dir := diff.normalized()
-		vel.x = chase_dir.x * SPEED_CHASE
-		vel.z = chase_dir.z * SPEED_CHASE
-		host.velocity = vel
-		
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_CHASE)
 		if is_instance_valid(ai):
-			ai.set("wander_direction", chase_dir)
 			ai.set("current_task", TASK_WORKING)
 		return false
 
@@ -267,9 +253,11 @@ class GroundPoundAction extends GOAPAction:
 		var host := bb.get_object("host") as CharacterBody3D
 		if _sub_state == 0:
 			_process_launching_physics(bb, host, delta)
+			return false # Crucial: Keep executing the jump, do not pop the action yet!
 		else:
 			_process_stunned_vulnerability(bb, host, delta)
-		return bb.get_int("phase_state") == Phase.ACTIVE
+			# Only complete the action when stun has worn off and we are active
+			return bb.get_int("phase_state") == Phase.ACTIVE
 		
 	func _process_launching_physics(bb: AIBlackboard, host: CharacterBody3D, delta: float) -> void:
 		var vel := host.velocity

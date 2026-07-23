@@ -10,7 +10,7 @@ extends CharacterBody3D
 
 const BASE_SPEED: float = 2.6
 const JUMP_VELOCITY: float = 5.0
-const GROUND_SNAP_VELOCITY: float = 0.0 # STABILITY FIX: Avoid perpetual downward forces
+const GROUND_SNAP_VELOCITY: float = 0.0
 const SLEEP_DISTANCE_SQ: float = 1600.0
 const THREAT_SEARCH_RADIUS_SQ: float = 64.0
 const REPUTATION_DAMAGE_PENALTY: int = -15
@@ -345,7 +345,7 @@ func _apply_environmental_physics(delta: float) -> void:
 	elif is_submerged:
 		_apply_liquid_buoyancy(delta)
 	else:
-		velocity.y = GROUND_SNAP_VELOCITY # GROUNDING STABILIZATION FIXED (0.0 m/s)
+		velocity.y = GROUND_SNAP_VELOCITY
 
 
 func _apply_liquid_buoyancy(delta: float) -> void:
@@ -509,14 +509,34 @@ func _dispatch_deep_telemetry(vel_b4: Vector3, vel_aft: Vector3, collided: bool)
 		else:
 			task_name = ai_component.get_task_state_name(int(ai_component.current_task))
 			
-	var flags: Dictionary = {
+	var flags := _compile_telemetry_flags(dir)
+	AITelemetryService.log_deep_diagnostics(self, _generate_telemetry_name(), task_name, dir, vel_b4, vel_aft, collided, flags)
+
+
+func _compile_telemetry_flags(dir: Vector3) -> Dictionary:
+	var wall_norm := get_wall_normal() if is_on_wall() else Vector3.ZERO
+	var flat_norm := Vector3(wall_norm.x, 0.0, wall_norm.z).normalized()
+	var wall_align := dir.normalized().dot(-flat_norm) if flat_norm != Vector3.ZERO and dir != Vector3.ZERO else 0.0
+	
+	var body_rot := 0.0
+	if is_instance_valid(visual_component) and is_instance_valid(visual_component.visual_root):
+		body_rot = visual_component.visual_root.rotation.y
+		
+	var gaze_off: float = float(get("gaze_rotation_offset")) if "gaze_rotation_offset" in self else 0.0
+	var stuck_t: float = ai_component.stuck_timer if is_instance_valid(ai_component) else 0.0
+	
+	return {
 		"hab_blk": bool(get_meta("diag_hab_blk")) if has_meta("diag_hab_blk") else false,
 		"turn_thr": float(get_meta("diag_turn_thr")) if has_meta("diag_turn_thr") else 1.0,
 		"edge_stp": bool(get_meta("diag_edge_stp")) if has_meta("diag_edge_stp") else false,
 		"yield": bool(get_meta("diag_yield")) if has_meta("diag_yield") else false,
-		"whisk": bool(get_meta("diag_whisk")) if has_meta("diag_whisk") else false
+		"whisk": bool(get_meta("diag_whisk")) if has_meta("diag_whisk") else false,
+		"wall_normal": wall_norm,
+		"wall_align": wall_align,
+		"body_rot_y": body_rot,
+		"gaze_offset": gaze_off,
+		"stuck_t": stuck_t
 	}
-	AITelemetryService.log_deep_diagnostics(self, _generate_telemetry_name(), task_name, dir, vel_b4, vel_aft, collided, flags)
 
 
 func _generate_telemetry_name() -> String:

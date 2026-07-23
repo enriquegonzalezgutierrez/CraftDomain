@@ -14,7 +14,8 @@ extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/quique/quique.glb"
 
-var gaze_rotation_offset: float = PI
+# Model is oriented correctly forward in the .tscn scene
+var gaze_rotation_offset: float = 0.0
 var player: CharacterBody3D
 var _model_node: Node3D
 

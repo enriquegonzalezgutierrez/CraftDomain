@@ -577,5 +577,7 @@
 
   "bazaar_return": "25. Regreso al Bazar",
   "bazaar_return_desc": "Has conquistado el mundo infinito, las profundidades y el cielo. Haz el viaje final de vuelta a la aldea para informar de tus descubrimientos cósmicos.",
-  "bazaar_return_obj": "Camina de regreso y habla con el Aldeano en el Bazar"
+  "bazaar_return_obj": "Camina de regreso y habla con el Aldeano en el Bazar",
+
+  "SHOWCASE_TASK_WANDERING": "DEAMBULANDO / PATRULLA"
 }

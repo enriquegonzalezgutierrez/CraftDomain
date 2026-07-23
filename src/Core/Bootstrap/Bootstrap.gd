@@ -166,52 +166,59 @@ func _setup_mob_registry() -> void:
 
 func _register_passive_wildlife(h_land: int, h_both: int, h_water: int) -> void:
 	var ai_fauna := FaunaAIBehavior.new()
-	_register_scene_mob(0, PigEntity, h_land, PigAIBehavior.new()) 
-	_register_scene_mob(1, ChickenEntity, h_land, ChickenAIBehavior.new()) 
-	_register_scene_mob(2, SheepEntity, h_land, SheepAIBehavior.new()) 
-	_register_scene_mob(3, CowEntity, h_land, CowAIBehavior.new()) 
-	_register_scene_mob(201, TurtleEntity, h_both, ai_fauna)
-	_register_scene_mob(204, FoxEntity, h_land, ai_fauna)
-	_register_scene_mob(206, CatEntity, h_land, ai_fauna)
-	_register_scene_mob(211, RaccoonEntity, h_land, ai_fauna)
-	_register_scene_mob(212, GrowlitheEntity, h_land, ai_fauna)
-	_register_scene_mob(213, MonkeyEntity, h_land, ai_fauna)
-	_register_scene_mob(205, BirdEntity, h_land, ai_fauna)
-	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna)
-	_register_scene_mob(208, CrabEntity, h_both, ai_fauna)
-	_register_scene_mob(209, ElephantEntity, h_land, ai_fauna) 
-	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna)
+	_register_scene_mob(0, PigEntity, h_land, PigAIBehavior.new(), MobRegistry.SpawnZone.SURFACE, "NPC_NAME_PIG") 
+	_register_scene_mob(1, ChickenEntity, h_land, ChickenAIBehavior.new(), MobRegistry.SpawnZone.SURFACE, "NPC_NAME_CHICKEN") 
+	_register_scene_mob(2, SheepEntity, h_land, SheepAIBehavior.new(), MobRegistry.SpawnZone.SURFACE, "NPC_NAME_SHEEP") 
+	_register_scene_mob(3, CowEntity, h_land, CowAIBehavior.new(), MobRegistry.SpawnZone.SURFACE, "NPC_NAME_COW") 
+	_register_scene_mob(201, TurtleEntity, h_both, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_TURTLE")
+	_register_scene_mob(204, FoxEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_FOX")
+	_register_scene_mob(206, CatEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_CAT")
+	_register_scene_mob(211, RaccoonEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_RACCOON")
+	_register_scene_mob(212, GrowlitheEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_GROWLITHE")
+	_register_scene_mob(213, MonkeyEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_MONKEY")
+	_register_scene_mob(205, BirdEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_BIRD")
+	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_PARROT")
+	_register_scene_mob(208, CrabEntity, h_both, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_CRAB")
+	_register_scene_mob(209, ElephantEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_ELEPHANT") 
+	_register_scene_mob(210, OctopusEntity, h_water, ai_fauna, MobRegistry.SpawnZone.AQUATIC, "NPC_NAME_OCTOPUS")
 
 
 func _register_hostile_husks(h_land: int, h_water: int) -> void:
 	var ai_zombie := ZombieAIBehavior.new()
-	_register_scene_mob(11, SharkEntity, h_water, ai_zombie)
-	_register_scene_mob(12, GargoyleEntity, h_land, ai_zombie)
-	_register_scene_mob(13, GoblinEntity, h_land, ai_zombie)
-	_register_scene_mob(10, HostileEntity, h_land, ai_zombie)
+	_register_scene_mob(11, SharkEntity, h_water, ai_zombie, MobRegistry.SpawnZone.AQUATIC, "NPC_NAME_SHARK")
+	_register_scene_mob(12, GargoyleEntity, h_land, ai_zombie, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_GARGOYLE")
+	_register_scene_mob(13, GoblinEntity, h_land, ai_zombie, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_GOBLIN")
+	_register_scene_mob(10, HostileEntity, h_land, ai_zombie, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_ZOMBIE")
 
 
 func _register_civilian_professions(h_land: int) -> void:
 	var ai_guard := GuardAIBehavior.new()
 	var ai_farmer := FarmerAIBehavior.new()
-	_register_scene_mob(107, GolemEntity, h_land, ai_guard)
-	_register_scene_mob(100, VillagerEntity, h_land)
-	_register_scene_mob(102, GuardEntity, h_land, ai_guard)
-	_register_scene_mob(103, FarmerEntity, h_land, ai_farmer)
-	_register_scene_mob(104, DruidEntity, h_land)
-	_register_scene_mob(101, MerchantEntity, h_land)
-	_register_scene_mob(105, MinerEntity, h_land)
-	_register_scene_mob(106, CyberCitizenEntity, h_land)
-	_register_scene_mob(110, QuiqueEntity, h_land)
+	_register_scene_mob(107, GolemEntity, h_land, ai_guard, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_GOLEM")
+	_register_scene_mob(100, VillagerEntity, h_land, null, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_VILLAGER")
+	_register_scene_mob(102, GuardEntity, h_land, ai_guard, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_GUARD")
+	_register_scene_mob(103, FarmerEntity, h_land, ai_farmer, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_FARMER")
+	_register_scene_mob(104, DruidEntity, h_land, null, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_DRUID")
+	_register_scene_mob(101, MerchantEntity, h_land, null, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_MERCHANT")
+	_register_scene_mob(105, MinerEntity, h_land, null, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_MINER")
+	_register_scene_mob(106, CyberCitizenEntity, h_land, null, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_ANDROID")
+	_register_scene_mob(110, QuiqueEntity, h_land, null, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_QUIQUE")
 
 
 func _register_campaign_bosses(h_land: int) -> void:
-	_register_scene_mob(50, LithicLurkerEntity, h_land, LithicLurkerAIBehavior.new())
-	_register_scene_mob(51, ObsidianColossusEntity, h_land, ObsidianColossusAIBehavior.new())
-	_register_scene_mob(52, WeaverMalakorEntity, h_land, WeaverMalakorAIBehavior.new())
+	_register_scene_mob(50, LithicLurkerEntity, h_land, LithicLurkerAIBehavior.new(), MobRegistry.SpawnZone.SURFACE, "NPC_NAME_LITHIC_LURKER")
+	_register_scene_mob(51, ObsidianColossusEntity, h_land, ObsidianColossusAIBehavior.new(), MobRegistry.SpawnZone.SURFACE, "NPC_NAME_OBSIDIAN_COLOSSUS")
+	_register_scene_mob(52, WeaverMalakorEntity, h_land, WeaverMalakorAIBehavior.new(), MobRegistry.SpawnZone.SURFACE, "NPC_NAME_WEAVER_MALAKOR")
 
 
-func _register_scene_mob(spawn_id: int, fallback_class: Variant, habitat: int, default_behavior: IAIBehavior = null) -> void:
+func _register_scene_mob(
+	spawn_id: int, 
+	fallback_class: Variant, 
+	habitat: int, 
+	default_behavior: IAIBehavior = null, 
+	spawn_zone: int = MobRegistry.SpawnZone.SURFACE, 
+	display_name_key: String = "INVENTORY_UNKNOWN"
+) -> void:
 	var factory := func(pos: Vector3) -> Node:
 		var scene := EntityPreloaderRegistry.get_mob_scene(spawn_id)
 		if scene != null:
@@ -221,7 +228,7 @@ func _register_scene_mob(spawn_id: int, fallback_class: Variant, habitat: int, d
 		var fallback_inst := fallback_class.new(pos) as Node
 		return fallback_inst
 		
-	MobRegistry.register_mob(spawn_id, factory, habitat, default_behavior)
+	MobRegistry.register_mob(spawn_id, factory, habitat as MobRegistry.Habitat, default_behavior, spawn_zone as MobRegistry.SpawnZone, display_name_key)
 
 
 func _setup_prop_registry() -> void:
@@ -467,9 +474,10 @@ func _cleanup_and_load_menu(unload_canvas: CanvasLayer) -> void:
 	await get_tree().create_timer(0.15).timeout
 	_load_main_menu()
 	
-	var splash := unload_canvas.get_child(0) as LoadingScreen
+	var splash := unload_canvas.get_child(0) as Label
 	var fade_tween := create_tween()
-	fade_tween.tween_property(splash, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
+	if is_instance_valid(splash):
+		fade_tween.tween_property(splash, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
 	fade_tween.chain().tween_callback(unload_canvas.queue_free)
 
 

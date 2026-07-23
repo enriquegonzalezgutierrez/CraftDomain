@@ -2,10 +2,6 @@
 # Pathfile: res://src/Domain/Life/WeaverMalakorAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
 #              Planning (GOAP) for Weaver Malakor, the final campaign boss (Act IV).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Isolates distinct boss stages 
-#   (Static Beams, Gravity Inversions, and Arena Fracture) into decoupled actions.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -15,8 +11,8 @@ extends IAIBehavior
 const TASK_IDLE: int = 0
 const TASK_WORKING: int = 6
 
-const SPEED_HOVER: float = 3.2
-const SPEED_ORBIT: float = 7.0
+const SPEED_HOVER: float = 2.0
+const SPEED_ORBIT: float = 4.5
 const RANGE_SIGHT_SQ: float = 576.0
 
 const COOLDOWN_BEAM_SEC: float = 3.5
@@ -47,11 +43,9 @@ func _setup_goap_profile() -> void:
 
 
 func _setup_goals() -> void:
-	# Priority 2.0: Attack intruders when detected
 	var destroy_goal := GOAPGoal.new("DestroyIntruder", 2.0)
 	destroy_goal.add_desired_state("intruder_destroyed", true)
 	
-	# Priority 0.5: Fallback sleep when no intruders are near
 	var sleep_goal := GOAPGoal.new("DormantSleep", 0.5)
 	sleep_goal.add_desired_state("is_sleeping", true)
 	
@@ -102,7 +96,6 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		# Filter usable actions dynamically by contextual validity
 		var usable_actions: Array[GOAPAction] = []
 		for action: GOAPAction in _actions:
 			if action.is_contextually_valid(_blackboard):
@@ -119,12 +112,12 @@ func _evaluate_active_plan(_host: Object) -> void:
 
 func _build_initial_state() -> Dictionary:
 	var state: Dictionary = {}
-	state["is_sleeping"] = not _detect_intruder_proximity()
+	state["is_sleeping"] = not _detect_threat_proximity()
 	state["intruder_destroyed"] = false
 	return state
 
 
-func _detect_intruder_proximity() -> bool:
+func _detect_threat_proximity() -> bool:
 	var host := _blackboard.get_object("host") as CharacterBody3D
 	if not is_instance_valid(host): return false
 	var parent := host.get_parent() as Node
@@ -188,10 +181,9 @@ class SleepAction extends GOAPAction:
 		return true
 		
 	func _halt_movement(host: CharacterBody3D) -> void:
-		host.velocity.x = 0.0; host.velocity.z = 0.0
 		var ai: Object = host.get("ai_component")
+		VoxelKinematicService.halt_movement(host, ai)
 		if is_instance_valid(ai):
-			ai.set("wander_direction", Vector3.ZERO)
 			ai.set("current_task", TASK_IDLE)
 
 
@@ -245,14 +237,17 @@ class HoverShootBeamAction extends GOAPAction:
 		return is_instance_valid(domain) and domain.is_dead
 		
 	func _apply_hover_movement(host: CharacterBody3D, ai: Object, chase_dir: Vector3) -> void:
-		var velocity := host.velocity
-		velocity.x = chase_dir.x * SPEED_HOVER
-		velocity.z = chase_dir.z * SPEED_HOVER
-		var drift := (23.5 - host.global_position.y) * 0.12
-		velocity.y = lerp(velocity.y, drift, 0.12)
-		host.velocity = velocity
+		VoxelKinematicService.apply_motion_vectors(host, ai, chase_dir, SPEED_HOVER)
+		
+		var parent := host.get_parent() as Node
+		var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
+		var ground_y := 12.0
+		if ws != null:
+			ground_y = ws.get_highest_solid_y(floori(host.global_position.x), floori(host.global_position.z))
+		
+		var drift := (ground_y + 2.5 - host.global_position.y) * 0.12
+		host.velocity.y = lerp(host.velocity.y, drift, 0.12)
 		if is_instance_valid(ai):
-			ai.set("wander_direction", chase_dir)
 			ai.set("current_task", TASK_WORKING)
 			
 	func _process_laser_fire(bb: AIBlackboard, player_node: CharacterBody3D, _delta: float) -> void:
@@ -295,13 +290,18 @@ class InvertGravityOrbitAction extends GOAPAction:
 	func _apply_orbit_flight_mechanic(host: CharacterBody3D, _delta: float) -> void:
 		var time := Time.get_ticks_msec() / 1000.0
 		var orbit_dir := Vector3(sin(time * 0.5), 0.0, cos(time * 0.5)).normalized()
-		var drift := (24.5 - host.global_position.y) * 0.12
 		
-		var velocity := host.velocity
-		velocity.x = orbit_dir.x * SPEED_ORBIT
-		velocity.z = orbit_dir.z * SPEED_ORBIT
-		velocity.y = lerp(velocity.y, drift, 0.12)
-		host.velocity = velocity
+		var parent := host.get_parent() as Node
+		var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
+		var ground_y := 12.0
+		if ws != null:
+			ground_y = ws.get_highest_solid_y(floori(host.global_position.x), floori(host.global_position.z))
+			
+		var drift := (ground_y + 3.5 - host.global_position.y) * 0.12
+		
+		var ai: Object = host.get("ai_component")
+		VoxelKinematicService.apply_motion_vectors(host, ai, orbit_dir, SPEED_ORBIT)
+		host.velocity.y = lerp(host.velocity.y, drift, 0.12)
 		
 	func _process_gargoyle_summons(bb: AIBlackboard, player_node: CharacterBody3D, _delta: float) -> void:
 		var summon_cd := bb.get_float("summon_cooldown")
@@ -342,11 +342,19 @@ class FractureArenaAction extends GOAPAction:
 		
 	func _apply_unstable_shaking(host: CharacterBody3D, _delta: float) -> void:
 		var time := Time.get_ticks_msec() / 1000.0
-		var velocity := host.velocity
-		velocity.x = sin(time * 25.0) * 0.25
-		velocity.z = cos(time * 25.0) * 0.25
-		velocity.y = sin(time * 4.0) * 0.08
-		host.velocity = velocity
+		var drift_dir := Vector3(sin(time * 25.0) * 0.25, 0.0, cos(time * 25.0) * 0.25).normalized()
+		
+		var parent := host.get_parent() as Node
+		var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
+		var ground_y := 12.0
+		if ws != null:
+			ground_y = ws.get_highest_solid_y(floori(host.global_position.x), floori(host.global_position.z))
+			
+		var ai: Object = host.get("ai_component")
+		VoxelKinematicService.apply_motion_vectors(host, ai, drift_dir, 0.35)
+		
+		var drift := (ground_y + 2.5 - host.global_position.y) * 0.12
+		host.velocity.y = lerp(host.velocity.y, drift, 0.12) + sin(time * 4.0) * 0.08
 		
 	func _process_floor_mutations(bb: AIBlackboard, _delta: float) -> void:
 		var mutation_cd := bb.get_float("mutation_cooldown")

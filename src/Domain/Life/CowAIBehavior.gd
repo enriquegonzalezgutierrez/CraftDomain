@@ -13,9 +13,9 @@ const TASK_WANDERING: int = 1
 const TASK_PANIC: int = 5
 const TASK_WORKING: int = 6
 
-const SPEED_WALK: float = 2.0
-const SPEED_TROT: float = 2.8
-const SPEED_PANIC: float = 4.5
+const SPEED_WALK: float = 0.8
+const SPEED_TROT: float = 1.4
+const SPEED_PANIC: float = 2.2
 
 const SENSORY_RANGE_SQ: float = 64.0
 const LURE_RANGE_SQ: float = 144.0
@@ -273,17 +273,29 @@ class CheckGrassAction extends GOAPAction:
 		var has_milk := host.get_meta(META_HAS_MILK) as bool if host.has_meta(META_HAS_MILK) else true
 		return bb.get_float("graze_cooldown") <= 0.0 and not has_milk
 		
-	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("action_timer", GRAZE_DURATION)
 		var host := bb.get_object("host") as CharacterBody3D
-		var parent := host.get_parent() as Node
-		var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
+		var ai := host.get("ai_component")
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("current_task", TASK_IDLE)
 		
-		if ws != null:
-			var h_pos := host.global_position
-			var coord := Vector3i(floori(h_pos.x), floori(h_pos.y - 0.5), floori(h_pos.z))
-			if ws.get_block(coord) == 3:
-				return true
-				
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var timer := bb.get_float("action_timer") - delta
+		bb.set_memory("action_timer", timer)
+		
+		if timer <= 0.0:
+			var host := bb.get_object("host") as CharacterBody3D
+			var parent := host.get_parent() as Node
+			var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
+			if ws != null:
+				var h_pos := host.global_position
+				var feet_y := floori(h_pos.y + 0.5)
+				var coord := Vector3i(floori(h_pos.x), feet_y - 1, floori(h_pos.z))
+				if ws.get_block(coord) == 3:
+					return true
+			bb.set_memory("graze_cooldown", randf_range(GRAZE_INTERVAL_MIN, GRAZE_INTERVAL_MAX))
+			return false
 		return false
 
 
@@ -294,15 +306,14 @@ class GrazeGrassAction extends GOAPAction:
 		add_effect("did_graze", true)
 		
 	func on_enter(bb: AIBlackboard) -> void:
-		bb.set_memory("graze_timer", GRAZE_DURATION)
+		bb.set_memory("action_timer", GRAZE_DURATION)
 		var host := bb.get_object("host") as CharacterBody3D
-		var ai: Object = host.get("ai_component")
-		VoxelKinematicService.halt_movement(host, ai)
+		var ai := host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
-		var timer := bb.get_float("graze_timer") - delta
-		bb.set_memory("graze_timer", timer)
+		var timer := bb.get_float("action_timer") - delta
+		bb.set_memory("action_timer", timer)
 		
 		if timer <= 0.0:
 			_complete_grazing(bb)
@@ -315,7 +326,8 @@ class GrazeGrassAction extends GOAPAction:
 		var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
 		
 		if ws != null and parent.has_method("set_block_globally"):
-			var below := Vector3i(floori(host.global_position.x), floori(host.global_position.y - 0.5), floori(host.global_position.z))
+			var feet_y := floori(host.global_position.y + 0.5)
+			var below := Vector3i(floori(host.global_position.x), feet_y - 1, floori(host.global_position.z))
 			if ws.get_block(below) == 3:
 				parent.call("set_block_globally", below, 2)
 				host.set_meta(META_HAS_MILK, true)
@@ -351,8 +363,9 @@ class CowWanderAction extends GOAPAction:
 		return false
 
 	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
-		for i: int in range(12):
-			var angle := randf() * TAU
+		var start_angle := randf() * TAU
+		for i: int in range(16):
+			var angle := start_angle + (float(i) / 16.0) * TAU
 			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
 			if _is_direction_clear(host, candidate):
 				return candidate
@@ -375,9 +388,10 @@ class CowWanderAction extends GOAPAction:
 		var distances: Array[float] = [1.0, 2.0]
 		for dist: float in distances:
 			var check_pos: Vector3 = host.global_position + dir * dist
-			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
-			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
-			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			var feet_y := floori(check_pos.y + 0.5)
+			var feet_coord := Vector3i(floori(check_pos.x), feet_y, floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), feet_y + 1, floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), feet_y - 1, floori(check_pos.z))
 			
 			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
 				return false
@@ -407,3 +421,10 @@ class CowWanderAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
+
+	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
+		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
+			return false
+		var wall_normal := host.get_wall_normal()
+		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

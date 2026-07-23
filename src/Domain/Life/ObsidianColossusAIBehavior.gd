@@ -2,10 +2,6 @@
 # Pathfile: res://src/Domain/Life/ObsidianColossusAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
 #              Planning (GOAP) for the Obsidian Colossus (Act III Boss).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Isolates sleep dormancy, heavy march, 
-#   rage charge, and volcanic stomp ground-pounds into distinct action classes.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,14 +12,16 @@ const TASK_IDLE: int = 0
 const TASK_WANDERING: int = 1
 const TASK_WORKING: int = 6
 
-const SPEED_WALK: float = 2.2
-const SPEED_CHARGE: float = 6.4
+const SPEED_WALK: float = 1.4
+const SPEED_CHARGE: float = 4.0
 
 const RANGE_SIGHT_SQ: float = 400.0
 const RANGE_STOMP_SQ: float = 16.0
 const COOLDOWN_STOMP_SEC: float = 4.5
 const DURATION_STOMP_CHANNEL_SEC: float = 1.8
 const THRESHOLD_RAGE_HP: int = 12
+
+const META_HAS_MILK := "cow_has_milk" # kept for signature mapping alignment
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -32,7 +30,7 @@ var _active_plan: Array[GOAPAction] = []
 
 
 func _init() -> void:
-	overrides_wandering = true
+	overrides_wandering = true 
 	_setup_goap_profile()
 
 
@@ -46,11 +44,9 @@ func _setup_goap_profile() -> void:
 
 
 func _setup_goals() -> void:
-	# Priority 2.0: Attack intruders when detected
 	var obliterate_goal := GOAPGoal.new("ObliterateIntruder", 2.0)
 	obliterate_goal.add_desired_state("intruder_obliterated", true)
 	
-	# Priority 0.5: Fallback sleep when no intruders are near
 	var sleep_goal := GOAPGoal.new("DormantSleep", 0.5)
 	sleep_goal.add_desired_state("is_sleeping", true)
 	
@@ -94,7 +90,6 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		# Filter usable actions dynamically by contextual validity
 		var usable_actions: Array[GOAPAction] = []
 		for action: GOAPAction in _actions:
 			if action.is_contextually_valid(_blackboard):
@@ -163,8 +158,8 @@ class SleepAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
-		host.velocity.x = 0.0; host.velocity.z = 0.0
-		var ai: Object = host.get("ai_component")
+		var ai := host.get("ai_component")
+		VoxelKinematicService.halt_movement(host, ai)
 		if is_instance_valid(ai):
 			ai.set("wander_direction", Vector3.ZERO)
 			ai.set("current_task", TASK_IDLE)
@@ -204,7 +199,7 @@ class HeavyMarchAction extends GOAPAction:
 	func is_contextually_valid(bb: AIBlackboard) -> bool:
 		return bb.get_int("health") > THRESHOLD_RAGE_HP
 		
-	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var player := bb.get_object("intruder_player") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
@@ -219,16 +214,20 @@ class HeavyMarchAction extends GOAPAction:
 		if dist_sq <= RANGE_STOMP_SQ and bb.get_float("stomp_cooldown") <= 0.0:
 			return true
 			
-		var vel := host.velocity
-		var chase_dir := diff.normalized()
-		vel.x = chase_dir.x * SPEED_WALK
-		vel.z = chase_dir.z * SPEED_WALK
-		host.velocity = vel
-		
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_WALK)
 		if is_instance_valid(ai):
-			ai.set("wander_direction", chase_dir)
 			ai.set("current_task", TASK_WORKING)
+		_process_stride_impacts(bb, host, delta)
 		return false
+
+	func _process_stride_impacts(bb: AIBlackboard, host: CharacterBody3D, delta: float) -> void:
+		var stride_timer := bb.get_float("stride_timer") if bb.has_memory("stride_timer") else 0.4
+		stride_timer -= delta
+		if stride_timer <= 0.0:
+			stride_timer = 0.9 # STRIDE_INTERVAL_SEC
+			if host.has_method("_play_heavy_step_impact"):
+				host.call("_play_heavy_step_impact") 
+		bb.set_memory("stride_timer", stride_timer)
 
 
 class RageChargeAction extends GOAPAction:
@@ -246,7 +245,7 @@ class RageChargeAction extends GOAPAction:
 		if host.has_method("_play_rage_ignite_roar"):
 			host.call("_play_rage_ignite_roar")
 			
-	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var player := bb.get_object("intruder_player") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
@@ -261,16 +260,20 @@ class RageChargeAction extends GOAPAction:
 		if dist_sq <= RANGE_STOMP_SQ and bb.get_float("stomp_cooldown") <= 0.0:
 			return true
 			
-		var vel := host.velocity
-		var charge_dir := diff.normalized()
-		vel.x = charge_dir.x * SPEED_CHARGE
-		vel.z = charge_dir.z * SPEED_CHARGE
-		host.velocity = vel
-		
+		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_CHARGE)
 		if is_instance_valid(ai):
-			ai.set("wander_direction", charge_dir)
 			ai.set("current_task", TASK_WORKING)
+		_process_stride_impacts(bb, host, delta)
 		return false
+
+	func _process_stride_impacts(bb: AIBlackboard, host: CharacterBody3D, delta: float) -> void:
+		var stride_timer := bb.get_float("stride_timer") if bb.has_memory("stride_timer") else 0.4
+		stride_timer -= delta
+		if stride_timer <= 0.0:
+			stride_timer = 0.9 # STRIDE_INTERVAL_SEC
+			if host.has_method("_play_heavy_step_impact"):
+				host.call("_play_heavy_step_impact") 
+		bb.set_memory("stride_timer", stride_timer)
 
 
 class VolcanicStompAction extends GOAPAction:
@@ -289,7 +292,7 @@ class VolcanicStompAction extends GOAPAction:
 		var player := bb.get_object("intruder_player") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
 		
-		host.velocity.x = 0.0; host.velocity.z = 0.0
+		VoxelKinematicService.halt_movement(host, ai)
 		if is_instance_valid(player):
 			var target_dir := (player.global_position - host.global_position).normalized()
 			target_dir.y = 0.0

@@ -6,9 +6,7 @@
 # - Single Responsibility Principle (SRP): Handles exclusively diagnostics 
 #   formatting and asynchronous thread-safe log flushing.
 # - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - REFACTORED: Supported custom instance-based holographic naming to prevent
-#   anonymous engine-assigned node strings in logs.
-# Author: Enrique Gonzalez Gutierrez
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name AITelemetryService
@@ -18,7 +16,7 @@ static var instance: AITelemetryService = null
 
 const IS_TELEMETRY_ENABLED: bool = true
 const LOG_PATH := "user://world_save/ai_telemetry_diagnostics.log"
-const FLUSH_INTERVAL_SEC: float = 2.0
+const FLUSH_INTERVAL_SEC: float = 0.5
 
 var _lock: Mutex
 var _log_buffer: PackedStringArray = PackedStringArray()
@@ -33,31 +31,60 @@ func _init() -> void:
 
 
 ## OCP-Compliant Deep Diagnostics entry point for the physics pipeline
-static func log_deep_diagnostics(host: CharacterBody3D, custom_name: String, task: String, dir: Vector3, v_in: Vector3, v_out: Vector3, col: bool, flags: Dictionary) -> void:
-	if not IS_TELEMETRY_ENABLED: return
+static func log_deep_diagnostics(
+	host: CharacterBody3D, 
+	custom_name: String, 
+	task: String, 
+	dir: Vector3, 
+	v_in: Vector3, 
+	v_out: Vector3, 
+	col: bool, 
+	flags: Dictionary
+) -> void:
+	if not IS_TELEMETRY_ENABLED: 
+		return
 	if is_instance_valid(instance):
 		instance._format_and_append_deep(host, custom_name, task, dir, v_in, v_out, col, flags)
 
 
-func _format_and_append_deep(host: CharacterBody3D, custom_name: String, task: String, dir: Vector3, v_in: Vector3, v_out: Vector3, col: bool, flags: Dictionary) -> void:
+func _format_and_append_deep(
+	host: CharacterBody3D, 
+	custom_name: String, 
+	task: String, 
+	dir: Vector3, 
+	v_in: Vector3, 
+	v_out: Vector3, 
+	col: bool, 
+	flags: Dictionary
+) -> void:
 	var ts := Time.get_time_string_from_system()
 	var p := host.global_position
+	var dir_angle := rad_to_deg(atan2(dir.x, dir.z)) if dir != Vector3.ZERO else 0.0
+	var body_rot_deg := rad_to_deg(flags.get("body_rot_y", 0.0) as float)
+	var w_norm: Vector3 = flags.get("wall_normal", Vector3.ZERO) as Vector3
 	
-	var line1 := "[%s] [%s] Task:%s | Pos:(%.2f,%.2f,%.2f) | Dir:(%.2f,%.2f)\n" % [ts, custom_name, task, p.x, p.y, p.z, dir.x, dir.z]
-	var line2 := "    L-> Vel_IN:(%.2f,%.2f,%.2f) -> Vel_OUT:(%.2f,%.2f,%.2f)\n" % [v_in.x, v_in.y, v_in.z, v_out.x, v_out.y, v_out.z]
-	var line3 := "    L-> Floor:%s Wall:%s Col:%s | HabBlk:%s Turn:%.2f Edge:%s Yld:%s Wsk:%s\n" % [
-		host.is_on_floor(), host.is_on_wall(), col,
-		flags.get("hab_blk", false), flags.get("turn_thr", 1.0),
-		flags.get("edge_stp", false), flags.get("yield", false), flags.get("whisk", false)
+	var line1 := "[%s] [%s] Task:%s | Pos:(%.2f,%.2f,%.2f) | Dir:(%.2f,%.2f) Angle:%.1f° | BodyRot:%.1f°\n" % [
+		ts, custom_name, task, p.x, p.y, p.z, dir.x, dir.z, dir_angle, body_rot_deg
+	]
+	var line2 := "    L-> Vel_IN:(%.2f,%.2f,%.2f) -> Vel_OUT:(%.2f,%.2f,%.2f) | Col:%s\n" % [
+		v_in.x, v_in.y, v_in.z, v_out.x, v_out.y, v_out.z, col
+	]
+	var line3 := "    L-> Wall:%s Norm:(%.2f,%.2f,%.2f) Align:%.2f | Floor:%s | StuckT:%.2fs\n" % [
+		host.is_on_wall(), w_norm.x, w_norm.y, w_norm.z, flags.get("wall_align", 0.0), host.is_on_floor(), flags.get("stuck_t", 0.0)
+	]
+	var line4 := "    L-> Flags -> HabBlk:%s Edge:%s Yield:%s Whisk:%s GazeOff:%.2f\n" % [
+		flags.get("hab_blk", false), flags.get("edge_stp", false),
+		flags.get("yield", false), flags.get("whisk", false), flags.get("gaze_offset", 0.0)
 	]
 	
 	_lock.lock()
-	_log_buffer.append(line1 + line2 + line3)
+	_log_buffer.append(line1 + line2 + line3 + line4)
 	_lock.unlock()
 
 
 func process_telemetry_flush(delta: float) -> void:
-	if not IS_TELEMETRY_ENABLED: return
+	if not IS_TELEMETRY_ENABLED: 
+		return
 	
 	_lock.lock()
 	_time_since_last_flush += delta
@@ -70,14 +97,16 @@ func process_telemetry_flush(delta: float) -> void:
 
 
 func force_immediate_flush() -> void:
-	if not IS_TELEMETRY_ENABLED: return
+	if not IS_TELEMETRY_ENABLED: 
+		return
 	_lock.lock()
 	_flush_buffer_to_disk_async()
 	_lock.unlock()
 
 
 func _flush_buffer_to_disk_async() -> void:
-	if _log_buffer.is_empty(): return
+	if _log_buffer.is_empty(): 
+		return
 		
 	var lines_to_write := _log_buffer.duplicate()
 	_log_buffer.clear()

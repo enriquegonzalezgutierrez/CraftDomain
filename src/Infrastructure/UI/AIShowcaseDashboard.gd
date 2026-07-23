@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/AIShowcaseDashboard.gd
 # Description: Infrastructure UI Presenter managing the developer AI testing 
-#              dashboard, entity spawner controls, and live telemetry feeds.
+#              dashboard, entity spawner controls, and dynamic OCP catalog population.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -10,17 +10,6 @@ extends CanvasLayer
 
 const THROTTLE_INTERVAL_SEC: float = 0.05
 const SPAWN_PAD_Y_ALTITUDE: float = 11.0
-
-const MOB_TRANSLATION_MAP: Dictionary = {
-	0: "NPC_NAME_PIG", 1: "NPC_NAME_CHICKEN", 2: "NPC_NAME_SHEEP", 3: "NPC_NAME_COW",
-	10: "NPC_NAME_ZOMBIE", 11: "NPC_NAME_SHARK", 12: "NPC_NAME_GARGOYLE", 13: "NPC_NAME_GOBLIN",
-	50: "NPC_NAME_LITHIC_LURKER", 51: "NPC_NAME_OBSIDIAN_COLOSSUS", 52: "NPC_NAME_WEAVER_MALAKOR",
-	100: "NPC_NAME_VILLAGER", 101: "NPC_NAME_MERCHANT", 102: "NPC_NAME_GUARD", 103: "NPC_NAME_FARMER",
-	104: "NPC_NAME_DRUID", 105: "NPC_NAME_MINER", 106: "NPC_NAME_ANDROID", 107: "NPC_NAME_GOLEM",
-	201: "NPC_NAME_TURTLE", 204: "NPC_NAME_FOX", 205: "NPC_NAME_BIRD", 206: "NPC_NAME_CAT",
-	207: "NPC_NAME_PARROT", 208: "NPC_NAME_CRAB", 209: "NPC_NAME_ELEPHANT", 210: "NPC_NAME_OCTOPUS",
-	211: "NPC_NAME_RACCOON", 212: "NPC_NAME_GROWLITHE", 213: "NPC_NAME_MONKEY"
-}
 
 @onready var _spawn_catalog_vbox: VBoxContainer = %SpawnCatalogVBox
 @onready var _telemetry_label: Label = %TelemetryLabel
@@ -134,7 +123,7 @@ func _on_override_pressed() -> void:
 	var ai: Object = _active_subject.get("ai_component") as Object
 	if not is_instance_valid(ai): return
 	
-	_current_override_index = (_current_override_index + 1) % _override_states.size()
+	_current_current_override_index()
 	var state_id := _override_states[_current_override_index]
 	
 	if state_id == -1: ai.call("disable_manual_override")
@@ -145,6 +134,10 @@ func _on_override_pressed() -> void:
 		_active_subject.call("_update_quest_bubble_state")
 		
 	AudioService.play_sfx_static("ui_click")
+
+
+func _current_current_override_index() -> void:
+	_current_override_index = (_current_override_index + 1) % _override_states.size()
 
 
 func _update_override_button_label() -> void:
@@ -170,17 +163,17 @@ func _update_live_telemetry_display() -> void:
 
 func _format_telemetry_string(task_str: String, current_hp: int, state_details: String) -> String:
 	var host_pos: Vector3 = _active_subject.global_position
-	var spawn_id_val: int = _active_subject.get("spawn_id") if "spawn_id" in _active_subject else -1
+	var spawn_id_val: int = _active_subject.get_meta("spawn_id") if _active_subject.has_meta("spawn_id") else -1
 	var subject_key := _get_mob_translation_key(spawn_id_val)
 	var hearts_count := floori(float(current_hp) / 2.0) if current_hp > 0 else 0
 	
 	return (
-		tr("SHOWCASE_TEL_NAME") + ": %s\n" % tr(subject_key) +
-		tr("SHOWCASE_TEL_HEALTH") + ": %d Hearts (%d HP)\n" % [hearts_count, current_hp] +
-		tr("SHOWCASE_TEL_COORDS") + ": [ X: %d, Y: %d, Z: %d ]\n" % [int(round(host_pos.x)), int(round(host_pos.y)), int(round(host_pos.z))] +
-		tr("SHOWCASE_TEL_TASK") + ": %s\n\n" % tr(task_str) +
-		tr("SHOWCASE_TEL_META_HEADER") + "\n" +
-		(state_details if state_details != "" else tr("SHOWCASE_TEL_STANDARD") + "\n")
+		tr("SHOWCASE_TEL_NAME") + ": %s\n" % tr(subject_key)
+		+ tr("SHOWCASE_TEL_HEALTH") + ": %d Hearts (%d HP)\n" % [hearts_count, current_hp]
+		+ tr("SHOWCASE_TEL_COORDS") + ": [ X: %d, Y: %d, Z: %d ]\n" % [int(round(host_pos.x)), int(round(host_pos.y)), int(round(host_pos.z))]
+		+ tr("SHOWCASE_TEL_TASK") + ": %s\n\n" % tr(task_str)
+		+ tr("SHOWCASE_TEL_META_HEADER") + "\n"
+		+ (state_details if state_details != "" else tr("SHOWCASE_TEL_STANDARD") + "\n")
 	)
 
 
@@ -191,12 +184,14 @@ func _gather_active_behavior_metadata() -> String:
 		var behavior: IAIBehavior = ai.get("active_behavior") as IAIBehavior
 		if is_instance_valid(behavior) and behavior.has_method("get_active_state_name"):
 			var state_key := behavior.call("get_active_state_name", _active_subject) as String
-			state_details += "• %s: %s\n" % [tr("SHOWCASE_TEL_META_HEADER").to_upper(), tr("SHOWCASE_TASK_" + state_key.to_upper()).to_upper()]
+			var lookup_key := state_key.replace("_", "").to_upper()
+			if lookup_key == "WANDERING": lookup_key = "WANDER"
+			state_details += "• %s: %s\n" % [tr("SHOWCASE_TEL_META_HEADER").to_upper(), tr("SHOWCASE_TASK_" + lookup_key).to_upper()]
 	return state_details
 
 
 func _get_mob_translation_key(spawn_id: int) -> String:
-	return MOB_TRANSLATION_MAP.get(spawn_id, "INVENTORY_UNKNOWN") as String
+	return MobRegistry.get_mob_display_name_key(spawn_id)
 
 
 func _get_task_state_name(task_val: int) -> String:

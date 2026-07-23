@@ -11,7 +11,8 @@ extends PassiveEntity
 const BASE_MODEL_PATH := "res://assets/models/mobs/villager.glb"
 const VISUAL_STRATEGY_SCRIPT_PATH := "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
 
-var gaze_rotation_offset: float = PI
+# Model is oriented correctly forward in the .tscn scene
+var gaze_rotation_offset: float = 0.0
 var player: CharacterBody3D
 
 

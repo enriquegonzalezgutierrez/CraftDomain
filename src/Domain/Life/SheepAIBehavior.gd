@@ -273,17 +273,29 @@ class CheckGrassAction extends GOAPAction:
 		var is_fluffy := host.get_meta(META_IS_FLUFFY) as bool if host.has_meta(META_IS_FLUFFY) else true
 		return bb.get_float("graze_cooldown") <= 0.0 and not is_fluffy
 		
-	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+	func on_enter(bb: AIBlackboard) -> void:
+		bb.set_memory("action_timer", GRAZE_DURATION)
 		var host := bb.get_object("host") as CharacterBody3D
-		var parent := host.get_parent() as Node
-		var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
+		var ai := host.get("ai_component")
+		VoxelKinematicService.halt_movement(host, ai)
+		if is_instance_valid(ai): ai.set("current_task", TASK_IDLE)
 		
-		if ws != null:
-			var h_pos := host.global_position
-			var coord := Vector3i(floori(h_pos.x), floori(h_pos.y - 0.5), floori(h_pos.z))
-			if ws.get_block(coord) == 3:
-				return true
-				
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
+		var timer := bb.get_float("action_timer") - delta
+		bb.set_memory("action_timer", timer)
+		
+		if timer <= 0.0:
+			var host := bb.get_object("host") as CharacterBody3D
+			var parent := host.get_parent() as Node
+			var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
+			if ws != null:
+				var h_pos := host.global_position
+				# Safe rounding offset (+0.5) applied to allow stable voxel queries
+				var coord := Vector3i(floori(h_pos.x), floori(h_pos.y + 0.5) - 1, floori(h_pos.z))
+				if ws.get_block(coord) == 3:
+					return true
+			bb.set_memory("graze_cooldown", randf_range(GRAZE_INTERVAL_MIN, GRAZE_INTERVAL_MAX))
+			return false
 		return false
 
 
@@ -294,15 +306,14 @@ class GrazeGrassAction extends GOAPAction:
 		add_effect("did_graze", true)
 		
 	func on_enter(bb: AIBlackboard) -> void:
-		bb.set_memory("graze_timer", GRAZE_DURATION)
+		bb.set_memory("action_timer", GRAZE_DURATION)
 		var host := bb.get_object("host") as CharacterBody3D
-		var ai: Object = host.get("ai_component")
-		VoxelKinematicService.halt_movement(host, ai)
+		var ai := host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
-		var timer := bb.get_float("graze_timer") - delta
-		bb.set_memory("graze_timer", timer)
+		var timer := bb.get_float("action_timer") - delta
+		bb.set_memory("action_timer", timer)
 		
 		if timer <= 0.0:
 			_complete_grazing(bb)
@@ -315,7 +326,8 @@ class GrazeGrassAction extends GOAPAction:
 		var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
 		
 		if ws != null and parent.has_method("set_block_globally"):
-			var below := Vector3i(floori(host.global_position.x), floori(host.global_position.y - 0.5), floori(host.global_position.z))
+			# Safe rounding offset (+0.5) applied to allow stable voxel queries
+			var below := Vector3i(floori(host.global_position.x), floori(host.global_position.y + 0.5) - 1, floori(host.global_position.z))
 			if ws.get_block(below) == 3:
 				parent.call("set_block_globally", below, 2)
 				host.set_meta(META_IS_FLUFFY, true)
@@ -375,9 +387,11 @@ class SheepWanderAction extends GOAPAction:
 		var distances: Array[float] = [1.0, 2.0]
 		for dist: float in distances:
 			var check_pos: Vector3 = host.global_position + dir * dist
-			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
-			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
-			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			# Dynamic nearest-integer rounding (+0.5) eliminates vertical float Y drift
+			var feet_y := floori(check_pos.y + 0.5)
+			var feet_coord := Vector3i(floori(check_pos.x), feet_y, floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), feet_y + 1, floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), feet_y - 1, floori(check_pos.z))
 			
 			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
 				return false

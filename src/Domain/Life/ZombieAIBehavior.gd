@@ -12,10 +12,9 @@ const TASK_IDLE: int = 0
 const TASK_WANDERING: int = 1
 const TASK_WORKING: int = 6
 
-const SPEED_CHASE: float = 4.8
-const SPEED_WANDER: float = 2.6
+const SPEED_CHASE: float = 2.8
+const SPEED_WANDER: float = 1.0
 
-# Expanded chase sight range: 20 blocks (400.0 m^2)
 const RANGE_CHASE_SQ: float = 400.0
 const RANGE_ATTACK_SQ: float = 1.44
 const COOLDOWN_ATTACK_SEC: float = 1.5
@@ -321,7 +320,7 @@ class ZombieRestAction extends GOAPAction:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai := host.get("ai_component")
 		VoxelKinematicService.halt_movement(host, ai)
-		if is_instance_valid(ai): ai.set("current_task", ZombieAIBehavior.TASK_IDLE)
+		if is_instance_valid(ai): ai.set("current_task", TASK_IDLE)
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var timer := bb.get_float("action_timer") - delta
@@ -391,9 +390,10 @@ class ZombieWanderAction extends GOAPAction:
 		var distances: Array[float] = [1.0, 2.0]
 		for dist: float in distances:
 			var check_pos: Vector3 = host.global_position + dir * dist
-			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
-			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.0), floori(check_pos.z))
-			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			var feet_y := floori(check_pos.y + 0.5)
+			var feet_coord := Vector3i(floori(check_pos.x), feet_y, floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), feet_y + 1, floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), feet_y - 1, floori(check_pos.z))
 			
 			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
 				return false
@@ -423,3 +423,10 @@ class ZombieWanderAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
+
+	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
+		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
+			return false
+		var wall_normal := host.get_wall_normal()
+		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

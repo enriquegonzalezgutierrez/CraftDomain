@@ -13,8 +13,8 @@ const TASK_WANDERING: int = 1
 const TASK_PANIC: int = 5
 const TASK_WORKING: int = 6
 
-const SPEED_PATROL: float = 4.4
-const SPEED_CLIMB: float = 5.6
+const SPEED_PATROL: float = 2.0
+const SPEED_CLIMB: float = 2.6
 
 const COOLDOWN_FLIP_SEC: float = 5.0
 const RANGE_SIGHT_SQ: float = 100.0
@@ -306,8 +306,9 @@ class MonkeyWanderAction extends GOAPAction:
 		return false
 
 	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
-		for i: int in range(12):
-			var angle := randf() * TAU
+		var start_angle := randf() * TAU
+		for i: int in range(16):
+			var angle := start_angle + (float(i) / 16.0) * TAU
 			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
 			if _is_direction_clear(host, candidate):
 				return candidate
@@ -330,9 +331,10 @@ class MonkeyWanderAction extends GOAPAction:
 		var distances: Array[float] = [1.0, 2.0]
 		for dist: float in distances:
 			var check_pos: Vector3 = host.global_position + dir * dist
-			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
-			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.5), floori(check_pos.z))
-			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			var feet_y := floori(check_pos.y + 0.5)
+			var feet_coord := Vector3i(floori(check_pos.x), feet_y, floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), feet_y + 1, floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), feet_y - 1, floori(check_pos.z))
 			
 			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
 				return false
@@ -362,3 +364,10 @@ class MonkeyWanderAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
+
+	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
+		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
+			return false
+		var wall_normal := host.get_wall_normal()
+		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

@@ -1,8 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/AIShowcaseRoom.gd
 # Description: Self-contained AI and Entity 3D Sandbox Laboratory. Generates mock 
-#              surroundings, A* navigation nodes, and provides decoupled spawner
-#              interfaces for diagnostic testing.
+#              surroundings, A* navigation nodes, and spawner interfaces.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -53,10 +52,11 @@ func _ready() -> void:
 func spawn_test_subject(spawn_id: int) -> void:
 	_flush_active_test_subject()
 	
-	var spawn_pos := Vector3(0.0, float(PLATFORM_Y) + 3.0, 0.0) 
+	var spawn_pos := Vector3(0.0, float(PLATFORM_Y) + 1.5, 0.0) 
 	_active_test_subject = MobRegistry.create_mob(spawn_id, spawn_pos) as CharacterBody3D
 	
 	if is_instance_valid(_active_test_subject):
+		_active_test_subject.set_meta("spawn_id", spawn_id)
 		add_child(_active_test_subject)
 		subject_spawned.emit(_active_test_subject)
 
@@ -79,7 +79,7 @@ func _setup_mock_world_state() -> void:
 	
 	for x: int in range(PLATFORM_SIZE):
 		for z: int in range(PLATFORM_SIZE):
-			for y: int in range(8, PLATFORM_Y + 1):
+			for y in range(8, PLATFORM_Y + 1):
 				var global_pos := Vector3i(x - 8, y, z - 8)
 				world_state.set_block(global_pos, BlockType.Type.STONE)
 				
@@ -176,7 +176,7 @@ func _build_physical_testing_platform() -> void:
 			var bm := BoxMesh.new()
 			bm.size = Vector3(1.0, 0.1, 1.0)
 			box.mesh = bm
-			box.position = Vector3(float(x) + HALF_BLOCK_OFFSET, float(PLATFORM_Y) - 0.05, float(z) + HALF_BLOCK_OFFSET)
+			box.position = Vector3(float(x) + HALF_BLOCK_OFFSET, float(PLATFORM_Y) + 0.95, float(z) + HALF_BLOCK_OFFSET)
 			
 			var mat := StandardMaterial3D.new()
 			var is_even := ((x + z) % 2 == 0)
@@ -194,7 +194,7 @@ func _setup_platform_colliders(checker_root: Node) -> void:
 	var floor_shape := BoxShape3D.new()
 	floor_shape.size = Vector3(16.0, 1.0, 16.0)
 	floor_col.shape = floor_shape
-	floor_body.position = Vector3(0.0, float(PLATFORM_Y) - HALF_BLOCK_OFFSET, 0.0)
+	floor_body.position = Vector3(0.0, float(PLATFORM_Y) + HALF_BLOCK_OFFSET, 0.0)
 	floor_body.add_child(floor_col) 
 	checker_root.add_child(floor_body)
 	
@@ -208,10 +208,10 @@ func _setup_platform_colliders(checker_root: Node) -> void:
 
 func _setup_containment_walls(checker_root: Node) -> void:
 	var walls_config: Array[Array] = [
-		[Vector3(0, PLATFORM_Y + 5.0, -9.0), Vector3(18, 10, 2)], 
-		[Vector3(0, PLATFORM_Y + 5.0, 9.0), Vector3(18, 10, 2)],  
-		[Vector3(9.0, PLATFORM_Y + 5.0, 0), Vector3(2, 10, 18)],  
-		[Vector3(-9.0, PLATFORM_Y + 5.0, 0), Vector3(2, 10, 18)]  
+		[Vector3(0, PLATFORM_Y + 6.0, -9.0), Vector3(18, 10, 2)], 
+		[Vector3(0, PLATFORM_Y + 6.0, 9.0), Vector3(18, 10, 2)],  
+		[Vector3(9.0, PLATFORM_Y + 6.0, 0), Vector3(2, 10, 18)],  
+		[Vector3(-9.0, PLATFORM_Y + 6.0, 0), Vector3(2, 10, 18)]  
 	]
 	for w_data: Array in walls_config:
 		var wb := StaticBody3D.new()
@@ -222,6 +222,19 @@ func _setup_containment_walls(checker_root: Node) -> void:
 		wb.position = w_data[0] as Vector3
 		wb.add_child(wc)
 		checker_root.add_child(wb)
+		
+	_register_containment_walls_in_world_state()
+
+
+func _register_containment_walls_in_world_state() -> void:
+	if world_state == null: return
+	for y in range(PLATFORM_Y + 1, PLATFORM_Y + 10):
+		for x in range(-9, 10):
+			world_state.set_block(Vector3i(x, y, -9), BlockType.Type.STONE)
+			world_state.set_block(Vector3i(x, y, 9), BlockType.Type.STONE)
+		for z in range(-9, 10):
+			world_state.set_block(Vector3i(-9, y, z), BlockType.Type.STONE)
+			world_state.set_block(Vector3i(9, y, z), BlockType.Type.STONE)
 
 
 func _instantiate_decoupled_dashboard() -> void:

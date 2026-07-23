@@ -13,8 +13,8 @@ const TASK_WANDERING: int = 1
 const TASK_PANIC: int = 5
 const TASK_WORKING: int = 6
 
-const SPEED_PATROL: float = 2.6
-const SPEED_PANIC: float = 4.8
+const SPEED_PATROL: float = 1.4
+const SPEED_PANIC: float = 3.8
 
 const COOLDOWN_SPELL_SEC: float = 6.0
 const CAST_DURATION_SEC: float = 2.0
@@ -87,14 +87,6 @@ func _update_blackboard_timers(delta: float) -> void:
 	
 	var med_cd := _blackboard.get_float("meditate_cooldown") - delta
 	_blackboard.set_memory("meditate_cooldown", maxf(0.0, med_cd))
-
-
-func _handle_conversation_interrupt(host: Object) -> void:
-	_active_plan.clear()
-	var ai: Object = host.get("ai_component")
-	if is_instance_valid(ai):
-		ai.set("current_task", TASK_IDLE)
-		ai.set("wander_direction", Vector3.ZERO)
 
 
 func _evaluate_active_plan(_host: Object) -> void:
@@ -194,7 +186,6 @@ class DruidFleeAction extends GOAPAction:
 			var diff := protector.global_position - host.global_position
 			diff.y = 0.0
 			if diff.length() > 3.0:
-				if is_instance_valid(ai): ai.set("wander_direction", diff.normalized())
 				VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_PANIC)
 				return false
 		return true
@@ -279,7 +270,7 @@ class MoveToAnimalAction extends GOAPAction:
 		diff.y = 0.0
 		
 		if diff.length_squared() <= RANGE_HEAL_ATTACK_SQ:
-			host.velocity.x = 0.0; host.velocity.z = 0.0
+			VoxelKinematicService.halt_movement(host, ai)
 			return true
 			
 		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_PATROL)
@@ -378,7 +369,7 @@ class DruidPatrolAction extends GOAPAction:
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai): ai.set("current_task", DruidAIBehavior.TASK_WANDERING)
+		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
 			
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
@@ -395,8 +386,9 @@ class DruidPatrolAction extends GOAPAction:
 		return false
 
 	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
-		for i: int in range(12):
-			var angle := randf() * TAU
+		var start_angle := randf() * TAU
+		for i: int in range(16):
+			var angle := start_angle + (float(i) / 16.0) * TAU
 			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
 			if _is_direction_clear(host, candidate):
 				return candidate
@@ -419,9 +411,10 @@ class DruidPatrolAction extends GOAPAction:
 		var distances: Array[float] = [1.0, 2.0]
 		for dist: float in distances:
 			var check_pos: Vector3 = host.global_position + dir * dist
-			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
-			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.0), floori(check_pos.z))
-			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			var feet_y := floori(check_pos.y + 0.5)
+			var feet_coord := Vector3i(floori(check_pos.x), feet_y, floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), feet_y + 1, floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), feet_y - 1, floori(check_pos.z))
 			
 			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
 				return false
@@ -451,3 +444,10 @@ class DruidPatrolAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
+
+	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
+		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
+			return false
+		var wall_normal := host.get_wall_normal()
+		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

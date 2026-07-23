@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
 # Description: Infrastructure NPC Sensory AI Brain managing high-performance
-#              GOAP tick routing, dynamic AI LODs, and reactive wall bounces.
+#              GOAP tick routing, dynamic AI LODs, and organic motion curves.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -26,6 +26,10 @@ const DISTANCE_LOD_1_SQ: float = 1600.0 # < 40 meters
 const TICK_LOD_0: float = 0.1
 const TICK_LOD_1: float = 0.5
 const TICK_LOD_2: float = 2.0
+
+const STUCK_THRESHOLD_SEC: float = 0.55
+const MIN_DESIRED_DISPLACEMENT: float = 0.05
+const WALL_ALIGNMENT_THRESHOLD: float = 0.25
 
 var current_task: TaskState = TaskState.IDLE
 var wander_direction: Vector3 = Vector3.ZERO
@@ -126,8 +130,9 @@ func _verify_active_plan_presence() -> void:
 	if active_behavior != null and not is_manual_override:
 		var active_plan: Variant = active_behavior.get("_active_plan")
 		if active_plan is Array and active_plan.is_empty():
-			current_task = TaskState.IDLE
-			wander_direction = Vector3.ZERO
+			# Transition to IDLE with smooth friction decay instead of wiping vectors
+			if current_task != TaskState.IDLE:
+				current_task = TaskState.IDLE
 
 
 func _apply_movement_vectors(delta: float) -> void:
@@ -137,23 +142,37 @@ func _apply_movement_vectors(delta: float) -> void:
 	if is_trying_to_move and current_task != TaskState.IDLE:
 		_execute_linear_walk(base_speed, delta)
 	else:
-		_host.velocity.x = move_toward(_host.velocity.x, 0.0, base_speed)
-		_host.velocity.z = move_toward(_host.velocity.z, 0.0, base_speed)
+		# Smooth, realistic friction decay instead of stopping instantly in 1 frame
+		var friction := base_speed * delta * 8.0
+		_host.velocity.x = move_toward(_host.velocity.x, 0.0, friction)
+		_host.velocity.z = move_toward(_host.velocity.z, 0.0, friction)
 		stuck_timer = 0.0
 
 
 func _get_host_base_speed() -> float:
+	var speed := 1.3
 	if "BASE_SPEED" in _host:
-		return _host.get("BASE_SPEED") as float
-	return 1.3
+		speed = _host.get("BASE_SPEED") as float
+		
+	if current_task == TaskState.PANIC:
+		speed *= 2.4 # Safe standard running multiplier for default entities
+		
+	if active_behavior != null:
+		if active_behavior is QuiqueAIBehavior:
+			if current_task == TaskState.PANIC:
+				return QuiqueAIBehavior.SPEED_PANIC
+			return QuiqueAIBehavior.SPEED_STROLL
+			
+	return speed
 
 
 func _execute_linear_walk(base_speed: float, delta: float) -> void:
-	var final_dir := wander_direction
-	var speed_mult := 2.4 if current_task == TaskState.PANIC else 1.0
+	var final_dir := wander_direction.normalized()
+	var target_vel_x := final_dir.x * base_speed
+	var target_vel_z := final_dir.z * base_speed
 		
-	_host.velocity.x = final_dir.x * base_speed * speed_mult
-	_host.velocity.z = final_dir.z * base_speed * speed_mult
+	_host.velocity.x = lerp(_host.velocity.x, target_vel_x, delta * 12.0)
+	_host.velocity.z = lerp(_host.velocity.z, target_vel_z, delta * 12.0)
 	
 	_evaluate_stuck_state(delta)
 	_keep_gaze_within_tether()
@@ -167,36 +186,69 @@ func _evaluate_stuck_state(delta: float) -> void:
 	var dist_moved := _host.global_position.distance_to(_last_pos_for_stuck)
 	_last_pos_for_stuck = _host.global_position
 	
-	if (is_trying_to_move and dist_moved < 0.04 and _host.is_on_floor()) or _host.is_on_wall():
+	var is_blocked_by_wall := _is_actively_pushing_into_wall()
+	var is_stalled_on_ground := is_trying_to_move and dist_moved < MIN_DESIRED_DISPLACEMENT and _host.is_on_floor()
+	
+	if is_blocked_by_wall or is_stalled_on_ground:
 		stuck_timer += delta
-		if stuck_timer >= 0.2:
+		if stuck_timer >= STUCK_THRESHOLD_SEC:
 			_resolve_stuck_state()
 	else:
 		stuck_timer = 0.0
 
 
+func _is_actively_pushing_into_wall() -> bool:
+	if not _host.is_on_wall() or wander_direction == Vector3.ZERO:
+		return false
+		
+	var wall_normal := _host.get_wall_normal()
+	var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+	if flat_normal == Vector3.ZERO:
+		return false
+		
+	var dot_prod := wander_direction.normalized().dot(-flat_normal)
+	return dot_prod > WALL_ALIGNMENT_THRESHOLD
+
+
 func _resolve_stuck_state() -> void:
 	stuck_timer = 0.0
+	var new_dir := Vector3.ZERO
+	
 	if _host.is_on_wall():
 		var normal := _host.get_wall_normal()
 		var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
 		if flat_normal != Vector3.ZERO:
-			wander_direction = flat_normal.rotated(Vector3.UP, randf_range(-0.5, 0.5)).normalized()
-			return
+			new_dir = flat_normal.rotated(Vector3.UP, randf_range(-0.5, 0.5)).normalized()
 			
-	if wander_direction != Vector3.ZERO:
-		wander_direction = -wander_direction.rotated(Vector3.UP, randf_range(-0.5, 0.5)).normalized()
+	if new_dir == Vector3.ZERO and wander_direction != Vector3.ZERO:
+		new_dir = -wander_direction.rotated(Vector3.UP, randf_range(-0.5, 0.5)).normalized()
+		
+	if new_dir != Vector3.ZERO:
+		wander_direction = new_dir
+		_sync_direction_to_active_blackboard(new_dir)
+
+
+func _sync_direction_to_active_blackboard(new_dir: Vector3) -> void:
+	var normalized_dir := new_dir.normalized()
+	if active_behavior != null:
+		var bb: Variant = active_behavior.get("_blackboard")
+		if bb != null and bb.has_method("set_memory"):
+			bb.call("set_memory", "wander_direction", normalized_dir)
+			bb.call("set_memory", "wander_timer", randf_range(3.0, 6.0))
 
 
 func _keep_gaze_within_tether() -> void:
-	if _host.has_method("_has_ui_decorations") and _host.call("_has_ui_decorations") as bool:
-		var spawn_pt: Vector3 = _host.global_position
-		if "_spawn_point" in _host:
-			spawn_pt = _host.get("_spawn_point") as Vector3
-			
-		if _host.global_position.distance_squared_to(spawn_pt) > 144.0: 
-			wander_direction = (spawn_pt - _host.global_position).normalized()
-			wander_direction.y = 0.0
+	if is_instance_valid(_host) and _host.has_method("_has_ui_decorations") and _host.call("_has_ui_decorations") as bool:
+		var spawn_pt: Vector3 = _host._spawn_point
+		
+		# 2D Flat Plane calculation (Excluding the platform Y height)
+		var current_pos_2d := Vector2(_host.global_position.x, _host.global_position.z)
+		var spawn_pt_2d := Vector2(spawn_pt.x, spawn_pt.z)
+		
+		if current_pos_2d.distance_squared_to(spawn_pt_2d) > 144.0: 
+			var diff := spawn_pt - _host.global_position
+			diff.y = 0.0
+			wander_direction = diff.normalized()
 
 
 func get_task_state_name(task_val: int) -> String:
@@ -212,7 +264,7 @@ func force_manual_task(task_state_id: int) -> void:
 	
 	if current_task == TaskState.WANDERING or current_task == TaskState.PANIC or current_task == TaskState.EXAMINING:
 		var angle := randf() * TAU
-		wander_direction = Vector3(cos(angle), 0.0, sin(angle))
+		wander_direction = Vector3(cos(angle), 0.0, sin(angle)).normalized()
 	else:
 		wander_direction = Vector3.ZERO
 

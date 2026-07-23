@@ -2,10 +2,6 @@
 # Pathfile: res://src/Infrastructure/Life/NPCVisualComponent.gd
 # Description: Rigging component managing visual joints, parent bobbing, 
 #              gaze slerping, and role-based rotation compensations.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles strictly visual joints.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - Thread-Safety Fix: Uses call_deferred for adding root visual nodes.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -28,6 +24,7 @@ var _blink_timer: float = randf_range(2.5, 5.0)
 var _blink_duration: float = 0.0
 var _is_blinking: bool = false
 var _animation_time: float = 0.0
+var _last_valid_gaze_dir: Vector3 = Vector3.FORWARD
 
 var _host: PassiveEntity
 var _ai_component: NPCAIComponent
@@ -44,6 +41,7 @@ func _ready() -> void:
 	_generate_procedural_variant_palette()
 	_preload_shared_grain_texture()
 	_setup_joints()
+	_initialize_initial_gaze_direction()
 
 
 func _setup_joints() -> void:
@@ -54,7 +52,6 @@ func _setup_joints() -> void:
 			_setup_appendage_joints()
 			return
 
-	# Fallback: Create programmatically using call_deferred to avoid C++ tree locking
 	visual_root = Node3D.new()
 	visual_root.name = "Visuals"
 	visual_root.position.y = 0.02
@@ -76,6 +73,15 @@ func _setup_appendage_joints() -> void:
 	if is_instance_valid(head_node):
 		left_eye = head_node.get_node_or_null("LeftEye") as MeshInstance3D
 		right_eye = head_node.get_node_or_null("RightEye") as MeshInstance3D
+
+
+func _initialize_initial_gaze_direction() -> void:
+	if is_instance_valid(_host):
+		# Align initial gaze direction to the exact basis vector that yields 0.0 angle (Z)
+		var initial_facing := _host.global_transform.basis.z.normalized()
+		initial_facing.y = 0.0
+		if initial_facing != Vector3.ZERO:
+			_last_valid_gaze_dir = initial_facing
 
 
 func _process(delta: float) -> void:
@@ -193,13 +199,22 @@ func _calculate_gaze_direction(is_talking: bool) -> Vector3:
 		var partner := _host._talking_partner
 		wander_dir = (partner.global_position - _host.global_position).normalized()
 	else:
-		var flat_velocity := Vector2(_host.velocity.x, _host.velocity.z)
-		if flat_velocity.length_squared() > 0.05:
-			wander_dir = Vector3(flat_velocity.x, 0.0, flat_velocity.y).normalized()
-		elif is_instance_valid(_ai_component):
-			wander_dir = _ai_component.wander_direction
+		# Priority 1: Clean, noise-free mathematical direction from AI Component
+		if is_instance_valid(_ai_component) and _ai_component.wander_direction.length_squared() > 0.01:
+			wander_dir = _ai_component.wander_direction.normalized()
+		else:
+			# Priority 2: Fallback to physical velocity with high-pass filter to prevent slope noise
+			var flat_velocity := Vector2(_host.velocity.x, _host.velocity.z)
+			if flat_velocity.length_squared() > 0.15:
+				wander_dir = Vector3(flat_velocity.x, 0.0, flat_velocity.y).normalized()
+			else:
+				# Priority 3: Retain last valid facing direction to prevent snapping
+				wander_dir = _last_valid_gaze_dir
 			
 	wander_dir.y = 0.0
+	if wander_dir != Vector3.ZERO:
+		_last_valid_gaze_dir = wander_dir
+		
 	return wander_dir
 
 
@@ -210,15 +225,13 @@ func _apply_gaze_body_rotation(wander_dir: Vector3, active_task: int, is_talking
 	if is_instance_valid(visual_root) and should_rotate and wander_dir != Vector3.ZERO:
 		var target_angle := atan2(wander_dir.x, wander_dir.z)
 		
-		var is_humanoid: bool = _host.has_method("_get_humanoid_role") and int(_host.call("_get_humanoid_role")) >= 0
-		if is_humanoid:
-			target_angle += PI
-			
+		# Offset checks applied from host metrics
 		var offset_val: Variant = _host.get("gaze_rotation_offset")
 		if offset_val != null:
 			target_angle += float(offset_val)
 			
-		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, target_angle, delta * 12.0)
+		# Calibrated at 6.5 multiplier for extremely organic, smooth rotational sweeps
+		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, target_angle, delta * 6.5)
 		visual_root.rotation.x = 0.0
 		visual_root.rotation.z = 0.0
 
@@ -271,5 +284,10 @@ func _animate_default_movement_joints(active_task: int, is_moving: bool, delta: 
 			head_node.rotation.x = lerp(head_node.rotation.x, 0.0, delta * 5.0)
 			head_node.rotation.y = lerp(head_node.rotation.y, 0.0, delta * 5.0)
 		if is_instance_valid(arms_node):
-			arms_node.rotation.x = lerp(arms_node.rotation.x, 0.0, delta * 5.0)
-			arms_node.position.y = lerp(arms_node.position.y, -0.21, delta * 5.0)
+			mesh_instance_override_clear(arms_node)
+
+
+func mesh_instance_override_clear(node: Node3D) -> void:
+	if is_instance_valid(node):
+		node.rotation.x = lerp(node.rotation.x, 0.0, get_process_delta_time() * 5.0)
+		node.position.y = lerp(node.position.y, -0.21, get_process_delta_time() * 5.0)
