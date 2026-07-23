@@ -1,19 +1,19 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://b51q111qple63"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/GoblinEntity.gd" id="1_goblin"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/goblin.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://bup8v2ma7e51b" path="res://src/Infrastructure/Life/GoblinEntity.gd" id="1_goblin"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://xmp8h74us34s" path="res://assets/models/mobs/goblin.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_goblin"]
-radius = 0.30078125
-height = 1.4938354
+radius = 0.16503906
+height = 0.99154663
 
 [node name="GoblinEntity" type="CharacterBody3D" unique_id=1012446659]
 script = ExtResource("1_goblin")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1509419174]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.74906766, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49792325, 0)
 shape = SubResource("CapsuleShape3D_goblin")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=874392254]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=659372774]
 
 [node name="goblin" parent="Visuals/BodyBobJoint" unique_id=1106242574 instance=ExtResource("4_glb")]
-transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, 0, 0.73952943, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.48710868, 0)

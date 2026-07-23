@@ -1,19 +1,19 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://3kyp0j4hslll"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/FoxEntity.gd" id="1_fox"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/fox.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://d311fnf8srw0o" path="res://src/Infrastructure/Life/FoxEntity.gd" id="1_fox"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://3gawshhl7elu" path="res://assets/models/mobs/fox.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fox"]
-radius = 0.203125
-height = 0.89608765
+radius = 0.125
+height = 0.60097504
 
 [node name="FoxEntity" type="CharacterBody3D" unique_id=178326441]
 script = ExtResource("1_fox")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1587432432]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0012193918, 0.44804382, -3.479733e-09)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0012193918, 0.30048752, -3.479733e-09)
 shape = SubResource("CapsuleShape3D_fox")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=460109929]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1551434581]
 
 [node name="fox" parent="Visuals/BodyBobJoint" unique_id=1370290190 instance=ExtResource("4_glb")]
-transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, 0, 0.53874135, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.024732828, 0.3439723, 0)

@@ -1,31 +1,31 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://cml5j2rkemarp"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/QuiqueEntity.gd" id="1_quique"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/quique/quique.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://2ahcwq68mtn2" path="res://src/Infrastructure/Life/QuiqueEntity.gd" id="1_quique"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://bcs37mxsl2eso" path="res://assets/models/mobs/quique/quique.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_quique"]
-radius = 0.28
-height = 1.98
+radius = 0.19824219
+height = 1.7561133
 
-[node name="QuiqueEntity" type="CharacterBody3D"]
+[node name="QuiqueEntity" type="CharacterBody3D" unique_id=1165141155]
 script = ExtResource("1_quique")
 
-[node name="EntityCollider" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.98, 0)
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=955201968]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.86805665, 0)
 shape = SubResource("CapsuleShape3D_quique")
 
-[node name="NPCAIComponent" type="Node" parent="."]
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1597743439]
 script = ExtResource("2_ai")
 
-[node name="NPCVisualComponent" type="Node" parent="."]
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=1782266664]
 script = ExtResource("3_vis")
 
-[node name="Visuals" type="Node3D" parent="."]
+[node name="Visuals" type="Node3D" parent="." unique_id=536793440]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 
-[node name="BodyBobJoint" type="Node3D" parent="Visuals"]
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=994357013]
 
-[node name="quique" parent="Visuals/BodyBobJoint" instance=ExtResource("4_glb")]
-transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0.98, 0)
+[node name="quique" parent="Visuals/BodyBobJoint" unique_id=1932199276 instance=ExtResource("4_glb")]
+transform = Transform3D(1.75, 0, 0, 0, 1.75, 0, 0, 0, 1.75, 0, 0.8664365, 0)

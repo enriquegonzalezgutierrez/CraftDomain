@@ -1,19 +1,19 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://ciu23ofueya8x"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/MinerEntity.gd" id="1_miner"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/miner.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://k1nhvvj5wapt" path="res://src/Infrastructure/Life/MinerEntity.gd" id="1_miner"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://rvyk37a6aja6" path="res://assets/models/mobs/miner.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_miner"]
-radius = 0.3256836
-height = 1.9377745
+radius = 0.24072266
+height = 1.7364655
 
 [node name="MinerEntity" type="CharacterBody3D" unique_id=1104973368]
 script = ExtResource("1_miner")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=1950837927]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9614563, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.86080176, 0)
 shape = SubResource("CapsuleShape3D_miner")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=870997677]
@@ -28,4 +28,14 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=449342683]
 
 [node name="miner" parent="Visuals/BodyBobJoint" unique_id=201442468 instance=ExtResource("4_glb")]
-transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0.98483574, 0)
+transform = Transform3D(1.76, 0, 0, 0, 1.76, 0, 0, 0, 1.76, 0, 0.8694434, 0)
+
+[node name="HeadlampBeam" type="SpotLight3D" parent="Visuals/BodyBobJoint" unique_id=314159265]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 1.6185142, 0.3136895)
+light_color = Color(0.98, 0.95, 0.85, 1)
+light_energy = 2.5
+light_indirect_energy = 1.5
+shadow_enabled = true
+shadow_blur = 1.5
+spot_range = 16.0
+spot_angle = 35.0

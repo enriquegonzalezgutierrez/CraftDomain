@@ -1,19 +1,19 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://bcetnjtuydy34"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/HostileEntity.gd" id="1_zombie"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/zombie.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://bi5mcrmw02jjk" path="res://src/Infrastructure/Life/HostileEntity.gd" id="1_zombie"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://c5sorl3x5ltfb" path="res://assets/models/mobs/zombie.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_zombie"]
-radius = 0.29296875
-height = 1.9743164
+radius = 0.22802734
+height = 1.7693847
 
 [node name="ZombieEntity" type="CharacterBody3D" unique_id=1550842935]
 script = ExtResource("1_zombie")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=82872529]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9871582, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8846924, 0)
 shape = SubResource("CapsuleShape3D_zombie")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=1108888629]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=363102857]
 
 [node name="zombie" parent="Visuals/BodyBobJoint" unique_id=1670427753 instance=ExtResource("4_glb")]
-transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0.99130774, 0)
+transform = Transform3D(1.8, 0, 0, 0, 1.8, 0, 0, 0, 1.8, 0, 0.8903625, 0)

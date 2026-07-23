@@ -1,19 +1,19 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://drq176n874eio"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/CyberCitizenEntity.gd" id="1_cyber"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/cyber.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://b2mdvu5okk2i6" path="res://src/Infrastructure/Life/CyberCitizenEntity.gd" id="1_cyber"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://bbyolnchb5u2a" path="res://assets/models/mobs/cyber.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_cyber"]
-radius = 0.25341797
-height = 1.9689808
+radius = 0.19921875
+height = 1.7115412
 
 [node name="CyberCitizenEntity" type="CharacterBody3D" unique_id=1665090776]
 script = ExtResource("1_cyber")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=283652789]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9980674, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8693476, 0)
 shape = SubResource("CapsuleShape3D_cyber")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=278324631]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=1730677203]
 
 [node name="cyber" parent="Visuals/BodyBobJoint" unique_id=301437701 instance=ExtResource("4_glb")]
-transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0.9896598, 0)
+transform = Transform3D(1.8, 0, 0, 0, 1.8, 0, 0, 0, 1.8, 0, 0.88871455, 0)

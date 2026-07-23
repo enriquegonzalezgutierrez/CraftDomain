@@ -6,14 +6,14 @@
 [ext_resource type="PackedScene" uid="uid://dvccsc74jit40" path="res://assets/models/mobs/merchant.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_merchant"]
-radius = 0.28466797
-height = 1.9815978
+radius = 0.25439453
+height = 1.8545685
 
 [node name="MerchantEntity" type="CharacterBody3D" unique_id=670970295]
 script = ExtResource("1_merchant")
 
 [node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=2058570371]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9833679, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.91985327, 0)
 shape = SubResource("CapsuleShape3D_merchant")
 
 [node name="NPCAIComponent" type="Node" parent="." unique_id=64425702]
@@ -28,4 +28,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=924156618]
 
 [node name="merchant" parent="Visuals/BodyBobJoint" unique_id=1790854121 instance=ExtResource("4_glb")]
-transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0.015826702, 0.9898225, 0)
+transform = Transform3D(1.85, 0, 0, 0, 1.85, 0, 0, 0, 1.85, 0.015826702, 0.90990746, 0)
