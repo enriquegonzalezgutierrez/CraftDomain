@@ -70,17 +70,7 @@ func _setup_quest_arrow() -> void:
 	
 	var prism := PrismMesh.new()
 	prism.size = Vector3(0.35, 0.45, 0.22)
-	
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.85, 0.2)
-	mat.roughness = 0.1
-	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.85, 0.2)
-	mat.emission_energy_multiplier = 2.4
-	mat.no_depth_test = true
-	mat.render_priority = 10
-	
-	prism.material = mat
+	prism.material = _create_arrow_material()
 	_quest_arrow.mesh = prism
 	_quest_arrow.rotation.z = PI
 	_quest_arrow.position = Vector3(0.0, _collision_height + 1.15, 0.0)
@@ -89,6 +79,18 @@ func _setup_quest_arrow() -> void:
 	host.add_child(_quest_arrow)
 	host.set("_quest_arrow", _quest_arrow)
 	_apply_uniform_ui_scaling(_quest_arrow)
+
+
+func _create_arrow_material() -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.85, 0.2)
+	mat.roughness = 0.1
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.85, 0.2)
+	mat.emission_energy_multiplier = 2.4
+	mat.no_depth_test = true
+	mat.render_priority = 10
+	return mat
 
 
 func _setup_floating_bubble() -> void:
@@ -154,7 +156,7 @@ func _get_task_subtitle() -> String:
 		task_name = str(active_behavior.call("get_active_state_name", host))
 	else:
 		var task_val: int = ai.get("current_task") as int if "current_task" in ai else 0
-		task_name = ai.call("_get_task_state_name", task_val) as String if ai.has_method("_get_task_state_name") else "IDLE"
+		task_name = ai.call("get_task_state_name", task_val) as String if ai.has_method("get_task_state_name") else "IDLE"
 		
 	var lookup_key := task_name.replace("_", "").to_upper()
 	if lookup_key == "WANDERING": lookup_key = "WANDER"

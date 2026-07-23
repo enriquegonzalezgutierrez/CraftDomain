@@ -1,18 +1,19 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/World/IStructureBlueprint.gd
 # Description: Pure Domain Interface defining the strategic contract for any
-#              procedural voxel structure or decoration. Enables strict OCP compliance
-#              by decoupling construction algorithms into independent classes.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/IStructureBlueprint.gd
+#              procedural voxel structure or decoration.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name IStructureBlueprint
 extends RefCounted
+
 
 ## Abstract contract: Returns the unique integer identifier representing this structure.
 func get_structure_id() -> int:
 	assert(false, "[IStructureBlueprint] get_structure_id() must be implemented by concrete subclass.")
 	return 0
+
 
 ## Abstract contract: Executes the voxel-by-voxel block modification algorithms
 ## inside the target Chunk grid at the specified coordinates.

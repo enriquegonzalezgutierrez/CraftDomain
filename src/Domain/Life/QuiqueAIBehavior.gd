@@ -1,11 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/QuiqueAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
-#              Planning (GOAP) for Quique, the unique Castle Resident.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Segregates royal strolling, elegant 
-#   resting, and absolute panic into decoupled, cohesive GOAP actions.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+#              Planning (GOAP) for Quique, featuring smart spatial wall detection.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -96,7 +92,6 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		# Filter usable actions dynamically by contextual validity
 		var usable_actions: Array[GOAPAction] = []
 		for action: GOAPAction in _actions:
 			if action.is_contextually_valid(_blackboard):
@@ -205,8 +200,7 @@ class QuiquePanicAction extends GOAPAction:
 		
 		if timer <= 0.0:
 			timer = randf_range(0.4, 1.2) 
-			var angle := randf() * TAU
-			var candidate := Vector3(cos(angle), 0.0, sin(angle))
+			var candidate := Vector3(cos(randf() * TAU), 0.0, sin(randf() * TAU))
 			wander_dir = candidate
 			bb.set_memory("wander_direction", wander_dir)
 			
@@ -251,6 +245,8 @@ class QuiqueStrollAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
+		if not is_instance_valid(host): return true
+		
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", QuiqueAIBehavior.TASK_WANDERING)
 			
@@ -262,30 +258,71 @@ class QuiqueStrollAction extends GOAPAction:
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
 		
-		if timer <= 0.0:
-			timer = randf_range(2.0, 6.0)
-			var angle := randf() * TAU
-			wander_dir = Vector3(cos(angle), 0.0, sin(angle)) 
+		if timer <= 0.0 or wander_dir == Vector3.ZERO:
+			wander_dir = _find_safe_wander_direction(host)
+			timer = randf_range(3.0, 7.0)
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
-		_resolve_wall_bounce(bb, host, wander_dir, delta)
+		_check_and_resolve_wall_impact(bb, host, wander_dir, delta)
 		
 		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, QuiqueAIBehavior.SPEED_STROLL)
 		return false
+
+	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
+		for i: int in range(12):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
+			if _is_direction_clear(host, candidate):
+				return candidate
+				
+		var current_facing := -host.global_transform.basis.z.normalized()
+		current_facing.y = 0.0
+		if current_facing != Vector3.ZERO and _is_direction_clear(host, -current_facing):
+			return -current_facing
+			
+		return Vector3.ZERO
+
+	func _is_direction_clear(host: CharacterBody3D, dir: Vector3) -> bool:
+		var parent := host.get_parent() as Node
+		if not is_instance_valid(parent) or not "world_state" in parent:
+			return true
+		var ws: WorldState = parent.get("world_state") as WorldState
+		if ws == null:
+			return true
+			
+		var distances: Array[float] = [1.0, 2.0]
+		for dist: float in distances:
+			var check_pos: Vector3 = host.global_position + dir * dist
+			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.0), floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			
+			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
+				return false
+			if not BlockLibrary.is_solid(ws.get_block(below_coord)):
+				return false
+				
+		return true
+
+	func _check_and_resolve_wall_impact(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
+		var stuck: float = bb.get_float("stuck_timer")
+		var is_colliding: bool = host.is_on_wall() or not _is_direction_clear(host, wander_dir)
 		
-	func _resolve_wall_bounce(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
-		var stuck := bb.get_float("stuck_timer")
-		if wander_dir != Vector3.ZERO and host.is_on_wall():
+		if wander_dir != Vector3.ZERO and is_colliding:
 			stuck += delta
-			if stuck > 0.4:
+			if stuck > 0.2:
 				stuck = 0.0
-				var normal := host.get_wall_normal()
-				var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
-				if flat_normal != Vector3.ZERO:
-					var bounce := wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
-					bounce.y = 0.0
-					bb.set_memory("wander_direction", bounce)
+				var new_dir: Vector3 = _find_safe_wander_direction(host)
+				if new_dir == Vector3.ZERO:
+					if host.is_on_wall():
+						var normal: Vector3 = host.get_wall_normal()
+						new_dir = Vector3(normal.x, 0.0, normal.z).normalized()
+					else:
+						new_dir = -wander_dir
+				bb.set_memory("wander_direction", new_dir)
+				bb.set_memory("wander_timer", randf_range(2.0, 5.0))
 		else:
 			stuck = 0.0
+			
 		bb.set_memory("stuck_timer", stuck)

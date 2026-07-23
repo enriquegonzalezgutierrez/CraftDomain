@@ -1,17 +1,10 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Voxel Definitions)
-# Class: GoldOreBlock
-# Description: Concrete Domain Definition for the deep Gold Ore.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Contains exclusively the physical,
-#   procedural coloring, and texture configurations for Gold Ore.
-# - Open-Closed Principle (OCP): Inherits from BlockDefinition. Being placed 
-#   inside the /Blocks/ directory allows it to be auto-registered on boot.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/Blocks/GoldOreBlock.gd
+# Pathfile: res://src/Domain/World/Blocks/CoalOreBlock.gd
+# Description: Concrete Domain Definition for the Coal Ore stone block.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
-class_name GoldOreBlock
+class_name CoalOreBlock
 extends BlockDefinition
 
 
@@ -20,21 +13,21 @@ func _init() -> void:
 	super()
 	
 	# Domain Properties mapping
-	type = 32 # Equivalent to BlockType.Type.GOLD_ORE
-	translation_key = "BLOCK_GOLD_ORE"
+	type = 21 # Equivalent to BlockType.Type.COAL_ORE
+	translation_key = "BLOCK_COAL_ORE"
 	is_solid = true
 	is_transparent = false
 	
-	# OCP/SOLID Compliance: Tougher block requires 4 hits to extract
-	mining_resistance = 4
+	# Coal ore requires 3 impacts to mine
+	mining_resistance = 3
 	
-	# Procedural stone-grey and yellow gold colors for unshaded fallback
-	color_top = Color(0.65, 0.58, 0.22)
-	color_side = Color(0.55, 0.48, 0.15)
-	color_bottom = Color(0.45, 0.38, 0.10)
+	# Procedural stone-grey and coal-black colors for unshaded fallback rendering
+	color_top = Color(0.28, 0.28, 0.30)
+	color_side = Color(0.22, 0.22, 0.24)
+	color_bottom = Color(0.18, 0.18, 0.20)
 	
 	# High-fidelity visual descriptions for PBR rendering
-	texture_file_name = "gold_ore.png"
-	roughness = 0.65 # Polished ore highlights
-	metallic = 0.6 # Glittering gold specularity
+	texture_file_name = "coal_ore.png"
+	roughness = 0.85
+	metallic = 0.0
 	rendering_type = "default"

@@ -1,17 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Life & Entities / Services)
-# Class: VillageReputationService
+# Pathfile: res://src/Domain/Life/VillageReputationService.gd
+# Description: Pure Domain Service managing the player's village reputation score,
+#              hostility thresholds, and economic barter multipliers.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
-# Description: Pure Domain Service managing the player's village reputation and economic multipliers.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively player reputation scores,
-#   hostility checks, and barter discount multipliers.
-# - Open-Closed Principle (OCP): Easily extendable with new rep thresholds (e.g. unlocking 
-#   special titles, items, or elite quests).
-# - Dependency Inversion Principle (DIP): Pure data-oriented RefCounted service,
-#   completely decoupled from Godot's SceneTree or physics engines.
 # ==============================================================================
 class_name VillageReputationService
 extends RefCounted

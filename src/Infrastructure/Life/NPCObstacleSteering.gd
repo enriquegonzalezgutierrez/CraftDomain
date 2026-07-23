@@ -3,12 +3,7 @@
 # Description: Context-Based Steering Component managing local dynamic 
 #              avoidance, human-like deceleration, edge anticipation, 
 #              and cooperative yielding.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates physical 
-#   kinematics and spatial raycasts, completely decoupled from GOAP goal planning.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - Scene Tree Guardrail: Verifies is_inside_tree before reading global_transform.
-# Author: Enrique Gonzalez Gutierrez
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NPCObstacleSteering
@@ -124,12 +119,10 @@ func _process_dynamic_yielding(space_state: PhysicsDirectSpaceState3D, delta: fl
 
 func _execute_yield_wait_logic(delta: float) -> bool:
 	_yield_timer += delta
-	
 	if _yield_timer < YIELD_WAIT_TIME_SEC:
 		host.velocity.x = lerp(host.velocity.x, 0.0, delta * 8.0)
 		host.velocity.z = lerp(host.velocity.z, 0.0, delta * 8.0)
 		return true 
-		
 	return false
 
 
@@ -172,12 +165,17 @@ func _cast_whisker_rays(space_state: PhysicsDirectSpaceState3D, r_origin: Vector
 	_apply_whisker_steering(best_normal, wander_dir, delta)
 
 
-func _apply_whisker_steering(best_normal: Vector3, wander_dir: Vector3, delta: float) -> void:
+func _apply_whisker_steering(best_normal: Vector3, wander_dir: Vector3, _delta: float) -> void:
 	if best_normal != Vector3.ZERO:
 		var flat_normal := Vector3(best_normal.x, 0.0, best_normal.z).normalized()
 		if flat_normal != Vector3.ZERO:
-			var steer_target := wander_dir.bounce(flat_normal).normalized()
-			ai_component.set("wander_direction", wander_dir.lerp(steer_target, delta * 8.0).normalized())
+			var dot_prod := wander_dir.dot(-flat_normal)
+			if dot_prod > 0.7:
+				ai_component.set("wander_direction", Vector3.ZERO)
+				ai_component.set("current_task", 0) # TaskState.IDLE
+			else:
+				var steer_target := wander_dir.bounce(flat_normal).normalized()
+				ai_component.set("wander_direction", steer_target)
 		host.set_meta("diag_whisk", true)
 	else:
 		host.set_meta("diag_whisk", false)
@@ -203,10 +201,8 @@ func _is_touching_solid_block() -> bool:
 	for i in range(host.get_slide_collision_count()):
 		var collision := host.get_slide_collision(i)
 		var collider := collision.get_collider()
-		
 		if collider == null and collision.get_collider_rid().is_valid():
 			return true
-			
 		if is_instance_valid(collider) and collider is StaticBody3D:
 			return true
 			

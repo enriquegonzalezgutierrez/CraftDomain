@@ -1,14 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Core (World Management Services)
-# Class: ChunkLoaderService
+# Pathfile: res://src/Core/World/ChunkLoaderService.gd
 # Description: Application Service calculating procedural chunk loading and 
 #              unloading queues based on player spatial translations.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively player 
-#   boundary tracking and queue calculations.
-# - Open-Closed Principle (OCP): Dynamically reacts to static 
-#   configuration changes without modifying core logic.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ChunkLoaderService
 extends RefCounted

@@ -1,23 +1,14 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/World/FullCubeGeometry.gd
 # Description: Concrete Voxel Geometry strategy representing a standard 
 #              1x1x1 solid cube block.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively defines the dimensions, 
-#   collision vertices, and culling properties of a full cube.
-# - Liskov Substitution Principle (LSP): Fully satisfies the IVoxelGeometry 
-#   contract signatures without alterations.
-# STABILIZATION FIX:
-# - Restored original physics-proven winding order for TOP and BOTTOM faces 
-#   to guarantee 100% stable gravity and collision support in Godot Physics.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/FullCubeGeometry.gd
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name FullCubeGeometry
 extends IVoxelGeometry
 
 # Cached dictionary of collision vertices to avoid dynamic memory allocation overhead.
-# WINDING ORDER RESTORATION: Reverted to the original, stable game coordinates.
 var _vertices: Dictionary = {
 	Vector3i(0, 1, 0): PackedVector3Array([Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(0, 1, 0)]), # TOP
 	Vector3i(0, -1, 0): PackedVector3Array([Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1)]), # BOTTOM

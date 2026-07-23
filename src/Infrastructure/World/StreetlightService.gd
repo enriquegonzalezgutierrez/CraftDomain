@@ -1,13 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Description: Infrastructure Service responsible for scanning, registering,
-#              and dynamically toggling village streetlights during day/night shifts.
-#              SOLID COMPLIANCE: 
-#              - Single Responsibility Principle (SRP): Isolates light and 
-#                night twilight transition logic, delegating block geometry placement 
-#                entirely to the dedicated StreetlightBlueprint.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Infrastructure/World/StreetlightService.gd
+# Pathfile: res://src/Infrastructure/World/StreetlightService.gd
+# Description: Infrastructure Service managing village streetlights, active 
+#              lighting states, and day/night twilight transitions.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name StreetlightService
 extends RefCounted
@@ -41,7 +37,6 @@ func update_streetlights_state(is_night: bool) -> void:
 		_streetlights_active = is_night
 		print("[StreetlightService] Twilight shift. Toggling 3D Streetlights: ", "ON" if is_night else "OFF")
 		
-		# Zero-rebuild iteration: Direct, ultra-fast loop updating light states on entities
 		if is_instance_valid(world_controller):
 			for child: Node in world_controller.get_children():
 				if child is StreetlightEntity:

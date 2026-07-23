@@ -1,13 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Model Strategies)
-# Class: VillagerModelBuilder
-# Description: Concrete strategy implementing the voxel model sculptor 
-#              for the Common Villager.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Sculpting logic is isolated here.
-# - Open-Closed Principle (OCP): New villager clothing variations or features 
-#   can be appended here without touching the renderer or other NPCs.
+# Pathfile: res://src/Domain/Life/VillagerModelBuilder.gd
+# Description: Concrete strategy implementing the procedural voxel model 
+#              sculptor for the Common Villager entity.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name VillagerModelBuilder
 extends IVoxelModelBuilder
@@ -27,47 +23,49 @@ func build_model(
 	if not is_instance_valid(body_bob_node):
 		return
 		
-	var boots_color := Color(0.12, 0.12, 0.15)
 	var pants_color := Color(0.18, 0.15, 0.12)
-	
-	# 1. Base Legs
-	visual_component.call("create_box", body_bob_node, Vector3(0.16, 0.28, 0.16), Vector3(-0.1, 0.14, 0.0), pants_color)
-	visual_component.call("create_box", body_bob_node, Vector3(0.16, 0.28, 0.16), Vector3(0.1, 0.14, 0.0), pants_color)
-	visual_component.call("create_box", body_bob_node, Vector3(0.18, 0.08, 0.20), Vector3(-0.1, 0.04, -0.02), boots_color)
-	visual_component.call("create_box", body_bob_node, Vector3(0.18, 0.08, 0.20), Vector3(0.1, 0.04, -0.02), boots_color)
-	
-	# 2. Torso Robe
+	_sculpt_villager_legs(visual_component, body_bob_node, pants_color)
 	_build_custom_torso_robe(visual_component, body_bob_node, biome_id, clothing_color, pants_color)
-	
-	# 3. Head Joint (Elongated tall forehead)
+	_sculpt_villager_head_and_eyes(visual_component, body_bob_node, skin_color, biome_id, hair_color)
+	_sculpt_villager_folded_arms(visual_component, body_bob_node, clothing_color)
+
+
+func _sculpt_villager_legs(visual_component: Object, parent: Node3D, pants_color: Color) -> void:
+	var boots_color := Color(0.12, 0.12, 0.15)
+	visual_component.call("create_box", parent, Vector3(0.16, 0.28, 0.16), Vector3(-0.1, 0.14, 0.0), pants_color)
+	visual_component.call("create_box", parent, Vector3(0.16, 0.28, 0.16), Vector3(0.1, 0.14, 0.0), pants_color)
+	visual_component.call("create_box", parent, Vector3(0.18, 0.08, 0.20), Vector3(-0.1, 0.04, -0.02), boots_color)
+	visual_component.call("create_box", parent, Vector3(0.18, 0.08, 0.20), Vector3(0.1, 0.04, -0.02), boots_color)
+
+
+func _sculpt_villager_head_and_eyes(visual_component: Object, parent: Node3D, skin_color: Color, biome_id: int, hair_color: Color) -> void:
 	var head_node := Node3D.new()
 	head_node.name = "HumanHead"
 	head_node.position = Vector3(0, 1.05, 0)
-	body_bob_node.add_child(head_node)
+	parent.add_child(head_node)
 	visual_component.set("head_node", head_node)
 	
 	visual_component.call("create_box", head_node, Vector3(0.35, 0.52, 0.35), Vector3(0, 0.26, 0), skin_color)
 	visual_component.call("create_box", head_node, Vector3(0.10, 0.26, 0.12), Vector3(0, 0.06, -0.22), Color(0.55, 0.42, 0.32)) # Nose
 	
-	# Blinking Eyes (Green emerald)
-	var left_eye := visual_component.call("create_box", head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.09, 0.15, -0.18), Color.WHITE) as MeshInstance3D
-	visual_component.call("create_box", left_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.0, 0.75, 0.35))
-	visual_component.set("left_eye", left_eye)
+	var l_eye := visual_component.call("create_box", head_node, Vector3(0.08, 0.08, 0.02), Vector3(-0.09, 0.15, -0.18), Color.WHITE) as MeshInstance3D
+	visual_component.call("create_box", l_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.0, 0.75, 0.35))
+	visual_component.set("left_eye", l_eye)
 	
-	var right_eye := visual_component.call("create_box", head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.09, 0.15, -0.18), Color.WHITE) as MeshInstance3D
-	visual_component.call("create_box", right_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.0, 0.75, 0.35))
-	visual_component.set("right_eye", right_eye)
+	var r_eye := visual_component.call("create_box", head_node, Vector3(0.08, 0.08, 0.02), Vector3(0.09, 0.15, -0.18), Color.WHITE) as MeshInstance3D
+	visual_component.call("create_box", r_eye, Vector3(0.04, 0.04, 0.01), Vector3(0, 0, -0.01), Color(0.0, 0.75, 0.35))
+	visual_component.set("right_eye", r_eye)
 	
-	# 4. Arms Folded
+	_build_custom_headwear(visual_component, head_node, biome_id, hair_color)
+
+
+func _sculpt_villager_folded_arms(visual_component: Object, parent: Node3D, clothing_color: Color) -> void:
 	var arms_node := Node3D.new()
 	arms_node.name = "ArmsJoint"
 	arms_node.position = Vector3(0, 0.65, -0.23)
-	body_bob_node.add_child(arms_node)
+	parent.add_child(arms_node)
 	visual_component.set("arms_node", arms_node)
 	visual_component.call("create_box", arms_node, Vector3(0.58, 0.18, 0.23), Vector3(0, 0, 0), clothing_color * 0.8)
-	
-	# 5. Headwear
-	_build_custom_headwear(visual_component, head_node, biome_id, hair_color)
 
 
 func _build_custom_torso_robe(visual_component: Object, parent: Node3D, biome_id: int, base_color: Color, accessory_color: Color) -> void:

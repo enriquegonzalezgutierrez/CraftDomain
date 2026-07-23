@@ -118,7 +118,8 @@ static func is_direction_safe(host: Object, ws: WorldState, direction: Vector3, 
 	var b_feet := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
 	var b_chest := Vector3i(floori(check_pos.x), floori(check_pos.y) + 1, floori(check_pos.z))
 	
-	if BlockLibrary.is_solid(ws.get_block(b_feet)) and BlockLibrary.is_solid(ws.get_block(b_chest)):
+	# BUG FIX: Changed 'and' to 'or' so solid blocks at either feet OR chest trigger blockage
+	if BlockLibrary.is_solid(ws.get_block(b_feet)) or BlockLibrary.is_solid(ws.get_block(b_chest)):
 		return false
 		
 	return _evaluate_habitat_safety(host, ws, b_below, b_feet)

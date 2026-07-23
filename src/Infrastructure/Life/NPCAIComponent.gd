@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
 # Description: Infrastructure NPC Sensory AI Brain managing high-performance
-#              GOAP tick routing, dynamic AI LODs, and obstacle steering.
+#              GOAP tick routing, dynamic AI LODs, and reactive wall bounces.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -73,7 +73,7 @@ func _on_world_block_modified(global_pos: Vector3i, _type: BlockType.Type) -> vo
 	var h_pos := _host.global_position
 	var host_coord := Vector3i(floori(h_pos.x), floori(h_pos.y), floori(h_pos.z))
 	if host_coord.distance_to(global_pos) < 15:
-		_ai_timer_accum = TICK_LOD_1
+		_ai_timer_accum = TICK_LOD_0
 
 
 func process_ai(delta: float) -> void:
@@ -131,11 +131,9 @@ func _verify_active_plan_presence() -> void:
 
 
 func _apply_movement_vectors(delta: float) -> void:
-	var base_speed: float = 1.3
-	if "BASE_SPEED" in _host:
-		base_speed = _host.get("BASE_SPEED") as float
-		
+	var base_speed := _get_host_base_speed()
 	var is_trying_to_move := wander_direction.length_squared() > 0.01
+	
 	if is_trying_to_move and current_task != TaskState.IDLE:
 		_execute_linear_walk(base_speed, delta)
 	else:
@@ -144,11 +142,15 @@ func _apply_movement_vectors(delta: float) -> void:
 		stuck_timer = 0.0
 
 
+func _get_host_base_speed() -> float:
+	if "BASE_SPEED" in _host:
+		return _host.get("BASE_SPEED") as float
+	return 1.3
+
+
 func _execute_linear_walk(base_speed: float, delta: float) -> void:
 	var final_dir := wander_direction
-	var speed_mult: float = 1.0
-	if current_task == TaskState.PANIC:
-		speed_mult = 2.4
+	var speed_mult := 2.4 if current_task == TaskState.PANIC else 1.0
 		
 	_host.velocity.x = final_dir.x * base_speed * speed_mult
 	_host.velocity.z = final_dir.z * base_speed * speed_mult
@@ -165,21 +167,25 @@ func _evaluate_stuck_state(delta: float) -> void:
 	var dist_moved := _host.global_position.distance_to(_last_pos_for_stuck)
 	_last_pos_for_stuck = _host.global_position
 	
-	if is_trying_to_move and dist_moved < 0.04 and _host.is_on_floor():
+	if (is_trying_to_move and dist_moved < 0.04 and _host.is_on_floor()) or _host.is_on_wall():
 		stuck_timer += delta
-		if stuck_timer >= 1.0: _resolve_stuck_state()
+		if stuck_timer >= 0.2:
+			_resolve_stuck_state()
 	else:
 		stuck_timer = 0.0
 
 
 func _resolve_stuck_state() -> void:
-	var reverse_dir := -wander_direction.normalized()
-	reverse_dir = reverse_dir.rotated(Vector3.UP, randf_range(-0.8, 0.8)).normalized()
-	
-	wander_direction = reverse_dir
-	current_task = TaskState.WANDERING
 	stuck_timer = 0.0
-	_host.velocity.y = 4.0
+	if _host.is_on_wall():
+		var normal := _host.get_wall_normal()
+		var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
+		if flat_normal != Vector3.ZERO:
+			wander_direction = flat_normal.rotated(Vector3.UP, randf_range(-0.5, 0.5)).normalized()
+			return
+			
+	if wander_direction != Vector3.ZERO:
+		wander_direction = -wander_direction.rotated(Vector3.UP, randf_range(-0.5, 0.5)).normalized()
 
 
 func _keep_gaze_within_tether() -> void:

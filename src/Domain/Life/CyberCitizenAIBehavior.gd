@@ -1,11 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/CyberCitizenAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
-#              Planning (GOAP) for the Cyber Citizen Android NPC.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Segregates road pathing, security 
-#   sweeps, data transmissions, and tactical retreats into decoupled actions.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+#              Planning (GOAP) for the Cyber Citizen Android NPC with smart wall navigation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -17,8 +13,8 @@ const TASK_WANDERING: int = 1
 const TASK_PANIC: int = 5
 const TASK_WORKING: int = 6
 
-const SPEED_PATROL: float = 2.2
-const SPEED_RETREAT: float = 3.2
+const SPEED_PATROL: float = 2.6
+const SPEED_RETREAT: float = 3.6
 
 const SCAN_INTERVAL_SEC: float = 4.0
 const SCAN_DURATION_SEC: float = 1.6
@@ -107,7 +103,6 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		# Filter usable actions dynamically by contextual validity
 		var usable_actions: Array[GOAPAction] = []
 		for action: GOAPAction in _actions:
 			if action.is_contextually_valid(_blackboard):
@@ -205,6 +200,7 @@ class TacticalFleeAction extends GOAPAction:
 			var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
 			if flat_normal != Vector3.ZERO:
 				run_dir = run_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
+				run_dir.y = 0.0
 				
 		VoxelKinematicService.apply_motion_vectors(host, ai, run_dir, SPEED_RETREAT)
 		return false
@@ -349,17 +345,19 @@ class RoadPatrolAction extends GOAPAction:
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
 		
-		if timer <= 0.0:
-			timer = randf_range(2.0, 5.0)
+		if timer <= 0.0 or wander_dir == Vector3.ZERO:
 			var parent := host.get_parent() as Node
 			var road_vector := _scan_for_paved_roads(host.global_position, parent)
-			wander_dir = road_vector if road_vector != Vector3.ZERO else Vector3(cos(randf() * TAU), 0.0, sin(randf() * TAU))
+			wander_dir = road_vector if road_vector != Vector3.ZERO else _find_safe_wander_direction(host)
+			timer = randf_range(3.0, 6.0)
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
-		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
-		return false
+		_check_and_resolve_wall_impact(bb, host, wander_dir, delta)
 		
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, CyberCitizenAIBehavior.SPEED_PATROL)
+		return false
+
 	func _scan_for_paved_roads(host_pos: Vector3, world_node: Node) -> Vector3:
 		if not is_instance_valid(world_node) or not "world_state" in world_node: return Vector3.ZERO
 		var ws: WorldState = world_node.get("world_state") as WorldState
@@ -372,6 +370,63 @@ class RoadPatrolAction extends GOAPAction:
 				if ws.get_block(c) == 25:
 					var diff := (Vector3(c) + Vector3(0.5, 1.0, 0.5)) - host_pos
 					diff.y = 0.0
-					if diff.length() > 0.8:
-						return diff.normalized()
+					if diff.length() > 0.8: return diff.normalized()
 		return Vector3.ZERO
+
+	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
+		for i: int in range(12):
+			var angle := randf() * TAU
+			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
+			if _is_direction_clear(host, candidate):
+				return candidate
+				
+		var current_facing := -host.global_transform.basis.z.normalized()
+		current_facing.y = 0.0
+		if current_facing != Vector3.ZERO and _is_direction_clear(host, -current_facing):
+			return -current_facing
+			
+		return Vector3.ZERO
+
+	func _is_direction_clear(host: CharacterBody3D, dir: Vector3) -> bool:
+		var parent := host.get_parent() as Node
+		if not is_instance_valid(parent) or not "world_state" in parent:
+			return true
+		var ws: WorldState = parent.get("world_state") as WorldState
+		if ws == null:
+			return true
+			
+		var distances: Array[float] = [1.0, 2.0]
+		for dist: float in distances:
+			var check_pos: Vector3 = host.global_position + dir * dist
+			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.0), floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			
+			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
+				return false
+			if not BlockLibrary.is_solid(ws.get_block(below_coord)):
+				return false
+				
+		return true
+
+	func _check_and_resolve_wall_impact(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
+		var stuck: float = bb.get_float("stuck_timer")
+		var is_colliding: bool = host.is_on_wall() or not _is_direction_clear(host, wander_dir)
+		
+		if wander_dir != Vector3.ZERO and is_colliding:
+			stuck += delta
+			if stuck > 0.2:
+				stuck = 0.0
+				var new_dir: Vector3 = _find_safe_wander_direction(host)
+				if new_dir == Vector3.ZERO:
+					if host.is_on_wall():
+						var normal: Vector3 = host.get_wall_normal()
+						new_dir = Vector3(normal.x, 0.0, normal.z).normalized()
+					else:
+						new_dir = -wander_dir
+				bb.set_memory("wander_direction", new_dir)
+				bb.set_memory("wander_timer", randf_range(2.0, 5.0))
+		else:
+			stuck = 0.0
+			
+		bb.set_memory("stuck_timer", stuck)

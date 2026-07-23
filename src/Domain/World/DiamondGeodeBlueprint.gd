@@ -1,15 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic)
+# Pathfile: res://src/Domain/World/DiamondGeodeBlueprint.gd
 # Description: Concrete Ore Vein Strategy implementing a spherical shell algorithm 
-#              to generate beautiful, hollow-style Diamond Geodes with Glowstone cores.
-#              SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Handles exclusively the 
-#                geometric sphere evaluations and core-shell material bounds.
-#              - Liskov Substitution Principle (LSP): Fully satisfies the 
-#                IOreVeinBlueprint contract signatures without modifications.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/DiamondGeodeBlueprint.gd
+#              to generate Diamond Geodes with Glowstone cores.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name DiamondGeodeBlueprint
 extends IOreVeinBlueprint
@@ -38,36 +32,22 @@ func grow_vein(chunk: Chunk, start_x: int, start_y: int, start_z: int, seed_hash
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_hash
 
-	# Determine randomized radius for this cluster
 	var radius := rng.randf_range(MIN_RADIUS, MAX_RADIUS)
 	var r_int := int(ceil(radius))
 
-	# 1. 3D Nested loops to evaluate bounding cube steps
 	for x in range(-r_int, r_int + 1):
 		for y in range(-r_int, r_int + 1):
 			for z in range(-r_int, r_int + 1):
-				var px := start_x + x
-				var py := start_y + y
-				var pz := start_z + z
+				_process_geode_voxel(chunk, Vector3i(start_x + x, start_y + y, start_z + z), Vector3i(x, y, z), radius)
 
-				# Bounds safety check
-				if not chunk.is_within_bounds(px, py, pz):
-					continue
 
-				# Calculate the precise Euclidean distance squared
-				var dist_sq := float(x*x + y*y + z*z)
-				var radius_sq := radius * radius
+func _process_geode_voxel(chunk: Chunk, target_pos: Vector3i, offset: Vector3i, radius: float) -> void:
+	if not chunk.is_within_bounds(target_pos.x, target_pos.y, target_pos.z):
+		return
 
-				if dist_sq <= radius_sq:
-					# Verify that we are only replacing solid stone matrix blocks
-					var current_block := chunk.get_block(px, py, pz)
-					if current_block == REPLACEABLE_TYPE:
-						# Threshold check:
-						# Outside shell (dist_sq > (radius-0.75)^2) becomes Diamond Ore
-						var shell_inner_limit := (radius - 0.75) * (radius - 0.75)
-						
-						if dist_sq > shell_inner_limit:
-							chunk.set_block(px, py, pz, ORE_TYPE)
-						else:
-							# Inner core becomes luminous Glowstone crystals
-							chunk.set_block(px, py, pz, CORE_TYPE)
+	var dist_sq := float(offset.x * offset.x + offset.y * offset.y + offset.z * offset.z)
+	if dist_sq <= radius * radius:
+		if chunk.get_block(target_pos.x, target_pos.y, target_pos.z) == REPLACEABLE_TYPE:
+			var shell_inner_limit := (radius - 0.75) * (radius - 0.75)
+			var target_block := ORE_TYPE if dist_sq > shell_inner_limit else CORE_TYPE
+			chunk.set_block(target_pos.x, target_pos.y, target_pos.z, target_block)

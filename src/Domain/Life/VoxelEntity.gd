@@ -1,14 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Life & Entities / Aggregate Roots)
-# Class: VoxelEntity
+# Pathfile: res://src/Domain/Life/VoxelEntity.gd
+# Description: Pure domain model representing a voxel entity's health, damage, 
+#              and lifecycle state, completely agnostic of Godot nodes.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
-# Description: Pure domain model representing a voxel entity's core logic and state.
-#              Strictly DDD compliant (completely agnostic of Godot's physics engine).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively manages state transformations 
-#   for entity health, damage, and death cycles.
 # ==============================================================================
 class_name VoxelEntity
 extends RefCounted

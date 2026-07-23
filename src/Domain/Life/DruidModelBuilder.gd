@@ -1,9 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Pure Business Logic / Model Strategies)
-# Class: DruidModelBuilder
-# Description: Concrete strategy implementing the voxel model sculptor 
-#              for the Nature Forest Druid.
+# Pathfile: res://src/Domain/Life/DruidModelBuilder.gd
+# Description: Concrete strategy implementing the procedural voxel model 
+#              sculptor for the Nature Forest Druid entity.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name DruidModelBuilder
 extends IVoxelModelBuilder
@@ -23,15 +23,20 @@ func build_model(
 	if not is_instance_valid(body_bob_node):
 		return
 		
-	# Legs, Torso Robe
-	visual_component.call("create_box", body_bob_node, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), Color(0.15, 0.1, 0.08)) # Boots
-	visual_component.call("create_box", body_bob_node, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.18, 0.45, 0.15)) # Robe
-	
-	# Head
+	_sculpt_druid_robe(visual_component, body_bob_node)
+	_sculpt_druid_head(visual_component, body_bob_node, skin_color, hair_color)
+
+
+func _sculpt_druid_robe(visual_component: Object, parent: Node3D) -> void:
+	visual_component.call("create_box", parent, Vector3(0.42, 0.15, 0.42), Vector3(0, 0.075, 0), Color(0.15, 0.1, 0.08)) # Boots
+	visual_component.call("create_box", parent, Vector3(0.45, 0.75, 0.45), Vector3(0, 0.525, 0), Color(0.18, 0.45, 0.15)) # Robe
+
+
+func _sculpt_druid_head(visual_component: Object, parent: Node3D, skin_color: Color, hair_color: Color) -> void:
 	var head_node := Node3D.new()
 	head_node.name = "HumanHead"
 	head_node.position = Vector3(0, 1.05, 0)
-	body_bob_node.add_child(head_node)
+	parent.add_child(head_node)
 	visual_component.set("head_node", head_node)
 	
 	visual_component.call("create_box", head_node, Vector3(0.35, 0.45, 0.35), Vector3(0, 0.225, 0), skin_color)

@@ -2,10 +2,6 @@
 # Pathfile: res://src/Infrastructure/UI/Widgets/VirtualControllerWidget.gd
 # Description: Platform-aware virtual touchscreen overlay containing joysticks
 #              for mobile inputs. Emulates standard hardware Gamepad axis inputs.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively multi-touch 
-#   screen coordinates and vector projections, pushing events to the Godot InputMap.
-# - Level Design Fix: Hidden completely on non-mobile PC platforms to save RAM.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -23,7 +19,7 @@ extends Control
 # Multi-touch tracking maps: Touch Index (int) -> Joystick Side ("left" or "right")
 var _active_touches: Dictionary = {}
 
-# Radios de rango de movimiento de la interfaz en píxeles
+# Joystick handle motion range radius in pixels
 var _max_handle_radius: float = 60.0
 var _center_offset := Vector2(60.0, 60.0)
 
@@ -34,11 +30,9 @@ func _ready() -> void:
 
 ## Evaluates active hardware layers to determine touch controls deployment.
 func _evaluate_platform_visibility() -> void:
-	# Detect if compiling under Android/iOS or display supports touch coordinates (DIP)
 	var is_mobile_platform := OS.has_feature("mobile")
 	var is_touch_hardware_available := DisplayServer.is_touchscreen_available()
 	
-	# STRICT PC PROTECTION: Purge from RAM instantly on desktop, saving memory
 	if not is_mobile_platform and not is_touch_hardware_available:
 		set_process(false)
 		set_physics_process(false)
@@ -80,7 +74,6 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 			return
 			
 	else:
-		# Touch Released
 		if _active_touches.has(event.index):
 			var side: String = _active_touches[event.index]
 			_active_touches.erase(event.index)
@@ -106,7 +99,7 @@ func _update_joystick_vector(side: String, touch_pos: Vector2, zone_rect: Rect2)
 	var handle := _left_handle if side == "left" else _right_handle
 	handle.position = center + offset - (handle.size / 2.0)
 	
-	# Normalizar el vector de salida [-1.0, 1.0] para el motor físico
+	# Normalize output vector [-1.0, 1.0] for the physics engine
 	var output_vector := offset / _max_handle_radius
 	
 	if side == "left":

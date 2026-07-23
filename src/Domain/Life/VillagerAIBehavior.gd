@@ -1,11 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/VillagerAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
-#              Planning (GOAP) for the Common Villager NPC.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Decouples social, survival, shelter,
-#   active patrolling, and idle resting into strictly distinct goals and actions.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+#              Planning (GOAP) for the Common Villager NPC with smart wall navigation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -17,9 +13,9 @@ const TASK_WANDERING: int = 1
 const TASK_PANIC: int = 5
 const TASK_WORKING: int = 6
 
-const SPEED_PATROL: float = 2.0
-const SPEED_RETREAT: float = 3.2
-const SPEED_PANIC: float = 4.8
+const SPEED_PATROL: float = 2.4
+const SPEED_RETREAT: float = 3.6
+const SPEED_PANIC: float = 5.2
 
 const COOLDOWN_CHAT_SEC: float = 8.0
 const CHAT_DURATION_SEC: float = 4.0
@@ -49,7 +45,6 @@ func _setup_goals() -> void:
 	var survive_goal := GOAPGoal.new("Survive", 10.0)
 	survive_goal.add_desired_state("is_safe", true)
 	
-	# Custom Sleep Goal: Only valid during nighttime
 	var sleep_goal := VillagerSleepGoal.new("Sleep", 2.0)
 	sleep_goal.add_desired_state("is_sheltered", true)
 	
@@ -113,7 +108,6 @@ func _evaluate_active_plan(_host: Object) -> void:
 		var initial_state := _build_initial_state()
 		var sorted_goals := _get_sorted_goals()
 		
-		# Filter usable actions dynamically by contextual validity
 		var usable_actions: Array[GOAPAction] = []
 		for action: GOAPAction in _actions:
 			if action.is_contextually_valid(_blackboard):
@@ -364,7 +358,7 @@ class VillagerRestAction extends GOAPAction:
 		return bb.get_float("rest_timer") <= 0.0
 		
 	func on_enter(bb: AIBlackboard) -> void:
-		bb.set_memory("action_timer", randf_range(4.0, 8.0))
+		bb.set_memory("action_timer", randf_range(3.0, 6.0))
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai := host.get("ai_component")
 		VoxelKinematicService.halt_movement(host, ai)
@@ -375,7 +369,7 @@ class VillagerRestAction extends GOAPAction:
 		bb.set_memory("action_timer", timer)
 		
 		if timer <= 0.0:
-			bb.set_memory("rest_timer", randf_range(15.0, 30.0))
+			bb.set_memory("rest_timer", randf_range(12.0, 20.0))
 			return true
 		return false
 
@@ -386,11 +380,13 @@ class PatrolAction extends GOAPAction:
 		add_effect("is_patrolling", true)
 		
 	func on_enter(bb: AIBlackboard) -> void:
-		bb.set_memory("patrol_duration", randf_range(10.0, 20.0))
+		bb.set_memory("patrol_duration", randf_range(12.0, 20.0))
 		bb.set_memory("wander_timer", 0.0)
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
+		if not is_instance_valid(host): return true
+		
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
 			
@@ -402,38 +398,71 @@ class PatrolAction extends GOAPAction:
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
 		
-		if timer <= 0.0:
-			wander_dir = _find_valid_wander_direction(host)
-			timer = randf_range(2.0, 5.0)
+		if timer <= 0.0 or wander_dir == Vector3.ZERO:
+			wander_dir = _find_safe_wander_direction(host)
+			timer = randf_range(3.0, 6.0)
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
-		_check_and_resolve_wall_collisions(bb, host, wander_dir, delta)
+		_check_and_resolve_wall_impact(bb, host, wander_dir, delta)
 		
-		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, VillagerAIBehavior.SPEED_PATROL)
 		return false
-		
-	func _find_valid_wander_direction(host: CharacterBody3D) -> Vector3:
-		for i: int in range(6):
+
+	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
+		for i: int in range(12):
 			var angle := randf() * TAU
-			var candidate := Vector3(cos(angle), 0.0, sin(angle))
-			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
+			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
+			if _is_direction_clear(host, candidate):
 				return candidate
-		var fallback_angle := randf() * TAU
-		return Vector3(cos(fallback_angle), 0.0, sin(fallback_angle))
+				
+		var current_facing := -host.global_transform.basis.z.normalized()
+		current_facing.y = 0.0
+		if current_facing != Vector3.ZERO and _is_direction_clear(host, -current_facing):
+			return -current_facing
+			
+		return Vector3.ZERO
+
+	func _is_direction_clear(host: CharacterBody3D, dir: Vector3) -> bool:
+		var parent := host.get_parent() as Node
+		if not is_instance_valid(parent) or not "world_state" in parent:
+			return true
+		var ws: WorldState = parent.get("world_state") as WorldState
+		if ws == null:
+			return true
+			
+		var distances: Array[float] = [1.0, 2.0]
+		for dist: float in distances:
+			var check_pos: Vector3 = host.global_position + dir * dist
+			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.0), floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			
+			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
+				return false
+			if not BlockLibrary.is_solid(ws.get_block(below_coord)):
+				return false
+				
+		return true
+
+	func _check_and_resolve_wall_impact(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
+		var stuck: float = bb.get_float("stuck_timer")
+		var is_colliding: bool = host.is_on_wall() or not _is_direction_clear(host, wander_dir)
 		
-	func _check_and_resolve_wall_collisions(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
-		var stuck := bb.get_float("stuck_timer")
-		if wander_dir != Vector3.ZERO and host.is_on_wall():
+		if wander_dir != Vector3.ZERO and is_colliding:
 			stuck += delta
-			if stuck > 0.4:
+			if stuck > 0.2:
 				stuck = 0.0
-				var normal := host.get_wall_normal()
-				var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
-				if flat_normal != Vector3.ZERO:
-					var bounce := wander_dir.bounce(flat_normal).rotated(Vector3.UP, randf_range(-0.3, 0.3)).normalized()
-					bounce.y = 0.0
-					bb.set_memory("wander_direction", bounce)
+				var new_dir: Vector3 = _find_safe_wander_direction(host)
+				if new_dir == Vector3.ZERO:
+					if host.is_on_wall():
+						var normal: Vector3 = host.get_wall_normal()
+						new_dir = Vector3(normal.x, 0.0, normal.z).normalized()
+					else:
+						new_dir = -wander_dir
+				bb.set_memory("wander_direction", new_dir)
+				bb.set_memory("wander_timer", randf_range(2.0, 5.0))
 		else:
 			stuck = 0.0
+			
 		bb.set_memory("stuck_timer", stuck)

@@ -1,24 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Life & Entities / Abstract Interfaces)
-# Class: IAIBehavior
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+# Pathfile: res://src/Domain/Life/IAIBehavior.gd
 # Description: Pure Domain Strategy Interface defining the execution contract 
 #              for custom, entity-specific AI behavior routines.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively defines the behavioral
-#   execution boundary, decoupling decision-making processes from physical 
-#   movement structures.
-# - Open-Closed Principle (OCP): Enables the addition of infinite unique 
-#   AI patterns (such as farming, aggressive chasing, and mining) without 
-#   modifying existing entity base controllers or monolithic AI classes.
-# - Liskov Substitution Principle (LSP): Serves as a polymorphic contract. 
-#   Any concrete strategy subclass can be injected into the coordinating AI 
-#   component and processed seamlessly without runtime exceptions.
-# - Dependency Inversion Principle (DIP): Refactored to depend on Godot's abstract
-#   'Object' base instead of concrete framework nodes ('CharacterBody3D', 'Node'),
-#   completely purging framework leakages from the pure Domain layer.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name IAIBehavior
 extends Resource

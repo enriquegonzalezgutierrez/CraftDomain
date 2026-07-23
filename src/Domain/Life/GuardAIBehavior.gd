@@ -1,11 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/GuardAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
-#              Planning (GOAP) for the Armored Guard Knight with reactive threat scans.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Segregates threat discovery, A* chase 
-#   pursuit, melee elimination, and border patrol into decoupled action classes.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+#              Planning (GOAP) for the Armored Guard Knight with reactive threat scans
+#              and smart spatial wall navigation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,8 +13,8 @@ const TASK_IDLE: int = 0
 const TASK_WANDERING: int = 1
 const TASK_WORKING: int = 6
 
-const SPEED_CHASE: float = 4.6
-const SPEED_PATROL: float = 2.6
+const SPEED_CHASE: float = 4.8
+const SPEED_PATROL: float = 2.8
 
 # Expanded sight range: 20 blocks (400.0 m^2)
 const RANGE_SIGHT_SQ: float = 400.0
@@ -70,7 +67,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 
 
 func _check_and_interrupt_patrol_if_threat_detected(host: CharacterBody3D) -> void:
-	# If currently patrolling, interrupt instantly if a hostile enters sight range!
 	if not _active_plan.is_empty() and _active_plan[0] is GuardPatrolAction:
 		var threat := FindThreatAction._scan_for_active_targets_static(host)
 		if is_instance_valid(threat):
@@ -329,28 +325,79 @@ class GuardPatrolAction extends GOAPAction:
 		super("Patrol", 1.0)
 		add_effect("is_patrolling", true)
 		
-	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
+	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
 		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
 			
-		var timer := bb.get_float("wander_timer") - _delta
+		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")
 		
-		if timer <= 0.0:
-			wander_dir = _find_valid_patrol_direction(host)
-			timer = randf_range(2.0, 5.0)
+		if timer <= 0.0 or wander_dir == Vector3.ZERO:
+			wander_dir = _find_safe_wander_direction(host)
+			timer = randf_range(3.0, 6.0)
 			bb.set_memory("wander_direction", wander_dir)
 			
 		bb.set_memory("wander_timer", timer)
-		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
-		return false
+		_check_and_resolve_wall_impact(bb, host, wander_dir, delta)
 		
-	func _find_valid_patrol_direction(host: CharacterBody3D) -> Vector3:
-		for i: int in range(6):
+		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, GuardAIBehavior.SPEED_PATROL)
+		return false
+
+	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
+		for i: int in range(12):
 			var angle := randf() * TAU
-			var candidate := Vector3(cos(angle), 0.0, sin(angle))
-			if FaunaAIBehavior._is_direction_safe_fauna(host, candidate):
+			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
+			if _is_direction_clear(host, candidate):
 				return candidate
-		var fallback_angle := randf() * TAU
-		return Vector3(cos(fallback_angle), 0.0, sin(fallback_angle))
+				
+		var current_facing := -host.global_transform.basis.z.normalized()
+		current_facing.y = 0.0
+		if current_facing != Vector3.ZERO and _is_direction_clear(host, -current_facing):
+			return -current_facing
+			
+		return Vector3.ZERO
+
+	func _is_direction_clear(host: CharacterBody3D, dir: Vector3) -> bool:
+		var parent := host.get_parent() as Node
+		if not is_instance_valid(parent) or not "world_state" in parent:
+			return true
+		var ws: WorldState = parent.get("world_state") as WorldState
+		if ws == null:
+			return true
+			
+		var distances: Array[float] = [1.0, 2.0]
+		for dist: float in distances:
+			var check_pos: Vector3 = host.global_position + dir * dist
+			var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
+			var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.0), floori(check_pos.z))
+			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y - 1.0), floori(check_pos.z))
+			
+			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
+				return false
+			if not BlockLibrary.is_solid(ws.get_block(below_coord)):
+				return false
+				
+		return true
+
+	func _check_and_resolve_wall_impact(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
+		var stuck: float = bb.get_float("stuck_timer")
+		var is_colliding: bool = host.is_on_wall() or not _is_direction_clear(host, wander_dir)
+		
+		if wander_dir != Vector3.ZERO and is_colliding:
+			stuck += delta
+			if stuck > 0.2:
+				stuck = 0.0
+				var new_dir: Vector3 = _find_safe_wander_direction(host)
+				if new_dir == Vector3.ZERO:
+					if host.is_on_wall():
+						var normal: Vector3 = host.get_wall_normal()
+						new_dir = Vector3(normal.x, 0.0, normal.z).normalized()
+					else:
+						new_dir = -wander_dir
+				bb.set_memory("wander_direction", new_dir)
+				bb.set_memory("wander_timer", randf_range(2.0, 5.0))
+		else:
+			stuck = 0.0
+			
+		bb.set_memory("stuck_timer", stuck)

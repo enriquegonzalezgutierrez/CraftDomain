@@ -1,19 +1,9 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (Life & Entities / Abstract Interfaces)
-# Class: IVoxelModelBuilder
-# Author: Enrique González Gutiérrez
-# Email: enrique.gonzalez.gutierrez@gmail.com
+# Pathfile: res://src/Domain/Life/IVoxelModelBuilder.gd
 # Description: Pure Domain Strategy Interface defining the contract for any 
 #              procedural voxel model sculptor.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively defines the drawing 
-#   contract, separating cuboid sculpting algorithms from state machines.
-# - Open-Closed Principle (OCP): Enables adding infinite new visual styles or 
-#   professions (like mages, miners, or astronauts) by creating concrete builders 
-#   that implement this interface, completely closing the core renderer to changes.
-# - Liskov Substitution Principle (LSP): Subclasses fully implement this contract 
-#   to be processed polymorphically by the visual presenter.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name IVoxelModelBuilder
 extends RefCounted

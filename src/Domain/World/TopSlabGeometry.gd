@@ -1,23 +1,14 @@
 # ==============================================================================
-# Project: CraftDomain
+# Pathfile: res://src/Domain/World/TopSlabGeometry.gd
 # Description: Concrete Voxel Geometry strategy representing a top slab block 
 #              occupying the upper half of a voxel coordinate (Y: 0.5 to 1.0).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively defines the dimensions, 
-#   collision vertices, and non-distorting UV mapping for a top slab.
-# - Liskov Substitution Principle (LSP): Fully satisfies the IVoxelGeometry 
-#   contract signatures without alterations.
-# STABILIZATION FIX:
-# - Restored original physics-proven winding order for TOP and BOTTOM faces 
-#   to guarantee 100% stable gravity and collision support in Godot Physics.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/TopSlabGeometry.gd
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name TopSlabGeometry
 extends IVoxelGeometry
 
 # Cached dictionary of collision vertices to avoid dynamic memory allocation overhead.
-# WINDING ORDER RESTORATION: Reverted to the original, stable game coordinates scaled to top half.
 var _vertices: Dictionary = {
 	Vector3i(0, 1, 0): PackedVector3Array([Vector3(0, 1, 1), Vector3(1, 1, 1), Vector3(1, 1, 0), Vector3(0, 1, 0)]), # TOP
 	Vector3i(0, -1, 0): PackedVector3Array([Vector3(0, 0.5, 0), Vector3(1, 0.5, 0), Vector3(1, 0.5, 1), Vector3(0, 0.5, 1)]), # BOTTOM
