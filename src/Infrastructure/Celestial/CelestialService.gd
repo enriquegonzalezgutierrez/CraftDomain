@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/Celestial/CelestialService.gd
 # Description: Infrastructure Celestial Service managing global game time-of-day,
 #              astronomically aligned Sun/Moon orbits, sky shader uniforms,
-#              and dynamic polar aurora borealis intensity modulation.
+#              and dynamic cloud/aurora atmosphere synchronization.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -17,6 +17,7 @@ const SUNSET_HORIZON_COLOR := Color(0.98, 0.52, 0.22)
 const NIGHT_HORIZON_COLOR := Color(0.02, 0.03, 0.05)
 const STORM_HORIZON_COLOR := Color(0.12, 0.13, 0.16)
 const LIGHTNING_FLASH_COLOR := Color(0.85, 0.90, 1.00)
+const CLOUD_TEXTURE_PATH := "res://assets/textures/sky_clouds_fbm.png"
 
 var time_speed: float = 96.0
 var sun_light: DirectionalLight3D
@@ -157,10 +158,19 @@ func _update_sky_atmosphere() -> void:
 	var day_weight := _sync_sun_shader_parameters(sky_mat)
 	_sync_moon_shader_parameters(sky_mat)
 	_sync_aurora_shader_parameters(sky_mat, day_weight)
+	_verify_cloud_texture_binding(sky_mat)
 	
 	sky_mat.set_shader_parameter("storm_weight", _current_storm_weight)
 	_sync_fog_light_color(world_environment.environment, day_weight)
 	_sync_fog_density_multiplier(world_environment.environment)
+
+
+func _verify_cloud_texture_binding(sky_mat: ShaderMaterial) -> void:
+	var active_tex: Variant = sky_mat.get_shader_parameter("cloud_texture")
+	if active_tex == null and ResourceLoader.exists(CLOUD_TEXTURE_PATH):
+		var tex := load(CLOUD_TEXTURE_PATH) as Texture2D
+		if tex != null:
+			sky_mat.set_shader_parameter("cloud_texture", tex)
 
 
 func _sync_sun_shader_parameters(sky_mat: ShaderMaterial) -> float:
@@ -179,7 +189,7 @@ func _sync_moon_shader_parameters(sky_mat: ShaderMaterial) -> void:
 
 func _sync_aurora_shader_parameters(sky_mat: ShaderMaterial, day_weight: float) -> void:
 	var biome_id := _get_player_biome_id()
-	var is_polar_or_celestial := (biome_id == 4 or biome_id == 9) # Frostbite Glaciers & Cloud Kingdom
+	var is_polar_or_celestial := (biome_id == 4 or biome_id == 9)
 	var night_factor := clampf(1.0 - day_weight, 0.0, 1.0)
 	
 	var target_intensity := 1.0 if (is_polar_or_celestial and night_factor > 0.1) else 0.0

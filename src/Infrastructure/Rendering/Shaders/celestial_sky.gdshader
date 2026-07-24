@@ -1,8 +1,8 @@
 // ==============================================================================
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader
 // Description: Photorealistic atmospheric sky shader with Rayleigh & Mie 
-//              scattering gradients, dynamic sun glare, and raymarched 
-//              aurora borealis curtain simulation.
+//              scattering gradients, dynamic sun glare, raymarched aurora 
+//              borealis, and animated FBM fluffy cloud rendering.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -34,10 +34,10 @@ uniform float aurora_speed : hint_range(0.0, 1.0) = 0.08;
 uniform float aurora_height : hint_range(10.0, 100.0) = 36.0;
 uniform float aurora_scale : hint_range(0.1, 2.0) = 0.8;
 
-uniform vec3 aurora_color_a : source_color = vec3(0.10, 0.95, 0.55); // Emerald Green
-uniform vec3 aurora_color_b : source_color = vec3(0.65, 0.15, 0.95); // Ethereal Violet
+uniform vec3 aurora_color_a : source_color = vec3(0.10, 0.95, 0.55);
+uniform vec3 aurora_color_b : source_color = vec3(0.65, 0.15, 0.95);
 
-// --- METEOROLOGICAL & TEMPORAL UNIFORMS ---
+// --- METEOROLOGICAL & CLOUD UNIFORMS ---
 uniform float day_weight : hint_range(0.0, 1.0) = 1.0;
 uniform float storm_weight : hint_range(0.0, 1.0) = 0.0;
 uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.0;
@@ -90,7 +90,7 @@ vec4 calculate_aurora_curtain(vec3 direction, float p_time) {
 	vec4 color = vec4(0.0);
 	vec4 average_color = vec4(0.0);
 	
-	const float loop_count = 20.0; // Optimized loop resolution for locked 120 FPS
+	const float loop_count = 20.0;
 	float jitter = fract(sin(dot(direction.xz, vec2(13.0, 78.0))));
 	float step_scale = aurora_height / loop_count;
 	
@@ -104,7 +104,6 @@ vec4 calculate_aurora_curtain(vec3 direction, float p_time) {
 		col.a = noise;
 		
 		float weight = exp2(-depth_step * 0.065 - 2.5) * smoothstep(0.0, 5.0, depth_step);
-		
 		vec3 ribbon_color = mix(aurora_color_a, aurora_color_b, clamp(depth_step / aurora_height, 0.0, 1.0));
 		col.rgb = ribbon_color * noise;
 		average_color = mix(average_color, col, 0.5);
@@ -150,11 +149,25 @@ void sky() {
 	final_sky = mix(final_sky, moon_color * 1.8, moon_disk);
 	
 	// --- AURORA BOREALIS NIGHT RENDER PASS ---
-	// Performance Gate: Only compute raymarched aurora when night is active and intensity > 0
 	if (day_weight < 0.95 && aurora_intensity > 0.01 && dir.y > -0.05) {
 		float night_mult = (1.0 - day_weight) * (1.0 - storm_weight * 0.80);
 		vec4 aurora_ribbon = calculate_aurora_curtain(dir, TIME);
 		final_sky = mix(final_sky, final_sky + aurora_ribbon.rgb, aurora_ribbon.a * night_mult * aurora_intensity);
+	}
+	
+	// --- DYNAMIC FLUFFY CLOUD RENDER PASS ---
+	if (dir.y > 0.001 && cloud_coverage > 0.01) {
+		vec2 cloud_uv = (dir.xz / (dir.y + 0.32)) * 0.20 + vec2(TIME * 0.006);
+		float cloud_noise = texture(cloud_texture, cloud_uv).r;
+		
+		float cloud_threshold = 1.0 - clamp(cloud_coverage * 0.85, 0.01, 0.95);
+		float cloud_mask = smoothstep(cloud_threshold, cloud_threshold + 0.25, cloud_noise) * smoothstep(0.0, 0.15, dir.y);
+		
+		vec3 cloud_sunlit = mix(vec3(0.98, 0.98, 1.00), vec3(0.98, 0.65, 0.40), sunset_factor);
+		vec3 cloud_shaded = mix(vec3(0.35, 0.38, 0.45), vec3(0.12, 0.13, 0.18), storm_weight);
+		vec3 active_cloud_color = mix(cloud_shaded, cloud_sunlit, day_weight);
+		
+		final_sky = mix(final_sky, active_cloud_color, cloud_mask * clamp(cloud_coverage * 1.25, 0.0, 0.92));
 	}
 	
 	COLOR = final_sky;
