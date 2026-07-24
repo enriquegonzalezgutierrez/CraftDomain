@@ -579,5 +579,16 @@
   "bazaar_return_desc": "Has conquistado el mundo infinito, las profundidades y el cielo. Haz el viaje final de vuelta a la aldea para informar de tus descubrimientos cósmicos.",
   "bazaar_return_obj": "Camina de regreso y habla con el Aldeano en el Bazar",
 
-  "SHOWCASE_TASK_WANDERING": "DEAMBULANDO / PATRULLA"
+  "SHOWCASE_TASK_WANDERING": "DEAMBULANDO / PATRULLA",
+
+  "WEATHER_SUNNY": "Soleado Despejado",
+  "WEATHER_CLOUDY": "Cielo Nublado",
+  "WEATHER_RAINY": "Lluvia y Tormenta",
+  "WEATHER_SNOWY": "Ventisca Polar",
+  "WEATHER_SANDSTORM": "Tormenta de Arena",
+  "WEATHER_FOGGY": "Bruma Baja",
+
+  "SETTINGS_WINDOW_MODE": "Modo de Pantalla",
+  "SETTINGS_MODE_WINDOWED": "Modo Ventana",
+  "SETTINGS_MODE_FULLSCREEN": "Pantalla Completa"
 }

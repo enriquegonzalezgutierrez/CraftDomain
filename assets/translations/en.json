@@ -579,5 +579,16 @@
   "bazaar_return_desc": "You have conquered the infinite world, the depths and the sky. Make the final journey back to the plains village to report your cosmic discoveries to the Villager.",
   "bazaar_return_obj": "Trek back and speak to the Villager at the Bazaar",
 
-  "SHOWCASE_TASK_WANDERING": "WANDERING / PATROL"
+  "SHOWCASE_TASK_WANDERING": "WANDERING / PATROL",
+
+  "WEATHER_SUNNY": "Sunny Clear Sky",
+  "WEATHER_CLOUDY": "Overcast Sky",
+  "WEATHER_RAINY": "Rainy Storm",
+  "WEATHER_SNOWY": "Polar Blizzard",
+  "WEATHER_SANDSTORM": "Arid Sandstorm",
+  "WEATHER_FOGGY": "Low Ground Mist",
+
+  "SETTINGS_WINDOW_MODE": "Display Mode",
+  "SETTINGS_MODE_WINDOWED": "Windowed Mode",
+  "SETTINGS_MODE_FULLSCREEN": "Fullscreen Mode"
 }

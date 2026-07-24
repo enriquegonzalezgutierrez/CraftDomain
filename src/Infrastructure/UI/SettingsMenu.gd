@@ -1,17 +1,24 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/SettingsMenu.gd
-# Description: Infrastructure UI component strictly managing system settings modifications,
-#              dynamic localizations, and persistence.
-#              REFACTORED: Converted compile-time preloads to runtime load calls
-#              to immunize the startup compiler from Windows file-locking race conditions.
-#              COMPLIANCE: Decomposed monolithic methods into < 20 line helpers.
-# Author: Enrique Gonzalez Gutierrez
+# Description: Infrastructure UI component strictly managing system settings 
+#              modifications, multi-resolution display modes (720p to 4K), 
+#              window mode toggles, localizations, and disk persistence.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SettingsMenu
 extends Panel
 
 signal closed
+
+# --- RESOLUTION PRESET CONSTANTS ---
+const RESOLUTION_PRESETS: Array[Vector2i] = [
+	Vector2i(1280, 720),   # 720p HD
+	Vector2i(1600, 900),   # 900p HD+
+	Vector2i(1920, 1080),  # 1080p Full HD
+	Vector2i(2560, 1440),  # 1440p 2K QHD
+	Vector2i(3840, 2160)   # 2160p 4K UHD
+]
 
 @onready var _menu_card: Panel = $CenterContainer/MenuCard
 
@@ -28,6 +35,7 @@ signal closed
 @onready var _dist_slider: HSlider = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/DistSlider
 
 @onready var _res_opt: OptionButton = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/ResHBox/ResOptionButton
+@onready var _win_mode_opt: OptionButton = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/WinModeHBox/WinModeOptionButton
 @onready var _lang_opt: OptionButton = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/LangOptionButton
 @onready var _name_edit: LineEdit = $CenterContainer/MenuCard/MarginContainer/VBoxContainer/NameEdit
 
@@ -85,9 +93,18 @@ func _populate_dropdown_items() -> void:
 		
 	if is_instance_valid(_res_opt):
 		_res_opt.clear()
-		_res_opt.add_item(tr("SETTINGS_RESOLUTION_720"), 0)
-		_res_opt.add_item(tr("SETTINGS_RESOLUTION_1080"), 1)
-		_res_opt.add_item(tr("SETTINGS_RESOLUTION_FULLSCREEN"), 2)
+		for i in range(RESOLUTION_PRESETS.size()):
+			var res := RESOLUTION_PRESETS[i]
+			_res_opt.add_item("%d x %d" % [res.x, res.y], i)
+			
+	_populate_window_mode_dropdown()
+
+
+func _populate_window_mode_dropdown() -> void:
+	if is_instance_valid(_win_mode_opt):
+		_win_mode_opt.clear()
+		_win_mode_opt.add_item(tr("SETTINGS_MODE_WINDOWED"), 0)
+		_win_mode_opt.add_item(tr("SETTINGS_MODE_FULLSCREEN"), 1)
 
 
 func _refresh_localized_text() -> void:
@@ -104,16 +121,15 @@ func _refresh_localized_text() -> void:
 	if is_instance_valid(_back_btn): _back_btn.text = tr("SETTINGS_BACK").to_upper()
 	if is_instance_valid(_apply_btn): _apply_btn.text = tr("SETTINGS_APPLY").to_upper()
 	
-	_update_dropdown_items_text()
+	_update_window_mode_label_text()
 
 
-func _update_dropdown_items_text() -> void:
-	if is_instance_valid(_res_opt):
-		var active_index: int = _res_opt.selected
-		_res_opt.set_item_text(0, tr("SETTINGS_RESOLUTION_720"))
-		_res_opt.set_item_text(1, tr("SETTINGS_RESOLUTION_1080"))
-		_res_opt.set_item_text(2, tr("SETTINGS_RESOLUTION_FULLSCREEN"))
-		_res_opt.select(active_index)
+func _update_window_mode_label_text() -> void:
+	if is_instance_valid(_win_mode_opt):
+		var active_idx := _win_mode_opt.selected
+		_win_mode_opt.set_item_text(0, tr("SETTINGS_MODE_WINDOWED"))
+		_win_mode_opt.set_item_text(1, tr("SETTINGS_MODE_FULLSCREEN"))
+		_win_mode_opt.select(active_idx)
 
 
 func _setup_language_selection_state() -> void:
@@ -125,16 +141,31 @@ func _setup_language_selection_state() -> void:
 
 
 func _setup_resolution_dropdown_state() -> void:
-	if not OS.has_feature("editor"):
-		var main_window: Window = get_tree().root
-		if main_window.mode == Window.MODE_FULLSCREEN or main_window.mode == Window.MODE_EXCLUSIVE_FULLSCREEN:
-			_res_opt.select(2)
-		elif main_window.size.x > 1280:
-			_res_opt.select(1)
-		else:
-			_res_opt.select(0)
-	else:
+	if OS.has_feature("editor"):
 		_res_opt.select(0)
+		return
+		
+	var main_window: Window = get_tree().root
+	var current_size := main_window.size
+	var best_match := _find_closest_resolution_index(current_size)
+	
+	if is_instance_valid(_res_opt):
+		_res_opt.select(best_match)
+		
+	_setup_window_mode_state(main_window)
+
+
+func _setup_window_mode_state(main_window: Window) -> void:
+	if is_instance_valid(_win_mode_opt):
+		var is_fs := (main_window.mode == Window.MODE_FULLSCREEN or main_window.mode == Window.MODE_EXCLUSIVE_FULLSCREEN)
+		_win_mode_opt.select(1 if is_fs else 0)
+
+
+func _find_closest_resolution_index(current_size: Vector2i) -> int:
+	for i in range(RESOLUTION_PRESETS.size()):
+		if RESOLUTION_PRESETS[i] == current_size:
+			return i
+	return 0
 
 
 func _setup_username_display_state() -> void:
@@ -190,22 +221,28 @@ func _on_apply_resolution_pressed() -> void:
 	if OS.has_feature("editor"):
 		return
 		
-	var idx: int = _res_opt.get_selected_id()
-	var main_window: Window = get_tree().root
+	var selected_id := _res_opt.get_selected_id() if is_instance_valid(_res_opt) else 0
+	var res_idx := clampi(selected_id, 0, RESOLUTION_PRESETS.size() - 1)
+	var target_size := RESOLUTION_PRESETS[res_idx]
 	
-	match idx:
-		0:
-			main_window.mode = Window.MODE_WINDOWED
-			main_window.size = Vector2i(1280, 720)
-			main_window.move_to_center()
-		1:
-			main_window.mode = Window.MODE_WINDOWED
-			main_window.size = Vector2i(1920, 1080)
-			main_window.move_to_center()
-		2:
-			main_window.mode = Window.MODE_FULLSCREEN
-			
+	var main_window: Window = get_tree().root
+	var is_fullscreen := _is_fullscreen_selected()
+	
+	if is_fullscreen:
+		main_window.mode = Window.MODE_FULLSCREEN
+		main_window.size = target_size
+	else:
+		main_window.mode = Window.MODE_WINDOWED
+		main_window.size = target_size
+		main_window.move_to_center()
+		
 	_save_all_current_settings()
+
+
+func _is_fullscreen_selected() -> bool:
+	if is_instance_valid(_win_mode_opt):
+		return _win_mode_opt.selected == 1
+	return false
 
 
 func _on_language_changed(index: int) -> void:

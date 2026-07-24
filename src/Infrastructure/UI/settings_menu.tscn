@@ -223,6 +223,19 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_green_normal")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
 text = "SETTINGS_APPLY"
 
+[node name="WinModeHBox" type="HBoxContainer" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="WinModeOptionButton" type="OptionButton" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer/WinModeHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/normal = SubResource("StyleBoxFlat_dropdown_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_dropdown_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_dropdown_normal")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+
 [node name="LangLabel" type="Label" parent="CenterContainer/MenuCard/MarginContainer/VBoxContainer"]
 layout_mode = 2
 text = "SETTINGS_LANGUAGE"
