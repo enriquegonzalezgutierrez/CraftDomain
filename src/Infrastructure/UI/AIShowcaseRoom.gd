@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/AIShowcaseRoom.gd
-# Description: Self-contained AI and Entity 3D Sandbox Laboratory. Generates mock 
-#              surroundings, A* navigation nodes, and spawner interfaces.
+# Description: Self-contained AI and Entity 3D Sandbox Laboratory. Generates 
+#              castle brick walls, A* navigation nodes, and spawner interfaces.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,7 +16,7 @@ const PLATFORM_Y: int = 11
 const CAMPFIRE_PROP_ID: int = 203
 const HALF_BLOCK_OFFSET: float = 0.5
 
-const CAMERA_POS := Vector3(0.0, 22.0, 14.5)
+const CAMERA_POS := Vector3(0.0, 24.0, 16.0)
 const CAMERA_ROT := Vector3(-55.0, 0.0, 0.0)
 const LIGHT_ENERGY_VAL: float = 1.6
 const LIGHT_ROT := Vector3(-45.0, 35.0, 0.0)
@@ -199,6 +199,7 @@ func _setup_platform_colliders(checker_root: Node) -> void:
 	checker_root.add_child(floor_body)
 	
 	_setup_containment_walls(checker_root)
+	_setup_castle_test_walls(checker_root)
 	
 	if PropRegistry.has_prop(CAMPFIRE_PROP_ID):
 		_simulated_campfire = PropRegistry.create_prop(CAMPFIRE_PROP_ID, MOCK_CAMPFIRE_POS) as StaticBody3D
@@ -235,6 +236,68 @@ func _register_containment_walls_in_world_state() -> void:
 		for z in range(-9, 10):
 			world_state.set_block(Vector3i(-9, y, z), BlockType.Type.STONE)
 			world_state.set_block(Vector3i(9, y, z), BlockType.Type.STONE)
+
+
+func _setup_castle_test_walls(checker_root: Node) -> void:
+	var walls_root := Node3D.new()
+	walls_root.name = "CastleWallsRoot"
+	checker_root.add_child(walls_root)
+	
+	var wall_coords: Array[Vector3i] = []
+	
+	# Castle Wall Segment A (Left Corridor)
+	for z in range(-4, 3):
+		for y in range(12, 15):
+			wall_coords.append(Vector3i(-3, y, z))
+			
+	# Castle Wall Segment B (Center Division with Doorway at X=2)
+	for x in range(0, 5):
+		for y in range(12, 15):
+			if x != 2:
+				wall_coords.append(Vector3i(x, y, -2))
+				
+	# Castle Wall Segment C (Right Pillar)
+	for z in range(1, 5):
+		for y in range(12, 15):
+			wall_coords.append(Vector3i(3, y, z))
+			
+	for coord in wall_coords:
+		_build_single_castle_wall_block(walls_root, coord)
+
+
+func _build_single_castle_wall_block(parent: Node, coord: Vector3i) -> void:
+	if world_state != null:
+		world_state.set_block(coord, BlockType.Type.STONE_BRICKS)
+		
+	if navigation_service != null:
+		navigation_service.remove_navigation_node(coord)
+		
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3.ONE
+	col.shape = shape
+	body.add_child(col)
+	
+	var mesh := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3.ONE
+	mesh.mesh = bm
+	
+	var mat := StandardMaterial3D.new()
+	var def := BlockLibrary.get_definition(BlockType.Type.STONE_BRICKS)
+	mat.albedo_color = def.color_top if def != null else Color(0.5, 0.5, 0.5)
+	
+	var tex := TextureRegistry.get_block_texture(BlockType.Type.STONE_BRICKS as int)
+	if tex != null:
+		mat.albedo_texture = tex
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		
+	mesh.material_override = mat
+	body.add_child(mesh)
+	
+	body.position = Vector3(coord) + Vector3(HALF_BLOCK_OFFSET, HALF_BLOCK_OFFSET, HALF_BLOCK_OFFSET)
+	parent.add_child(body)
 
 
 func _instantiate_decoupled_dashboard() -> void:
