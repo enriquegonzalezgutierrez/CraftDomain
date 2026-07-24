@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/VoxelMaterialFactory.gd
 # Description: Infrastructure Factory managing compilation, pre-warming, and
-#              caching of PBR block materials, triplanar shaders, and crystal water.
+#              caching of PBR block materials, triplanar shaders, and 
+#              wind-driven ocean water materials with puddle calmness dampening.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -10,14 +11,40 @@ extends RefCounted
 
 const TRIPLANAR_SHADER_PATH: String = "res://src/Infrastructure/Rendering/Shaders/triplanar_blocks.gdshader"
 const FOLIAGE_SHADER_PATH: String = "res://src/Infrastructure/Rendering/Shaders/foliage_leaves.gdshader"
+const WATER_SHADER_PATH: String = "res://src/Infrastructure/Rendering/Shaders/liquid_water.gdshader"
 const COLOR_DIAGNOSTIC_ERROR := Color(1.0, 0.0, 1.0)
+
+# --- OCEAN WATER SURF CONSTANTS ---
+const SHALLOW_WATER_COLOR := Color(0.12, 0.58, 0.78, 0.60)
+const DEEP_WATER_COLOR := Color(0.01, 0.12, 0.32, 0.95)
+const FOAM_COLOR := Color(0.96, 0.98, 1.00, 0.98)
+
+const BASE_WAVE_AMPLITUDE: float = 0.08
+const WAVE_FREQUENCY: float = 0.75
+const WAVE_SPEED: float = 1.80
+const WAVE_STEEPNESS: float = 1.20
+
+const PUDDLE_DEPTH_THRESHOLD: float = 0.60
+const SHORE_SWASH_REACH: float = 1.40
+const EDGE_FADE_DISTANCE: float = 0.20
+
+const FOAM_THRESHOLD: float = 0.35
+const FOAM_TIGHTNESS: float = 3.00
+const FOAM_NOISE_SCALE: float = 1.20
+
+const WATER_ROUGHNESS: float = 0.03
+const WATER_METALLIC: float = 0.08
 
 static var _materials_cache: Dictionary = {}
 static var _distant_materials_cache: Dictionary = {} 
 
 static var _triplanar_blocks_shader: Shader
 static var _leaves_wind_shader: Shader
+static var _water_shader: Shader
 static var _error_fallback_material: StandardMaterial3D
+
+static var _water_normal_noise_texture_a: NoiseTexture2D
+static var _water_normal_noise_texture_b: NoiseTexture2D
 static var _lock: Mutex = Mutex.new()
 
 
@@ -30,7 +57,7 @@ static func warm_up_material_pipelines() -> void:
 		var _std := get_material(b_id, false)
 		var _dist := get_material(b_id, true)
 		
-	print("[VoxelMaterialFactory] Realistic PBR Water & Triplanar Warm-up completed.")
+	print("[VoxelMaterialFactory] Realistic Wind-Driven Water & PBR Warm-up completed.")
 
 
 ## Resolves and returns the PBR material from RAM cache.
@@ -159,20 +186,89 @@ static func _compile_foliage_material(def: BlockDefinition, block_id: int) -> Sh
 	return sm
 
 
-## Restores the crystal-clear, realistic PBR water material with water.png texture.
-static func _compile_liquid_material(_def: BlockDefinition, block_id: int) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.18, 0.52, 0.85, 0.55)
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.roughness = 0.05
-	m.metallic = 0.12
-	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
-	
-	var tex := TextureRegistry.get_block_texture(block_id)
-	if tex != null:
-		m.albedo_texture = tex
+## Compiles animated wind-driven ocean water shaders with Gerstner waves and crest foam.
+static func _compile_liquid_material(def: BlockDefinition, block_id: int) -> Material:
+	if _water_shader == null and ResourceLoader.exists(WATER_SHADER_PATH):
+		_water_shader = load(WATER_SHADER_PATH) as Shader
 		
-	return m
+	if _water_shader != null:
+		var sm := ShaderMaterial.new()
+		sm.shader = _water_shader
+		_apply_water_shader_uniforms(sm)
+		return sm
+		
+	return _compile_fallback_standard_material(def, block_id)
+
+
+static func _apply_water_shader_uniforms(sm: ShaderMaterial) -> void:
+	sm.set_shader_parameter("shallow_water_color", SHALLOW_WATER_COLOR)
+	sm.set_shader_parameter("deep_water_color", DEEP_WATER_COLOR)
+	sm.set_shader_parameter("foam_color", FOAM_COLOR)
+	sm.set_shader_parameter("base_wave_amplitude", BASE_WAVE_AMPLITUDE)
+	sm.set_shader_parameter("wave_frequency", WAVE_FREQUENCY)
+	sm.set_shader_parameter("wave_speed", WAVE_SPEED)
+	sm.set_shader_parameter("wave_steepness", WAVE_STEEPNESS)
+	_apply_water_secondary_uniforms(sm)
+
+
+static func _apply_water_secondary_uniforms(sm: ShaderMaterial) -> void:
+	sm.set_shader_parameter("puddle_depth_threshold", PUDDLE_DEPTH_THRESHOLD)
+	sm.set_shader_parameter("shore_swash_reach", SHORE_SWASH_REACH)
+	sm.set_shader_parameter("edge_fade_distance", EDGE_FADE_DISTANCE)
+	sm.set_shader_parameter("foam_threshold", FOAM_THRESHOLD)
+	sm.set_shader_parameter("foam_tightness", FOAM_TIGHTNESS)
+	sm.set_shader_parameter("foam_noise_scale", FOAM_NOISE_SCALE)
+	_apply_water_texture_and_pbr_uniforms(sm)
+
+
+static func _apply_water_texture_and_pbr_uniforms(sm: ShaderMaterial) -> void:
+	sm.set_shader_parameter("roughness_val", WATER_ROUGHNESS)
+	sm.set_shader_parameter("metallic_val", WATER_METALLIC)
+	sm.set_shader_parameter("normal_map_a", _get_or_create_water_noise_a())
+	sm.set_shader_parameter("normal_map_b", _get_or_create_water_noise_b())
+
+
+static func _get_or_create_water_noise_a() -> NoiseTexture2D:
+	if _water_normal_noise_texture_a != null:
+		return _water_normal_noise_texture_a
+		
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.frequency = 0.035
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 3
+	
+	_water_normal_noise_texture_a = NoiseTexture2D.new()
+	_water_normal_noise_texture_a.width = 512
+	_water_normal_noise_texture_a.height = 512
+	_water_normal_noise_texture_a.seamless = true
+	_water_normal_noise_texture_a.as_normal_map = true
+	_water_normal_noise_texture_a.bump_strength = 2.5
+	_water_normal_noise_texture_a.noise = noise
+	
+	return _water_normal_noise_texture_a
+
+
+static func _get_or_create_water_noise_b() -> NoiseTexture2D:
+	if _water_normal_noise_texture_b != null:
+		return _water_normal_noise_texture_b
+		
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.seed = 101
+	noise.frequency = 0.065
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 2
+	
+	_water_normal_noise_texture_b = NoiseTexture2D.new()
+	_water_normal_noise_texture_b.width = 512
+	_water_normal_noise_texture_b.height = 512
+	_water_normal_noise_texture_b.seamless = true
+	_water_normal_noise_texture_b.as_normal_map = true
+	_water_normal_noise_texture_b.bump_strength = 1.8
+	_water_normal_noise_texture_b.noise = noise
+	
+	return _water_normal_noise_texture_b
 
 
 static func clear_factory_cache() -> void:
