@@ -2,12 +2,6 @@
 # Pathfile: res://src/Domain/World/BiomeService.gd
 # Description: Pure Domain Service acting as a Registry and Coordinator for voxel biomes.
 #              Centralizes biome evaluation and coordinate-sensing mechanics (SRP / DRY).
-# SOLID COMPLIANCE: 
-# - Single Responsibility Principle (SRP): Exclusively coordinates biome territories.
-# - Open-Closed Principle (OCP): Implements an advanced, mathematically-proven 
-#   360-degree planetary sector map. Distributes all 10 biomes symmetrically with 
-#   transitional buffer plains (Bazaar) to protect structures and prevent clashing.
-# - Zero Warnings: Prefix unused pos_flat with underscore to ensure 100% clean compiles.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -43,6 +37,7 @@ static func initialize_biomes() -> void:
 	register_biome(NeonRuinsBiome.new())
 	register_biome(SwampOfSighsBiome.new())
 	register_biome(CloudKingdomBiome.new())
+	register_biome(EmeraldZoneBiome.new())
 
 
 static func register_biome(biome: IBiome) -> void:
@@ -50,8 +45,6 @@ static func register_biome(biome: IBiome) -> void:
 		
 	_biomes[biome.get_biome_id()] = biome
 	
-	# Symmetrical Fallback: Guarantee that Golden Bazaar (ID 2, Plains) 
-	# is set as the permanent default fallback biome.
 	if _default_biome == null or biome.get_biome_id() == 2:
 		_default_biome = biome
 
@@ -99,12 +92,6 @@ static func _calculate_sector_biome_id(global_x: int, global_z: int) -> int:
 
 
 static func _evaluate_sector_boundary_loop(_pos_flat: Vector2, _distance: float, angle: float) -> int:
-	# ==========================================================================
-	# MATHEMATICAL 360° PLANETARY SECTOR MAP (i18n / OCP Compliant)
-	# Splits the world compass symmetrically with 15-degree transitional 
-	# Plains (Golden Bazaar, ID 2) gaps to isolate structures and avoid clashes.
-	# ==========================================================================
-	
 	# 1. NORTH SECTOR (Warp Plateau, ID 1): [75° to 105°]
 	if angle >= 1.31 and angle < 1.83: return 1
 	
@@ -126,10 +113,8 @@ static func _evaluate_sector_boundary_loop(_pos_flat: Vector2, _distance: float,
 	# 7. EAST SECTOR (Red Badlands, ID 6): [-15° to 15°]
 	if angle >= -0.26 and angle < 0.26: return 6
 	
-	# 8. NORTH-EAST SECTOR (Redwood Forest, ID 5): [30° to 60°]
-	if angle >= 0.52 and angle < 1.05: return 5
+	# 8. NORTH-EAST SECTOR (Emerald Zone, ID 10 & Redwood Forest, ID 5)
+	if angle >= 0.70 and angle < 1.05: return 10
+	if angle >= 0.26 and angle < 0.70: return 5
 	
-	# 9. DEFAULT FALLBACK: Paved plains (Golden Bazaar, ID 2)
-	# All diagonal transition gaps (45°, 135°, -135°, -45°) auto-resolve to plains.
-	# This perfectly surrounds the Castle (45°) and Steve's Cabin (-45°) with grass!
 	return _default_biome.get_biome_id()

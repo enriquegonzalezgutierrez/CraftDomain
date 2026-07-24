@@ -597,5 +597,12 @@
   "DIALOGUE_QUIQUE_CHOICE_STORY": "Háblame de tus victorias pasadas.",
   "DIALOGUE_QUIQUE_STORY_TEXT": "Hace siglos, el Tejedor Malakor intentó deshilachar el Telar Cronológico y colapsar todos los biomas en el vacío estático. Con mi espada, corté su ancla de gravedad etérea y lo sellé en el reino celestial.",
   "DIALOGUE_QUIQUE_SECRET_TEXT": "¡Escucha con atención! Malakor no puede ser destruido solo con armas comunes. Cuando fracture la arena e invierta la gravedad, ¡apunta a su corona estática brillante con la Crono-Guadaña! ¡Destruir su corona temporal cortará su poder para siempre!",
-  "DIALOGUE_QUIQUE_CHOICE_THANK_YOU": "Recordaré vuestra sabiduría, Señor Quique."
+  "DIALOGUE_QUIQUE_CHOICE_THANK_YOU": "Recordaré vuestra sabiduría, Señor Quique.",
+
+  "STRUCTURE_EMERALD_LOOP": "El Gran Bucle Esmeralda",
+
+  "NPC_NAME_SPEEDY_HEDGEHOG": "Erizo Azul Veloz",
+  "NPC_NAME_BADNIK_CRAB": "Cangrejo Robot Badnik",
+
+  "BIOME_EMERALD_ZONE": "La Zona Esmeralda (Tierras Ajedrezadas)"
 }

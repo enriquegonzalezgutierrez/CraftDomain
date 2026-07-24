@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://b2x2hg542hnkb"]
+
+[ext_resource type="Script" uid="uid://dx6a18yw4uyy6" path="res://src/Infrastructure/Life/SpeedyHedgehogEntity.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_visual"]
+[ext_resource type="PackedScene" uid="uid://dqv5cvt8fyc5c" path="res://assets/models/mobs/speedy_hedgehog.glb" id="4_model"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.34765625
+height = 1.5012696
+
+[node name="Entity_SPEEDY_HEDGEHOG" type="CharacterBody3D" unique_id=175806837]
+script = ExtResource("1_script")
+
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1486732347]
+script = ExtResource("2_ai")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=113128491]
+script = ExtResource("3_visual")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=767569306]
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=975759473]
+
+[node name="speedy_hedgehog" parent="Visuals/BodyBobJoint" unique_id=2128145205 instance=ExtResource("4_model")]
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, -0.071106195, 0.7536564, 0)
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=598206069]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7506348, 0)
+shape = SubResource("CapsuleShape3D_body")

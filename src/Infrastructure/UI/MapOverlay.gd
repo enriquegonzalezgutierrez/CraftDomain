@@ -137,10 +137,6 @@ func _process_map_drag(mouse_pos: Vector2) -> void:
 	_radar_canvas.queue_redraw()
 
 
-# ==============================================================================
-# DECOMPOSED RADAR DRAWING ROUTINES (< 15 lines per function)
-# ==============================================================================
-
 func _on_radar_draw() -> void:
 	if not is_instance_valid(_radar_canvas) or not is_instance_valid(player):
 		return
@@ -211,12 +207,12 @@ func _draw_radar_player_indicator(p_map_pos: Vector2) -> void:
 	var p_pulse: float = 12.0 + absf(sin(_pulse_timer)) * 6.0
 	_radar_canvas.draw_circle(p_map_pos, p_pulse, COLOR_PULSE)
 	_radar_canvas.draw_circle(p_map_pos, 4.0, Color.BLACK)
-	_radar_canvas.draw_circle(p_map_pos, 3.0, COLOR_PLAYER)
+	_radar_canvas.draw_circle(p_map_pos, 3.0, Color.WHITE)
 	
 	var look_angle := -player.rotation.y - (PI / 2.0)
 	var arrow_end := p_map_pos + Vector2(cos(look_angle), sin(look_angle)) * PLAYER_ARROW_LENGTH
 	_radar_canvas.draw_line(p_map_pos, arrow_end, Color.BLACK, 4.0)
-	_radar_canvas.draw_line(p_map_pos, arrow_end, COLOR_PLAYER, 2.0)
+	_radar_canvas.draw_line(p_map_pos, arrow_end, Color.WHITE, 2.0)
 
 
 func _world_to_map_space(world_pos: Vector2) -> Vector2:
@@ -329,6 +325,7 @@ func _execute_fast_travel_teleport(p_ctrl: PlayerController, landmark: IMegaStru
 	elif landmark is NetherPortalMegaStructure: target_x = -290.5; target_z = -290.5
 	elif landmark is GrandCastleMegaStructure: target_x = 200.5; target_z = 227.5
 	elif landmark is HarborCityMegaStructure: target_x = -136.5; target_z = 3.5
+	elif landmark is EmeraldLoopMegaStructure: target_x = 300.5; target_z = 282.5
 		
 	p_ctrl.global_position = Vector3(target_x, 35.0, target_z) 
 	var world_ctrl := p_ctrl.world_controller as WorldController

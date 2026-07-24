@@ -1,10 +1,10 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://dd46p4hixf4rb"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
-[ext_resource type="PackedScene" path="res://assets/models/decorations/bluebell.glb" id="2_glb"]
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://c1eckk8roy6de" path="res://assets/models/decorations/bluebell.glb" id="2_glb"]
 
-[node name="BluebellProp" type="Node3D"]
+[node name="BluebellProp" type="Node3D" unique_id=1851178268]
 script = ExtResource("1_prop")
 
-[node name="bluebell" parent="." instance=ExtResource("2_glb")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+[node name="bluebell" parent="." unique_id=1986616215 instance=ExtResource("2_glb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4994303, 0)

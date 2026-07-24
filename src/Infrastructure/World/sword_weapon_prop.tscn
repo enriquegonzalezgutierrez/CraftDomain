@@ -1,6 +1,6 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://eer5ig4wjaji"]
 
-[ext_resource type="PackedScene" path="res://assets/models/weapons/sword.glb" id="1_glb"]
+[ext_resource type="PackedScene" uid="uid://crjnxkf2k7dfq" path="res://assets/models/weapons/sword.glb" id="1_glb"]
 
 [node name="SwordWeaponProp" type="Node3D" unique_id=2131450618]
 

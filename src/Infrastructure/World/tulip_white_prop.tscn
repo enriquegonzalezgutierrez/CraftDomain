@@ -1,10 +1,10 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://cfmsjwuwn4s0s"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
-[ext_resource type="PackedScene" path="res://assets/models/decorations/tulip_white.glb" id="2_glb"]
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://7ihgg8mps1ta" path="res://assets/models/decorations/tulip_white.glb" id="2_glb"]
 
-[node name="TulipWhiteProp" type="Node3D"]
+[node name="TulipWhiteProp" type="Node3D" unique_id=1716849685]
 script = ExtResource("1_prop")
 
-[node name="tulip_white" parent="." instance=ExtResource("2_glb")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+[node name="tulip_white" parent="." unique_id=1945307689 instance=ExtResource("2_glb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.50329846, 0)

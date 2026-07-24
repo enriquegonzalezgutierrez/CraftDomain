@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://b3uy83i480i4k"]
+
+[ext_resource type="Script" uid="uid://d2q7gjh6c3unb" path="res://src/Infrastructure/Life/BadnikCrabEntity.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_visual"]
+[ext_resource type="PackedScene" uid="uid://dysikhnmyohvu" path="res://assets/models/mobs/badnik_crab.glb" id="4_model"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_m5ps7"]
+radius = 1.0328369
+height = 2.0656738
+
+[node name="Entity_BADNIK_CRAB" type="CharacterBody3D" unique_id=1101225751]
+script = ExtResource("1_script")
+
+[node name="NPCAIComponent" type="Node" parent="." unique_id=1835371845]
+script = ExtResource("2_ai")
+
+[node name="NPCVisualComponent" type="Node" parent="." unique_id=541116440]
+script = ExtResource("3_visual")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=275438398]
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=440845072]
+
+[node name="badnik_crab" parent="Visuals/BodyBobJoint" unique_id=2006958423 instance=ExtResource("4_model")]
+transform = Transform3D(4, 0, 0, 0, 4, 0, 0, 0, 4, 0, 1.1174427, 0)
+
+[node name="EntityCollider" type="CollisionShape3D" parent="." unique_id=249835767]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0036619008, 1.0377197, 0)
+shape = SubResource("CapsuleShape3D_m5ps7")

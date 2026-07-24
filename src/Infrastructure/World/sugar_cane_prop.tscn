@@ -1,10 +1,10 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://bgnm37bf2tiab"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
-[ext_resource type="PackedScene" path="res://assets/models/decorations/sugar_cane.glb" id="2_glb"]
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://cvbsdfv861xy0" path="res://assets/models/decorations/sugar_cane.glb" id="2_glb"]
 
-[node name="SugarCaneProp" type="Node3D"]
+[node name="SugarCaneProp" type="Node3D" unique_id=1686211528]
 script = ExtResource("1_prop")
 
-[node name="sugar_cane" parent="." instance=ExtResource("2_glb")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+[node name="sugar_cane" parent="." unique_id=40641759 instance=ExtResource("2_glb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5085108, 0)

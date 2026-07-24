@@ -1,11 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/StructurePopulationService.gd
-# Description: Infrastructure Service managing the registration, coordinate mapping,
-#              and correct chunk layer calculations for static POI populations.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates strictly POI rosters.
-# - Method Size Limits (Rule 4.2): All monolithic population methods broken down 
-#   into sub-methods under 15 lines each.
+# Description: Infrastructure Service managing registration, coordinate mapping,
+#              dynamic registry flushing, and static POI population points.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -43,8 +39,7 @@ static func get_population_for_chunk(chunk_pos: Vector3i) -> Array[PopulationPoi
 
 
 static func _ensure_populated_registry() -> void:
-	if _initialized:
-		return
+	_population_registry.clear()
 	_initialized = true
 	
 	_populate_castle_spawns()
@@ -53,6 +48,7 @@ static func _ensure_populated_registry() -> void:
 	_populate_nether_spawns()
 	_populate_cabin_spawns()
 	_populate_lair_spawns()
+	_populate_emerald_loop_spawns()
 
 
 # ==============================================================================
@@ -66,7 +62,6 @@ static func _populate_castle_spawns() -> void:
 
 
 static func _populate_castle_gates() -> void:
-	# Main entrance gates at Y=13 (Chunk layer Y=0)
 	var c_12_0_12 := Vector3i(12, 0, 12)
 	_population_registry[c_12_0_12] = [
 		PopulationPoint.new(false, 102, Vector3(197.5, 13.0, 224.5)), # Guard
@@ -78,24 +73,21 @@ static func _populate_castle_gates() -> void:
 
 
 static func _populate_castle_courtyard() -> void:
-	# Castle interior courtyard floor at Y=14 (Chunk layer Y=0)
 	var c_12_0_11 := Vector3i(12, 0, 11)
 	_population_registry[c_12_0_11] = [
 		PopulationPoint.new(false, 102, Vector3(197.5, 13.0, 185.5)), # Guard
 		PopulationPoint.new(false, 102, Vector3(202.5, 13.0, 185.5)), # Guard
 		PopulationPoint.new(false, 100, Vector3(200.5, 14.0, 186.5)), # Villager
-		PopulationPoint.new(false, 110, Vector3(201.5, 14.0, 186.5))  # Quique (Right beside Villager)
+		PopulationPoint.new(false, 110, Vector3(201.5, 14.0, 186.5))  # Quique
 	]
 
 
 static func _populate_castle_keep() -> void:
-	# Castle inner keep at Y=13 (Chunk layer Y=0)
 	var c_11_0_11 := Vector3i(11, 0, 11)
 	_population_registry[c_11_0_11] = [
 		PopulationPoint.new(false, 102, Vector3(191.5, 13.0, 189.5))  # Guard
 	]
 	
-	# Castle inner keep treasury at Y=19.5 (Chunk layer Y=1)
 	var c_13_1_11 := Vector3i(13, 1, 11)
 	_population_registry[c_13_1_11] = [
 		PopulationPoint.new(false, 102, Vector3(208.5, 19.5, 188.5)), # Guard
@@ -164,4 +156,15 @@ static func _populate_lair_spawns() -> void:
 	var c_neg7_1_6 := Vector3i(-7, 1, 6)
 	_population_registry[c_neg7_1_6] = [
 		PopulationPoint.new(false, 50, Vector3(-100.5, 16.0, 100.5))  # Lithic Lurker Boss
+	]
+
+
+static func _populate_emerald_loop_spawns() -> void:
+	var c_18_0_18 := Vector3i(18, 0, 18)
+	_population_registry[c_18_0_18] = [
+		PopulationPoint.new(false, 214, Vector3(300.5, 13.0, 285.5)), # Speedy Hedgehog (Sonic)
+		PopulationPoint.new(false, 14, Vector3(297.5, 13.0, 287.5)),  # Badnik Crab
+		PopulationPoint.new(true, 252, Vector3(300.5, 13.0, 288.5)),  # Golden Ring
+		PopulationPoint.new(true, 253, Vector3(298.5, 13.0, 284.5)),  # Speed Spring Pad
+		PopulationPoint.new(true, 251, Vector3(305.5, 13.0, 286.5))   # Sonic Palm Tree
 	]

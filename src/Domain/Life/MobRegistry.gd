@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/MobRegistry.gd
 # Description: Pure Domain Registry managing entity factories, habitat rules,
-#              spawn elevation zones, display name keys, and AI strategy bindings.
+#              spawn elevation zones, display name keys, AI strategy bindings,
+#              and real-time entity creation diagnostics.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -46,19 +47,26 @@ static func register_mob(
 
 ## Constructs and returns an entity instance dynamically at the target position.
 static func create_mob(spawn_id: int, pos: Vector3) -> Node:
+	print("[MobRegistry Diagnostic] Requesting creation for Mob ID: %d at Position: %s" % [spawn_id, pos])
+	
 	if not _spawners.has(spawn_id):
+		push_error("[MobRegistry Diagnostic ERROR] Mob ID %d is NOT registered in _spawners dictionary!" % spawn_id)
 		return null
 		
 	var factory: Callable = _spawners[spawn_id]
 	var mob := factory.call(pos) as Node
 	
-	if is_instance_valid(mob):
-		if not (mob is PassiveEntity):
-			push_error("[MobRegistry] Fatal: Factory returned raw node for ID %d without physics class!" % spawn_id)
-			mob.queue_free()
-			return null
-		_rig_npc_ai_component(mob, spawn_id)
-			
+	if mob == null:
+		push_error("[MobRegistry Diagnostic ERROR] Factory returned NULL for Mob ID %d!" % spawn_id)
+		return null
+		
+	if not (mob is PassiveEntity):
+		push_error("[MobRegistry Diagnostic ERROR] Factory returned node '%s' for ID %d that does NOT inherit from PassiveEntity!" % [mob.name, spawn_id])
+		mob.queue_free()
+		return null
+		
+	_rig_npc_ai_component(mob, spawn_id)
+	print("[MobRegistry Diagnostic SUCCESS] Mob ID %d ('%s') created successfully at %s!" % [spawn_id, mob.name, pos])
 	return mob
 
 

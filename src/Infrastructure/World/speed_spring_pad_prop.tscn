@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://cx1pdphupdqyr"]
+
+[ext_resource type="PackedScene" uid="uid://bx0aentvgdyv0" path="res://assets/models/decorations/speed_spring_pad.glb" id="1_model"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pad"]
+size = Vector3(0.6630371, 1.3573487, 1.2)
+
+[node name="Prop_SPEED_SPRING_PAD" type="StaticBody3D" unique_id=2083130876]
+
+[node name="Visuals" type="Node3D" parent="." unique_id=465186732]
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=77387410]
+
+[node name="speed_spring_pad" parent="Visuals/BodyBobJoint" unique_id=1043181001 instance=ExtResource("1_model")]
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, 0, 0.7003417, 0)
+
+[node name="PropCollider" type="CollisionShape3D" parent="." unique_id=180615130]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4408102e-05, 0.67867434, 0)
+shape = SubResource("BoxShape3D_pad")

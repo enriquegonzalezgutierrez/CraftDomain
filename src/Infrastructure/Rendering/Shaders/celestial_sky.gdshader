@@ -2,7 +2,7 @@
 // Pathfile: res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader
 // Description: Photorealistic atmospheric sky shader with Rayleigh & Mie 
 //              scattering gradients, dynamic sun glare, raymarched aurora 
-//              borealis, and animated FBM fluffy cloud rendering.
+//              borealis, and spherical volumetric fluffy cumulus clouds.
 // Author: Enrique González Gutiérrez
 // Email: enrique.gonzalez.gutierrez@gmail.com
 // ==============================================================================
@@ -116,6 +116,46 @@ vec4 calculate_aurora_curtain(vec3 direction, float p_time) {
 	return color;
 }
 
+// --- SEAMLESS SPHERICAL FLUFFY CLOUD CALCULATOR ---
+vec4 calculate_3d_volumetric_clouds(vec3 dir, float time_val, float coverage, float day_w, float storm_w, float sunset_f, vec3 sun_dir) {
+	if (dir.y <= 0.001 || coverage <= 0.01) {
+		return vec4(0.0);
+	}
+	
+	// Spherical Equirectangular UV Mapping (Zero horizon stretching or division lines!)
+	float u = atan(dir.x, dir.z) / (2.0 * 3.14159265359) + 0.5;
+	float v = asin(clamp(dir.y, 0.0, 1.0)) / (3.14159265359 * 0.5);
+	
+	vec2 cloud_uv1 = vec2(u * 3.0, v * 1.5) + vec2(time_val * 0.003, time_val * 0.0015);
+	vec2 cloud_uv2 = vec2(u * 6.0, v * 3.0) - vec2(time_val * 0.002, time_val * 0.001);
+	
+	float n1 = texture(cloud_texture, cloud_uv1).r;
+	float n2 = texture(cloud_texture, cloud_uv2).r;
+	float cloud_noise = mix(n1, n2, 0.40);
+	
+	// Ultra-soft billowy thresholding (Eliminates blocky edges completely)
+	float density_threshold = 1.0 - clamp(coverage * 0.85, 0.05, 0.95);
+	float cloud_density = smoothstep(density_threshold, density_threshold + 0.35, cloud_noise);
+	
+	// Smooth ground horizon fade
+	float horizon_fade = smoothstep(0.02, 0.25, dir.y);
+	cloud_density *= horizon_fade;
+	
+	if (cloud_density <= 0.001) {
+		return vec4(0.0);
+	}
+	
+	// 3D Directional Lighting & Sunlit Highlights
+	float sun_alignment = max(0.0, dot(dir, normalize(sun_dir)));
+	float cloud_light = mix(0.70, 1.00, pow(sun_alignment, 2.0));
+	
+	vec3 sunlit_color = mix(vec3(0.98, 0.98, 1.00), vec3(0.98, 0.65, 0.40), sunset_f) * cloud_light;
+	vec3 shaded_color = mix(vec3(0.40, 0.42, 0.50), vec3(0.12, 0.13, 0.18), storm_w);
+	vec3 final_cloud_rgb = mix(shaded_color, sunlit_color, day_w * 0.85 + 0.15);
+	
+	return vec4(final_cloud_rgb, clamp(cloud_density * 0.90, 0.0, 0.95));
+}
+
 void sky() {
 	vec3 dir = EYEDIR;
 	
@@ -155,19 +195,10 @@ void sky() {
 		final_sky = mix(final_sky, final_sky + aurora_ribbon.rgb, aurora_ribbon.a * night_mult * aurora_intensity);
 	}
 	
-	// --- DYNAMIC FLUFFY CLOUD RENDER PASS ---
-	if (dir.y > 0.001 && cloud_coverage > 0.01) {
-		vec2 cloud_uv = (dir.xz / (dir.y + 0.32)) * 0.20 + vec2(TIME * 0.006);
-		float cloud_noise = texture(cloud_texture, cloud_uv).r;
-		
-		float cloud_threshold = 1.0 - clamp(cloud_coverage * 0.85, 0.01, 0.95);
-		float cloud_mask = smoothstep(cloud_threshold, cloud_threshold + 0.25, cloud_noise) * smoothstep(0.0, 0.15, dir.y);
-		
-		vec3 cloud_sunlit = mix(vec3(0.98, 0.98, 1.00), vec3(0.98, 0.65, 0.40), sunset_factor);
-		vec3 cloud_shaded = mix(vec3(0.35, 0.38, 0.45), vec3(0.12, 0.13, 0.18), storm_weight);
-		vec3 active_cloud_color = mix(cloud_shaded, cloud_sunlit, day_weight);
-		
-		final_sky = mix(final_sky, active_cloud_color, cloud_mask * clamp(cloud_coverage * 1.25, 0.0, 0.92));
+	// --- SEAMLESS 3D VOLUMETRIC CLOUD RENDER PASS ---
+	vec4 cloud_pass = calculate_3d_volumetric_clouds(dir, TIME, cloud_coverage, day_weight, storm_weight, sunset_factor, sun_direction);
+	if (cloud_pass.a > 0.001) {
+		final_sky = mix(final_sky, cloud_pass.rgb, cloud_pass.a);
 	}
 	
 	COLOR = final_sky;

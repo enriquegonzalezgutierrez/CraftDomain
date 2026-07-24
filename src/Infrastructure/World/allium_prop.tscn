@@ -1,10 +1,10 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://copgo6kgl6gf7"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
-[ext_resource type="PackedScene" path="res://assets/models/decorations/allium.glb" id="2_glb"]
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://cfpecjqrf8i0r" path="res://assets/models/decorations/allium.glb" id="2_glb"]
 
-[node name="AlliumProp" type="Node3D"]
+[node name="AlliumProp" type="Node3D" unique_id=1390557015]
 script = ExtResource("1_prop")
 
-[node name="allium" parent="." instance=ExtResource("2_glb")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+[node name="allium" parent="." unique_id=1062819494 instance=ExtResource("2_glb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5005696, 0)

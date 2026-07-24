@@ -17,7 +17,12 @@ static var _static_models: Dictionary = {}
 
 static func get_mob_scene(mob_id: int) -> PackedScene:
 	_ensure_initialized()
-	return _mobs_scenes.get(mob_id) as PackedScene
+	var scene := _mobs_scenes.get(mob_id) as PackedScene
+	if scene == null:
+		push_error("[Preloader Diagnostic ERROR] Mob scene for ID %d is NULL or missing from preloader cache!" % mob_id)
+	else:
+		print("[Preloader Diagnostic] Retrieved PackedScene for Mob ID %d: %s" % [mob_id, scene.resource_path])
+	return scene
 
 
 static func get_prop_scene(prop_id: int) -> Variant:
@@ -59,6 +64,7 @@ static func _preload_passive_fauna() -> void:
 	_mobs_scenes[211] = load("res://src/Infrastructure/Life/raccoon_entity.tscn")
 	_mobs_scenes[212] = load("res://src/Infrastructure/Life/growlithe_entity.tscn")
 	_mobs_scenes[213] = load("res://src/Infrastructure/Life/monkey_entity.tscn")
+	_mobs_scenes[214] = load("res://src/Infrastructure/Life/speedy_hedgehog_entity.tscn")
 
 
 static func _preload_hostile_husks() -> void:
@@ -66,6 +72,7 @@ static func _preload_hostile_husks() -> void:
 	_mobs_scenes[11] = load("res://src/Infrastructure/Life/shark_entity.tscn")
 	_mobs_scenes[12] = load("res://src/Infrastructure/Life/gargoyle_entity.tscn")
 	_mobs_scenes[13] = load("res://src/Infrastructure/Life/goblin_entity.tscn")
+	_mobs_scenes[14] = load("res://src/Infrastructure/Life/badnik_crab_entity.tscn")
 	_mobs_scenes[50] = load("res://src/Infrastructure/Life/lithic_lurker_entity.tscn")
 	_mobs_scenes[51] = load("res://src/Infrastructure/Life/obsidian_colossus_entity.tscn")
 	_mobs_scenes[52] = load("res://src/Infrastructure/Life/weaver_malakor_entity.tscn")
@@ -94,6 +101,10 @@ static func _preload_structural_props() -> void:
 	_props_scenes[203] = load("res://src/Infrastructure/World/campfire_entity.tscn")
 	_props_scenes[213] = load("res://src/Infrastructure/World/wishing_well_entity.tscn")
 	_props_scenes[215] = load("res://src/Infrastructure/World/barrel_entity.tscn")
+	_props_scenes[250] = load("res://src/Infrastructure/World/sonic_corkscrew_loop_prop.tscn")
+	_props_scenes[251] = load("res://src/Infrastructure/World/sonic_palm_tree_prop.tscn")
+	_props_scenes[252] = load("res://src/Infrastructure/World/golden_ring_prop.tscn")
+	_props_scenes[253] = load("res://src/Infrastructure/World/speed_spring_pad_prop.tscn")
 
 
 static func _preload_vegetation_props() -> void:

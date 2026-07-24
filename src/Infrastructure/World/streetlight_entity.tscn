@@ -4,13 +4,13 @@
 [ext_resource type="PackedScene" uid="uid://bl5cx6oixsrsh" path="res://assets/models/decorations/streetlight.glb" id="2_glb"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_col"]
-size = Vector3(0.26658934, 0.99350584, 0.3954834)
+size = Vector3(0.26658934, 2.9910157, 0.3954834)
 
 [node name="StreetlightEntity" type="StaticBody3D" unique_id=2066441714]
 script = ExtResource("1_script")
 
 [node name="LamppostCollider" type="CollisionShape3D" parent="." unique_id=1310172519]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.8298626e-05, 0.49675292, -1.2204051e-05)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.8298626e-05, 1.4955077, -1.2204051e-05)
 shape = SubResource("BoxShape3D_col")
 
 [node name="Visuals" type="Node3D" parent="." unique_id=1980758517]
@@ -18,7 +18,7 @@ shape = SubResource("BoxShape3D_col")
 [node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=586926439]
 
 [node name="streetlight" parent="Visuals/BodyBobJoint" unique_id=72073746 instance=ExtResource("2_glb")]
-transform = Transform3D(-1.3113416e-07, 0, -3, 0, 3, 0, 3, 0, -1.3113416e-07, 0, 1.5285401, 0)
+transform = Transform3D(-1.3113416e-07, 0, -3, 0, 3, 0, 3, 0, -1.3113416e-07, 0, 1.520755, 0)
 
 [node name="LeftLight" type="OmniLight3D" parent="." unique_id=1880216290]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.35759473, 2.1698778, -0.0630908)

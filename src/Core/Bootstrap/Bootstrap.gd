@@ -176,6 +176,7 @@ func _register_passive_wildlife(h_land: int, h_both: int, h_water: int) -> void:
 	_register_scene_mob(211, RaccoonEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_RACCOON")
 	_register_scene_mob(212, GrowlitheEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_GROWLITHE")
 	_register_scene_mob(213, MonkeyEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_MONKEY")
+	_register_scene_mob(214, null, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_SPEEDY_HEDGEHOG")
 	_register_scene_mob(205, BirdEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_BIRD")
 	_register_scene_mob(207, ParrotEntity, h_land, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_PARROT")
 	_register_scene_mob(208, CrabEntity, h_both, ai_fauna, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_CRAB")
@@ -188,6 +189,7 @@ func _register_hostile_husks(h_land: int, h_water: int) -> void:
 	_register_scene_mob(11, SharkEntity, h_water, ai_zombie, MobRegistry.SpawnZone.AQUATIC, "NPC_NAME_SHARK")
 	_register_scene_mob(12, GargoyleEntity, h_land, ai_zombie, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_GARGOYLE")
 	_register_scene_mob(13, GoblinEntity, h_land, ai_zombie, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_GOBLIN")
+	_register_scene_mob(14, null, h_land, ai_zombie, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_BADNIK_CRAB")
 	_register_scene_mob(10, HostileEntity, h_land, ai_zombie, MobRegistry.SpawnZone.SURFACE, "NPC_NAME_ZOMBIE")
 
 
@@ -237,6 +239,10 @@ func _setup_prop_registry() -> void:
 	_register_prop(203, CampfireEntity)
 	_register_prop(213, WishingWellEntity)
 	_register_prop(215, BarrelEntity)
+	_register_prop(250, null)
+	_register_prop(251, null)
+	_register_prop(252, null)
+	_register_prop(253, null)
 	_register_vegetation_prop_range()
 
 

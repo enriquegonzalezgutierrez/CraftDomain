@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://du1fxke2x0vct"]
+
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://bj8d6obmy3iat" path="res://assets/models/decorations/sonic_palm_tree.glb" id="2_model"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_t00s3"]
+radius = 0.18115234
+height = 1.9741211
+
+[node name="Prop_SONIC_PALM_TREE" type="StaticBody3D" unique_id=2090219965]
+script = ExtResource("1_script")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1324640416]
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=220350886]
+
+[node name="sonic_palm_tree" parent="Visuals/BodyBobJoint" unique_id=1763352589 instance=ExtResource("2_model")]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1, 0)
+
+[node name="PropCollider" type="CollisionShape3D" parent="." unique_id=2122992918]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9715576, 0)
+shape = SubResource("CapsuleShape3D_t00s3")

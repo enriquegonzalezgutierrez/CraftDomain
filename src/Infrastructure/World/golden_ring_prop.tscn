@@ -1,0 +1,26 @@
+[gd_scene format=3 uid="uid://cjtthwle2sw1j"]
+
+[ext_resource type="PackedScene" uid="uid://bs14dxnhjpqh7" path="res://assets/models/decorations/golden_ring_prop.glb" id="1_model"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_lb4we"]
+radius = 0.10595703
+height = 0.99365234
+
+[node name="Prop_GOLDEN_RING" type="StaticBody3D" unique_id=498391274]
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1206069902]
+
+[node name="BodyBobJoint" type="Node3D" parent="Visuals" unique_id=594138902]
+
+[node name="golden_ring_prop" parent="Visuals/BodyBobJoint" unique_id=398813719 instance=ExtResource("1_model")]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, 0, 0.505803, 0)
+
+[node name="RingLight" type="OmniLight3D" parent="." unique_id=2065472397]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+light_color = Color(1, 0.85, 0.2, 1)
+light_energy = 1.8
+omni_range = 3.5
+
+[node name="PropCollider" type="CollisionShape3D" parent="." unique_id=675934191]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5075089, 0)
+shape = SubResource("CapsuleShape3D_lb4we")

@@ -2,22 +2,16 @@
 # Pathfile: res://src/Domain/World/MegaStructureService.gd
 # Description: Domain Service managing registration, lookup, and physical block 
 #              generation routing of large fixed Mega-Structures (POIs).
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Only manages global fixed 
-#   landmarks, fully decoupled from entity spawning or chunk population rosters.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MegaStructureService
 extends RefCounted
 
-## Dynamic registry holding all active global fixed points of interest.
 static var _structures: Array[IMegaStructure] = []
 
 
-## Startup Initializer: Instantiates and registers the default set of 
-## global fixed POI mega-structures, keeping Bootstrap.gd clean.
+## Startup Initializer: Instantiates and registers all global fixed POI mega-structures.
 static func initialize_megastructures() -> void:
 	_structures.clear()
 	
@@ -27,6 +21,7 @@ static func initialize_megastructures() -> void:
 	register_structure(StevesCabinMegaStructure.new())
 	register_structure(DesertOasisMegaStructure.new())
 	register_structure(LithicLurkerLairMegaStructure.new())
+	register_structure(EmeraldLoopMegaStructure.new())
 
 
 ## Static registry API: Registers a new fixed mega-structure at boot.
@@ -51,7 +46,6 @@ static func apply_mega_structures(chunk: Chunk) -> void:
 			s.bounds_size.y
 		)
 		
-		# If the chunk intersects the structure's territory, let it sculpt!
 		if chunk_rect.intersects(s_rect):
 			s.build_chunk(chunk, c_pos)
 

@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service managing dynamic entity spawning, local
-#              chunk population, spatial mob separation, and quest objectives.
+#              chunk population, spatial mob separation, landmark guarantees,
+#              campaign quest objective targets, and spawner diagnostics.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -97,24 +98,35 @@ func _spawn_individual_wildlife(wildlife_ids: Array[int], chunk_offset: Vector3,
 
 
 func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
-	for point in StructurePopulationService.get_population_for_chunk(chunk_pos):
+	var population_points := StructurePopulationService.get_population_for_chunk(chunk_pos)
+	if not population_points.is_empty():
+		print("[MobSpawner Diagnostic] Chunk %s landmark population request: %d points found." % [chunk_pos, population_points.size()])
+		
+	for point in population_points:
 		if not point.is_prop and MobRegistry.has_mob(point.spawn_id):
 			_spawn_decoupled_landmark_mob(point, world_state, world_node, spawned_nodes)
 
 
 func _spawn_decoupled_landmark_mob(point: StructurePopulationService.PopulationPoint, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
 	var spawn_pos := point.global_pos
-	var player_node := world_node.get("player") as CharacterBody3D if is_instance_valid(world_node) else null
+	print("[MobSpawner Diagnostic] Attempting landmark mob spawn for ID: %d at %s" % [point.spawn_id, spawn_pos])
 	
+	var player_node := world_node.get("player") as CharacterBody3D if is_instance_valid(world_node) else null
 	if is_instance_valid(player_node) and spawn_pos.distance_to(player_node.global_position) < 1.2:
 		spawn_pos += Vector3(1.2, 0.0, 1.2) 
 		
-	if _is_voxel_spawn_space_free(world_state, spawn_pos):
-		var spawn_node := MobRegistry.create_mob(point.spawn_id, spawn_pos)
-		if spawn_node != null:
-			spawn_node.set_meta("spawn_id", point.spawn_id)
-			world_node.add_child(spawn_node)
-			spawned_nodes.append(spawn_node)
+	var safe_y := SpawnCoordinateSolver.solve_surface_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
+	if safe_y > 0.0:
+		spawn_pos.y = safe_y
+		
+	var spawn_node := MobRegistry.create_mob(point.spawn_id, spawn_pos)
+	if spawn_node != null:
+		spawn_node.set_meta("spawn_id", point.spawn_id)
+		world_node.add_child(spawn_node)
+		spawned_nodes.append(spawn_node)
+		print("[MobSpawner Diagnostic SUCCESS] Spawned landmark node '%s' for ID %d at %s!" % [spawn_node.name, point.spawn_id, spawn_pos])
+	else:
+		push_error("[MobSpawner Diagnostic ERROR] MobRegistry.create_mob returned NULL for ID %d!" % point.spawn_id)
 
 
 func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
@@ -136,7 +148,7 @@ func _find_eligible_entity_in_list(world_node: Node, spawned_nodes: Array[Node],
 	if is_instance_valid(world_node):
 		for child in world_node.get_children():
 			if child is CharacterBody3D and child.has_meta("spawn_id") and int(child.get_meta("spawn_id")) == mob_id:
-				if child.global_position.distance_squared_to(target_pos) <= 625.0: # 25m squared
+				if child.global_position.distance_squared_to(target_pos) <= 625.0:
 					return child as CharacterBody3D
 					
 	for child in spawned_nodes:
@@ -148,7 +160,6 @@ func _find_eligible_entity_in_list(world_node: Node, spawned_nodes: Array[Node],
 
 
 func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node], quest_id: String) -> void:
-	# Quest mobs are spawned strictly at their exact predefined coordinates to preserve campaign logic
 	var spawn_pos := target_pos
 	if _is_voxel_spawn_space_free(world_state, spawn_pos):
 		var mob := MobRegistry.create_mob(mob_id, spawn_pos)
@@ -164,13 +175,11 @@ func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vect
 func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
 	if not MobRegistry.has_mob(spawn_id): return
 		
-	# GRID ALIGNMENT FIX: Use exact rounded coordinates for ground calculations
 	var global_x := int(round(offset.x + lx))
 	var global_z := int(round(offset.z + lz))
 	var gy := _resolve_habitat_ground_y(world_state, global_x, global_z, spawn_id)
 	if gy < 0.0: return 
 		
-	# Align coordinates precisely to the center of the block cell
 	var pos := Vector3(float(global_x) + 0.5, gy, float(global_z) + 0.5)
 	if _is_spawn_point_too_close(world_node, pos): return
 		

@@ -1,10 +1,10 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://cvc4qjdgyn8g4"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
-[ext_resource type="PackedScene" path="res://assets/models/decorations/cornflower.glb" id="2_glb"]
+[ext_resource type="Script" uid="uid://bfqry763fwhce" path="res://src/Infrastructure/World/VegetationProp.gd" id="1_prop"]
+[ext_resource type="PackedScene" uid="uid://chnubjw0thuqb" path="res://assets/models/decorations/cornflower.glb" id="2_glb"]
 
-[node name="CornflowerProp" type="Node3D"]
+[node name="CornflowerProp" type="Node3D" unique_id=352910751]
 script = ExtResource("1_prop")
 
-[node name="cornflower" parent="." instance=ExtResource("2_glb")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+[node name="cornflower" parent="." unique_id=1224485462 instance=ExtResource("2_glb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5085108, 0)
