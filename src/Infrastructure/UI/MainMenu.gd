@@ -2,9 +2,6 @@
 # Pathfile: res://src/Infrastructure/UI/MainMenu.gd
 # Description: Tactile Glassmorphic Main Menu controller. Handles game boots,
 #              modal popups, cooperative lobby connections, and author attribution.
-#              REFACTORED: Converted compile-time preloads to runtime load calls
-#              to immunize the startup compiler from Windows file-locking race conditions.
-#              COMPLIANCE: Decomposed monolithic methods into < 20 line helpers.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -13,6 +10,10 @@ extends Control
 
 signal play_pressed(should_clear_save: bool)
 signal showcase_pressed 
+
+const LOBBY_MENU_SCENE_PATH: String = "res://src/Infrastructure/UI/Widgets/multiplayer_lobby_widget.tscn"
+const SETTINGS_MENU_SCENE_PATH: String = "res://src/Infrastructure/UI/settings_menu.tscn"
+const GLOBAL_SAVE_FILE_PATH: String = "user://world_save/global_save.json"
 
 var _settings_overlay: SettingsMenu
 var _lobby_overlay: MultiplayerLobbyWidget
@@ -38,7 +39,7 @@ var _has_save_game: bool = false
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	_has_save_game = FileAccess.file_exists("user://world_save/global_save.json")
+	_has_save_game = FileAccess.file_exists(GLOBAL_SAVE_FILE_PATH)
 	
 	_connect_menu_signals()
 	_refresh_localized_text()
@@ -134,7 +135,7 @@ func _on_play_pressed() -> void:
 
 
 func _on_multiplayer_pressed() -> void:
-	var lobby_menu_scene := load("res://src/Infrastructure/UI/Widgets/multiplayer_lobby_widget.tscn") as PackedScene
+	var lobby_menu_scene := load(LOBBY_MENU_SCENE_PATH) as PackedScene
 	if is_instance_valid(lobby_menu_scene):
 		_lobby_overlay = lobby_menu_scene.instantiate() as MultiplayerLobbyWidget
 		_lobby_overlay.closed.connect(_on_lobby_closed)
@@ -171,7 +172,7 @@ func _on_overwrite_cancelled() -> void:
 
 
 func _on_settings_pressed() -> void:
-	var settings_menu_scene := load("res://src/Infrastructure/UI/settings_menu.tscn") as PackedScene
+	var settings_menu_scene := load(SETTINGS_MENU_SCENE_PATH) as PackedScene
 	if is_instance_valid(settings_menu_scene):
 		_settings_overlay = settings_menu_scene.instantiate() as SettingsMenu
 		_settings_overlay.closed.connect(_on_settings_closed)

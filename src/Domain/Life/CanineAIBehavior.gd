@@ -16,6 +16,7 @@ const TASK_WORKING: int = 6
 const SPEED_WALK: float = 1.4
 const SPEED_TROT: float = 2.4
 const COOLDOWN_BARK_SEC: float = 4.0
+const INVALID_COORD := Vector3i(0, -999, 0)
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -53,7 +54,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 	_initialize_agent(host)
 	_update_blackboard_cooldowns(delta)
-	
 	_evaluate_active_plan(host)
 	_execute_current_action(delta)
 
@@ -156,7 +156,7 @@ class ScanMagmaAction extends GOAPAction:
 		var host := bb.get_object("host") as CharacterBody3D
 		var lava_coord := _scan_for_nearby_lava(host)
 		
-		if lava_coord != Vector3i(0, -999, 0):
+		if lava_coord != INVALID_COORD:
 			bb.set_memory("target_lava", lava_coord)
 			return true
 			
@@ -165,18 +165,20 @@ class ScanMagmaAction extends GOAPAction:
 		
 	func _scan_for_nearby_lava(host: CharacterBody3D) -> Vector3i:
 		var parent := host.get_parent() as Node
-		if not is_instance_valid(parent) or not "world_state" in parent: return Vector3i(0, -999, 0)
+		if not is_instance_valid(parent) or not "world_state" in parent:
+			return INVALID_COORD
 		var ws: WorldState = parent.get("world_state") as WorldState
-		if ws == null: return Vector3i(0, -999, 0)
+		if ws == null:
+			return INVALID_COORD
 			
 		var my_coord := Vector3i(floori(host.global_position.x), floori(host.global_position.y), floori(host.global_position.z))
 		for x in range(-5, 6):
 			for y in range(-2, 3):
 				for z in range(-5, 6):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 15:
+					if ws.get_block(c) == BlockType.Type.LAVA:
 						return c
-		return Vector3i(0, -999, 0)
+		return INVALID_COORD
 
 
 class TrotToMagmaAction extends GOAPAction:
@@ -202,7 +204,8 @@ class TrotToMagmaAction extends GOAPAction:
 			return true
 			
 		VoxelKinematicService.apply_motion_vectors(host, ai, diff.normalized(), SPEED_TROT)
-		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
+		if is_instance_valid(ai):
+			ai.set("current_task", TASK_WORKING)
 		return false
 
 
@@ -245,7 +248,8 @@ class TailChaseAction extends GOAPAction:
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai): ai.set("current_task", TASK_WORKING)
+		if is_instance_valid(ai):
+			ai.set("current_task", TASK_WORKING)
 			
 		var timer := bb.get_float("action_timer") - delta
 		bb.set_memory("action_timer", timer)
@@ -268,7 +272,8 @@ class SniffWanderAction extends GOAPAction:
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ai: Object = host.get("ai_component")
-		if is_instance_valid(ai): ai.set("current_task", TASK_WANDERING)
+		if is_instance_valid(ai):
+			ai.set("current_task", TASK_WANDERING)
 		
 		var timer := bb.get_float("wander_timer") - delta
 		var wander_dir := bb.get_vector3("wander_direction")

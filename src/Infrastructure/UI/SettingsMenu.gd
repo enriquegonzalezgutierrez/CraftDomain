@@ -11,7 +11,8 @@ extends Panel
 
 signal closed
 
-# --- RESOLUTION PRESET CONSTANTS ---
+const GAMEPAD_BINDING_OVERLAY_PATH: String = "res://src/Infrastructure/UI/gamepad_binding_overlay.tscn"
+
 const RESOLUTION_PRESETS: Array[Vector2i] = [
 	Vector2i(1280, 720),   # 720p HD
 	Vector2i(1600, 900),   # 900p HD+
@@ -255,7 +256,7 @@ func _on_language_changed(index: int) -> void:
 
 
 func _on_gamepad_bindings_pressed() -> void:
-	var binding_overlay_scene := load("res://src/Infrastructure/UI/gamepad_binding_overlay.tscn") as PackedScene
+	var binding_overlay_scene := load(GAMEPAD_BINDING_OVERLAY_PATH) as PackedScene
 	if is_instance_valid(binding_overlay_scene):
 		var overlay := binding_overlay_scene.instantiate() as GamepadBindingOverlay
 		add_child(overlay)

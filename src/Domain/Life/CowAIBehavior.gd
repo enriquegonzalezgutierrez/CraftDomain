@@ -23,6 +23,7 @@ const LURE_RANGE_SQ: float = 144.0
 const GRAZE_INTERVAL_MIN: float = 15.0
 const GRAZE_INTERVAL_MAX: float = 30.0
 const GRAZE_DURATION: float = 3.0
+const WHEAT_ITEM_ID: int = 20
 
 const META_HAS_MILK := "cow_has_milk"
 
@@ -69,7 +70,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 	_initialize_agent(host)
 	_update_blackboard_timers(delta)
-	
 	_evaluate_active_plan(host)
 	_execute_current_action(delta)
 
@@ -233,7 +233,7 @@ class LureWheatAction extends GOAPAction:
 		if is_instance_valid(inventory):
 			var active_slot: int = player_node.get("active_slot_index") as int
 			var slot := inventory.get_slot_data(active_slot)
-			return slot != null and slot.item_id == 20
+			return slot != null and slot.item_id == WHEAT_ITEM_ID
 		return false
 
 
@@ -292,7 +292,7 @@ class CheckGrassAction extends GOAPAction:
 				var h_pos := host.global_position
 				var feet_y := floori(h_pos.y + 0.5)
 				var coord := Vector3i(floori(h_pos.x), feet_y - 1, floori(h_pos.z))
-				if ws.get_block(coord) == 3:
+				if ws.get_block(coord) == BlockType.Type.GRASS:
 					return true
 			bb.set_memory("graze_cooldown", randf_range(GRAZE_INTERVAL_MIN, GRAZE_INTERVAL_MAX))
 			return false
@@ -328,8 +328,8 @@ class GrazeGrassAction extends GOAPAction:
 		if ws != null and parent.has_method("set_block_globally"):
 			var feet_y := floori(host.global_position.y + 0.5)
 			var below := Vector3i(floori(host.global_position.x), feet_y - 1, floori(host.global_position.z))
-			if ws.get_block(below) == 3:
-				parent.call("set_block_globally", below, 2)
+			if ws.get_block(below) == BlockType.Type.GRASS:
+				parent.call("set_block_globally", below, BlockType.Type.DIRT)
 				host.set_meta(META_HAS_MILK, true)
 				if host.has_method("_play_grazing_joy_hop"):
 					host.call("_play_grazing_joy_hop")
@@ -421,10 +421,3 @@ class CowWanderAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
-
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

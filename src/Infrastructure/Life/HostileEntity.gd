@@ -8,18 +8,17 @@
 class_name HostileEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/zombie.glb"
+const BASE_MODEL_PATH: String = "res://assets/models/mobs/zombie.glb"
+const SKELETAL_STRATEGY_PATH: String = "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
 const SPEECH_BUBBLE_SCENE := preload("res://src/Infrastructure/UI/speech_bubble.tscn")
 
 const META_ZOMBIE_STATE = "zombie_local_state"
+const COOLDOWN_GROAN_MIN_SEC: float = 10.0
+const COOLDOWN_GROAN_MAX_SEC: float = 22.0
 
 var player: CharacterBody3D
 var _quest_bubble: Node3D
 var _model_node: Node3D
-
-const COOLDOWN_GROAN_MIN_SEC: float = 10.0
-const COOLDOWN_GROAN_MAX_SEC: float = 22.0
-
 var _groan_timer: float = randf_range(3.0, 10.0)
 
 
@@ -59,7 +58,7 @@ func _setup_graphics_representation() -> void:
 
 
 func _build_glb_representation() -> void:
-	var strategy_script := load("res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd") as GDScript
+	var strategy_script := load(SKELETAL_STRATEGY_PATH) as GDScript
 	if strategy_script == null:
 		_build_procedural_representation()
 		return

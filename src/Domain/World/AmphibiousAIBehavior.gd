@@ -182,7 +182,7 @@ class AmphibiousPanicAction extends GOAPAction:
 				var feet_y := floori(host.global_position.y + 0.5)
 				var feet := Vector3i(floori(host.global_position.x), feet_y, floori(host.global_position.z))
 				var below := Vector3i(floori(host.global_position.x), feet_y - 1, floori(host.global_position.z))
-				return ws.get_block(feet) == 6 or ws.get_block(below) == 6
+				return ws.get_block(feet) == BlockType.Type.WATER or ws.get_block(below) == BlockType.Type.WATER
 		return false
 
 
@@ -273,13 +273,6 @@ class CrawlShoreAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
-
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25
 
 
 class SwimWaterAction extends GOAPAction:

@@ -23,6 +23,7 @@ const TILL_DURATION_SEC: float = 2.0
 const EAT_DURATION_SEC: float = 2.5
 const COOLDOWN_TILL_MIN_SEC: float = 15.0
 const COOLDOWN_TILL_MAX_SEC: float = 30.0
+const INVALID_COORD := Vector3i(0, -999, 0)
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -68,7 +69,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 	_initialize_agent(host)
 	_update_blackboard_timers(delta)
-	
 	_evaluate_active_plan(host)
 	_execute_current_action(delta)
 
@@ -218,7 +218,7 @@ class ScanCropsAction extends GOAPAction:
 		
 		if ws != null:
 			var crop_coord := _scan_for_nearby_crops(host.global_position, ws)
-			if crop_coord != Vector3i(0, -999, 0):
+			if crop_coord != INVALID_COORD:
 				bb.set_memory("target_crop", crop_coord)
 				return true
 				
@@ -232,9 +232,9 @@ class ScanCropsAction extends GOAPAction:
 				for z in range(-3, 4):
 					var c := my_coord + Vector3i(x, y, z)
 					var block_type := ws.get_block(c)
-					if block_type == 20 or block_type == 19:
+					if block_type == BlockType.Type.CROP_RIPE or block_type == BlockType.Type.CROP_GROWING:
 						return c
-		return Vector3i(0, -999, 0)
+		return INVALID_COORD
 
 
 class TrotToCropAction extends GOAPAction:
@@ -291,7 +291,7 @@ class EatCropAction extends GOAPAction:
 		var parent := host.get_parent() as Node
 		
 		if is_instance_valid(parent) and parent.has_method("set_block_globally"):
-			parent.call("set_block_globally", target, 0)
+			parent.call("set_block_globally", target, BlockType.Type.AIR)
 			
 			var domain_entity := host.get("domain_entity") as VoxelEntity
 			if is_instance_valid(domain_entity):
@@ -331,10 +331,9 @@ class SniffSoilAction extends GOAPAction:
 			var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
 			if ws != null:
 				var h_pos := host.global_position
-				# Safe rounding offset (+0.5) applied to allow stable voxel queries
 				var feet_y := floori(h_pos.y + 0.5)
 				var coord := Vector3i(floori(h_pos.x), feet_y - 1, floori(h_pos.z))
-				if ws.get_block(coord) == 3:
+				if ws.get_block(coord) == BlockType.Type.GRASS:
 					return true
 			bb.set_memory("till_cooldown", randf_range(COOLDOWN_TILL_MIN_SEC, COOLDOWN_TILL_MAX_SEC))
 			return false
@@ -368,11 +367,10 @@ class TillSoilAction extends GOAPAction:
 		var ws := parent.get("world_state") as WorldState if is_instance_valid(parent) else null
 		
 		if ws != null and parent.has_method("set_block_globally"):
-			# Safe rounding offset (+0.5) applied to allow stable voxel queries
 			var feet_y := floori(host.global_position.y + 0.5)
 			var coord := Vector3i(floori(host.global_position.x), feet_y - 1, floori(host.global_position.z))
-			if ws.get_block(coord) == 3 and randf() < 0.40:
-				parent.call("set_block_globally", coord, 2)
+			if ws.get_block(coord) == BlockType.Type.GRASS and randf() < 0.40:
+				parent.call("set_block_globally", coord, BlockType.Type.DIRT)
 				if host.has_method("_play_tilling_joy_hop"):
 					host.call("_play_tilling_joy_hop")
 					
@@ -430,7 +428,6 @@ class PigWanderAction extends GOAPAction:
 		var distances: Array[float] = [1.0, 2.0]
 		for dist: float in distances:
 			var check_pos: Vector3 = host.global_position + dir * dist
-			# Dynamic nearest-integer rounding (+0.5) eliminates vertical float Y drift
 			var feet_y := floori(check_pos.y + 0.5)
 			var feet_coord := Vector3i(floori(check_pos.x), feet_y, floori(check_pos.z))
 			var chest_coord := Vector3i(floori(check_pos.x), feet_y + 1, floori(check_pos.z))
@@ -464,10 +461,3 @@ class PigWanderAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
-
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

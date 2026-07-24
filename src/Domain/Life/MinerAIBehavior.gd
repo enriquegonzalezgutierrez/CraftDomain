@@ -17,6 +17,7 @@ const SPEED_TUNNEL: float = 1.8
 
 const SCAN_INTERVAL_SEC: float = 3.0
 const MINE_DURATION_SEC: float = 2.0
+const INVALID_COORD := Vector3i(0, -999, 0)
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -171,7 +172,7 @@ class ScanVeinsAction extends GOAPAction:
 		var host := bb.get_object("host") as CharacterBody3D
 		var ore_coord := _scan_for_coal_veins(host)
 		
-		if ore_coord != Vector3i(0, -999, 0):
+		if ore_coord != INVALID_COORD:
 			if JobReservationService.instance.claim_job(ore_coord, host.get_instance_id()):
 				bb.set_memory("target_ore", ore_coord)
 				return true
@@ -181,9 +182,9 @@ class ScanVeinsAction extends GOAPAction:
 		
 	func _scan_for_coal_veins(host: CharacterBody3D) -> Vector3i:
 		var parent := host.get_parent() as Node
-		if not is_instance_valid(parent) or not "world_state" in parent: return Vector3i(0, -999, 0)
+		if not is_instance_valid(parent) or not "world_state" in parent: return INVALID_COORD
 		var ws: WorldState = parent.get("world_state") as WorldState
-		if ws == null: return Vector3i(0, -999, 0)
+		if ws == null: return INVALID_COORD
 			
 		var my_coord := Vector3i(floori(host.global_position.x), floori(host.global_position.y), floori(host.global_position.z))
 		var job_service := JobReservationService.instance
@@ -192,9 +193,9 @@ class ScanVeinsAction extends GOAPAction:
 			for y in range(-2, 3):
 				for z in range(-5, 6):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 21:
+					if ws.get_block(c) == BlockType.Type.COAL_ORE:
 						if not job_service.is_job_claimed(c): return c
-		return Vector3i(0, -999, 0)
+		return INVALID_COORD
 
 
 class MoveToVeinAction extends GOAPAction:
@@ -260,7 +261,7 @@ class ExtractOreAction extends GOAPAction:
 		var parent := host.get_parent() as Node
 		
 		if is_instance_valid(parent) and parent.has_method("set_block_globally"):
-			parent.call("set_block_globally", target, 1)
+			parent.call("set_block_globally", target, BlockType.Type.STONE)
 			AudioService.play_sfx_static("block_break", Vector3(target))
 			
 		host.velocity.y = 5.0
@@ -374,10 +375,3 @@ class MinerWanderAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
-
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical character controller representing mobile entities.
 #              Coordinates locomotion, buoyancy, damage reactions, quest targets,
-#              and spatial ember dissolve death animations.
+#              and delegates spatial death visual transitions.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -16,8 +16,6 @@ const SLEEP_DISTANCE_SQ: float = 1600.0
 const THREAT_SEARCH_RADIUS_SQ: float = 64.0
 const REPUTATION_DAMAGE_PENALTY: int = -15
 const REPUTATION_MURDER_PENALTY: int = -35
-
-const DISSOLVE_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/spatial_dissolve.gdshader"
 
 @export var is_conversational_npc: bool = false
 @export var humanoid_role: int = -1
@@ -233,8 +231,8 @@ func _on_domain_entity_died() -> void:
 	remove_from_group("passives")
 	set_physics_process(false)
 	_cleanup_physics_shapes()
-	_spawn_death_particles()
-	_apply_death_animations_and_free()
+	var v_root := visual_component.visual_root if is_instance_valid(visual_component) else null
+	EntityDeathVisuals.play_death_effect(self, v_root)
 
 
 func _cleanup_physics_shapes() -> void:
@@ -253,108 +251,6 @@ func _cleanup_physics_shapes() -> void:
 		job_service.release_all_jobs_for_worker(get_instance_id())
 		
 	_apply_civilian_reputation_penalty(REPUTATION_MURDER_PENALTY)
-
-
-func _apply_death_animations_and_free() -> void:
-	var shader := load(DISSOLVE_SHADER_PATH) as Shader if ResourceLoader.exists(DISSOLVE_SHADER_PATH) else null
-	if shader != null and is_instance_valid(visual_component) and is_instance_valid(visual_component.visual_root):
-		_execute_shader_dissolve_death(shader)
-	else:
-		_execute_fallback_death_tween()
-
-
-func _execute_shader_dissolve_death(shader: Shader) -> void:
-	var base_mat := ShaderMaterial.new()
-	base_mat.shader = shader
-	base_mat.set_shader_parameter("noise_tex", VoxelMaterialFactory._get_or_create_water_noise_a())
-	
-	_apply_dissolve_material_to_mesh_nodes(visual_component.visual_root, base_mat)
-	
-	var death_tween := create_tween()
-	death_tween.tween_method(_set_dissolve_progress_recursive.bind(visual_component.visual_root), 0.0, 1.0, 0.65)\
-		.set_trans(Tween.TRANS_SINE)\
-		.set_ease(Tween.EASE_IN_OUT)
-		
-	death_tween.chain().tween_callback(queue_free)
-
-
-func _apply_dissolve_material_to_mesh_nodes(node: Node, shader_mat: ShaderMaterial) -> void:
-	if node is MeshInstance3D:
-		var mi := node as MeshInstance3D
-		var orig_mat := mi.material_override as BaseMaterial3D
-		if orig_mat == null and mi.mesh != null and mi.mesh.get_surface_count() > 0:
-			orig_mat = mi.mesh.surface_get_material(0) as BaseMaterial3D
-			
-		var instance_shader_mat := shader_mat.duplicate() as ShaderMaterial
-		if is_instance_valid(orig_mat):
-			instance_shader_mat.set_shader_parameter("base_albedo", orig_mat.albedo_color)
-			if orig_mat.albedo_texture != null:
-				instance_shader_mat.set_shader_parameter("albedo_texture", orig_mat.albedo_texture)
-				
-		mi.material_override = instance_shader_mat
-		
-	for child in node.get_children():
-		_apply_dissolve_material_to_mesh_nodes(child, shader_mat)
-
-
-func _set_dissolve_progress_recursive(progress: float, root_node: Node) -> void:
-	_update_node_dissolve_progress(root_node, progress)
-
-
-func _update_node_dissolve_progress(node: Node, progress: float) -> void:
-	if node is MeshInstance3D:
-		var sm := (node as MeshInstance3D).material_override as ShaderMaterial
-		if is_instance_valid(sm):
-			sm.set_shader_parameter("dissolve_progress", progress)
-			
-	for child in node.get_children():
-		_update_node_dissolve_progress(child, progress)
-
-
-func _execute_fallback_death_tween() -> void:
-	var death_tween := create_tween().set_parallel(true)
-	if is_instance_valid(visual_component) and is_instance_valid(visual_component.visual_root):
-		death_tween.tween_property(visual_component.visual_root, "scale", Vector3.ZERO, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-		
-	death_tween.chain().tween_callback(queue_free)
-
-
-func _spawn_death_particles() -> void:
-	var particles := CPUParticles3D.new()
-	_configure_death_particle_properties(particles)
-	_attach_death_particle_mesh(particles)
-	
-	particles.finished.connect(particles.queue_free)
-	var world_node := get_parent()
-	if is_instance_valid(world_node):
-		world_node.add_child(particles)
-		particles.global_position = global_position + Vector3(0, 0.5, 0)
-		particles.emitting = true
-
-
-func _configure_death_particle_properties(particles: CPUParticles3D) -> void:
-	particles.amount = 15
-	particles.one_shot = true
-	particles.explosiveness = 0.95
-	particles.lifetime = 0.6
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 0.4
-	particles.direction = Vector3.UP
-	particles.spread = 180.0
-	particles.initial_velocity_min = 2.0
-	particles.initial_velocity_max = 4.0
-	particles.gravity = Vector3(0, 2.0, 0)
-
-
-func _attach_death_particle_mesh(particles: CPUParticles3D) -> void:
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.15, 0.15, 0.15)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.8, 0.8, 0.8, 0.8)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED 
-	mesh.material = mat
-	particles.mesh = mesh
 
 
 func _try_drop_player_loot() -> void:
@@ -423,7 +319,7 @@ func _check_in_liquid_state() -> bool:
 		var ws: WorldState = parent_node_ref.world_state
 		if ws != null:
 			var my_coord := Vector3i(floori(global_position.x), floori(global_position.y + 0.2), floori(global_position.z))
-			return (ws.get_block(my_coord) == 6 or ws.get_block(my_coord) == 15 or ws.get_block(my_coord + Vector3i(0, -1, 0)) == 6 or ws.get_block(my_coord + Vector3i(0, -1, 0)) == 15)
+			return (ws.get_block(my_coord) == BlockType.Type.WATER or ws.get_block(my_coord) == BlockType.Type.LAVA or ws.get_block(my_coord + Vector3i(0, -1, 0)) == BlockType.Type.WATER or ws.get_block(my_coord + Vector3i(0, -1, 0)) == BlockType.Type.LAVA)
 	return false
 
 

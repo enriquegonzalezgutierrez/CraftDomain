@@ -330,11 +330,12 @@ static func _is_direction_safe_fauna(host: CharacterBody3D, dir: Vector3) -> boo
 
 
 static func _evaluate_liquid_and_void(ws: WorldState, b_below_coord: Vector3i, b_below: int, b_at: int) -> bool:
-	var is_liquid := b_below == 6 or b_below == 15 or b_at == 6
-	var is_void := b_below == 0
+	var is_liquid := (b_below == BlockType.Type.WATER or b_below == BlockType.Type.LAVA or b_at == BlockType.Type.WATER)
+	var is_void := (b_below == BlockType.Type.AIR)
 	
 	if is_void:
 		var b_2_below := ws.get_block(b_below_coord + Vector3i(0, -1, 0))
-		if b_2_below != 0 and b_2_below != 6 and b_2_below != 15: is_void = false
+		if b_2_below != BlockType.Type.AIR and b_2_below != BlockType.Type.WATER and b_2_below != BlockType.Type.LAVA:
+			is_void = false
 		
 	return not is_liquid and not is_void

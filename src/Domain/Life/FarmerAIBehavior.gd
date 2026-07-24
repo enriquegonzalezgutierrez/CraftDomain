@@ -15,6 +15,7 @@ const TASK_WORKING: int = 6
 const SPEED_WANDER: float = 1.4
 const SPEED_WORK: float = 1.8
 const HARVEST_DURATION_SEC: float = 1.8
+const INVALID_COORD := Vector3i(0, -999, 0)
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -159,7 +160,7 @@ class ScanCropsAction extends GOAPAction:
 		var host := bb.get_object("host") as CharacterBody3D
 		var crop_coord := _scan_for_ripe_crops(host)
 		
-		if crop_coord != Vector3i(0, -999, 0):
+		if crop_coord != INVALID_COORD:
 			if JobReservationService.instance.claim_job(crop_coord, host.get_instance_id()):
 				bb.set_memory("target_crop", crop_coord)
 				return true
@@ -169,9 +170,9 @@ class ScanCropsAction extends GOAPAction:
 		
 	func _scan_for_ripe_crops(host: CharacterBody3D) -> Vector3i:
 		var parent: Node = host.get_parent() as Node
-		if not is_instance_valid(parent) or not "world_state" in parent: return Vector3i(0, -999, 0)
+		if not is_instance_valid(parent) or not "world_state" in parent: return INVALID_COORD
 		var ws: WorldState = parent.get("world_state") as WorldState
-		if ws == null: return Vector3i(0, -999, 0)
+		if ws == null: return INVALID_COORD
 			
 		var my_coord := Vector3i(floori(host.global_position.x), floori(host.global_position.y), floori(host.global_position.z))
 		var job_service := JobReservationService.instance
@@ -180,9 +181,9 @@ class ScanCropsAction extends GOAPAction:
 			for y in range(-2, 3):
 				for z in range(-6, 7):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 20:
+					if ws.get_block(c) == BlockType.Type.CROP_RIPE:
 						if not job_service.is_job_claimed(c): return c
-		return Vector3i(0, -999, 0)
+		return INVALID_COORD
 
 
 class MoveToCropAction extends GOAPAction:
@@ -248,8 +249,8 @@ class HarvestCropAction extends GOAPAction:
 		var parent := host.get_parent() as Node
 		
 		if is_instance_valid(parent) and parent.has_method("set_block_globally"):
-			parent.call("set_block_globally", target, 0)
-			parent.call("set_block_globally", target, 18)
+			parent.call("set_block_globally", target, BlockType.Type.AIR)
+			parent.call("set_block_globally", target, BlockType.Type.CROP_SEED)
 			
 		host.velocity.y = 4.5
 		AudioService.play_sfx_static("block_break", host.global_position)
@@ -342,10 +343,3 @@ class FarmerWanderAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
-
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

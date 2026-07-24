@@ -100,22 +100,25 @@ func _allocate_multimeshes(record: ChunkRIDRecord, transform: Transform3D, multi
 		var buffer: PackedFloat32Array = multimesh_data[b_id] as PackedFloat32Array
 		var count := int(buffer.size() / 12.0)
 		if count == 0: continue
-			
-		var mm_rid := RenderingServer.multimesh_create()
-		RenderingServer.multimesh_set_mesh(mm_rid, _shared_box_mesh.get_rid())
-		RenderingServer.multimesh_allocate_data(mm_rid, count, RenderingServer.MULTIMESH_TRANSFORM_3D)
-		RenderingServer.multimesh_set_buffer(mm_rid, buffer)
-		
-		var inst_rid := RenderingServer.instance_create()
-		RenderingServer.instance_set_scenario(inst_rid, _world_scenario)
-		RenderingServer.instance_set_transform(inst_rid, transform)
-		
-		_apply_material_to_instance(inst_rid, b_id, is_distant)
-		RenderingServer.instance_set_base(inst_rid, mm_rid)
-		
-		record.multimesh_rids.append(mm_rid)
-		record.instance_rids.append(inst_rid)
-		record.instance_block_ids.append(b_id)
+		_allocate_single_multimesh_instance(record, transform, b_id, count, buffer, is_distant)
+
+
+func _allocate_single_multimesh_instance(record: ChunkRIDRecord, transform: Transform3D, b_id: int, count: int, buffer: PackedFloat32Array, is_distant: bool) -> void:
+	var mm_rid := RenderingServer.multimesh_create()
+	RenderingServer.multimesh_set_mesh(mm_rid, _shared_box_mesh.get_rid())
+	RenderingServer.multimesh_allocate_data(mm_rid, count, RenderingServer.MULTIMESH_TRANSFORM_3D)
+	RenderingServer.multimesh_set_buffer(mm_rid, buffer)
+	
+	var inst_rid := RenderingServer.instance_create()
+	RenderingServer.instance_set_scenario(inst_rid, _world_scenario)
+	RenderingServer.instance_set_transform(inst_rid, transform)
+	
+	_apply_material_to_instance(inst_rid, b_id, is_distant)
+	RenderingServer.instance_set_base(inst_rid, mm_rid)
+	
+	record.multimesh_rids.append(mm_rid)
+	record.instance_rids.append(inst_rid)
+	record.instance_block_ids.append(b_id)
 
 
 func _allocate_custom_meshes(record: ChunkRIDRecord, transform: Transform3D, custom_meshes: Dictionary, is_distant: bool) -> void:

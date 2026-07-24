@@ -2,15 +2,13 @@
 # Pathfile: res://src/Infrastructure/UI/Widgets/MinimapWidget.gd
 # Description: HUD Minimap Widget responsible for calculating and drawing 
 #              procedural 2D biome backgrounds and real-time tactical entity 
-#              gliphs on the chronological circular radar (SRP).
-#              Corrected: Solved Vector2/Vector3 typemismatch on line 234.
+#              glyphs on the chronological circular radar (SRP).
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name MinimapWidget
 extends Control
 
-# Symmetrical Pin Types matching original structure
 enum PinType {
 	NONE = -1,
 	ANIMAL = 0,
@@ -22,7 +20,6 @@ enum PinType {
 	LIGHT = 6
 }
 
-# OCP Mapping of entity names to their clean single-char radar symbols (Section 5.3)
 const SYMBOL_CHAR_MAPPING: Dictionary = {
 	"ZOMBIE": "Z", "SHARK": "S", "GARGOYLE": "G", "GOBLIN": "K",
 	"GOLEM": "I", "GUARD": "K", "MERCHANT": "$", "FARMER": "F",
@@ -39,7 +36,6 @@ var world_controller: Node3D
 @onready var _radar_canvas: Control = $ClippingMask/RadarCanvas
 @onready var _border_canvas: Control = $BorderCanvas
 
-# Throttling timer parameters
 var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.04 
 
@@ -71,15 +67,11 @@ func _ready() -> void:
 
 
 func update_widget() -> void:
-	var delta := get_process_delta_time()
-	_update_timer += delta
-	
+	_update_timer += get_process_delta_time()
 	if _update_timer >= UPDATE_INTERVAL:
 		_update_timer = 0.0
-		if is_instance_valid(_radar_canvas):
-			_radar_canvas.queue_redraw()
-		if is_instance_valid(_border_canvas):
-			_border_canvas.queue_redraw()
+		if is_instance_valid(_radar_canvas): _radar_canvas.queue_redraw()
+		if is_instance_valid(_border_canvas): _border_canvas.queue_redraw()
 
 
 func _update_biome_cache(chunk_center_x: float, chunk_center_z: float) -> void:
@@ -89,13 +81,10 @@ func _update_biome_cache(chunk_center_x: float, chunk_center_z: float) -> void:
 	if terrain_noise == null: return
 	
 	_cached_biome_colors.clear()
-	var grid_radius := 6
-	
-	for cx in range(-grid_radius, grid_radius + 1):
-		for cz in range(-grid_radius, grid_radius + 1):
+	for cx in range(-6, 7):
+		for cz in range(-6, 7):
 			var sample_x := int(chunk_center_x) + (cx * 16)
 			var sample_z := int(chunk_center_z) + (cz * 16)
-			
 			var profile := BiomeService.evaluate_coordinate(sample_x, sample_z, terrain_noise) as BiomeService.BiomeProfile
 			_cached_biome_colors[Vector2i(cx, cz)] = RADAR_BIOME_COLORS.get(profile.biome_id, Color.BLACK)
 
@@ -105,9 +94,12 @@ func _on_radar_draw() -> void:
 		return
 		
 	var player_pos := player.global_position
-	var grid_radius := 6
-	var step_size := 16.0
-	
+	_draw_radar_biome_grid(player_pos)
+	_draw_radar_guidelines()
+	_draw_radar_entities(player_pos)
+
+
+func _draw_radar_biome_grid(player_pos: Vector3) -> void:
 	var chunk_center_x := floorf(player_pos.x / 16.0) * 16.0 + 8.0
 	var chunk_center_z := floorf(player_pos.z / 16.0) * 16.0 + 8.0
 	var current_center := Vector2(chunk_center_x, chunk_center_z)
@@ -117,129 +109,122 @@ func _on_radar_draw() -> void:
 		_update_biome_cache(chunk_center_x, chunk_center_z)
 		
 	var player_offset := Vector2(player_pos.x - chunk_center_x, player_pos.z - chunk_center_z)
-	
-	for cx in range(-grid_radius, grid_radius + 1):
-		for cz in range(-grid_radius, grid_radius + 1):
-			var coord := Vector2i(cx, cz)
-			var biome_color: Color = _cached_biome_colors.get(coord, Color.BLACK)
-			var draw_pos := CENTER + (Vector2(float(cx), float(cz)) * step_size) - player_offset - Vector2(8.0, 8.0)
+	for cx in range(-6, 7):
+		for cz in range(-6, 7):
+			var biome_color: Color = _cached_biome_colors.get(Vector2i(cx, cz), Color.BLACK)
+			var draw_pos := CENTER + (Vector2(float(cx), float(cz)) * 16.0) - player_offset - Vector2(8.0, 8.0)
 			_radar_canvas.draw_rect(Rect2(draw_pos, Vector2(16, 16)), biome_color, true)
 			_radar_canvas.draw_rect(Rect2(draw_pos, Vector2(16, 16)), Color(0.0, 0.0, 0.0, 0.12), false, 1.0)
 
+
+func _draw_radar_guidelines() -> void:
 	_radar_canvas.draw_line(CENTER - Vector2(MAX_RADIUS, 0), CENTER + Vector2(MAX_RADIUS, 0), COLOR_GRID, 1.0)
 	_radar_canvas.draw_line(CENTER - Vector2(0, MAX_RADIUS), CENTER + Vector2(0, MAX_RADIUS), COLOR_GRID, 1.0)
 	_radar_canvas.draw_circle(CENTER, MAX_RADIUS * 0.4, COLOR_GRID, false, 1.0)
 	_radar_canvas.draw_circle(CENTER, MAX_RADIUS * 0.75, COLOR_GRID, false, 1.0)
 
+
+func _draw_radar_entities(player_pos: Vector3) -> void:
 	for child: Node in world_controller.get_children():
-		if not is_instance_valid(child) or not (child is Node3D):
-			continue
+		if not is_instance_valid(child) or not (child is Node3D): continue
 			
 		var child_pos: Vector3 = child.get("global_position") as Vector3
-		var pin_type: PinType = PinType.NONE
-		var is_valid_entity := false
+		var pin_type := _resolve_entity_pin_type(child)
 		
-		if child.has_meta("minimap_pin_type"):
-			pin_type = child.get_meta("minimap_pin_type") as PinType
-			is_valid_entity = true
-		elif child.has_method("get_minimap_pin_type"):
-			pin_type = child.call("get_minimap_pin_type") as PinType
-			is_valid_entity = true
-		else:
-			if child.is_in_group("hostiles"):
-				pin_type = PinType.HOSTILE
-				is_valid_entity = true
-			elif child.is_in_group("passives"):
-				if child.has_method("_get_humanoid_role") and child.call("_get_humanoid_role") == -1:
-					pin_type = PinType.ANIMAL
-				else:
-					pin_type = PinType.NPC
-				is_valid_entity = true
-			
-		if is_valid_entity and pin_type != PinType.NONE:
+		if pin_type != PinType.NONE:
 			var diff := Vector2(child_pos.x - player_pos.x, child_pos.z - player_pos.z)
 			if diff.length_squared() < MAX_RADIUS_SQ:
 				_draw_tactical_symbol(CENTER + diff, pin_type, child_pos.y - player_pos.y, child.name)
 
 
+func _resolve_entity_pin_type(child: Node) -> PinType:
+	if child.has_meta("minimap_pin_type"):
+		return child.get_meta("minimap_pin_type") as PinType
+	elif child.has_method("get_minimap_pin_type"):
+		return child.call("get_minimap_pin_type") as PinType
+	elif child.is_in_group("hostiles"):
+		return PinType.HOSTILE
+	elif child.is_in_group("passives"):
+		if child.has_method("_get_humanoid_role") and child.call("_get_humanoid_role") == -1:
+			return PinType.ANIMAL
+		return PinType.NPC
+	return PinType.NONE
+
+
 func _draw_tactical_symbol(draw_pos: Vector2, type: PinType, delta_y: float, node_name: String) -> void:
 	var is_different_level := absf(delta_y) > 6.0
 	var alpha := 0.45 if is_different_level else 1.0
-	var base_color := Color.WHITE
 	
-	match type:
-		PinType.CAMPFIRE:
-			base_color = Color(1.0, 0.45, 0.0, alpha)
-			var triangle := PackedVector2Array([draw_pos + Vector2(0, -4.5), draw_pos + Vector2(3.5, 2.5), draw_pos + Vector2(-3.5, 2.5)])
-			_radar_canvas.draw_colored_polygon(triangle, base_color)
-			_radar_canvas.draw_polyline(PackedVector2Array([triangle[0], triangle[1], triangle[2], triangle[0]]), Color(0,0,0, alpha), 1.0)
-		PinType.ANIMAL:
-			base_color = Color(0.35, 0.85, 0.25, alpha)
-			var triangle := PackedVector2Array([draw_pos + Vector2(0, 3.5), draw_pos + Vector2(2.5, -1.5), draw_pos + Vector2(-2.5, -1.5)])
-			_radar_canvas.draw_colored_polygon(triangle, base_color)
-			_radar_canvas.draw_polyline(PackedVector2Array([triangle[0], triangle[1], triangle[2], triangle[0]]), Color(0,0,0, alpha), 1.0)
-		PinType.DEFENDER:
-			base_color = Color(0.2, 0.55, 1.0, alpha)
-			var diamond := PackedVector2Array([draw_pos + Vector2(0, -3.2), draw_pos + Vector2(3.2, 0), draw_pos + Vector2(0, 3.2), draw_pos + Vector2(-3.2, 0)])
-			_radar_canvas.draw_colored_polygon(diamond, base_color)
-			_radar_canvas.draw_polyline(PackedVector2Array([diamond[0], diamond[1], diamond[2], diamond[3], diamond[0]]), Color(0,0,0, alpha), 1.0)
-		PinType.NPC:
-			base_color = Color(0.0, 0.85, 0.85, alpha)
-			var hex := PackedVector2Array([
-				draw_pos + Vector2(0, -2.6), draw_pos + Vector2(2.25, -1.3), draw_pos + Vector2(2.25, 1.3),
-				draw_pos + Vector2(0, 2.6), draw_pos + Vector2(-2.25, 1.3), draw_pos + Vector2(-2.25, -1.3)
-			])
-			_radar_canvas.draw_colored_polygon(hex, base_color)
-			_radar_canvas.draw_polyline(PackedVector2Array([hex[0], hex[1], hex[2], hex[3], hex[4], hex[5], hex[0]]), Color(0,0,0, alpha), 1.0)
-		PinType.HOSTILE:
-			base_color = Color(0.95, 0.15, 0.15, alpha)
-			_radar_canvas.draw_line(draw_pos + Vector2(-2.5, -2.5), draw_pos + Vector2(2.5, 2.5), Color(0,0,0, alpha), 3.5)
-			_radar_canvas.draw_line(draw_pos + Vector2(2.5, -2.5), draw_pos + Vector2(-2.5, 2.5), Color(0,0,0, alpha), 3.5)
-			_radar_canvas.draw_line(draw_pos + Vector2(-2.5, -2.5), draw_pos + Vector2(2.5, 2.5), base_color, 1.5)
-			_radar_canvas.draw_line(draw_pos + Vector2(2.5, -2.5), draw_pos + Vector2(-2.5, 2.5), base_color, 1.5)
-		PinType.CHEST:
-			base_color = Color(1.0, 0.82, 0.2, alpha)
-			var rect := Rect2(draw_pos - Vector2(2, 2), Vector2(4, 4))
-			_radar_canvas.draw_rect(rect, base_color, true)
-			_radar_canvas.draw_rect(rect, Color(0,0,0, alpha), false, 1.0)
-			
-	# PROJECT HOLOGRAPHIC CHARACTER OVER DETECTOR (OCP / Section 3.2)
+	var base_color := _render_pin_geometry(draw_pos, type, alpha)
 	_draw_holographic_glyph_on_pin(draw_pos, node_name, alpha)
 			
 	if is_different_level:
-		var arrow_color := Color(base_color.r, base_color.g, base_color.b, 0.72)
-		if delta_y < -6.0:
-			_radar_canvas.draw_line(draw_pos + Vector2(-3, 6), draw_pos + Vector2(0, 9), arrow_color, 1.5)
-			_radar_canvas.draw_line(draw_pos + Vector2(3, 6), draw_pos + Vector2(0, 9), arrow_color, 1.5)
-		elif delta_y > 6.0:
-			_radar_canvas.draw_line(draw_pos + Vector2(-3, -6), draw_pos + Vector2(0, -9), arrow_color, 1.5)
-			_radar_canvas.draw_line(draw_pos + Vector2(3, -6), draw_pos + Vector2(0, -9), arrow_color, 1.5)
+		_render_elevation_arrows(draw_pos, delta_y, base_color)
 
 
-## Helper: Projects high-contrast centered abbreviations on pins to ensure absolute legibility
+func _render_pin_geometry(draw_pos: Vector2, type: PinType, alpha: float) -> Color:
+	var col := Color.WHITE
+	match type:
+		PinType.CAMPFIRE:
+			col = Color(1.0, 0.45, 0.0, alpha)
+			var tri := PackedVector2Array([draw_pos + Vector2(0, -4.5), draw_pos + Vector2(3.5, 2.5), draw_pos + Vector2(-3.5, 2.5)])
+			_radar_canvas.draw_colored_polygon(tri, col)
+			_radar_canvas.draw_polyline(PackedVector2Array([tri[0], tri[1], tri[2], tri[0]]), Color(0,0,0, alpha), 1.0)
+		PinType.ANIMAL:
+			col = Color(0.35, 0.85, 0.25, alpha)
+			var tri := PackedVector2Array([draw_pos + Vector2(0, 3.5), draw_pos + Vector2(2.5, -1.5), draw_pos + Vector2(-2.5, -1.5)])
+			_radar_canvas.draw_colored_polygon(tri, col)
+			_radar_canvas.draw_polyline(PackedVector2Array([tri[0], tri[1], tri[2], tri[0]]), Color(0,0,0, alpha), 1.0)
+		PinType.DEFENDER:
+			col = Color(0.2, 0.55, 1.0, alpha)
+			var dmd := PackedVector2Array([draw_pos + Vector2(0, -3.2), draw_pos + Vector2(3.2, 0), draw_pos + Vector2(0, 3.2), draw_pos + Vector2(-3.2, 0)])
+			_radar_canvas.draw_colored_polygon(dmd, col)
+			_radar_canvas.draw_polyline(PackedVector2Array([dmd[0], dmd[1], dmd[2], dmd[3], dmd[0]]), Color(0,0,0, alpha), 1.0)
+		PinType.NPC:
+			col = Color(0.0, 0.85, 0.85, alpha)
+			var hex := PackedVector2Array([draw_pos + Vector2(0, -2.6), draw_pos + Vector2(2.25, -1.3), draw_pos + Vector2(2.25, 1.3), draw_pos + Vector2(0, 2.6), draw_pos + Vector2(-2.25, 1.3), draw_pos + Vector2(-2.25, -1.3)])
+			_radar_canvas.draw_colored_polygon(hex, col)
+			_radar_canvas.draw_polyline(PackedVector2Array([hex[0], hex[1], hex[2], hex[3], hex[4], hex[5], hex[0]]), Color(0,0,0, alpha), 1.0)
+		PinType.HOSTILE:
+			col = Color(0.95, 0.15, 0.15, alpha)
+			_radar_canvas.draw_line(draw_pos + Vector2(-2.5, -2.5), draw_pos + Vector2(2.5, 2.5), Color(0,0,0, alpha), 3.5)
+			_radar_canvas.draw_line(draw_pos + Vector2(2.5, -2.5), draw_pos + Vector2(-2.5, 2.5), Color(0,0,0, alpha), 3.5)
+			_radar_canvas.draw_line(draw_pos + Vector2(-2.5, -2.5), draw_pos + Vector2(2.5, 2.5), col, 1.5)
+			_radar_canvas.draw_line(draw_pos + Vector2(2.5, -2.5), draw_pos + Vector2(-2.5, 2.5), col, 1.5)
+		PinType.CHEST:
+			col = Color(1.0, 0.82, 0.2, alpha)
+			var rect := Rect2(draw_pos - Vector2(2, 2), Vector2(4, 4))
+			_radar_canvas.draw_rect(rect, col, true)
+			_radar_canvas.draw_rect(rect, Color(0,0,0, alpha), false, 1.0)
+	return col
+
+
+func _render_elevation_arrows(draw_pos: Vector2, delta_y: float, base_color: Color) -> void:
+	var arrow_color := Color(base_color.r, base_color.g, base_color.b, 0.72)
+	if delta_y < -6.0:
+		_radar_canvas.draw_line(draw_pos + Vector2(-3, 6), draw_pos + Vector2(0, 9), arrow_color, 1.5)
+		_radar_canvas.draw_line(draw_pos + Vector2(3, 6), draw_pos + Vector2(0, 9), arrow_color, 1.5)
+	elif delta_y > 6.0:
+		_radar_canvas.draw_line(draw_pos + Vector2(-3, -6), draw_pos + Vector2(0, -9), arrow_color, 1.5)
+		_radar_canvas.draw_line(draw_pos + Vector2(3, -6), draw_pos + Vector2(0, -9), arrow_color, 1.5)
+
+
 func _draw_holographic_glyph_on_pin(draw_pos: Vector2, node_name: String, alpha: float) -> void:
 	var glyph := _get_glyph_for_entity(node_name)
-	if glyph == "":
-		return
+	if glyph == "": return
 		
 	var default_font: Font = get_theme_font("font")
-	# Calibrated font size 8 for perfect visual scaling inside radar pins
 	var font_size := 8
 	var text_color := Color(1.0, 1.0, 1.0, alpha)
 	var shadow_color := Color(0.0, 0.0, 0.0, alpha * 0.75)
 	
 	var half_width := default_font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x / 2.0
-	var offset_y := 3.0 # Centering Y baseline
+	var final_draw_pos := draw_pos + Vector2(-half_width, 3.0)
 	
-	# COORDINATE FIXED: Symmetrical 2D Vector addition
-	var final_draw_pos := draw_pos + Vector2(-half_width, offset_y)
-	
-	# Draw drop shadow for extreme readibility over map terrain (Section 1.2)
 	_radar_canvas.draw_string(default_font, final_draw_pos + Vector2(1, 1), glyph, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, shadow_color)
 	_radar_canvas.draw_string(default_font, final_draw_pos, glyph, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, text_color)
 
 
-## Pure helper resolving abbreviations deterministically from static mappings
 func _get_glyph_for_entity(node_name: String) -> String:
 	var upper_name := node_name.to_upper()
 	for key: String in SYMBOL_CHAR_MAPPING.keys():
@@ -252,6 +237,12 @@ func _on_border_draw() -> void:
 	if not is_instance_valid(player): return
 	var player_pos := player.global_position
 	
+	_draw_border_rings()
+	_draw_border_quest_indicator(player_pos)
+	_draw_border_player_marker()
+
+
+func _draw_border_rings() -> void:
 	for i in range(12):
 		var r: float = MAX_RADIUS - float(i)
 		var alpha: float = (float(12 - i) / 12.0) * 0.35
@@ -267,6 +258,8 @@ func _on_border_draw() -> void:
 	_draw_holographic_compass_plate(default_font, Vector2(CENTER.x + 79.0, CENTER.y), tr("DIR_E").left(1).to_upper(), 11, compass_color)
 	_draw_holographic_compass_plate(default_font, Vector2(CENTER.x - 79.0, CENTER.y), tr("DIR_W").left(1).to_upper(), 11, compass_color)
 
+
+func _draw_border_quest_indicator(player_pos: Vector3) -> void:
 	var active_q := QuestService.get_active_quest() as Quest
 	if active_q != null and active_q.target_position != Vector3.ZERO:
 		var q_pos := active_q.target_position
@@ -284,6 +277,8 @@ func _on_border_draw() -> void:
 		_border_canvas.draw_polyline(PackedVector2Array([diamond_points[0], diamond_points[1], diamond_points[2], diamond_points[3], diamond_points[0]]), Color.BLACK, 1.5)
 		_draw_dashed_gps_line(CENTER, draw_target, Color(1.0, 0.05, 0.55, 0.72), 2.0, 6.0)
 
+
+func _draw_border_player_marker() -> void:
 	_border_canvas.draw_circle(CENTER, 4.0, Color(0.2, 0.2, 0.2, 0.6))
 	_border_canvas.draw_circle(CENTER, 3.0, Color.WHITE)
 	_border_canvas.draw_circle(CENTER, 3.0, Color.BLACK, false, 1.0)

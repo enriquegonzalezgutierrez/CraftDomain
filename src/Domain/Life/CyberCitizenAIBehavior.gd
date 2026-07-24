@@ -21,6 +21,7 @@ const SCAN_DURATION_SEC: float = 1.6
 const UPLOAD_INTERVAL_SEC: float = 15.0
 const UPLOAD_DURATION_SEC: float = 3.0
 const SENSORY_RANGE_SQ: float = 100.0
+const INVALID_COORD := Vector3i(0, -999, 0)
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -236,7 +237,7 @@ class ScanTerminalsAction extends GOAPAction:
 		
 		if ws != null:
 			var terminal := _scan_for_nearby_terminal(host.global_position, ws)
-			if terminal != Vector3i(0, -999, 0):
+			if terminal != INVALID_COORD:
 				bb.set_memory("target_terminal", terminal)
 				return true
 				
@@ -249,9 +250,9 @@ class ScanTerminalsAction extends GOAPAction:
 			for y in range(-2, 3):
 				for z in range(-3, 4):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 13:
+					if ws.get_block(c) == BlockType.Type.NEON_MAGENTA:
 						return c
-		return Vector3i(0, -999, 0)
+		return INVALID_COORD
 
 
 class UploadDataAction extends GOAPAction:
@@ -367,7 +368,7 @@ class RoadPatrolAction extends GOAPAction:
 		for x in range(-2, 3):
 			for z in range(-2, 3):
 				var c := my_coord + Vector3i(x, -1, z)
-				if ws.get_block(c) == 25:
+				if ws.get_block(c) == BlockType.Type.ROAD:
 					var diff := (Vector3(c) + Vector3(0.5, 1.0, 0.5)) - host_pos
 					diff.y = 0.0
 					if diff.length() > 0.8: return diff.normalized()
@@ -432,10 +433,3 @@ class RoadPatrolAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
-
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

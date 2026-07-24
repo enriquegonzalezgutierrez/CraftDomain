@@ -297,7 +297,6 @@ class QuiqueStrollAction extends GOAPAction:
 		if ws == null:
 			return true
 			
-		# Proactive 1.5m scan distance to steer away safely from empty edges
 		var check_pos := host.global_position + dir * 1.5
 		var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
 		var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) + 1, floori(check_pos.z))
@@ -306,13 +305,12 @@ class QuiqueStrollAction extends GOAPAction:
 			return false
 			
 		if host.is_on_floor():
-			# Stable voxel height indexing subtracting exactly 1 block
 			var below_coord := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
 			var block_below := ws.get_block(below_coord)
 			var block_at := ws.get_block(feet_coord)
 			
-			var is_liquid := block_below == 6 or block_below == 15 or block_at == 6
-			var is_void := block_below == 0
+			var is_liquid := (block_below == BlockType.Type.WATER or block_below == BlockType.Type.LAVA or block_at == BlockType.Type.WATER)
+			var is_void := (block_below == BlockType.Type.AIR)
 			if is_liquid or is_void:
 				return false
 				

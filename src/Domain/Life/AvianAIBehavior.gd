@@ -21,6 +21,7 @@ const FLIGHT_SPEED_SOAR: float = 3.2
 const FLIGHT_SPEED_GLIDE: float = 4.8
 const PERCH_DURATION_SEC: float = 5.0
 const THREAT_SENSORY_RANGE_SQ: float = 64.0
+const INVALID_COORD := Vector3i(0, -999, 0)
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -197,9 +198,9 @@ class ScanLeavesAction extends GOAPAction:
 		
 	func execute_step(bb: AIBlackboard, _delta: float) -> bool:
 		var host := bb.get_object("host")
-		var leaf_coord := _scan_for_leaves(host) if is_instance_valid(host) else Vector3i(0, -999, 0)
+		var leaf_coord := _scan_for_leaves(host) if is_instance_valid(host) else INVALID_COORD
 		
-		if leaf_coord != Vector3i(0, -999, 0):
+		if leaf_coord != INVALID_COORD:
 			bb.set_memory("roost_target", leaf_coord)
 			return true
 			
@@ -208,9 +209,11 @@ class ScanLeavesAction extends GOAPAction:
 		
 	func _scan_for_leaves(host: Object) -> Vector3i:
 		var parent: Object = host.call("get_parent")
-		if not is_instance_valid(parent) or not "world_state" in parent: return Vector3i(0, -999, 0)
+		if not is_instance_valid(parent) or not "world_state" in parent:
+			return INVALID_COORD
 		var ws: WorldState = parent.get("world_state") as WorldState
-		if ws == null: return Vector3i(0, -999, 0)
+		if ws == null:
+			return INVALID_COORD
 			
 		var host_pos: Vector3 = host.get("global_position")
 		var my_coord := Vector3i(floori(host_pos.x), floori(host_pos.y), floori(host_pos.z))
@@ -219,9 +222,9 @@ class ScanLeavesAction extends GOAPAction:
 			for y in range(-4, 5):
 				for z in range(-5, 6):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 5 and ws.get_block(c + Vector3i(0, 1, 0)) == 0:
+					if ws.get_block(c) == BlockType.Type.LEAVES and ws.get_block(c + Vector3i(0, 1, 0)) == BlockType.Type.AIR:
 						return c
-		return Vector3i(0, -999, 0)
+		return INVALID_COORD
 
 
 class GlideToRoostAction extends GOAPAction:

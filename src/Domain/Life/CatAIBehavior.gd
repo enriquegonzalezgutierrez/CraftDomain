@@ -20,6 +20,7 @@ const SPEED_CREEP: float = 1.4
 const RANGE_ATTRACTION_SQ: float = 100.0
 const RANGE_ZOMBIE_SQ: float = 64.0
 const RANGE_CAMPFIRE_SQ: float = 144.0
+const CHICKEN_MEAT_ITEM_ID: int = 16
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -247,7 +248,7 @@ class LureFoodAction extends GOAPAction:
 		if is_instance_valid(inventory):
 			var active_slot: int = player_node.get("active_slot_index") as int
 			var slot: Object = inventory.call("get_slot_data", active_slot)
-			return slot != null and int(slot.get("item_id")) == 16
+			return slot != null and int(slot.get("item_id")) == CHICKEN_MEAT_ITEM_ID
 		return false
 
 

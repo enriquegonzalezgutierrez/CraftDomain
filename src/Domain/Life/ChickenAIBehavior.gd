@@ -23,6 +23,7 @@ const LURE_RANGE_SQ: float = 100.0
 const PECK_INTERVAL_MIN_SEC: float = 10.0
 const PECK_INTERVAL_MAX_SEC: float = 20.0
 const PECK_DURATION_SEC: float = 1.6
+const CROP_SEED_ITEM_ID: int = 18
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -67,7 +68,6 @@ func evaluate_and_execute(host: Object, delta: float) -> void:
 		
 	_initialize_agent(host)
 	_update_blackboard_timers(delta)
-	
 	_evaluate_active_plan(host)
 	_execute_current_action(delta)
 
@@ -242,7 +242,7 @@ class LureSeedsAction extends GOAPAction:
 		if is_instance_valid(inventory):
 			var active_slot: int = player_node.get("active_slot_index") as int
 			var slot := inventory.get_slot_data(active_slot)
-			return slot != null and slot.item_id == 18
+			return slot != null and slot.item_id == CROP_SEED_ITEM_ID
 		return false
 
 
@@ -300,7 +300,7 @@ class CheckSoilAction extends GOAPAction:
 				var feet_y := floori(h_pos.y + 0.5)
 				var coord := Vector3i(floori(h_pos.x), feet_y - 1, floori(h_pos.z))
 				var block := ws.get_block(coord)
-				if block == 3 or block == 2:
+				if block == BlockType.Type.GRASS or block == BlockType.Type.DIRT:
 					return true
 			bb.set_memory("peck_cooldown", randf_range(PECK_INTERVAL_MIN_SEC, PECK_INTERVAL_MAX_SEC))
 			return false
@@ -413,10 +413,3 @@ class ChickenWanderAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
-
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

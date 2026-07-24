@@ -21,6 +21,7 @@ const RANGE_SIGHT_SQ: float = 100.0
 
 const COOLDOWN_CHAT_MIN_SEC: float = 15.0
 const COOLDOWN_CHAT_MAX_SEC: float = 25.0
+const INVALID_COORD := Vector3i(0, -999, 0)
 
 var _blackboard: AIBlackboard
 var _goals: Array[GOAPGoal] = []
@@ -171,7 +172,7 @@ class ScanTreesAction extends GOAPAction:
 		var host := bb.get_object("host") as CharacterBody3D
 		var leaves_coord := _scan_for_nearby_leaves(host.global_position, host)
 		
-		if leaves_coord != Vector3i(0, -999, 0):
+		if leaves_coord != INVALID_COORD:
 			bb.set_memory("target_leaves", leaves_coord)
 			return true
 			
@@ -180,18 +181,18 @@ class ScanTreesAction extends GOAPAction:
 		
 	func _scan_for_nearby_leaves(host_pos: Vector3, host: CharacterBody3D) -> Vector3i:
 		var parent := host.get_parent() as Node
-		if not is_instance_valid(parent) or not "world_state" in parent: return Vector3i(0, -999, 0)
+		if not is_instance_valid(parent) or not "world_state" in parent: return INVALID_COORD
 		var ws: WorldState = parent.get("world_state") as WorldState
-		if ws == null: return Vector3i(0, -999, 0)
+		if ws == null: return INVALID_COORD
 			
 		var my_coord := Vector3i(floori(host_pos.x), floori(host_pos.y), floori(host_pos.z))
 		for x in range(-4, 5):
 			for y in range(-1, 4):
 				for z in range(-4, 5):
 					var c := my_coord + Vector3i(x, y, z)
-					if ws.get_block(c) == 5:
+					if ws.get_block(c) == BlockType.Type.LEAVES:
 						return c
-		return Vector3i(0, -999, 0)
+		return INVALID_COORD
 
 
 class ClamberToTreeAction extends GOAPAction:
@@ -364,10 +365,3 @@ class MonkeyWanderAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
-
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25
