@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/SharkAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
-#              Planning (GOAP) for the Hostile Great White Shark.
+#              Planning (GOAP) for the Hostile Great White Shark with hydrodynamic 
+#              swim propulsion and prey hunting.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -274,8 +275,22 @@ class SharkSwimAction extends GOAPAction:
 		bb.set_memory("wander_timer", timer)
 		_check_and_resolve_wall_impact(bb, host, wander_dir, delta)
 		
-		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SharkAIBehavior.SPEED_SWIM)
+		_apply_hydrodynamic_swimming(host, ai, wander_dir, delta)
 		return false
+
+	func _apply_hydrodynamic_swimming(host: CharacterBody3D, ai: Object, wander_dir: Vector3, delta: float) -> void:
+		var vel := host.velocity
+		if wander_dir != Vector3.ZERO:
+			vel.x = wander_dir.x * SPEED_SWIM
+			vel.z = wander_dir.z * SPEED_SWIM
+			var in_liquid: bool = host.call("is_in_liquid") as bool if host.has_method("is_in_liquid") else true
+			if in_liquid:
+				vel.y = lerp(vel.y, sin(Time.get_ticks_msec() / 1000.0 * 1.8) * 0.12, delta * 3.0)
+		else:
+			vel.x = move_toward(vel.x, 0.0, SPEED_SWIM)
+			vel.z = move_toward(vel.z, 0.0, SPEED_SWIM)
+		host.velocity = vel
+		if is_instance_valid(ai): ai.set("wander_direction", wander_dir)
 
 	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
 		var start_angle := randf() * TAU
@@ -310,7 +325,6 @@ class SharkSwimAction extends GOAPAction:
 			var feet_block := ws.get_block(feet_coord)
 			var chest_block := ws.get_block(chest_coord)
 			
-			# Sharks navigate safely through water or empty air without blockages
 			if BlockLibrary.is_solid(feet_block) or BlockLibrary.is_solid(chest_block):
 				return false
 				
@@ -337,10 +351,3 @@ class SharkSwimAction extends GOAPAction:
 			stuck = 0.0
 			
 		bb.set_memory("stuck_timer", stuck)
-
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25

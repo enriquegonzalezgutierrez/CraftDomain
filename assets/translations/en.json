@@ -590,5 +590,12 @@
 
   "SETTINGS_WINDOW_MODE": "Display Mode",
   "SETTINGS_MODE_WINDOWED": "Windowed Mode",
-  "SETTINGS_MODE_FULLSCREEN": "Fullscreen Mode"
+  "SETTINGS_MODE_FULLSCREEN": "Fullscreen Mode",
+
+  "DIALOGUE_QUIQUE_INTRO": "Greetings, traveler! I am Quique, once defender of these realms. You stand in the Grand Castle, a monument to the battle that bound the void. Speak, what brings you to my presence?",
+  "DIALOGUE_QUIQUE_CHOICE_MALAKOR": "How did you defeat Weaver Malakor?",
+  "DIALOGUE_QUIQUE_CHOICE_STORY": "Tell me of your past victories.",
+  "DIALOGUE_QUIQUE_STORY_TEXT": "Centuries ago, Weaver Malakor sought to unravel the Chrono-Loom and collapse all biomes into static void. With my blade, I severed his ethereal gravity anchor and sealed him within the celestial realm.",
+  "DIALOGUE_QUIQUE_SECRET_TEXT": "Listen carefully! Malakor cannot be destroyed by normal weapons alone. When he fractures the arena and inverts gravity, aim for his glowing static crown with the Chrono-Scythe! Shattering his temporal crown will permanently sever his power!",
+  "DIALOGUE_QUIQUE_CHOICE_THANK_YOU": "I will remember your wisdom, Lord Quique."
 }

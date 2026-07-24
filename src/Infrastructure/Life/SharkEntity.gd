@@ -4,23 +4,19 @@
 #              Manages 120Hz physics ticks, hydrodynamic tail sways, aquatic 
 #              bubble particles, and surface fin foam.
 # Author: Enrique González Gutiérrez
-# Email: Enrique.gonzalez.gutierrez@gmail.com
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name SharkEntity
 extends PassiveEntity
 
-# Scaled speeds synchronized with domain behaviors
-const SPEED_CHASE: float = 5.0
-const SPEED_SWIM: float = 2.2
+const SHARK_SWIM_SPEED: float = 2.2
+const COOLDOWN_ATTACK_MIN_SEC: float = 18.0
+const COOLDOWN_ATTACK_MAX_SEC: float = 35.0
 
 var player: CharacterBody3D
 var _model_node: Node3D
 var _model_base_y: float = 0.0
 var _animation_time: float = 0.0
-
-const COOLDOWN_ATTACK_MIN_SEC: float = 18.0
-const COOLDOWN_ATTACK_MAX_SEC: float = 35.0
-
 var _attack_sound_timer: float = randf_range(5.0, 15.0)
 
 
@@ -65,12 +61,10 @@ func _get_nameplate_color() -> Color:
 
 
 func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
-	# Symmetrical Showcase Room Bypass: Allow aquatic creatures to move freely
-	# during testing in the diagnostics sandbox.
 	if is_instance_valid(get_parent()) and get_parent().name == "AIShowcaseRoom":
 		return true
 		
-	return block_type == BlockType.Type.WATER
+	return block_type == BlockType.Type.WATER or block_type == BlockType.Type.AIR
 
 
 func _locate_player() -> void:

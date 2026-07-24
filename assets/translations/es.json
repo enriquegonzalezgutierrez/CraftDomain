@@ -590,5 +590,12 @@
 
   "SETTINGS_WINDOW_MODE": "Modo de Pantalla",
   "SETTINGS_MODE_WINDOWED": "Modo Ventana",
-  "SETTINGS_MODE_FULLSCREEN": "Pantalla Completa"
+  "SETTINGS_MODE_FULLSCREEN": "Pantalla Completa",
+
+  "DIALOGUE_QUIQUE_INTRO": "¡Saludos, viajero! Soy Quique, antaño defensor de estos reinos. Te hallas en el Gran Castillo, monumento a la batalla que encadenó al vacío. Dime, ¿qué te trae ante mi presencia?",
+  "DIALOGUE_QUIQUE_CHOICE_MALAKOR": "¿Cómo derrotaste al Tejedor Malakor?",
+  "DIALOGUE_QUIQUE_CHOICE_STORY": "Háblame de tus victorias pasadas.",
+  "DIALOGUE_QUIQUE_STORY_TEXT": "Hace siglos, el Tejedor Malakor intentó deshilachar el Telar Cronológico y colapsar todos los biomas en el vacío estático. Con mi espada, corté su ancla de gravedad etérea y lo sellé en el reino celestial.",
+  "DIALOGUE_QUIQUE_SECRET_TEXT": "¡Escucha con atención! Malakor no puede ser destruido solo con armas comunes. Cuando fracture la arena e invierta la gravedad, ¡apunta a su corona estática brillante con la Crono-Guadaña! ¡Destruir su corona temporal cortará su poder para siempre!",
+  "DIALOGUE_QUIQUE_CHOICE_THANK_YOU": "Recordaré vuestra sabiduría, Señor Quique."
 }

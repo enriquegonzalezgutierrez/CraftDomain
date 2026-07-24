@@ -1,11 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/QuiqueEntity.gd
-# Description: Physical character controller for Quique, the Castle Resident.
-#              Utilizes native GLB model sanitization and GOAP AI behaviors.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Coordinates physical translations,
-#   GLB model sanitization, and dialogue triggers.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 10 lines.
+# Description: Physical character controller for Quique the Noble, living legend
+#              and vanquisher of Weaver Malakor. Coordinates interactive lore 
+#              branching dialogues and strategic campaign secrets.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -14,7 +11,6 @@ extends PassiveEntity
 
 const BASE_MODEL_PATH := "res://assets/models/mobs/quique/quique.glb"
 
-# Model is oriented correctly forward in the .tscn scene
 var gaze_rotation_offset: float = 0.0
 var player: CharacterBody3D
 var _model_node: Node3D
@@ -34,6 +30,7 @@ func _ready() -> void:
 	_sanitize_visual_model()
 	_setup_nameplate_height()
 	_initialize_ai_behavior()
+	_initialize_quique_dialogue_nodes()
 
 
 func _initialize_ai_behavior() -> void:
@@ -67,9 +64,48 @@ func _has_ui_decorations() -> bool:
 func interact(player_node: CharacterBody3D) -> void:
 	var hud := player_node.get("hud") as PlayerHUD
 	if is_instance_valid(hud):
-		var intro_node := DialogueNode.new()
-		intro_node.node_id = "quique_intro_temp"
-		intro_node.text = "DIALOGUE_QUIQUE_GREETING"
-		
-		AudioService.play_sfx_static("npc_chat", global_position)
-		hud.open_dialogue(intro_node, "NPC_NAME_QUIQUE", self)
+		var intro_node := DialogueService.get_dialogue_node("quique_intro")
+		if intro_node == null:
+			_initialize_quique_dialogue_nodes()
+			intro_node = DialogueService.get_dialogue_node("quique_intro")
+			
+		if intro_node != null:
+			AudioService.play_sfx_static("npc_chat", global_position)
+			hud.open_dialogue(intro_node, "NPC_NAME_QUIQUE", self)
+
+
+func _initialize_quique_dialogue_nodes() -> void:
+	var intro_node := DialogueNode.new()
+	intro_node.node_id = "quique_intro"
+	intro_node.text = "DIALOGUE_QUIQUE_INTRO"
+	intro_node.choices = [
+		_create_choice("DIALOGUE_QUIQUE_CHOICE_MALAKOR", "quique_secret"),
+		_create_choice("DIALOGUE_QUIQUE_CHOICE_STORY", "quique_story"),
+		_create_choice("DIALOGUE_MERCHANT_CHOICE_CLOSE", "")
+	]
+	
+	var story_node := DialogueNode.new()
+	story_node.node_id = "quique_story"
+	story_node.text = "DIALOGUE_QUIQUE_STORY_TEXT"
+	story_node.choices = [
+		_create_choice("DIALOGUE_QUIQUE_CHOICE_MALAKOR", "quique_secret"),
+		_create_choice("DIALOGUE_MERCHANT_CHOICE_BACK", "quique_intro")
+	]
+	
+	var secret_node := DialogueNode.new()
+	secret_node.node_id = "quique_secret"
+	secret_node.text = "DIALOGUE_QUIQUE_SECRET_TEXT"
+	secret_node.choices = [
+		_create_choice("DIALOGUE_QUIQUE_CHOICE_THANK_YOU", "")
+	]
+	
+	DialogueRegistry.register_dialogue_node(intro_node)
+	DialogueRegistry.register_dialogue_node(story_node)
+	DialogueRegistry.register_dialogue_node(secret_node)
+
+
+func _create_choice(option_key: String, target_id: String) -> DialogueChoice:
+	var choice := DialogueChoice.new()
+	choice.option_text = option_key
+	choice.target_node_id = target_id
+	return choice
