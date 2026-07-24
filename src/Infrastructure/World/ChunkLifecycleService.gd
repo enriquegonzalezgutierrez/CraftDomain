@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/ChunkLifecycleService.gd
 # Description: High-Performance Infrastructure Service managing chunk lifecycles,
-#              LOD updates, background threads, and multi-layer entity spawning.
+#              macro-cluster frustum culling, background threads, and 
+#              multi-layer entity spawning.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -12,10 +13,9 @@ const CHUNK_MASK: int = 15
 const TIME_BUDGET_ACTIVE_USEC: int = 2000  
 const TIME_BUDGET_LOADING_USEC: int = 40000 
 
-# Generous 115-degree horizontal field of view to cover wide screens
 const FRUSTUM_CULL_THRESHOLD: float = -0.42 
-# 36 meters squared (approx 2 chunks radius) safe circle around player
 const SAFE_ZONE_DISTANCE_SQ: float = 1296.0 
+const MACRO_CLUSTER_SIZE: int = 2
 
 var controller: Node3D 
 var world_state: WorldState
@@ -275,6 +275,9 @@ func _execute_lod_scans() -> void:
 	var look_dir := _get_player_look_direction()
 	var player_pos := _get_player_position()
 	
+	# Group active chunks into 2x2x2 Macro-Clusters for O(1) group culling checks
+	var processed_clusters: Dictionary = {}
+	
 	for pos: Vector3i in _chunk_lod_states.keys():
 		var is_currently_distant := _calculate_is_chunk_distant(pos)
 		var was_distant: bool = _chunk_lod_states.get(pos, false) as bool
@@ -285,26 +288,32 @@ func _execute_lod_scans() -> void:
 			if not is_currently_distant and not direct_renderer.has_collision_body(pos):
 				_request_chunk_rebuild(pos)
 				
-		_apply_frustum_culling_to_chunk(pos, player_pos, look_dir)
+		_evaluate_macro_cluster_culling(pos, player_pos, look_dir, processed_clusters)
 
 
-## Balanced 2D Horizon-Plane Culling + Proximity Safe Zone Check.
-func _apply_frustum_culling_to_chunk(chunk_pos: Vector3i, player_pos: Vector3, look_dir: Vector3) -> void:
-	if look_dir == Vector3.ZERO: return
-		
-	var chunk_center := Vector3(chunk_pos * Chunk.SIZE) + Vector3(8.0, 8.0, 8.0)
-	var dist_sq := player_pos.distance_squared_to(chunk_center)
+func _evaluate_macro_cluster_culling(chunk_pos: Vector3i, player_pos: Vector3, look_dir: Vector3, processed_clusters: Dictionary) -> void:
+	var cluster_key := Vector3i(
+		floori(float(chunk_pos.x) / float(MACRO_CLUSTER_SIZE)),
+		floori(float(chunk_pos.y) / float(MACRO_CLUSTER_SIZE)),
+		floori(float(chunk_pos.z) / float(MACRO_CLUSTER_SIZE))
+	)
 	
-	# 1. Proximity Safe Zone: Avoid culling chunks immediately surrounding the player (Zero clipping)
-	if dist_sq <= SAFE_ZONE_DISTANCE_SQ:
-		direct_renderer.set_chunk_visible(chunk_pos, true)
+	if processed_clusters.has(cluster_key):
+		var cluster_visible: bool = processed_clusters[cluster_key] as bool
+		direct_renderer.set_chunk_visible(chunk_pos, cluster_visible)
 		return
 		
-	# 2. 2D Horizon-Plane Projection (XZ): Decouples vertical camera pitch angles (looking up/down)
-	var flat_look := Vector2(look_dir.x, look_dir.z).normalized()
-	var flat_to_chunk := Vector2(chunk_center.x - player_pos.x, chunk_center.z - player_pos.z).normalized()
+	# Compute macro-cluster center vector (2x2x2 chunks volume)
+	var cluster_center := (Vector3(cluster_key * MACRO_CLUSTER_SIZE) * float(Chunk.SIZE)) + Vector3(16.0, 16.0, 16.0)
+	var dist_sq := player_pos.distance_squared_to(cluster_center)
 	
-	var is_visible := flat_look.dot(flat_to_chunk) >= FRUSTUM_CULL_THRESHOLD
+	var is_visible := true
+	if dist_sq > SAFE_ZONE_DISTANCE_SQ and look_dir != Vector3.ZERO:
+		var flat_look := Vector2(look_dir.x, look_dir.z).normalized()
+		var flat_to_cluster := Vector2(cluster_center.x - player_pos.x, cluster_center.z - player_pos.z).normalized()
+		is_visible = flat_look.dot(flat_to_cluster) >= FRUSTUM_CULL_THRESHOLD
+		
+	processed_clusters[cluster_key] = is_visible
 	direct_renderer.set_chunk_visible(chunk_pos, is_visible)
 
 

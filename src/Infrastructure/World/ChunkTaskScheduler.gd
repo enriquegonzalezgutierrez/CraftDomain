@@ -1,12 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/ChunkTaskScheduler.gd
 # Description: Infrastructure scheduler managing background thread worker pools,
-#              active task queues, and asynchronous chunk compiling.
-# SOLID COMPLIANCE:
-#              - Single Responsibility Principle (SRP): Coordinates strictly 
-#                WorkerThreadPool allocations and task priorities.
-#              - Order of Operations Fix: Purged out-of-order MegaStructures 
-#                re-applications that overwrote player block modifications.
+#              asynchronous multi-threaded collision shape compilation, and
+#              chunk rebuild task queues.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -57,7 +53,7 @@ func queue_prioritized_loads(chunk_positions: Array[Vector3i], versions: Diction
 	_trigger_next_background_tasks()
 
 
-## Enqueues a chunk rebuild request dynamically when voxel edits occur
+## Enqueues an asynchronous chunk rebuild request dynamically when voxel edits occur
 func request_chunk_rebuild(pos: Vector3i, version: int) -> void:
 	if not lifecycle.is_chunk_rendered(pos): 
 		return
@@ -140,10 +136,9 @@ func _dispatch_task(request: Dictionary) -> void:
 
 func _background_generate_task(chunk_pos: Vector3i, version: int) -> void:
 	var chunk := Chunk.new(chunk_pos)
-	_apply_generator(chunk) # Generates terrain and applies MegaStructures (Castle)
+	_apply_generator(chunk)
 	
-	var saved_edits := _apply_saved_modifications(chunk) # Overlays player dynamic modifications
-	
+	var saved_edits := _apply_saved_modifications(chunk)
 	_compile_and_submit_task(chunk, version, false, saved_edits)
 	_finish_task_execution()
 
@@ -170,8 +165,6 @@ func _apply_generator(chunk: Chunk) -> void:
 		gen.generate_chunk(chunk)
 
 
-## Symmetrical Cache-Merger: Atomic blending of on-disk save states with fresh
-## in-memory unwritten WorldState modifications to prevent block reappearing rollbacks.
 func _apply_saved_modifications(chunk: Chunk) -> Dictionary:
 	if not is_instance_valid(lifecycle) or not is_instance_valid(lifecycle.controller): return {}
 	var repo := lifecycle.controller.get("repository") as WorldRepository
@@ -250,10 +243,6 @@ func _finish_task_execution() -> void:
 	_queue_mutex.unlock()
 	call_deferred("_trigger_next_background_tasks")
 
-
-# ==============================================================================
-# SYNCHRONIZATION GETTERS & CLEANUP
-# ==============================================================================
 
 func cleanup_completed_threads() -> void:
 	_queue_mutex.lock()

@@ -1,12 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/ChunkNavigationBuilder.gd
-# Description: Infrastructure Service compiling spatial voxel grids into 3D navigation nodes.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively spatial chunk scans,
-#   identifying walkable block zones, and linking adjacent graph nodes.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
-# - BUG FIX: Redirected all physics queries to the uncoupled BlockLibrary.
-# Author: Enrique Gonzalez Gutierrez
+# Description: Infrastructure Service compiling spatial voxel grids into 3D 
+#              navigation nodes with fast-path AStar graph node re-evaluations.
+# Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name ChunkNavigationBuilder
@@ -40,8 +36,8 @@ static func compile_walkable_nodes_asynchronous(chunk: Chunk, world_state: World
 	return walkable_list
 
 
-## Binds the pre-filtered, background-compiled navigation nodes directly to 
-## the global AStar navigation graph without performing expensive chunk-wide scans.
+## Binds pre-filtered, background-compiled navigation nodes directly to 
+## the global AStar graph without performing expensive main-thread chunk scans.
 static func register_compiled_nodes_synchronous(walkable_nodes: Array[Dictionary], world_state: WorldState, nav_service: VoxelNavigationService) -> void:
 	if nav_service == null or walkable_nodes.is_empty():
 		return
@@ -56,14 +52,12 @@ static func register_compiled_nodes_synchronous(walkable_nodes: Array[Dictionary
 		_connect_walkable_neighbors(pos, world_state, nav_service)
 
 
-## Reactive API: Updates the global A* navigation graph dynamically when a block is modified in real-time.
+## Reactive API: Updates the global A* navigation graph dynamically when a block is modified.
 static func update_navigation_on_block_modified(global_pos: Vector3i, _type: BlockType.Type, world_state: WorldState, nav_service: VoxelNavigationService) -> void:
 	if nav_service == null or world_state == null:
 		return
 		
-	var scan_range := range(-1, 3) 
-	
-	for offset_y: int in scan_range:
+	for offset_y: int in range(-1, 3):
 		var eval_pos := global_pos + Vector3i(0, offset_y, 0)
 		_re_evaluate_node_integrity(eval_pos, world_state, nav_service)
 
@@ -76,9 +70,7 @@ static func _re_evaluate_node_integrity(pos: Vector3i, world_state: WorldState, 
 		if not registered_in_graph:
 			var is_roofed := _check_is_roofed_global(pos, world_state)
 			nav_service.add_navigation_node(pos, is_roofed)
-			_connect_walkable_neighbors(pos, world_state, nav_service)
-		else:
-			_connect_walkable_neighbors(pos, world_state, nav_service)
+		_connect_walkable_neighbors(pos, world_state, nav_service)
 	else:
 		if registered_in_graph:
 			nav_service.remove_navigation_node(pos)

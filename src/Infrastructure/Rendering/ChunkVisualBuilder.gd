@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/ChunkVisualBuilder.gd
 # Description: Infrastructure Rendering Service evaluating chunk voxel grids,
-#              applying high-performance 2D Greedy Meshing, and packing transforms.
+#              applying zero-allocation 2D Greedy Meshing, early-out layer masks,
+#              and pre-allocated transform buffers.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -11,6 +12,7 @@ extends RefCounted
 const CHUNK_MASK: int = 15
 const SLICE_SIZE: int = 16
 
+## Zero-allocation float array buffer for MultiMesh instances
 class VoxelRenderBuffer:
 	var data: PackedFloat32Array
 	var pointer: int = 0
@@ -21,7 +23,7 @@ class VoxelRenderBuffer:
 		
 	func push_transform(cx: float, cy: float, cz: float, sx: float, sy: float, sz: float) -> void:
 		var p := pointer
-		data[p] = sx;  data[p+1] = 0.0; data[p+2] = 0.0; data[p+3] = cx;
+		data[p] = sx;   data[p+1] = 0.0; data[p+2] = 0.0; data[p+3] = cx;
 		data[p+4] = 0.0; data[p+5] = sy;  data[p+6] = 0.0; data[p+7] = cy;
 		data[p+8] = 0.0; data[p+9] = 0.0; data[p+10] = sz;  data[p+11] = cz;
 		pointer += 12
@@ -30,7 +32,7 @@ class VoxelRenderBuffer:
 		return data.slice(0, pointer)
 
 
-## Extracts, merges and compiles raw chunk voxel data into optimized rendering arrays.
+## Extracts, merges, and compiles raw chunk voxel data into optimized rendering arrays.
 static func extract_render_data(chunk: Chunk, world_state: WorldState, build_collision: bool = true) -> Dictionary:
 	var render_buffers: Dictionary = {}
 	var collision_vertices := PackedVector3Array()
@@ -47,6 +49,9 @@ static func _execute_greedy_slice_sweep(chunk: Chunk, world_state: WorldState, b
 	
 	# Sweep horizontally along Y layers
 	for y in range(Chunk.SIZE):
+		if _is_slice_completely_empty(chunk, y):
+			continue # O(1) Fast-Path: Skip empty AIR slices instantly!
+			
 		var slice_ids := PackedInt32Array()
 		var visibility_mask := PackedByteArray()
 		slice_ids.resize(SLICE_SIZE * SLICE_SIZE)
@@ -55,6 +60,14 @@ static func _execute_greedy_slice_sweep(chunk: Chunk, world_state: WorldState, b
 		_build_slice_exposure_maps(chunk, y, neighbors, slice_ids, visibility_mask)
 		var merged_quads := VoxelGreedyMesherSolver.solve_slice(slice_ids, visibility_mask)
 		_process_merged_quads(merged_quads, y, build_collision, render_buffers, collision_vertices)
+
+
+static func _is_slice_completely_empty(chunk: Chunk, y: int) -> bool:
+	for z in range(Chunk.SIZE):
+		for x in range(Chunk.SIZE):
+			if chunk.get_block(x, y, z) != BlockType.Type.AIR:
+				return false
+	return true
 
 
 static func _gather_boundary_neighbors(chunk: Chunk, world_state: WorldState) -> Dictionary:
@@ -74,11 +87,11 @@ static func _build_slice_exposure_maps(chunk: Chunk, y: int, neighbors: Dictiona
 			var idx := x + Chunk.SIZE * z
 			var b_id := chunk.get_block(x, y, z)
 			slice_ids[idx] = b_id
-			visibility_mask[idx] = 1 if _is_voxel_exposed(chunk, Vector3i(x, y, z), neighbors) else 0
+			visibility_mask[idx] = 1 if _is_voxel_exposed_fast(chunk, x, y, z, neighbors) else 0
 
 
-static func _is_voxel_exposed(chunk: Chunk, local_pos: Vector3i, neighbors: Dictionary) -> bool:
-	var block_type := chunk.get_block(local_pos.x, local_pos.y, local_pos.z)
+static func _is_voxel_exposed_fast(chunk: Chunk, x: int, y: int, z: int, neighbors: Dictionary) -> bool:
+	var block_type := chunk.get_block(x, y, z)
 	if block_type == BlockType.Type.AIR or block_type == BlockType.Type.WATER or block_type == BlockType.Type.LAVA:
 		return false
 		
@@ -87,13 +100,13 @@ static func _is_voxel_exposed(chunk: Chunk, local_pos: Vector3i, neighbors: Dict
 		return false
 		
 	for dir: Vector3i in ChunkMesher.DIRECTIONS:
-		if _is_face_visible(chunk, local_pos, dir, neighbors):
+		if _is_face_visible_fast(chunk, x, y, z, dir, neighbors):
 			return true
 	return false
 
 
-static func _is_face_visible(chunk: Chunk, local_pos: Vector3i, dir: Vector3i, neighbors: Dictionary) -> bool:
-	var neighbor_type := _get_neighbor_block_type(chunk, local_pos, dir, neighbors)
+static func _is_face_visible_fast(chunk: Chunk, x: int, y: int, z: int, dir: Vector3i, neighbors: Dictionary) -> bool:
+	var neighbor_type := _get_neighbor_block_type_fast(chunk, x, y, z, dir, neighbors)
 	if neighbor_type == BlockType.Type.AIR:
 		return true
 		
@@ -101,10 +114,10 @@ static func _is_face_visible(chunk: Chunk, local_pos: Vector3i, dir: Vector3i, n
 	return neighbor_def.is_transparent or not neighbor_def.geometry.is_face_opaque(-dir)
 
 
-static func _get_neighbor_block_type(chunk: Chunk, local_pos: Vector3i, dir: Vector3i, neighbors: Dictionary) -> BlockType.Type:
-	var nx := local_pos.x + dir.x
-	var ny := local_pos.y + dir.y
-	var nz := local_pos.z + dir.z
+static func _get_neighbor_block_type_fast(chunk: Chunk, x: int, y: int, z: int, dir: Vector3i, neighbors: Dictionary) -> BlockType.Type:
+	var nx := x + dir.x
+	var ny := y + dir.y
+	var nz := z + dir.z
 	
 	if nx >= 0 and nx < Chunk.SIZE and ny >= 0 and ny < Chunk.SIZE and nz >= 0 and nz < Chunk.SIZE:
 		return chunk.get_block(nx, ny, nz)
