@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/PlayerHUD.gd
-# Description: Central HUD Orchestrator and UI Coordinator. Manages overlays,
-#              LOD UI updates, reactive Domain Event bindings, and Quest Toasts.
+# Description: Central HUD Orchestrator managing screen-space post-processes, 
+#              frostbite vignettes, dialogues, overlays, and reactive events.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -13,8 +13,10 @@ const INVENTORY_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/InventoryO
 const WORLD_MAP_OVERLAY_SCENE := preload("res://src/Infrastructure/UI/map_overlay.tscn")
 const LOADING_SCREEN_SCENE := preload("res://src/Infrastructure/UI/loading_screen.tscn")
 const HACKING_TERMINAL_SCENE := preload("res://src/Infrastructure/UI/hacking_terminal_overlay.tscn")
+
 const GLITCH_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/null_void_glitch.gdshader"
-const UNDERWATER_SHADER_PATH: String = "res://src/Infrastructure/Rendering/Shaders/underwater_post_process.gdshader"
+const UNDERWATER_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/underwater_post_process.gdshader"
+const FROSTBITE_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/screen_frostbite.gdshader"
 
 const UI_UPDATE_INTERVAL: float = 0.05 
 
@@ -34,6 +36,10 @@ var _current_glitch_intensity: float = 0.0
 
 var underwater_overlay: ColorRect
 var underwater_material: ShaderMaterial
+
+var frostbite_overlay: ColorRect
+var frostbite_material: ShaderMaterial
+var _current_freeze_progress: float = 0.0
 
 var chat_box: ChatBoxWidget
 var _ui_update_timer: float = 0.0
@@ -83,6 +89,7 @@ func _find_chat_box_recursive(node: Node) -> ChatBoxWidget:
 func _setup_post_process_overlays() -> void:
 	_setup_glitch_overlay()
 	_setup_underwater_overlay()
+	_setup_frostbite_overlay()
 
 
 func _setup_glitch_overlay() -> void:
@@ -114,6 +121,21 @@ func _setup_underwater_overlay() -> void:
 	move_child(underwater_overlay, 1)
 
 
+func _setup_frostbite_overlay() -> void:
+	if not ResourceLoader.exists(FROSTBITE_SHADER_PATH): return
+	frostbite_overlay = ColorRect.new()
+	frostbite_overlay.name = "FrostbiteScreenOverlay"
+	frostbite_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frostbite_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frostbite_overlay.visible = false
+	
+	frostbite_material = ShaderMaterial.new()
+	frostbite_material.shader = load(FROSTBITE_SHADER_PATH) as Shader
+	frostbite_overlay.material = frostbite_material
+	add_child(frostbite_overlay)
+	move_child(frostbite_overlay, 2)
+
+
 func set_underwater_overlay_visible(p_visible: bool) -> void:
 	if is_instance_valid(underwater_overlay):
 		underwater_overlay.visible = p_visible
@@ -126,6 +148,7 @@ func _process(delta: float) -> void:
 		_update_hud_widgets()
 			
 	_update_null_void_glitch(delta)
+	_update_frostbite_vignette(delta)
 
 
 func _update_hud_widgets() -> void:
@@ -140,6 +163,27 @@ func _update_null_void_glitch(delta: float) -> void:
 	
 	_current_glitch_intensity = lerpf(_current_glitch_intensity, 0.38 if is_corrupted else 0.0, delta * 5.0)
 	glitch_material.set_shader_parameter("glitch_intensity", _current_glitch_intensity)
+
+
+func _update_frostbite_vignette(delta: float) -> void:
+	if not is_instance_valid(frostbite_material) or not is_instance_valid(player): return
+	var target_freeze := _calculate_target_freeze_progress()
+	_current_freeze_progress = lerpf(_current_freeze_progress, target_freeze, delta * 2.0)
+	
+	frostbite_material.set_shader_parameter("freeze_progress", _current_freeze_progress)
+	frostbite_overlay.visible = _current_freeze_progress > 0.001
+
+
+func _calculate_target_freeze_progress() -> float:
+	if not is_instance_valid(world_controller): return 0.0
+	var biome_id := BiomeService.get_biome_id_at_position(player.global_position, world_controller)
+	if biome_id == 4: # Frostbite Glaciers
+		var is_blizzard := false
+		var weather_service := get_node_or_null("/root/Bootstrap/WeatherService")
+		if is_instance_valid(weather_service):
+			is_blizzard = (weather_service.get("current_weather") as int) == 3 # SNOWY
+		return 0.65 if is_blizzard else 0.35
+	return 0.0
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -330,10 +374,6 @@ func is_any_menu_open() -> bool:
 	var is_dialogue := is_instance_valid(dialogue_coordinator) and is_instance_valid(dialogue_coordinator.active_dialogue)
 	return _is_modal_active() or is_typing or is_dialogue
 
-
-# ==============================================================================
-# ANIMATED QUEST TOAST NOTIFICATION BANNER
-# ==============================================================================
 
 func show_quest_notification(header_key: String, quest_title: String) -> void:
 	_ensure_notification_ui_created()

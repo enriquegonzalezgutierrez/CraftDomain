@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical character controller representing mobile entities.
-#              Coordinates locomotion, buoyancy, damage reactions, and quest targets.
+#              Coordinates locomotion, buoyancy, damage reactions, quest targets,
+#              and spatial ember dissolve death animations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -15,6 +16,8 @@ const SLEEP_DISTANCE_SQ: float = 1600.0
 const THREAT_SEARCH_RADIUS_SQ: float = 64.0
 const REPUTATION_DAMAGE_PENALTY: int = -15
 const REPUTATION_MURDER_PENALTY: int = -35
+
+const DISSOLVE_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/spatial_dissolve.gdshader"
 
 @export var is_conversational_npc: bool = false
 @export var humanoid_role: int = -1
@@ -253,10 +256,65 @@ func _cleanup_physics_shapes() -> void:
 
 
 func _apply_death_animations_and_free() -> void:
+	var shader := load(DISSOLVE_SHADER_PATH) as Shader if ResourceLoader.exists(DISSOLVE_SHADER_PATH) else null
+	if shader != null and is_instance_valid(visual_component) and is_instance_valid(visual_component.visual_root):
+		_execute_shader_dissolve_death(shader)
+	else:
+		_execute_fallback_death_tween()
+
+
+func _execute_shader_dissolve_death(shader: Shader) -> void:
+	var base_mat := ShaderMaterial.new()
+	base_mat.shader = shader
+	base_mat.set_shader_parameter("noise_tex", VoxelMaterialFactory._get_or_create_water_noise_a())
+	
+	_apply_dissolve_material_to_mesh_nodes(visual_component.visual_root, base_mat)
+	
+	var death_tween := create_tween()
+	death_tween.tween_method(_set_dissolve_progress_recursive.bind(visual_component.visual_root), 0.0, 1.0, 0.65)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_IN_OUT)
+		
+	death_tween.chain().tween_callback(queue_free)
+
+
+func _apply_dissolve_material_to_mesh_nodes(node: Node, shader_mat: ShaderMaterial) -> void:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		var orig_mat := mi.material_override as BaseMaterial3D
+		if orig_mat == null and mi.mesh != null and mi.mesh.get_surface_count() > 0:
+			orig_mat = mi.mesh.surface_get_material(0) as BaseMaterial3D
+			
+		var instance_shader_mat := shader_mat.duplicate() as ShaderMaterial
+		if is_instance_valid(orig_mat):
+			instance_shader_mat.set_shader_parameter("base_albedo", orig_mat.albedo_color)
+			if orig_mat.albedo_texture != null:
+				instance_shader_mat.set_shader_parameter("albedo_texture", orig_mat.albedo_texture)
+				
+		mi.material_override = instance_shader_mat
+		
+	for child in node.get_children():
+		_apply_dissolve_material_to_mesh_nodes(child, shader_mat)
+
+
+func _set_dissolve_progress_recursive(progress: float, root_node: Node) -> void:
+	_update_node_dissolve_progress(root_node, progress)
+
+
+func _update_node_dissolve_progress(node: Node, progress: float) -> void:
+	if node is MeshInstance3D:
+		var sm := (node as MeshInstance3D).material_override as ShaderMaterial
+		if is_instance_valid(sm):
+			sm.set_shader_parameter("dissolve_progress", progress)
+			
+	for child in node.get_children():
+		_update_node_dissolve_progress(child, progress)
+
+
+func _execute_fallback_death_tween() -> void:
 	var death_tween := create_tween().set_parallel(true)
 	if is_instance_valid(visual_component) and is_instance_valid(visual_component.visual_root):
 		death_tween.tween_property(visual_component.visual_root, "scale", Vector3.ZERO, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-		death_tween.tween_property(visual_component.visual_root, "rotation:y", deg_to_rad(180), 0.25).set_trans(Tween.TRANS_SINE)
 		
 	death_tween.chain().tween_callback(queue_free)
 

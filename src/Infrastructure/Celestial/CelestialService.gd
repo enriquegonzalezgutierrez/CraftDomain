@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Celestial/CelestialService.gd
 # Description: Infrastructure Celestial Service managing global game time-of-day,
-#              astronomically aligned Sun/Moon orbits, and real-time atmospheric 
-#              fog horizon color synchronization.
+#              astronomically aligned Sun/Moon orbits, sky shader uniforms,
+#              and dynamic polar aurora borealis intensity modulation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -27,6 +27,7 @@ var _current_time: float = 0.5
 var _last_time_value: float = 0.5
 var _calendar_days: int = 14 
 var _current_storm_weight: float = 0.0
+var _active_aurora_intensity: float = 0.0
 
 var _weather_service: WeatherService
 
@@ -155,6 +156,7 @@ func _update_sky_atmosphere() -> void:
 	var sky_mat: ShaderMaterial = sky.sky_material as ShaderMaterial
 	var day_weight := _sync_sun_shader_parameters(sky_mat)
 	_sync_moon_shader_parameters(sky_mat)
+	_sync_aurora_shader_parameters(sky_mat, day_weight)
 	
 	sky_mat.set_shader_parameter("storm_weight", _current_storm_weight)
 	_sync_fog_light_color(world_environment.environment, day_weight)
@@ -173,6 +175,28 @@ func _sync_moon_shader_parameters(sky_mat: ShaderMaterial) -> void:
 	var moon_pos := _calculate_moon_position_vector()
 	sky_mat.set_shader_parameter("moon_direction", moon_pos)
 	sky_mat.set_shader_parameter("moon_phase", float(_calendar_days) / 28.0)
+
+
+func _sync_aurora_shader_parameters(sky_mat: ShaderMaterial, day_weight: float) -> void:
+	var biome_id := _get_player_biome_id()
+	var is_polar_or_celestial := (biome_id == 4 or biome_id == 9) # Frostbite Glaciers & Cloud Kingdom
+	var night_factor := clampf(1.0 - day_weight, 0.0, 1.0)
+	
+	var target_intensity := 1.0 if (is_polar_or_celestial and night_factor > 0.1) else 0.0
+	target_intensity *= (1.0 - _current_storm_weight * 0.8)
+	
+	_active_aurora_intensity = lerpf(_active_aurora_intensity, target_intensity, get_process_delta_time() * 2.0)
+	sky_mat.set_shader_parameter("aurora_intensity", _active_aurora_intensity)
+
+
+func _get_player_biome_id() -> int:
+	var bootstrap := get_node_or_null("/root/Bootstrap")
+	if is_instance_valid(bootstrap):
+		var player_node := bootstrap.get("player_controller") as CharacterBody3D
+		var world_ctrl := bootstrap.get("world_controller") as Node3D
+		if is_instance_valid(player_node) and is_instance_valid(world_ctrl):
+			return BiomeService.get_biome_id_at_position(player_node.global_position, world_ctrl)
+	return 2
 
 
 func _process_lightning_strikes(delta: float) -> void:

@@ -1,12 +1,15 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Celestial/WeatherService.gd
-# Description: Infrastructure Weather Service managing dynamic meteorological cycles,
-#              real-time GPU particle overrides, and smooth cloud coverage shader sync.
+# Description: Infrastructure Weather Service managing dynamic meteorological 
+#              cycles, wind-driven foliage particle emitters, and real-time GPU 
+#              cloud coverage shader synchronization.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name WeatherService
 extends Node
+
+const FOLIAGE_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/wind_falling_foliage.gdshader"
 
 var current_weather: IClimateProfile.ClimateType = IClimateProfile.ClimateType.SUNNY
 var active_fog_multiplier: float = 1.0
@@ -25,6 +28,9 @@ var _particles_material: ParticleProcessMaterial
 var _particles_mesh: BoxMesh
 var _mesh_material: ORMMaterial3D
 
+var _foliage_particles: GPUParticles3D
+var _foliage_shader_mat: ShaderMaterial
+
 var _current_wind_strength: float = 0.4
 var _current_wind_vector: Vector2 = Vector2.ZERO
 var _current_cloud_coverage_cache: float = 0.0
@@ -39,6 +45,7 @@ func _ready() -> void:
 	name = "WeatherService"
 	_setup_global_wind_parameters()
 	_setup_particles_system()
+	_setup_foliage_particle_system()
 	_cycle_weather()
 
 
@@ -50,20 +57,16 @@ func _physics_process(delta: float) -> void:
 		_particles.global_position = player.global_position + Vector3(0.0, 12.0, 0.0)
 		_process_indoor_rain_safety()
 		
+	if is_instance_valid(_foliage_particles):
+		_foliage_particles.global_position = player.global_position + Vector3(0.0, 6.0, 0.0)
+		_update_biome_foliage_tint()
+		
 	_process_wind_gusts(delta)
 	_update_weather_and_shader_coverage(delta)
 	
 	_weather_timer -= delta
 	if _weather_timer <= 0.0:
 		_cycle_weather()
-
-
-func _update_weather_and_shader_coverage(delta: float) -> void:
-	var biome_id := _detect_player_biome_id()
-	var profile := BiomeService.get_biome(biome_id).get_climate_profile()
-	
-	_process_dynamic_wind_simulation(delta, profile)
-	_update_shader_cloud_coverage(delta)
 
 
 func _setup_global_wind_parameters() -> void:
@@ -97,6 +100,58 @@ func _setup_particles_system() -> void:
 	_particles_mesh.material = _mesh_material
 	_particles.draw_pass_1 = _particles_mesh
 	add_child(_particles)
+
+
+func _setup_foliage_particle_system() -> void:
+	if not ResourceLoader.exists(FOLIAGE_SHADER_PATH):
+		return
+		
+	_foliage_particles = GPUParticles3D.new()
+	_foliage_particles.name = "FoliageParticles"
+	_foliage_particles.amount = 40 # Lightweight count for 120 FPS performance
+	_foliage_particles.lifetime = 6.0
+	
+	_foliage_shader_mat = ShaderMaterial.new()
+	_foliage_shader_mat.shader = load(FOLIAGE_SHADER_PATH) as Shader
+	_foliage_particles.process_material = _foliage_shader_mat
+	
+	var leaf_mesh := QuadMesh.new()
+	leaf_mesh.size = Vector2(0.12, 0.12)
+	
+	var leaf_mat := StandardMaterial3D.new()
+	leaf_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	leaf_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	leaf_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	leaf_mesh.material = leaf_mat
+	
+	_foliage_particles.draw_pass_1 = leaf_mesh
+	add_child(_foliage_particles)
+
+
+func _update_biome_foliage_tint() -> void:
+	if _foliage_shader_mat == null: return
+		
+	var biome_id := _detect_player_biome_id()
+	var particle_color := Color(0.35, 0.65, 0.22) # Standard Oak leaf
+	var is_enabled := true
+	
+	match biome_id:
+		0, 9: is_enabled = false # Ocean & Clouds have no trees
+		2: particle_color = Color(0.95, 0.45, 0.72) # Sakura Blossom Pink
+		4: particle_color = Color(0.18, 0.45, 0.25) # Spruce Needle Green
+		5: particle_color = Color(0.58, 0.25, 0.18) # Redwood Bark Red
+		6: particle_color = Color(0.55, 0.42, 0.28) # Badlands Dried Twig
+		
+	_foliage_shader_mat.set_shader_parameter("particle_color", particle_color)
+	_foliage_particles.emitting = is_enabled and not _is_player_indoors_safe()
+
+
+func _update_weather_and_shader_coverage(delta: float) -> void:
+	var biome_id := _detect_player_biome_id()
+	var profile := BiomeService.get_biome(biome_id).get_climate_profile()
+	
+	_process_dynamic_wind_simulation(delta, profile)
+	_update_shader_cloud_coverage(delta)
 
 
 func _process_wind_gusts(delta: float) -> void:
@@ -158,7 +213,6 @@ func _update_shader_cloud_coverage(delta: float) -> void:
 		var sky_mat := sky.sky_material as ShaderMaterial
 		var target_coverage := _get_target_cloud_coverage()
 		
-		# Smooth transitions over 25 seconds
 		_current_cloud_coverage_cache = lerpf(_current_cloud_coverage_cache, target_coverage, delta * 0.15)
 		sky_mat.set_shader_parameter("cloud_coverage", _current_cloud_coverage_cache)
 
@@ -253,12 +307,16 @@ func _apply_sandstorm_parameters() -> void:
 
 
 func _process_indoor_rain_safety() -> void:
-	var is_indoors := false
-	if is_instance_valid(CelestialService.instance):
-		is_indoors = CelestialService.instance._is_player_indoors()
+	var is_indoors := _is_player_indoors_safe()
 		
 	if is_indoors:
 		if _particles.emitting: _particles.emitting = false
 	else:
 		if current_weather != IClimateProfile.ClimateType.SUNNY and current_weather != IClimateProfile.ClimateType.CLOUDY and current_weather != IClimateProfile.ClimateType.FOGGY:
 			if not _particles.emitting: _particles.emitting = true
+
+
+func _is_player_indoors_safe() -> bool:
+	if is_instance_valid(CelestialService.instance):
+		return CelestialService.instance._is_player_indoors()
+	return false

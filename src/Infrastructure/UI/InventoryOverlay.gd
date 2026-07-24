@@ -1,11 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/InventoryOverlay.gd
-# Description: Glassmorphic 24-slot inventory and backpack inspector.
-#              SOLID COMPLIANCE:
-#              - Rule 7.1: Purged all procedural UI generation (ColorRect.new, 
-#                TextureRect.new, Label.new). Delegates directly to InventorySlotWidget.
-#              - Single Responsibility Principle (SRP): Focuses strictly on layout 
-#                coordination, logic routing, and drag-and-drop orchestration.
+# Description: Glassmorphic 24-slot inventory and backpack inspector featuring 
+#              real-time frosted glass backdrop blur behind dark UI cards.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -15,6 +11,7 @@ extends Panel
 signal closed
 
 const SLOT_WIDGET_SCENE := preload("res://src/Infrastructure/UI/Widgets/inventory_slot_widget.tscn")
+const FROSTED_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/frosted_glass_backdrop.gdshader"
 
 @export var player: PlayerController
 
@@ -31,9 +28,11 @@ const SLOT_WIDGET_SCENE := preload("res://src/Infrastructure/UI/Widgets/inventor
 
 var _first_selected_slot_index: int = -1
 var _focused_slot_index: int = -1
+var _frosted_backdrop: ColorRect
 
 
 func _ready() -> void:
+	_setup_frosted_backdrop()
 	_sort_btn.pressed.connect(_on_sort_pressed)
 	_action_button.pressed.connect(_on_equip_pressed)
 	_use_button.pressed.connect(_on_use_pressed)
@@ -42,6 +41,23 @@ func _ready() -> void:
 	
 	_refresh_backpack_grids()
 	_show_empty_details()
+
+
+func _setup_frosted_backdrop() -> void:
+	if not ResourceLoader.exists(FROSTED_SHADER_PATH):
+		return
+		
+	_frosted_backdrop = ColorRect.new()
+	_frosted_backdrop.name = "FrostedGlassBackdrop"
+	_frosted_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_frosted_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	var mat := ShaderMaterial.new()
+	mat.shader = load(FROSTED_SHADER_PATH) as Shader
+	_frosted_backdrop.material = mat
+	
+	add_child(_frosted_backdrop)
+	move_child(_frosted_backdrop, 0)
 
 
 func _refresh_backpack_grids() -> void:
@@ -69,7 +85,6 @@ func _create_grid_slot_widget(slot_index: int, size_pixels: int) -> InventorySlo
 	var is_selected := (slot_index == _first_selected_slot_index)
 	var is_active := (slot_index == player.active_slot_index)
 	
-	# Duck-typing call to decouple specific logic requirements
 	if widget.has_method("initialize_slot"):
 		widget.call("initialize_slot", slot_index, self, is_selected, is_active)
 		
@@ -117,7 +132,6 @@ func _populate_slot_details(inventory: InventoryComponent, slot: InventoryCompon
 	_detail_icon.color = Color(0, 0, 0, 0)
 	_clear_container(_detail_icon)
 	
-	# Reuse the slot widget as a pure visual display for the detail panel (DRY/OCP)
 	var preview_widget := SLOT_WIDGET_SCENE.instantiate() as InventorySlotWidget
 	preview_widget.custom_minimum_size = _detail_icon.size
 	preview_widget.mouse_filter = Control.MOUSE_FILTER_IGNORE

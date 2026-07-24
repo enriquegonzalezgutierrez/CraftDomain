@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
 # Description: Builder responsible for constructing world lighting, sky,
-#              atmospheric horizon fog, and cinematic AgX post-processing.
+#              atmospheric horizon fog, ground mist materials, and cinematic 
+#              AgX post-processing.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -12,6 +13,7 @@ const ADAPTER_TYPE_INTEGRATED := 1
 const ADAPTER_TYPE_CPU := 4
 const CLOUD_TEXTURE_PATH := "res://assets/textures/sky_clouds_fbm.png"
 const SKY_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader"
+const MIST_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/magical_swamp_mist.gdshader"
 
 # Atmospheric Horizon Baseline Constants
 const DEFAULT_HORIZON_FOG_COLOR := Color(0.78, 0.88, 0.95)
@@ -155,3 +157,14 @@ static func _configure_fog_parameters(environment: Environment, fog_begin: float
 	environment.fog_depth_end = fog_end
 	
 	environment.fog_sky_affect = 0.0
+
+
+## Constructs and configures a ShaderMaterial for low-lying ground mist volumes
+static func build_swamp_mist_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	if ResourceLoader.exists(MIST_SHADER_PATH):
+		mat.shader = load(MIST_SHADER_PATH) as Shader
+		
+	var noise_tex := VoxelMaterialFactory._get_or_create_water_noise_a()
+	mat.set_shader_parameter("noise_tex", noise_tex)
+	return mat
