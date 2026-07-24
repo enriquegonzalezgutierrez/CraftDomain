@@ -1,11 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Rendering/EnvironmentBuilder.gd
-# Description: Builder responsible for constructing the world lighting, sky,
-#              and post-processing.
-#              GRAPHICAL UPGRADE: Calibrated AgX tonemapping for cinematic 
-#              exposure transitions between dark interiors and bright plains.
-#              COMPILER FIX: Reverted Environment auto-exposure assignment to 
-#              prevent version compatibility crashes across Godot 4 minor releases.
+# Description: Builder responsible for constructing world lighting, sky,
+#              atmospheric horizon fog, and cinematic AgX post-processing.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -15,6 +11,14 @@ extends RefCounted
 const ADAPTER_TYPE_INTEGRATED := 1
 const ADAPTER_TYPE_CPU := 4
 const CLOUD_TEXTURE_PATH := "res://assets/textures/sky_clouds_fbm.png"
+const SKY_SHADER_PATH := "res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader"
+
+# Atmospheric Horizon Baseline Constants
+const DEFAULT_HORIZON_FOG_COLOR := Color(0.78, 0.88, 0.95)
+const LOW_END_FOG_BEGIN: float = 40.0
+const LOW_END_FOG_END: float = 80.0
+const HIGH_END_FOG_BEGIN: float = 65.0
+const HIGH_END_FOG_END: float = 120.0
 
 
 ## Constructs and configures the High-Quality Directional Sun Light.
@@ -56,10 +60,6 @@ static func _setup_high_end_sun(sun_light: DirectionalLight3D) -> void:
 	sun_light.light_indirect_energy = 2.0
 
 
-static func _get_custom_sky_shader() -> Shader:
-	return load("res://src/Infrastructure/Rendering/Shaders/celestial_sky.gdshader") as Shader
-
-
 ## Constructs and configures the complete WorldEnvironment.
 static func build_environment() -> WorldEnvironment:
 	var world_environment := WorldEnvironment.new()
@@ -71,7 +71,7 @@ static func build_environment() -> WorldEnvironment:
 	_setup_sky_material(environment)
 	
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.38, 0.44, 0.55) 
+	environment.ambient_light_color = Color(0.45, 0.52, 0.62) 
 	environment.ambient_light_energy = 1.45 
 	
 	var adapter_type := RenderingServer.get_video_adapter_type()
@@ -92,8 +92,10 @@ static func build_environment() -> WorldEnvironment:
 static func _setup_sky_material(environment: Environment) -> void:
 	var sky := Sky.new()
 	var sky_material := ShaderMaterial.new()
-	sky_material.shader = _get_custom_sky_shader()
 	
+	if ResourceLoader.exists(SKY_SHADER_PATH):
+		sky_material.shader = load(SKY_SHADER_PATH) as Shader
+		
 	if ResourceLoader.exists(CLOUD_TEXTURE_PATH):
 		var noise_tex := load(CLOUD_TEXTURE_PATH) as Texture2D
 		if noise_tex != null:
@@ -109,43 +111,47 @@ static func _setup_low_end_profile(environment: Environment) -> void:
 	environment.adjustment_enabled = false
 	environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	
-	environment.fog_enabled = true
-	environment.fog_light_color = Color(0.15, 0.18, 0.22)
-	
-	environment.fog_mode = Environment.FOG_MODE_DEPTH
-	environment.fog_depth_begin = 40.0 
-	environment.fog_depth_end = 80.0   
-	
-	environment.fog_sky_affect = 0.0 
+	_configure_fog_parameters(environment, LOW_END_FOG_BEGIN, LOW_END_FOG_END)
 
 
 static func _setup_high_end_profile(environment: Environment) -> void:
-	environment.ssao_enabled = true
-	environment.ssao_radius = 0.65
-	environment.ssao_intensity = 2.0 
-	environment.ssao_power = 2.2
-	environment.ssao_detail = 0.65
+	_configure_ssao_parameters(environment)
 	
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
 	environment.tonemap_exposure = 1.05 
 	environment.tonemap_white = 1.00
 	
+	_configure_glow_parameters(environment)
+	_configure_fog_parameters(environment, HIGH_END_FOG_BEGIN, HIGH_END_FOG_END)
+	
+	environment.adjustment_enabled = true
+	environment.adjustment_contrast = 1.08 
+	environment.adjustment_saturation = 1.35
+
+
+static func _configure_ssao_parameters(environment: Environment) -> void:
+	environment.ssao_enabled = true
+	environment.ssao_radius = 0.65
+	environment.ssao_intensity = 2.0 
+	environment.ssao_power = 2.2
+	environment.ssao_detail = 0.65
+
+
+static func _configure_glow_parameters(environment: Environment) -> void:
 	environment.glow_enabled = true
 	environment.glow_normalized = true
 	environment.glow_intensity = 0.85
 	environment.glow_strength = 1.05
 	environment.glow_bloom = 0.22
 	environment.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
-	
+
+
+static func _configure_fog_parameters(environment: Environment, fog_begin: float, fog_end: float) -> void:
 	environment.fog_enabled = true
-	environment.fog_light_color = Color(0.12, 0.15, 0.22)
+	environment.fog_light_color = DEFAULT_HORIZON_FOG_COLOR
 	
 	environment.fog_mode = Environment.FOG_MODE_DEPTH
-	environment.fog_depth_begin = 65.0 
-	environment.fog_depth_end = 120.0  
+	environment.fog_depth_begin = fog_begin
+	environment.fog_depth_end = fog_end
 	
-	environment.fog_sky_affect = 0.0  
-	
-	environment.adjustment_enabled = true
-	environment.adjustment_contrast = 1.08 
-	environment.adjustment_saturation = 1.35
+	environment.fog_sky_affect = 0.0

@@ -1,7 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Celestial/CelestialService.gd
 # Description: Infrastructure Celestial Service managing global game time-of-day,
-#              astronomically aligned Sun/Moon orbits (East to West), and sky shaders.
+#              astronomically aligned Sun/Moon orbits, and real-time atmospheric 
+#              fog horizon color synchronization.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -9,6 +10,13 @@ class_name CelestialService
 extends Node
 
 static var instance: CelestialService = null
+
+# --- ATMOSPHERIC HORIZON CONSTANTS ---
+const DAY_HORIZON_COLOR := Color(0.78, 0.88, 0.95)
+const SUNSET_HORIZON_COLOR := Color(0.98, 0.52, 0.22)
+const NIGHT_HORIZON_COLOR := Color(0.02, 0.03, 0.05)
+const STORM_HORIZON_COLOR := Color(0.12, 0.13, 0.16)
+const LIGHTNING_FLASH_COLOR := Color(0.85, 0.90, 1.00)
 
 var time_speed: float = 96.0
 var sun_light: DirectionalLight3D
@@ -77,10 +85,6 @@ func _update_orbital_timers(delta: float) -> void:
 	if _last_time_value > 0.95 and _current_time < 0.05:
 		_calendar_days = 1 if _calendar_days >= 28 else _calendar_days + 1
 
-
-# ==============================================================================
-# ASTRONOMICAL EAST-TO-WEST ORBITAL CALCULATIONS
-# ==============================================================================
 
 func _update_sun_rotation() -> void:
 	if not is_instance_valid(sun_light): return
@@ -221,8 +225,49 @@ func _process_weather_transitions(delta: float) -> void:
 
 func _sync_fog_light_color(env: Environment, day_weight: float) -> void:
 	if not env.fog_enabled: return
-	var target_fog := Color(0.015, 0.02, 0.04).lerp(Color(0.42, 0.65, 0.88), clampf(day_weight, 0.0, 1.0)).lerp(Color(0.12, 0.13, 0.15), clampf(_current_storm_weight * 0.72, 0.0, 1.0))
-	env.fog_light_color = Color(0.85, 0.9, 1.0) if (_is_flashing and _lightning_energy_boost > 0.0 and not _is_player_indoors()) else target_fog
+	
+	var sun_dir := _calculate_sun_position_vector()
+	var sunset_factor := _calculate_sunset_factor(sun_dir, day_weight)
+	
+	var day_sky := DAY_HORIZON_COLOR.lerp(SUNSET_HORIZON_COLOR, sunset_factor)
+	var active_horizon := NIGHT_HORIZON_COLOR.lerp(day_sky, clampf(day_weight, 0.0, 1.0))
+	active_horizon = active_horizon.lerp(STORM_HORIZON_COLOR, clampf(_current_storm_weight * 0.85, 0.0, 1.0))
+	
+	var sun_glare := _calculate_sun_forward_scattering(sun_dir, day_weight)
+	var target_fog := active_horizon + sun_glare
+	
+	if _is_flashing and _lightning_energy_boost > 0.0 and not _is_player_indoors():
+		env.fog_light_color = LIGHTNING_FLASH_COLOR
+	else:
+		env.fog_light_color = target_fog
+
+
+func _calculate_sunset_factor(sun_dir: Vector3, day_weight: float) -> float:
+	var sun_elevation := clampf(sun_dir.y, -0.2, 0.2)
+	var norm_elev := absf(sun_elevation) / 0.2
+	var smooth_elev := smoothstep(1.0, 0.0, norm_elev)
+	return smooth_elev * clampf(day_weight * 2.0, 0.0, 1.0)
+
+
+func _calculate_sun_forward_scattering(sun_dir: Vector3, day_weight: float) -> Color:
+	var camera_dir := _get_camera_look_direction()
+	if camera_dir == Vector3.ZERO:
+		return Color.BLACK
+		
+	var sun_dot := maxf(0.0, camera_dir.dot(sun_dir.normalized()))
+	var glare_intensity := pow(sun_dot, 8.0) * 0.25 * day_weight
+	return Color(1.0, 0.92, 0.78) * glare_intensity
+
+
+func _get_camera_look_direction() -> Vector3:
+	var bootstrap := get_node_or_null("/root/Bootstrap")
+	if is_instance_valid(bootstrap):
+		var player_node := bootstrap.get("player_controller") as CharacterBody3D
+		if is_instance_valid(player_node):
+			var camera_node := player_node.get_node_or_null("PlayerCamera") as Camera3D
+			if is_instance_valid(camera_node):
+				return -camera_node.global_transform.basis.z.normalized()
+	return Vector3.ZERO
 
 
 func _sync_fog_density_multiplier(env: Environment) -> void:
