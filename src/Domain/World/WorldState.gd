@@ -1,12 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/World/WorldState.gd
 # Description: Domain Aggregate Root representing the global voxel world, managing
-#              chunk storage, coordinate systems, and a double-buffered timeline 
-#              system to support seamless Present/Past chronological shifting.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Exclusively coordinates block states 
-#   and active timeline buffers.
-# - Method Size Limits (Rule 4.2): All compiled methods kept strictly < 20 lines.
+#              chunk storage, atomic block queries, and double-buffered timeline 
+#              buffers to prevent unrendered AIR query false-positives for AI.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -131,15 +127,20 @@ func _write_mods_to_chunk_mesh(chunk_pos: Vector3i, present_mods: Dictionary, pa
 			chunk.set_block(local_pos.x, local_pos.y, local_pos.z, type_val as BlockType.Type)
 
 
-## Queries any block in global world space coordinates.
+## Queries any block in global world space coordinates with fallback to RAM memory deltas.
 func get_block(global_pos: Vector3i) -> BlockType.Type:
 	var chunk_pos := global_to_chunk_pos(global_pos)
-	var chunk := get_chunk(chunk_pos)
-	if chunk == null:
-		return BlockType.Type.AIR
-	
 	var local_pos := global_to_local_pos(global_pos)
-	return chunk.get_block(local_pos.x, local_pos.y, local_pos.z)
+	
+	var chunk := get_chunk(chunk_pos)
+	if chunk != null:
+		return chunk.get_block(local_pos.x, local_pos.y, local_pos.z)
+		
+	var active_mods: Dictionary = _timeline_modifications[active_timeline] as Dictionary
+	if active_mods.has(chunk_pos) and active_mods[chunk_pos].has(local_pos):
+		return active_mods[chunk_pos][local_pos] as BlockType.Type
+		
+	return BlockType.Type.AIR
 
 
 ## Sets a block in global world space coordinates and logs the modification.

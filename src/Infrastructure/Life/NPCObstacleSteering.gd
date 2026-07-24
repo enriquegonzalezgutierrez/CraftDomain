@@ -1,14 +1,15 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCObstacleSteering.gd
 # Description: Context-Based Steering Component managing local dynamic 
-#              avoidance, step auto-jumping, and cooperative yielding.
+#              avoidance, step auto-jumping, backface raycast queries, and yielding.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NPCObstacleSteering
 extends Node
 
-const SCAN_DISTANCE: float = 1.2
+const SCAN_DISTANCE_FAR: float = 1.2
+const SCAN_DISTANCE_CLOSE: float = 0.4
 const YIELD_WAIT_TIME_SEC: float = 1.5
 const JUMP_RECOVERY_COOLDOWN: float = 0.4
 const STEERING_COOLDOWN_SEC: float = 0.6
@@ -39,10 +40,6 @@ func process_steering(delta: float) -> void:
 	_handle_step_climbing_and_unsticking(delta)
 
 
-# ==============================================================================
-# COOPERATIVE YIELDING (Dynamic Collision Resolution)
-# ==============================================================================
-
 func _process_dynamic_yielding(space_state: PhysicsDirectSpaceState3D, delta: float) -> bool:
 	var dir: Vector3 = ai_component.get("wander_direction") as Vector3
 	if dir == Vector3.ZERO:
@@ -51,8 +48,9 @@ func _process_dynamic_yielding(space_state: PhysicsDirectSpaceState3D, delta: fl
 		return false
 		
 	var r_origin := _get_dynamic_ray_origin()
-	var query := PhysicsRayQueryParameters3D.create(r_origin, r_origin + dir * SCAN_DISTANCE)
+	var query := PhysicsRayQueryParameters3D.create(r_origin, r_origin + dir * SCAN_DISTANCE_FAR)
 	query.exclude = [host.get_rid()]
+	query.hit_back_faces = true
 	
 	var result := space_state.intersect_ray(query)
 	if not result.is_empty() and result["collider"] is CharacterBody3D and result["collider"] != host:
@@ -72,10 +70,6 @@ func _execute_yield_wait_logic(delta: float) -> bool:
 		return true 
 	return false
 
-
-# ==============================================================================
-# WHISKER AVOIDANCE & TERRAIN KINEMATICS
-# ==============================================================================
 
 func _perform_proactive_whisker_avoidance(space_state: PhysicsDirectSpaceState3D, delta: float) -> void:
 	if _is_navigating_macro_path():
@@ -98,16 +92,18 @@ func _cast_whisker_rays(space_state: PhysicsDirectSpaceState3D, r_origin: Vector
 	var closest_dist := 999.0
 	
 	for dir: Vector3 in scan_dirs:
-		var query := PhysicsRayQueryParameters3D.create(r_origin, r_origin + dir * SCAN_DISTANCE)
-		query.collision_mask = 1 
-		query.exclude = [host.get_rid()]
-		
-		var result := space_state.intersect_ray(query)
-		if not result.is_empty():
-			var dist := r_origin.distance_to(result["position"] as Vector3)
-			if dist < closest_dist:
-				closest_dist = dist
-				best_normal = result["normal"] as Vector3
+		for scan_dist: float in [SCAN_DISTANCE_CLOSE, SCAN_DISTANCE_FAR]:
+			var query := PhysicsRayQueryParameters3D.create(r_origin, r_origin + dir * scan_dist)
+			query.collision_mask = 1 
+			query.exclude = [host.get_rid()]
+			query.hit_back_faces = true
+			
+			var result := space_state.intersect_ray(query)
+			if not result.is_empty():
+				var dist := r_origin.distance_to(result["position"] as Vector3)
+				if dist < closest_dist:
+					closest_dist = dist
+					best_normal = result["normal"] as Vector3
 				
 	_apply_whisker_steering(best_normal, wander_dir, delta)
 
@@ -121,7 +117,7 @@ func _apply_whisker_steering(best_normal: Vector3, wander_dir: Vector3, delta: f
 		var flat_normal := Vector3(best_normal.x, 0.0, best_normal.z).normalized()
 		if flat_normal != Vector3.ZERO:
 			var dot_prod := wander_dir.dot(-flat_normal)
-			if dot_prod > 0.85:
+			if dot_prod > 0.65:
 				var bounce_dir := flat_normal.rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
 				ai_component.set("wander_direction", bounce_dir)
 				host.set_meta("whisker_cooldown", STEERING_COOLDOWN_SEC)
