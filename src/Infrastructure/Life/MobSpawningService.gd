@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service managing dynamic entity spawning, local
 #              chunk population, spatial mob separation, landmark guarantees,
-#              campaign quest objective targets, and spawner diagnostics.
+#              campaign quest objective targets, and solid ground verification.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -99,34 +99,22 @@ func _spawn_individual_wildlife(wildlife_ids: Array[int], chunk_offset: Vector3,
 
 func _spawn_megastructure_defenders(chunk_pos: Vector3i, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
 	var population_points := StructurePopulationService.get_population_for_chunk(chunk_pos)
-	if not population_points.is_empty():
-		print("[MobSpawner Diagnostic] Chunk %s landmark population request: %d points found." % [chunk_pos, population_points.size()])
-		
 	for point in population_points:
 		if not point.is_prop and MobRegistry.has_mob(point.spawn_id):
 			_spawn_decoupled_landmark_mob(point, world_state, world_node, spawned_nodes)
 
 
 func _spawn_decoupled_landmark_mob(point: StructurePopulationService.PopulationPoint, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
-	var spawn_pos := point.global_pos
-	print("[MobSpawner Diagnostic] Attempting landmark mob spawn for ID: %d at %s" % [point.spawn_id, spawn_pos])
-	
+	var spawn_pos := _ensure_ground_level(world_state, point.global_pos)
 	var player_node := world_node.get("player") as CharacterBody3D if is_instance_valid(world_node) else null
 	if is_instance_valid(player_node) and spawn_pos.distance_to(player_node.global_position) < 1.2:
 		spawn_pos += Vector3(1.2, 0.0, 1.2) 
-		
-	var safe_y := SpawnCoordinateSolver.solve_surface_y(world_state, floori(spawn_pos.x), floori(spawn_pos.z))
-	if safe_y > 0.0:
-		spawn_pos.y = safe_y
 		
 	var spawn_node := MobRegistry.create_mob(point.spawn_id, spawn_pos)
 	if spawn_node != null:
 		spawn_node.set_meta("spawn_id", point.spawn_id)
 		world_node.add_child(spawn_node)
 		spawned_nodes.append(spawn_node)
-		print("[MobSpawner Diagnostic SUCCESS] Spawned landmark node '%s' for ID %d at %s!" % [spawn_node.name, point.spawn_id, spawn_pos])
-	else:
-		push_error("[MobSpawner Diagnostic ERROR] MobRegistry.create_mob returned NULL for ID %d!" % point.spawn_id)
 
 
 func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node]) -> void:
@@ -134,7 +122,9 @@ func _spawn_active_quest_objectives(chunk: Chunk, chunk_offset: Vector3, world_s
 	if active_q == null or not QUEST_TARGET_MOBS.has(active_q.quest_id): return
 		
 	var target_pos := active_q.target_position
-	if world_state.global_to_chunk_pos(Vector3i(target_pos)).x == chunk.position.x and world_state.global_to_chunk_pos(Vector3i(target_pos)).z == chunk.position.z:
+	var target_chunk := world_state.global_to_chunk_pos(Vector3i(floori(target_pos.x), floori(target_pos.y), floori(target_pos.z)))
+	
+	if target_chunk.x == chunk.position.x and target_chunk.z == chunk.position.z:
 		var mob_id: int = QUEST_TARGET_MOBS[active_q.quest_id]
 		var existing := _find_eligible_entity_in_list(world_node, spawned_nodes, mob_id, target_pos)
 		
@@ -159,17 +149,27 @@ func _find_eligible_entity_in_list(world_node: Node, spawned_nodes: Array[Node],
 	return null
 
 
-func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node], quest_id: String) -> void:
-	var spawn_pos := target_pos
-	if _is_voxel_spawn_space_free(world_state, spawn_pos):
-		var mob := MobRegistry.create_mob(mob_id, spawn_pos)
-		if mob != null:
-			mob.set_meta("spawn_id", mob_id)
-			mob.quest_target_id = quest_id
-			world_node.add_child(mob)
-			spawned_nodes.append(mob)
-	else:
-		_spawn_and_register_entity(mob_id, chunk_offset, OFFSET_HALF_CHUNK, OFFSET_HALF_CHUNK, world_state, world_node, spawned_nodes)
+func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, _chunk_offset: Vector3, world_state: WorldState, world_node: Node, spawned_nodes: Array[Node], quest_id: String) -> void:
+	var spawn_pos := _ensure_ground_level(world_state, target_pos)
+		
+	var mob := MobRegistry.create_mob(mob_id, spawn_pos)
+	if mob != null:
+		mob.set_meta("spawn_id", mob_id)
+		mob.quest_target_id = quest_id
+		world_node.add_child(mob)
+		spawned_nodes.append(mob)
+
+
+## Ensures target position sits on top of solid floor blocks instead of inside them
+static func _ensure_ground_level(world_state: WorldState, pos: Vector3) -> Vector3:
+	var check_coord := Vector3i(floori(pos.x), floori(pos.y), floori(pos.z))
+	var block_at_feet := world_state.get_block(check_coord)
+	
+	if BlockLibrary.is_solid(block_at_feet):
+		var corrected_y := SpawnCoordinateSolver.solve_surface_y(world_state, check_coord.x, check_coord.z)
+		if corrected_y > 0.0:
+			pos.y = corrected_y
+	return pos
 
 
 func _spawn_and_register_entity(spawn_id: int, offset: Vector3, lx: float, lz: float, world_state: WorldState, world_node: Node, list: Array[Node]) -> void:
@@ -244,10 +244,16 @@ func _detect_chunk_biome_id(chunk_pos: Vector3i, world_node: Node) -> int:
 
 
 func _is_village_chunk(chunk_pos: Vector3i, world_node: Node) -> bool:
+	var gx := chunk_pos.x * Chunk.SIZE + 8
+	var gz := chunk_pos.z * Chunk.SIZE + 8
+	
+	if WorldGenerator.is_inside_megastructure(gx, gz):
+		return false
+		
 	var generator: WorldGenerator = world_node.get("generator") as WorldGenerator if is_instance_valid(world_node) else null
 	if is_instance_valid(generator) and "_terrain_noise" in generator:
 		var noise: FastNoiseLite = generator.get("_terrain_noise") as FastNoiseLite
 		if noise != null:
-			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(chunk_pos.x * Chunk.SIZE + 8, chunk_pos.z * Chunk.SIZE + 8, noise) as BiomeService.BiomeProfile
+			var profile: BiomeService.BiomeProfile = BiomeService.evaluate_coordinate(gx, gz, noise) as BiomeService.BiomeProfile
 			return profile.landmark_id == 3
 	return false

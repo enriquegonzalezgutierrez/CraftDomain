@@ -8,10 +8,11 @@
 class_name CyberCitizenEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/cyber.glb"
-const VISUAL_STRATEGY_SCRIPT_PATH := "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
+const BASE_MODEL_PATH: String = "res://assets/models/mobs/cyber.glb"
+const VISUAL_STRATEGY_SCRIPT_PATH: String = "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
 
-var gaze_rotation_offset: float = PI
+# FIXED: Set rotation offset to 0.0 to face strictly forward along movement vector
+var gaze_rotation_offset: float = 0.0
 var player: CharacterBody3D
 
 

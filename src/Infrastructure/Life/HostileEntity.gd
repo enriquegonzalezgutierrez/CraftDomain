@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/HostileEntity.gd
 # Description: Physical character controller representing a hostile Cave Zombie.
-#              Updated to use native, highly-portable .glb static meshes.
+#              Updated to use native, highly-portable .glb static meshes and quest support.
 # Author: Enrique Gonzalez Gutierrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -98,6 +98,10 @@ func _setup_quest_bubble() -> void:
 		add_child(_quest_bubble)
 		_quest_bubble.call("set_text", tr("BUBBLE_TARGET_MONSTER"))
 		_quest_bubble.position = Vector3(0.0, _collision_height + 0.65, 0.0)
+
+
+func _is_eligible_for_quest(quest_id: String) -> bool:
+	return quest_id == "plains_defender"
 
 
 func _get_entity_name_key() -> String:

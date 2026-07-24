@@ -8,10 +8,9 @@
 class_name VillagerEntity
 extends PassiveEntity
 
-const BASE_MODEL_PATH := "res://assets/models/mobs/villager.glb"
-const VISUAL_STRATEGY_SCRIPT_PATH := "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
+const BASE_MODEL_PATH: String = "res://assets/models/mobs/villager.glb"
+const VISUAL_STRATEGY_SCRIPT_PATH: String = "res://src/Infrastructure/Life/SkeletalVisualRepresentation.gd"
 
-# Model is oriented correctly forward in the .tscn scene
 var gaze_rotation_offset: float = 0.0
 var player: CharacterBody3D
 
@@ -81,18 +80,18 @@ func _drop_loot(inv: IInventory) -> void:
 
 func interact(player_node: CharacterBody3D) -> void:
 	var active_q := QuestService.get_active_quest()
-	if active_q != null and active_q.quest_id == "lost_bazaar":
-		_complete_starter_quest(player_node)
+	if active_q != null and (active_q.quest_id == "lost_bazaar" or active_q.quest_id == "bazaar_return"):
+		_complete_villager_quest(player_node, active_q.quest_id)
 	else:
 		_open_procedural_dialogue(player_node)
 
 
-func _complete_starter_quest(player_node: CharacterBody3D) -> void:
+func _complete_villager_quest(player_node: CharacterBody3D, quest_id: String) -> void:
 	QuestService.complete_active_quest(player_node)
 	
 	var complete_node := DialogueNode.new()
-	complete_node.node_id = "villager_quest_complete"
-	complete_node.text = "DIALOGUE_VILLAGER_QUEST_COMPLETE"
+	complete_node.node_id = "villager_quest_complete_" + quest_id
+	complete_node.text = "DIALOGUE_VILLAGER_QUEST_COMPLETE" if quest_id == "lost_bazaar" else "DIALOGUE_VILLAGER_CAMPAIGN_FINALE"
 	DialogueService.register_node(complete_node)
 	
 	var hud := player_node.get("hud") as PlayerHUD

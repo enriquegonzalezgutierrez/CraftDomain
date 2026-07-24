@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/Widgets/QuestTrackerWidget.gd
 # Description: Infrastructure UI Widget managing active quest objective displays,
-#              distance calculations, progress bars, and reactive notifications.
+#              dynamic inventory progress sync, distance calculations, and notifications.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -59,9 +59,18 @@ func _evaluate_active_quest_objective(active_quest: Quest) -> void:
 	if active_quest.quest_id == "cloud_ascent":
 		_process_height_objective(active_quest, int(round(p_pos.y)))
 	elif active_quest.required_item_index >= 0 and active_quest.required_quantity > 0:
+		_sync_gathering_quest_progress(active_quest)
 		_process_gathering_objective(active_quest, dist_q)
 	else:
 		_process_arrival_objective(active_quest, dist_q)
+
+
+func _sync_gathering_quest_progress(active_quest: Quest) -> void:
+	if not is_instance_valid(player): return
+	var inventory := player.get("inventory") as IInventory
+	if is_instance_valid(inventory):
+		var total_held := inventory.get_item_total_quantity(active_quest.required_item_index)
+		active_quest.progress_counter = min(active_quest.required_quantity, total_held)
 
 
 func _process_height_objective(active_quest: Quest, current_y: int) -> void:

@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/SpawnCoordinateSolver.gd
 # Description: Pure Domain Service calculating safe 3D spawning coordinates
-#              for surface structures, subterranean caves, and ocean beds.
+#              for surface structures, subterranean caves, and interior floors.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -25,7 +25,9 @@ static func solve_surface_y(world_state: WorldState, gx: int, gz: int) -> float:
 static func _is_valid_surface_ground(world_state: WorldState, coord: Vector3i) -> bool:
 	var block := world_state.get_block(coord)
 	var def := BlockLibrary.get_definition(block)
-	if def == null or not def.is_solid or def.is_liquid:
+	
+	# PENETRATION FIX: Penetrate roof blocks (bricks, tiles, wood roofs) to reach inside floors!
+	if def == null or not def.is_solid or def.is_liquid or def.is_spawn_penetrable:
 		return false
 		
 	return def.is_spawn_surface or _verify_vertical_clearance(world_state, coord)
@@ -47,7 +49,7 @@ static func solve_cave_y(world_state: WorldState, gx: int, gz: int) -> float:
 static func _is_valid_cave_floor(world_state: WorldState, coord: Vector3i) -> bool:
 	var block := world_state.get_block(coord)
 	var def := BlockLibrary.get_definition(block)
-	if def == null or not def.is_solid or def.is_liquid:
+	if def == null or not def.is_solid or def.is_liquid or def.is_spawn_penetrable:
 		return false
 		
 	return _verify_vertical_clearance(world_state, coord) and _has_solid_ceiling(world_state, coord)

@@ -1,9 +1,9 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://s53yfc5exqtr"]
 
-[ext_resource type="Script" path="res://src/Infrastructure/Life/GuardEntity.gd" id="1_guard"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
-[ext_resource type="Script" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
-[ext_resource type="PackedScene" path="res://assets/models/mobs/guard.glb" id="4_glb"]
+[ext_resource type="Script" uid="uid://bkihkull6c2un" path="res://src/Infrastructure/Life/GuardEntity.gd" id="1_guard"]
+[ext_resource type="Script" uid="uid://vvqttx0n2dn1" path="res://src/Infrastructure/Life/NPCAIComponent.gd" id="2_ai"]
+[ext_resource type="Script" uid="uid://4fy5bb2usaci" path="res://src/Infrastructure/Life/NPCVisualComponent.gd" id="3_vis"]
+[ext_resource type="PackedScene" uid="uid://0hmpbnn2klbe" path="res://assets/models/mobs/guard.glb" id="4_glb"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_guard"]
 radius = 0.28466797

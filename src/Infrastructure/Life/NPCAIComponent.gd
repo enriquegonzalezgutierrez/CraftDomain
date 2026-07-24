@@ -20,6 +20,8 @@ enum TaskState {
 
 @export var active_behavior: IAIBehavior
 
+const STEERING_SCRIPT_PATH: String = "res://src/Infrastructure/Life/NPCObstacleSteering.gd"
+
 const DISTANCE_LOD_0_SQ: float = 256.0 # < 16 meters
 const DISTANCE_LOD_1_SQ: float = 1600.0 # < 40 meters
 
@@ -44,7 +46,7 @@ var GREET_DISTANCE_SQ: float = 12.25
 
 var _host: CharacterBody3D
 var _ai_timer_accum: float = 0.0
-var _steering_component: NPCObstacleSteering
+var _steering_component: Node = null
 var _last_pos_for_stuck: Vector3 = Vector3.ZERO
 
 
@@ -57,9 +59,13 @@ func _ready() -> void:
 
 
 func _setup_steering_component() -> void:
-	_steering_component = NPCObstacleSteering.new()
-	add_child(_steering_component)
-	_steering_component.initialize(_host, self)
+	if ResourceLoader.exists(STEERING_SCRIPT_PATH):
+		var steering_script := load(STEERING_SCRIPT_PATH) as GDScript
+		if steering_script != null:
+			_steering_component = steering_script.new() as Node
+			add_child(_steering_component)
+			if _steering_component.has_method("initialize"):
+				_steering_component.call("initialize", _host, self)
 
 
 func _subscribe_to_world_modifications() -> void:
@@ -91,8 +97,8 @@ func process_ai(delta: float) -> void:
 	_verify_active_plan_presence()
 	_apply_movement_vectors(delta)
 	
-	if is_instance_valid(_steering_component):
-		_steering_component.process_steering(delta)
+	if is_instance_valid(_steering_component) and _steering_component.has_method("process_steering"):
+		_steering_component.call("process_steering", delta)
 
 
 func _calculate_base_desired_direction(delta: float) -> void:
@@ -130,7 +136,6 @@ func _verify_active_plan_presence() -> void:
 	if active_behavior != null and not is_manual_override:
 		var active_plan: Variant = active_behavior.get("_active_plan")
 		if active_plan is Array and active_plan.is_empty():
-			# Transition to IDLE with smooth friction decay instead of wiping vectors
 			if current_task != TaskState.IDLE:
 				current_task = TaskState.IDLE
 
@@ -142,7 +147,6 @@ func _apply_movement_vectors(delta: float) -> void:
 	if is_trying_to_move and current_task != TaskState.IDLE:
 		_execute_linear_walk(base_speed, delta)
 	else:
-		# Smooth, realistic friction decay instead of stopping instantly in 1 frame
 		var friction := base_speed * delta * 8.0
 		_host.velocity.x = move_toward(_host.velocity.x, 0.0, friction)
 		_host.velocity.z = move_toward(_host.velocity.z, 0.0, friction)
@@ -155,7 +159,7 @@ func _get_host_base_speed() -> float:
 		speed = _host.get("BASE_SPEED") as float
 		
 	if current_task == TaskState.PANIC:
-		speed *= 2.4 # Safe standard running multiplier for default entities
+		speed *= 2.4
 		
 	if active_behavior != null:
 		if active_behavior is QuiqueAIBehavior:
@@ -240,8 +244,6 @@ func _sync_direction_to_active_blackboard(new_dir: Vector3) -> void:
 func _keep_gaze_within_tether() -> void:
 	if is_instance_valid(_host) and _host.has_method("_has_ui_decorations") and _host.call("_has_ui_decorations") as bool:
 		var spawn_pt: Vector3 = _host._spawn_point
-		
-		# 2D Flat Plane calculation (Excluding the platform Y height)
 		var current_pos_2d := Vector2(_host.global_position.x, _host.global_position.z)
 		var spawn_pt_2d := Vector2(spawn_pt.x, spawn_pt.z)
 		

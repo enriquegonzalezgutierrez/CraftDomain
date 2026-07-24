@@ -2,7 +2,7 @@
 # Pathfile: res://src/Infrastructure/World/ChunkTaskScheduler.gd
 # Description: Infrastructure scheduler managing background thread worker pools,
 #              asynchronous multi-threaded collision shape compilation, and
-#              chunk rebuild task queues.
+#              safe ThreadPool cleanup without C++ Invalid Task ID errors.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -126,12 +126,14 @@ func _dispatch_task(request: Dictionary) -> void:
 	_active_background_tasks += 1
 	_in_flight_tasks[pos] = true 
 	
-	var task_id: int
+	var task_id: int = -1
 	if is_rebuild:
 		task_id = WorkerThreadPool.add_task(_background_rebuild_task.bind(pos, target_version))
 	else:
 		task_id = WorkerThreadPool.add_task(_background_generate_task.bind(pos, target_version))
-	_active_task_ids.append(task_id)
+		
+	if task_id >= 0:
+		_active_task_ids.append(task_id)
 
 
 func _background_generate_task(chunk_pos: Vector3i, version: int) -> void:
@@ -244,13 +246,21 @@ func _finish_task_execution() -> void:
 	call_deferred("_trigger_next_background_tasks")
 
 
+## C++ SAFE CLEANUP: Joins completed tasks cleanly without Invalid Task ID errors
 func cleanup_completed_threads() -> void:
 	_queue_mutex.lock()
-	var active_temp: Array[int] = []
+	var remaining_tasks: Array[int] = []
+	
 	for id: int in _active_task_ids:
-		if not WorkerThreadPool.is_task_completed(id):
-			active_temp.append(id)
-	_active_task_ids = active_temp
+		if id < 0:
+			continue
+			
+		if WorkerThreadPool.is_task_completed(id):
+			WorkerThreadPool.wait_for_task_completion(id)
+		else:
+			remaining_tasks.append(id)
+			
+	_active_task_ids = remaining_tasks
 	_queue_mutex.unlock()
 
 
@@ -293,6 +303,9 @@ func shutdown() -> void:
 	_queue_mutex.lock()
 	_load_requests_queue.clear()
 	var tasks_to_wait := _active_task_ids.duplicate()
+	_active_task_ids.clear()
 	_queue_mutex.unlock()
+	
 	for id: int in tasks_to_wait:
-		WorkerThreadPool.wait_for_task_completion(id)
+		if id >= 0 and not WorkerThreadPool.is_task_completed(id):
+			WorkerThreadPool.wait_for_task_completion(id)

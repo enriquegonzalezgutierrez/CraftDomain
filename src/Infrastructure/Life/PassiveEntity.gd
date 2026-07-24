@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/PassiveEntity.gd
 # Description: Abstract physical character controller representing mobile entities.
-#              Coordinates locomotion, buoyancy, damage reactions, quest targets,
-#              and delegates spatial death visual transitions.
+#              Coordinates locomotion, feet-level ground alignment, solid wall 
+#              forcefields, damage reactions, and spatial death transitions.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -78,6 +78,7 @@ func _execute_lifecycle_initialization() -> void:
 	visual_component = get_node_or_null("NPCVisualComponent") as NPCVisualComponent
 	
 	_setup_nameplate_height()
+	_align_collision_bottom_to_feet()
 	_setup_ui_component()
 
 
@@ -93,6 +94,19 @@ func _setup_nameplate_height() -> void:
 		_collision_height = col.position.y + ((shape_height * col.scale.y) / 2.0)
 	else:
 		_collision_height = 1.5
+
+
+func _align_collision_bottom_to_feet() -> void:
+	var col := get_node_or_null("EntityCollider") as CollisionShape3D
+	if not is_instance_valid(col) or col.shape == null: return
+		
+	var shape_h := 1.5
+	if col.shape is CapsuleShape3D or col.shape is CylinderShape3D:
+		shape_h = col.shape.height
+	elif col.shape is BoxShape3D:
+		shape_h = col.shape.size.y
+		
+	col.position.y = (shape_h * col.scale.y) / 2.0
 
 
 func _setup_ui_component() -> void:
@@ -149,7 +163,10 @@ func _can_jump_to(target_coord: Vector3i) -> bool:
 	return true 
 
 
+## SOLID WALL GUARDRAIL: Returns false for solid blocks, water, and lava
 func _is_block_type_habitable(block_type: BlockType.Type) -> bool:
+	if BlockLibrary.is_solid(block_type):
+		return false
 	return block_type != BlockType.Type.WATER and block_type != BlockType.Type.LAVA
 
 
@@ -275,10 +292,23 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 		
+	_ensure_clearance_above_ground()
 	_apply_environmental_physics(delta)
 	_process_ai_and_boundaries(delta)
 	_apply_procedural_slope_tilt(delta)
 	_apply_visual_movement_and_slide(delta)
+
+
+func _ensure_clearance_above_ground() -> void:
+	if not is_on_floor(): return
+	var parent := get_parent()
+	if not is_instance_valid(parent) or not "world_state" in parent: return
+	var ws := parent.get("world_state") as WorldState
+	if ws == null: return
+		
+	var feet_coord := Vector3i(floori(global_position.x), floori(global_position.y), floori(global_position.z))
+	if BlockLibrary.is_solid(ws.get_block(feet_coord)):
+		global_position.y = float(feet_coord.y + 1)
 
 
 func _update_sleeping_state() -> void:
