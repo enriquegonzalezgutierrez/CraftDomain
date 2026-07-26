@@ -71,6 +71,28 @@ static func navigate_along_path(host: Object, ai: Object, path: Array, path_inde
 	return path_index
 
 
+## Calculates a safe, wall-free fallback direction in the voxel grid if A* pathfinding is empty.
+static func get_safe_fallback_wander_direction(host: Object, ws: WorldState) -> Vector3:
+	if not is_instance_valid(host) or ws == null:
+		var angle := randf() * TAU
+		return Vector3(cos(angle), 0.0, sin(angle)).normalized()
+		
+	var host_pos: Vector3 = host.get("global_position")
+	var start_angle := randf() * TAU
+	
+	for i in range(16):
+		var angle := start_angle + (float(i) / 16.0) * TAU
+		var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
+		var check_pos := host_pos + candidate * 0.8
+		var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.1), floori(check_pos.z))
+		var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.1), floori(check_pos.z))
+		
+		if not BlockLibrary.is_solid(ws.get_block(feet_coord)) and not BlockLibrary.is_solid(ws.get_block(chest_coord)):
+			return candidate
+			
+	return Vector3.ZERO
+
+
 static func _is_path_invalidated_by_voxel_changes(host: Object, target_coord: Vector3i, meta_index_key: String) -> bool:
 	var world_node: Object = host.call("get_parent")
 	if is_instance_valid(world_node) and "world_state" in world_node:
@@ -110,39 +132,6 @@ static func _evaluate_stuck_state(host: Object, speed: float) -> bool:
 	return stuck_time >= 0.8
 
 
-## Verifies if moving in the candidate direction is safe under voxel and habitat rules.
-static func is_direction_safe(host: Object, ws: WorldState, direction: Vector3, check_distance: float) -> bool:
-	if ws == null or direction == Vector3.ZERO or not is_instance_valid(host):
-		return true
-		
-	var host_pos: Vector3 = host.get("global_position")
-	var check_pos := host_pos + direction * check_distance
-	
-	var b_below := Vector3i(floori(check_pos.x), floori(check_pos.y) - 1, floori(check_pos.z))
-	var b_feet := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
-	var b_chest := Vector3i(floori(check_pos.x), floori(check_pos.y) + 1, floori(check_pos.z))
-	
-	if BlockLibrary.is_solid(ws.get_block(b_feet)) or BlockLibrary.is_solid(ws.get_block(b_chest)):
-		return false
-		
-	return _evaluate_habitat_safety(host, ws, b_below, b_feet)
-
-
-static func _evaluate_habitat_safety(host: Object, ws: WorldState, b_below: Vector3i, b_feet: Vector3i) -> bool:
-	var def_below := BlockLibrary.get_definition(ws.get_block(b_below))
-	var def_feet := BlockLibrary.get_definition(ws.get_block(b_feet))
-	
-	var is_below_liquid := def_below != null and def_below.is_liquid
-	var is_feet_liquid := def_feet != null and def_feet.is_liquid
-	var is_below_air := def_below != null and def_below.is_air
-	
-	var habitat: int = host.get("entity_habitat") if "entity_habitat" in host else 0
-	if habitat == 2: 
-		return is_below_liquid or is_feet_liquid
-		
-	return not (is_below_liquid or is_feet_liquid) and not is_below_air
-
-
 static func _is_node_still_walkable(ws: WorldState, coord: Vector3i) -> bool:
 	var block_below := ws.get_block(coord + Vector3i(0, -1, 0))
 	var def_below := BlockLibrary.get_definition(block_below)
@@ -160,3 +149,5 @@ static func _invalidate_active_path(host: Object, meta_index_key: String) -> voi
 		host.set_meta("guard_active_path", [])
 	if host.has_meta("villager_active_path"):
 		host.set_meta("villager_active_path", [])
+	if host.has_meta("quique_active_path"):
+		host.set_meta("quique_active_path", [])

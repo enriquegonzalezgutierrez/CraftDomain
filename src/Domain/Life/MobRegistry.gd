@@ -47,8 +47,6 @@ static func register_mob(
 
 ## Constructs and returns an entity instance dynamically at the target position.
 static func create_mob(spawn_id: int, pos: Vector3) -> Node:
-	print("[MobRegistry Diagnostic] Requesting creation for Mob ID: %d at Position: %s" % [spawn_id, pos])
-	
 	if not _spawners.has(spawn_id):
 		push_error("[MobRegistry Diagnostic ERROR] Mob ID %d is NOT registered in _spawners dictionary!" % spawn_id)
 		return null
@@ -66,7 +64,6 @@ static func create_mob(spawn_id: int, pos: Vector3) -> Node:
 		return null
 		
 	_rig_npc_ai_component(mob, spawn_id)
-	print("[MobRegistry Diagnostic SUCCESS] Mob ID %d ('%s') created successfully at %s!" % [spawn_id, mob.name, pos])
 	return mob
 
 

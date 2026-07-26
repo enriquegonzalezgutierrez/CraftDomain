@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCObstacleSteering.gd
 # Description: Context-Based Steering Component managing local dynamic 
-#              obstacle avoidance, step climbing, and smooth wall sliding.
+#              obstacle avoidance, step climbing, and smooth crowd sidestepping.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -10,14 +10,12 @@ extends Node
 
 const SCAN_DISTANCE_FAR: float = 0.50
 const SCAN_DISTANCE_CLOSE: float = 0.38
-const YIELD_WAIT_TIME_SEC: float = 1.0
 const JUMP_RECOVERY_COOLDOWN_SEC: float = 0.40
 const MIN_WALKABLE_HEIGHT: float = 1.5
 
 var host: CharacterBody3D
 var ai_component: Node
 
-var _yield_timer: float = 0.0
 var _last_jump_time: float = 0.0
 
 
@@ -26,7 +24,7 @@ func initialize(p_host: CharacterBody3D, p_ai_component: Node) -> void:
 	ai_component = p_ai_component
 
 
-func process_steering(delta: float) -> void:
+func process_steering(_delta: float) -> void:
 	if not is_instance_valid(host) or not is_instance_valid(ai_component):
 		return
 		
@@ -36,8 +34,8 @@ func process_steering(delta: float) -> void:
 		
 	_enforce_physical_wall_sliding()
 	
-	var is_yielding := _process_entity_yielding(space_state, delta)
-	if not is_yielding:
+	var is_sidestepping := _process_crowd_sidestepping(space_state)
+	if not is_sidestepping:
 		_process_whisker_deflection(space_state)
 		
 	_process_step_climbing()
@@ -59,10 +57,9 @@ func _enforce_physical_wall_sliding() -> void:
 			_apply_new_direction_and_sync_blackboard(slide_dir)
 
 
-func _process_entity_yielding(space_state: PhysicsDirectSpaceState3D, delta: float) -> bool:
+func _process_crowd_sidestepping(space_state: PhysicsDirectSpaceState3D) -> bool:
 	var dir: Vector3 = ai_component.get("wander_direction") as Vector3
 	if dir == Vector3.ZERO:
-		_yield_timer = 0.0
 		host.set_meta("diag_yield", false)
 		return false
 		
@@ -74,19 +71,11 @@ func _process_entity_yielding(space_state: PhysicsDirectSpaceState3D, delta: flo
 	var result := space_state.intersect_ray(query)
 	if not result.is_empty() and result["collider"] is CharacterBody3D and result["collider"] != host:
 		host.set_meta("diag_yield", true)
-		return _apply_yield_deceleration(delta)
+		var sidestep_dir := dir.rotated(Vector3.UP, deg_to_rad(45.0)).normalized()
+		_apply_new_direction_and_sync_blackboard(sidestep_dir)
+		return true
 			
-	_yield_timer = 0.0
 	host.set_meta("diag_yield", false)
-	return false
-
-
-func _apply_yield_deceleration(delta: float) -> bool:
-	_yield_timer += delta
-	if _yield_timer < YIELD_WAIT_TIME_SEC:
-		host.velocity.x = lerp(host.velocity.x, 0.0, delta * 8.0)
-		host.velocity.z = lerp(host.velocity.z, 0.0, delta * 8.0)
-		return true 
 	return false
 
 

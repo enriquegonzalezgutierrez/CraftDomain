@@ -414,7 +414,9 @@ class PatrolAction extends GOAPAction:
 			p_idx = VoxelKinematicService.navigate_along_path(host, ai, path, p_idx, SPEED_PATROL, "path_index")
 			bb.set_memory("path_index", p_idx)
 		else:
-			var wander_dir := Vector3(cos(randf() * TAU), 0.0, sin(randf() * TAU)).normalized()
+			var parent := host.get_parent()
+			var ws: WorldState = parent.get("world_state") as WorldState if is_instance_valid(parent) and "world_state" in parent else null
+			var wander_dir := VoxelKinematicService.get_safe_fallback_wander_direction(host, ws)
 			VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
 
 	func _calculate_new_destination_path(host: CharacterBody3D) -> Array[Vector3]:
@@ -477,7 +479,7 @@ class PatrolAction extends GOAPAction:
 			
 			var extended_path := nav.find_path(door_node, exit_pos)
 			if extended_path.size() > 1:
-				for i in range(1, extended_path.size()):
+				for i: int in range(1, extended_path.size()):
 					path.append(extended_path[i])
 
 	func _select_random_target_offset(host: CharacterBody3D) -> Vector3:

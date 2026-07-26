@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/World/ChunkNavigationBuilder.gd
 # Description: Infrastructure Service compiling spatial voxel grids into 3D 
-#              navigation nodes with fast-path AStar graph node re-evaluations.
+#              navigation nodes with cross-chunk A* edge stitching.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -37,7 +37,7 @@ static func compile_walkable_nodes_asynchronous(chunk: Chunk, world_state: World
 
 
 ## Binds pre-filtered, background-compiled navigation nodes directly to 
-## the global AStar graph without performing expensive main-thread chunk scans.
+## the global AStar graph with bidirectional cross-chunk border stitching.
 static func register_compiled_nodes_synchronous(walkable_nodes: Array[Dictionary], world_state: WorldState, nav_service: VoxelNavigationService) -> void:
 	if nav_service == null or walkable_nodes.is_empty():
 		return
@@ -106,7 +106,7 @@ static func _is_node_walkable_local(chunk: Chunk, local_pos: Vector3i, global_po
 
 
 static func _check_is_roofed_local(chunk: Chunk, local_pos: Vector3i, global_pos: Vector3i, world_state: WorldState) -> bool:
-	for offset_y in range(3, 7):
+	for offset_y: int in range(3, 7):
 		var check_local := local_pos + Vector3i(0, offset_y, 0)
 		var check_global := global_pos + Vector3i(0, offset_y, 0)
 		var block_above := _get_block_safe(chunk, check_local, check_global, world_state)
@@ -132,7 +132,7 @@ static func _is_node_walkable_global(pos: Vector3i, world_state: WorldState) -> 
 
 
 static func _check_is_roofed_global(pos: Vector3i, world_state: WorldState) -> bool:
-	for offset_y in range(3, 7):
+	for offset_y: int in range(3, 7):
 		var check_pos := pos + Vector3i(0, offset_y, 0)
 		var block_above := world_state.get_block(check_pos)
 		if BlockLibrary.is_solid(block_above):
@@ -143,10 +143,6 @@ static func _check_is_roofed_global(pos: Vector3i, world_state: WorldState) -> b
 static func _connect_walkable_neighbors(pos: Vector3i, world_state: WorldState, nav_service: VoxelNavigationService) -> void:
 	for offset: Vector3i in HORIZONTAL_OFFSETS:
 		var neighbor_flat := pos + offset
-		var neighbor_chunk_pos := world_state.global_to_chunk_pos(neighbor_flat)
-		if world_state.get_chunk(neighbor_chunk_pos) == null:
-			continue
-		
 		_connect_flat_node(pos, neighbor_flat, nav_service)
 		_connect_stair_nodes(pos, offset, nav_service, world_state)
 

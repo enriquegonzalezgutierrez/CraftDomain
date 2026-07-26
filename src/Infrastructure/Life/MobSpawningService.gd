@@ -1,8 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/MobSpawningService.gd
 # Description: Infrastructure Service managing dynamic entity spawning, local
-#              chunk population, spatial mob separation, landmark guarantees,
-#              campaign quest objective targets, and solid ground verification.
+#              chunk population, spatial mob separation, and ground verification.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -160,15 +159,14 @@ func _spawn_exact_quest_mob(mob_id: int, target_pos: Vector3, _chunk_offset: Vec
 		spawned_nodes.append(mob)
 
 
-## Ensures target position sits on top of solid floor blocks instead of inside them
+## Ensures target position sits directly on top of solid ground, resolving roofs or mid-air floating
 static func _ensure_ground_level(world_state: WorldState, pos: Vector3) -> Vector3:
-	var check_coord := Vector3i(floori(pos.x), floori(pos.y), floori(pos.z))
-	var block_at_feet := world_state.get_block(check_coord)
+	var check_x := floori(pos.x)
+	var check_z := floori(pos.z)
+	var solved_y := SpawnCoordinateSolver.solve_surface_y(world_state, check_x, check_z)
 	
-	if BlockLibrary.is_solid(block_at_feet):
-		var corrected_y := SpawnCoordinateSolver.solve_surface_y(world_state, check_coord.x, check_coord.z)
-		if corrected_y > 0.0:
-			pos.y = corrected_y
+	if solved_y > 0.0:
+		pos.y = solved_y
 	return pos
 
 
