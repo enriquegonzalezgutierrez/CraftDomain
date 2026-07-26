@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCAIComponent.gd
 # Description: Infrastructure NPC Sensory AI Brain managing high-performance
-#              GOAP tick routing, dynamic AI LODs, and organic motion curves.
+#              GOAP tick routing, dynamic AI LODs, and locomotion execution.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -13,7 +13,7 @@ enum TaskState {
 	WANDERING,  
 	EXAMINING,  
 	GREETING,   
-	CHATTIING,  
+	CHATTING,  
 	PANIC,      
 	WORKING     
 }
@@ -25,13 +25,13 @@ const STEERING_SCRIPT_PATH: String = "res://src/Infrastructure/Life/NPCObstacleS
 const DISTANCE_LOD_0_SQ: float = 256.0 # < 16 meters
 const DISTANCE_LOD_1_SQ: float = 1600.0 # < 40 meters
 
-const TICK_LOD_0: float = 0.1
-const TICK_LOD_1: float = 0.5
-const TICK_LOD_2: float = 2.0
+const TICK_LOD_0: float = 0.10
+const TICK_LOD_1: float = 0.50
+const TICK_LOD_2: float = 2.00
 
-const STUCK_THRESHOLD_SEC: float = 0.55
-const MIN_DESIRED_DISPLACEMENT: float = 0.05
-const WALL_ALIGNMENT_THRESHOLD: float = 0.25
+const STUCK_THRESHOLD_SEC: float = 1.20
+const TETHER_MAX_RADIUS_SQ: float = 144.0
+const DEFAULT_CALM_SPEED: float = 1.20
 
 var current_task: TaskState = TaskState.IDLE
 var wander_direction: Vector3 = Vector3.ZERO
@@ -82,8 +82,35 @@ func _on_world_block_modified(global_pos: Vector3i, _type: BlockType.Type) -> vo
 		
 	var h_pos := _host.global_position
 	var host_coord := Vector3i(floori(h_pos.x), floori(h_pos.y), floori(h_pos.z))
-	if host_coord.distance_to(global_pos) < 15:
+	if host_coord.distance_to(global_pos) < 20:
 		_ai_timer_accum = TICK_LOD_0
+		_invalidate_active_path_if_intersected(global_pos)
+
+
+func _invalidate_active_path_if_intersected(global_pos: Vector3i) -> void:
+	if active_behavior == null: return
+	var bb: Variant = active_behavior.get("_blackboard")
+	if bb == null or not bb.has_method("get_memory"): return
+		
+	var path_keys: Array[String] = ["villager_active_path", "guard_active_path", "active_path"]
+	for key: String in path_keys:
+		var path: Variant = bb.call("get_memory", key, [])
+		if path is Array and not (path as Array).is_empty():
+			if _does_coordinate_block_path(global_pos, path as Array):
+				bb.call("set_memory", key, [])
+				bb.call("set_memory", "path_index", 0)
+				_ai_timer_accum = TICK_LOD_0
+				break
+
+
+func _does_coordinate_block_path(global_pos: Vector3i, path: Array) -> bool:
+	for node: Variant in path:
+		if typeof(node) == TYPE_VECTOR3:
+			var n_pos := node as Vector3
+			var node_coord := Vector3i(floori(n_pos.x), floori(n_pos.y), floori(n_pos.z))
+			if node_coord == global_pos or node_coord == global_pos + Vector3i(0, 1, 0):
+				return true
+	return false
 
 
 func process_ai(delta: float) -> void:
@@ -95,10 +122,11 @@ func process_ai(delta: float) -> void:
 		
 	_calculate_base_desired_direction(delta)
 	_verify_active_plan_presence()
-	_apply_movement_vectors(delta)
 	
 	if is_instance_valid(_steering_component) and _steering_component.has_method("process_steering"):
 		_steering_component.call("process_steering", delta)
+		
+	_apply_movement_vectors(delta)
 
 
 func _calculate_base_desired_direction(delta: float) -> void:
@@ -154,12 +182,10 @@ func _apply_movement_vectors(delta: float) -> void:
 
 
 func _get_host_base_speed() -> float:
-	var speed := 1.3
-	if "BASE_SPEED" in _host:
-		speed = _host.get("BASE_SPEED") as float
-		
+	var speed := DEFAULT_CALM_SPEED
+	
 	if current_task == TaskState.PANIC:
-		speed *= 2.4
+		speed *= 2.2
 		
 	if active_behavior != null:
 		if active_behavior is QuiqueAIBehavior:
@@ -172,17 +198,22 @@ func _get_host_base_speed() -> float:
 
 func _execute_linear_walk(base_speed: float, delta: float) -> void:
 	var final_dir := wander_direction.normalized()
-	var target_vel_x := final_dir.x * base_speed
-	var target_vel_z := final_dir.z * base_speed
-		
-	_host.velocity.x = lerp(_host.velocity.x, target_vel_x, delta * 12.0)
-	_host.velocity.z = lerp(_host.velocity.z, target_vel_z, delta * 12.0)
+	var target_vel := Vector3(final_dir.x * base_speed, 0.0, final_dir.z * base_speed)
 	
-	_evaluate_stuck_state(delta)
+	if _host.is_on_wall():
+		var wall_normal := _host.get_wall_normal()
+		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
+		if flat_normal != Vector3.ZERO and target_vel.dot(-flat_normal) > 0.0:
+			target_vel = target_vel.slide(flat_normal)
+		
+	_host.velocity.x = lerp(_host.velocity.x, target_vel.x, delta * 8.0)
+	_host.velocity.z = lerp(_host.velocity.z, target_vel.z, delta * 8.0)
+	
+	_evaluate_stuck_state(base_speed, delta)
 	_keep_gaze_within_tether()
 
 
-func _evaluate_stuck_state(delta: float) -> void:
+func _evaluate_stuck_state(base_speed: float, delta: float) -> void:
 	var is_trying_to_move := wander_direction.length_squared() > 0.05
 	if _last_pos_for_stuck == Vector3.ZERO:
 		_last_pos_for_stuck = _host.global_position
@@ -190,46 +221,24 @@ func _evaluate_stuck_state(delta: float) -> void:
 	var dist_moved := _host.global_position.distance_to(_last_pos_for_stuck)
 	_last_pos_for_stuck = _host.global_position
 	
-	var is_blocked_by_wall := _is_actively_pushing_into_wall()
-	var is_stalled_on_ground := is_trying_to_move and dist_moved < MIN_DESIRED_DISPLACEMENT and _host.is_on_floor()
+	var min_expected_dist := base_speed * delta * 0.10
+	var is_stalled := is_trying_to_move and dist_moved < min_expected_dist and _host.is_on_floor()
 	
-	if is_blocked_by_wall or is_stalled_on_ground:
+	if is_stalled:
 		stuck_timer += delta
 		if stuck_timer >= STUCK_THRESHOLD_SEC:
 			_resolve_stuck_state()
 	else:
-		stuck_timer = 0.0
-
-
-func _is_actively_pushing_into_wall() -> bool:
-	if not _host.is_on_wall() or wander_direction == Vector3.ZERO:
-		return false
-		
-	var wall_normal := _host.get_wall_normal()
-	var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-	if flat_normal == Vector3.ZERO:
-		return false
-		
-	var dot_prod := wander_direction.normalized().dot(-flat_normal)
-	return dot_prod > WALL_ALIGNMENT_THRESHOLD
+		stuck_timer = maxf(0.0, stuck_timer - delta * 2.0)
 
 
 func _resolve_stuck_state() -> void:
 	stuck_timer = 0.0
-	var new_dir := Vector3.ZERO
+	var reverse_dir := -wander_direction.rotated(Vector3.UP, randf_range(-0.5, 0.5)).normalized()
 	
-	if _host.is_on_wall():
-		var normal := _host.get_wall_normal()
-		var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
-		if flat_normal != Vector3.ZERO:
-			new_dir = flat_normal.rotated(Vector3.UP, randf_range(-0.5, 0.5)).normalized()
-			
-	if new_dir == Vector3.ZERO and wander_direction != Vector3.ZERO:
-		new_dir = -wander_direction.rotated(Vector3.UP, randf_range(-0.5, 0.5)).normalized()
-		
-	if new_dir != Vector3.ZERO:
-		wander_direction = new_dir
-		_sync_direction_to_active_blackboard(new_dir)
+	if reverse_dir != Vector3.ZERO:
+		wander_direction = reverse_dir
+		_sync_direction_to_active_blackboard(reverse_dir)
 
 
 func _sync_direction_to_active_blackboard(new_dir: Vector3) -> void:
@@ -247,10 +256,11 @@ func _keep_gaze_within_tether() -> void:
 		var current_pos_2d := Vector2(_host.global_position.x, _host.global_position.z)
 		var spawn_pt_2d := Vector2(spawn_pt.x, spawn_pt.z)
 		
-		if current_pos_2d.distance_squared_to(spawn_pt_2d) > 144.0: 
+		if current_pos_2d.distance_squared_to(spawn_pt_2d) > TETHER_MAX_RADIUS_SQ: 
 			var diff := spawn_pt - _host.global_position
 			diff.y = 0.0
 			wander_direction = diff.normalized()
+			_sync_direction_to_active_blackboard(wander_direction)
 
 
 func get_task_state_name(task_val: int) -> String:

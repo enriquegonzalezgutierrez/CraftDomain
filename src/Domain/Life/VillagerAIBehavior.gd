@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Domain/Life/VillagerAIBehavior.gd
 # Description: Concrete AI behavior strategy implementing Goal-Oriented Action 
-#              Planning (GOAP) for the Common Villager NPC with smart wall navigation.
+#              Planning (GOAP) for the Common Villager NPC with A* Path Navigation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -13,9 +13,9 @@ const TASK_WANDERING: int = 1
 const TASK_PANIC: int = 5
 const TASK_WORKING: int = 6
 
-const SPEED_PATROL: float = 1.4
-const SPEED_RETREAT: float = 3.8
-const SPEED_PANIC: float = 4.2
+const SPEED_PATROL: float = 1.2
+const SPEED_RETREAT: float = 3.2
+const SPEED_PANIC: float = 3.8
 
 const COOLDOWN_CHAT_SEC: float = 8.0
 const CHAT_DURATION_SEC: float = 4.0
@@ -82,6 +82,8 @@ func _initialize_agent(host: Object) -> void:
 		_blackboard.set_memory("chat_cooldown", 0.0)
 		_blackboard.set_memory("rest_timer", 0.0)
 		_blackboard.set_memory("wander_timer", 0.0)
+		_blackboard.set_memory("villager_active_path", [])
+		_blackboard.set_memory("path_index", 0)
 
 
 func _update_blackboard_climatology(delta: float) -> void:
@@ -381,7 +383,8 @@ class PatrolAction extends GOAPAction:
 		
 	func on_enter(bb: AIBlackboard) -> void:
 		bb.set_memory("patrol_duration", randf_range(12.0, 20.0))
-		bb.set_memory("wander_timer", 0.0)
+		bb.set_memory("villager_active_path", [])
+		bb.set_memory("path_index", 0)
 		
 	func execute_step(bb: AIBlackboard, delta: float) -> bool:
 		var host := bb.get_object("host") as CharacterBody3D
@@ -395,83 +398,90 @@ class PatrolAction extends GOAPAction:
 		if duration <= 0.0:
 			return true
 			
-		var timer := bb.get_float("wander_timer") - delta
-		var wander_dir := bb.get_vector3("wander_direction")
-		
-		if timer <= 0.0 or wander_dir == Vector3.ZERO:
-			wander_dir = _find_safe_wander_direction(host)
-			timer = randf_range(3.0, 6.0)
-			bb.set_memory("wander_direction", wander_dir)
-			
-		bb.set_memory("wander_timer", timer)
-		_check_and_resolve_wall_impact(bb, host, wander_dir, delta)
-		
-		VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
+		_execute_astar_patrol_navigation(bb, host, ai)
 		return false
 
-	func _find_safe_wander_direction(host: CharacterBody3D) -> Vector3:
-		var start_angle := randf() * TAU
-		for i: int in range(16):
-			var angle := start_angle + (float(i) / 16.0) * TAU
-			var candidate := Vector3(cos(angle), 0.0, sin(angle)).normalized()
-			if _is_direction_clear(host, candidate):
-				return candidate
-				
-		var current_facing := -host.global_transform.basis.z.normalized()
-		current_facing.y = 0.0
-		if current_facing != Vector3.ZERO and _is_direction_clear(host, -current_facing):
-			return -current_facing
+	func _execute_astar_patrol_navigation(bb: AIBlackboard, host: CharacterBody3D, ai: Object) -> void:
+		var path: Array = bb.get_memory("villager_active_path", []) as Array
+		var p_idx := bb.get_int("path_index")
+		
+		if path.is_empty() or p_idx >= path.size():
+			path = _calculate_new_destination_path(host)
+			p_idx = 0
+			bb.set_memory("villager_active_path", path)
 			
-		return Vector3.ZERO
+		if not path.is_empty():
+			p_idx = VoxelKinematicService.navigate_along_path(host, ai, path, p_idx, SPEED_PATROL, "path_index")
+			bb.set_memory("path_index", p_idx)
+		else:
+			var wander_dir := Vector3(cos(randf() * TAU), 0.0, sin(randf() * TAU)).normalized()
+			VoxelKinematicService.apply_motion_vectors(host, ai, wander_dir, SPEED_PATROL)
 
-	func _is_direction_clear(host: CharacterBody3D, dir: Vector3) -> bool:
-		var parent := host.get_parent() as Node
+	func _calculate_new_destination_path(host: CharacterBody3D) -> Array[Vector3]:
+		var parent := host.get_parent()
+		if not is_instance_valid(parent) or not "navigation_service" in parent:
+			return []
+			
+		var nav: VoxelNavigationService = parent.get("navigation_service") as VoxelNavigationService
+		if not is_instance_valid(nav):
+			return []
+			
+		var is_inside := _check_if_confined_inside(host, nav)
+		if is_inside:
+			var door_target := nav.find_closest_doorway_node(host.global_position)
+			if door_target != Vector3.ZERO:
+				var path_to_door := nav.find_path(host.global_position, door_target)
+				if not path_to_door.is_empty():
+					_extend_path_beyond_doorway(path_to_door, nav)
+					return path_to_door
+					
+		var target_pos := nav.get_random_walkable_node_near(host.global_position, 8.0, 20.0)
+		if target_pos != Vector3.ZERO:
+			return nav.find_path(host.global_position, target_pos)
+			
+		var random_target := _select_random_target_offset(host)
+		return nav.find_path(host.global_position, random_target)
+
+	func _check_if_confined_inside(host: CharacterBody3D, nav: VoxelNavigationService) -> bool:
+		var parent := host.get_parent()
 		if not is_instance_valid(parent) or not "world_state" in parent:
-			return true
+			return false
+			
 		var ws: WorldState = parent.get("world_state") as WorldState
 		if ws == null:
+			return false
+			
+		var h_pos := host.global_position
+		var feet_y := floori(h_pos.y + 0.5)
+		var center_coord := Vector3i(floori(h_pos.x), feet_y, floori(h_pos.z))
+		
+		if nav != null and "_indoor_nodes" in nav and (nav.get("_indoor_nodes") as Array).has(center_coord):
 			return true
 			
-		var distances: Array[float] = [1.0, 2.0]
-		for dist: float in distances:
-			var check_pos: Vector3 = host.global_position + dir * dist
-			var feet_y := floori(check_pos.y + 0.5)
-			var feet_coord := Vector3i(floori(check_pos.x), feet_y, floori(check_pos.z))
-			var chest_coord := Vector3i(floori(check_pos.x), feet_y + 1, floori(check_pos.z))
-			var below_coord := Vector3i(floori(check_pos.x), feet_y - 1, floori(check_pos.z))
-			
-			if BlockLibrary.is_solid(ws.get_block(feet_coord)) or BlockLibrary.is_solid(ws.get_block(chest_coord)):
-				return false
-			if not BlockLibrary.is_solid(ws.get_block(below_coord)):
-				return false
-				
-		return true
-
-	func _check_and_resolve_wall_impact(bb: AIBlackboard, host: CharacterBody3D, wander_dir: Vector3, delta: float) -> void:
-		var stuck: float = bb.get_float("stuck_timer")
-		var is_colliding: bool = host.is_on_wall() or not _is_direction_clear(host, wander_dir)
+		var blocked_count := 0
+		var offsets: Array[Vector3i] = [Vector3i(2, 0, 0), Vector3i(-2, 0, 0), Vector3i(0, 0, 2), Vector3i(0, 0, -2)]
 		
-		if wander_dir != Vector3.ZERO and is_colliding:
-			stuck += delta
-			if stuck > 0.2:
-				stuck = 0.0
-				var new_dir: Vector3 = _find_safe_wander_direction(host)
-				if new_dir == Vector3.ZERO:
-					if host.is_on_wall():
-						var normal: Vector3 = host.get_wall_normal()
-						new_dir = Vector3(normal.x, 0.0, normal.z).normalized()
-					else:
-						new_dir = -wander_dir
-				bb.set_memory("wander_direction", new_dir)
-				bb.set_memory("wander_timer", randf_range(2.0, 5.0))
-		else:
-			stuck = 0.0
-			
-		bb.set_memory("stuck_timer", stuck)
+		for offset: Vector3i in offsets:
+			var check_coord := center_coord + offset
+			if BlockLibrary.is_solid(ws.get_block(check_coord)) or BlockLibrary.is_solid(ws.get_block(check_coord + Vector3i(0, 1, 0))):
+				blocked_count += 1
+				
+		return blocked_count >= 2
 
-	func _is_pushing_into_wall(host: CharacterBody3D, wander_dir: Vector3) -> bool:
-		if not host.is_on_wall() or wander_dir == Vector3.ZERO:
-			return false
-		var wall_normal := host.get_wall_normal()
-		var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-		return flat_normal != Vector3.ZERO and wander_dir.normalized().dot(-flat_normal) > 0.25
+	func _extend_path_beyond_doorway(path: Array[Vector3], nav: VoxelNavigationService) -> void:
+		if path.size() >= 2:
+			var door_node: Vector3 = path.back()
+			var prev_node: Vector3 = path[path.size() - 2]
+			var exit_dir: Vector3 = (door_node - prev_node).normalized()
+			var exit_pos: Vector3 = door_node + (exit_dir * 3.0)
+			
+			var extended_path := nav.find_path(door_node, exit_pos)
+			if extended_path.size() > 1:
+				for i in range(1, extended_path.size()):
+					path.append(extended_path[i])
+
+	func _select_random_target_offset(host: CharacterBody3D) -> Vector3:
+		var angle := randf() * TAU
+		var dist := randf_range(8.0, 16.0)
+		var offset := Vector3(cos(angle) * dist, 0.0, sin(angle) * dist)
+		return host.global_position + offset

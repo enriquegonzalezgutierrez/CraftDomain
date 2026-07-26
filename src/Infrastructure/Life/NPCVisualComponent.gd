@@ -1,7 +1,7 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCVisualComponent.gd
 # Description: Rigging component managing visual joints, parent bobbing, 
-#              gaze slerping, and role-based rotation compensations.
+#              gaze slerping, fast rotation response, and role compensations.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -77,7 +77,6 @@ func _setup_appendage_joints() -> void:
 
 func _initialize_initial_gaze_direction() -> void:
 	if is_instance_valid(_host):
-		# Align initial gaze direction to the exact basis vector that yields 0.0 angle (Z)
 		var initial_facing := _host.global_transform.basis.z.normalized()
 		initial_facing.y = 0.0
 		if initial_facing != Vector3.ZERO:
@@ -199,16 +198,13 @@ func _calculate_gaze_direction(is_talking: bool) -> Vector3:
 		var partner := _host._talking_partner
 		wander_dir = (partner.global_position - _host.global_position).normalized()
 	else:
-		# Priority 1: Clean, noise-free mathematical direction from AI Component
 		if is_instance_valid(_ai_component) and _ai_component.wander_direction.length_squared() > 0.01:
 			wander_dir = _ai_component.wander_direction.normalized()
 		else:
-			# Priority 2: Fallback to physical velocity with high-pass filter to prevent slope noise
 			var flat_velocity := Vector2(_host.velocity.x, _host.velocity.z)
 			if flat_velocity.length_squared() > 0.15:
 				wander_dir = Vector3(flat_velocity.x, 0.0, flat_velocity.y).normalized()
 			else:
-				# Priority 3: Retain last valid facing direction to prevent snapping
 				wander_dir = _last_valid_gaze_dir
 			
 	wander_dir.y = 0.0
@@ -225,13 +221,12 @@ func _apply_gaze_body_rotation(wander_dir: Vector3, active_task: int, is_talking
 	if is_instance_valid(visual_root) and should_rotate and wander_dir != Vector3.ZERO:
 		var target_angle := atan2(wander_dir.x, wander_dir.z)
 		
-		# Offset checks applied from host metrics
 		var offset_val: Variant = _host.get("gaze_rotation_offset")
 		if offset_val != null:
 			target_angle += float(offset_val)
 			
-		# Calibrated at 6.5 multiplier for extremely organic, smooth rotational sweeps
-		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, target_angle, delta * 6.5)
+		# FAST SMOOTH ROTATION: Increased from 6.5 to 12.0 for immediate visual alignment
+		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, target_angle, delta * 12.0)
 		visual_root.rotation.x = 0.0
 		visual_root.rotation.z = 0.0
 

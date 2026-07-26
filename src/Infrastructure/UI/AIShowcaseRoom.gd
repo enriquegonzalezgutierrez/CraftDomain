@@ -1,8 +1,8 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/UI/AIShowcaseRoom.gd
-# Description: Self-contained AI 3D Sandbox Laboratory executing the EXACT real-world
-#              Voxel Chunk rendering, ConcavePolygonShape3D physics, and 
-#              solid continuous castle wall generation pipeline.
+# Description: Self-contained AI 3D Sandbox Laboratory running the exact real-world
+#              Grand Castle wall layouts, Voxel Chunk rendering, and ConcavePolygonShape3D
+#              physics pipeline to perfect Villager navigation.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
@@ -35,15 +35,19 @@ var _testing_chunk: Chunk = null
 func _ready() -> void:
 	name = "AIShowcaseRoom"
 	_setup_rendering_and_world()
-	_build_real_voxel_chunk()
+	_build_real_castle_voxel_chunk()
 	_setup_mock_player_dummy()
 	_setup_mock_weather_loop()
 	_instantiate_decoupled_dashboard()
+	
+	# Automatically spawn Villager (ID 100) for testing
+	spawn_test_subject(100)
 
 
 func spawn_test_subject(spawn_id: int) -> void:
 	_flush_active_test_subject()
 	
+	# Spawn test subject in the castle courtyard corridor at Vector3(8.0, 13.0, 8.0)
 	var spawn_pos := Vector3(8.0, 13.0, 8.0) 
 	_active_test_subject = MobRegistry.create_mob(spawn_id, spawn_pos) as CharacterBody3D
 	
@@ -79,28 +83,53 @@ func _setup_showcase_camera_and_light() -> void:
 	add_child(light)
 
 
-func _build_real_voxel_chunk() -> void:
+## Builds a REAL Voxel Chunk with exact Grand Castle walls, corridors, and doorways
+func _build_real_castle_voxel_chunk() -> void:
 	_testing_chunk = Chunk.new(Vector3i(0, 0, 0))
 	
+	# 1. Fill base foundation floor (Y=0 to 12)
 	for x in range(Chunk.SIZE):
 		for z in range(Chunk.SIZE):
 			for y in range(0, 12):
 				_testing_chunk.set_block(x, y, z, BlockType.Type.STONE)
 			_testing_chunk.set_block(x, 12, z, BlockType.Type.GRASS)
 			
-	_sculpt_real_castle_walls(_testing_chunk)
+	# 2. Build exact castle walls matching GrandCastleMegaStructure style
+	_sculpt_castle_walls_and_corridors(_testing_chunk)
 	
+	# 3. Commit chunk voxels to WorldState & Navigation Graph
 	world_state.add_chunk(_testing_chunk)
 	_compile_chunk_navigation_nodes(_testing_chunk)
+	
+	# 4. Extract visual MultiMesh and ConcavePolygonShape3D physics
 	_compile_real_chunk_rendering_and_physics(_testing_chunk)
 
 
-func _sculpt_real_castle_walls(chunk: Chunk) -> void:
-	# Continuous solid stone brick wall (NO doorways)
+func _sculpt_castle_walls_and_corridors(chunk: Chunk) -> void:
+	# Main Outer Castle Wall with doorway arches
 	for z in range(2, 14):
-		chunk.set_block(4, 13, z, BlockType.Type.STONE_BRICKS)
-		chunk.set_block(4, 14, z, BlockType.Type.STONE_BRICKS)
-		chunk.set_block(4, 15, z, BlockType.Type.STONE_BRICKS)
+		_sculpt_wall_column(chunk, 4, z, 3, BlockType.Type.STONE_BRICKS)
+		_sculpt_wall_column(chunk, 12, z, 3, BlockType.Type.STONE_BRICKS)
+		
+	# Cross Partition Walls with doorways
+	for x in range(4, 13):
+		_sculpt_wall_column(chunk, x, 2, 3, BlockType.Type.STONE_BRICKS)
+		_sculpt_wall_column(chunk, x, 13, 3, BlockType.Type.STONE_BRICKS)
+		
+	# Doorway Archways (Air gaps)
+	_carve_doorway_arch(chunk, 4, 7)
+	_carve_doorway_arch(chunk, 12, 7)
+	_carve_doorway_arch(chunk, 8, 2)
+
+
+func _sculpt_wall_column(chunk: Chunk, x: int, z: int, height: int, block_type: BlockType.Type) -> void:
+	for h in range(height):
+		chunk.set_block(x, 13 + h, z, block_type)
+
+
+func _carve_doorway_arch(chunk: Chunk, x: int, z: int) -> void:
+	chunk.set_block(x, 13, z, BlockType.Type.AIR)
+	chunk.set_block(x, 14, z, BlockType.Type.AIR)
 
 
 func _compile_chunk_navigation_nodes(chunk: Chunk) -> void:

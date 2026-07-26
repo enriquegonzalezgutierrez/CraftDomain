@@ -1,23 +1,24 @@
 # ==============================================================================
 # Pathfile: res://src/Infrastructure/Life/NPCObstacleSteering.gd
 # Description: Context-Based Steering Component managing local dynamic 
-#              avoidance, step auto-jumping, backface raycast queries, and yielding.
+#              obstacle avoidance, step climbing, and smooth wall sliding.
 # Author: Enrique González Gutiérrez
 # Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name NPCObstacleSteering
 extends Node
 
-const SCAN_DISTANCE_FAR: float = 1.2
-const SCAN_DISTANCE_CLOSE: float = 0.4
-const YIELD_WAIT_TIME_SEC: float = 1.5
-const JUMP_RECOVERY_COOLDOWN: float = 0.4
-const STEERING_COOLDOWN_SEC: float = 0.6
+const SCAN_DISTANCE_FAR: float = 0.50
+const SCAN_DISTANCE_CLOSE: float = 0.38
+const YIELD_WAIT_TIME_SEC: float = 1.0
+const JUMP_RECOVERY_COOLDOWN_SEC: float = 0.40
+const MIN_WALKABLE_HEIGHT: float = 1.5
 
 var host: CharacterBody3D
 var ai_component: Node
 
 var _yield_timer: float = 0.0
+var _last_jump_time: float = 0.0
 
 
 func initialize(p_host: CharacterBody3D, p_ai_component: Node) -> void:
@@ -33,36 +34,54 @@ func process_steering(delta: float) -> void:
 	if space_state == null:
 		return
 		
-	var is_yielding := _process_dynamic_yielding(space_state, delta)
+	_enforce_physical_wall_sliding()
+	
+	var is_yielding := _process_entity_yielding(space_state, delta)
 	if not is_yielding:
-		_perform_proactive_whisker_avoidance(space_state, delta)
+		_process_whisker_deflection(space_state)
 		
-	_handle_step_climbing_and_unsticking(delta)
+	_process_step_climbing()
 
 
-func _process_dynamic_yielding(space_state: PhysicsDirectSpaceState3D, delta: float) -> bool:
+func _enforce_physical_wall_sliding() -> void:
+	if not host.is_on_wall():
+		return
+		
+	var normal := host.get_wall_normal()
+	var flat_normal := Vector3(normal.x, 0.0, normal.z).normalized()
+	if flat_normal == Vector3.ZERO:
+		return
+		
+	var current_dir: Vector3 = ai_component.get("wander_direction") as Vector3
+	if current_dir != Vector3.ZERO and current_dir.dot(-flat_normal) > 0.1:
+		var slide_dir := current_dir.slide(flat_normal).normalized()
+		if slide_dir != Vector3.ZERO:
+			_apply_new_direction_and_sync_blackboard(slide_dir)
+
+
+func _process_entity_yielding(space_state: PhysicsDirectSpaceState3D, delta: float) -> bool:
 	var dir: Vector3 = ai_component.get("wander_direction") as Vector3
 	if dir == Vector3.ZERO:
 		_yield_timer = 0.0
 		host.set_meta("diag_yield", false)
 		return false
 		
-	var r_origin := _get_dynamic_ray_origin()
-	var query := PhysicsRayQueryParameters3D.create(r_origin, r_origin + dir * SCAN_DISTANCE_FAR)
+	var ray_origin := _get_ray_origin()
+	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + dir * SCAN_DISTANCE_FAR)
 	query.exclude = [host.get_rid()]
 	query.hit_back_faces = true
 	
 	var result := space_state.intersect_ray(query)
 	if not result.is_empty() and result["collider"] is CharacterBody3D and result["collider"] != host:
 		host.set_meta("diag_yield", true)
-		return _execute_yield_wait_logic(delta)
+		return _apply_yield_deceleration(delta)
 			
 	_yield_timer = 0.0
 	host.set_meta("diag_yield", false)
 	return false
 
 
-func _execute_yield_wait_logic(delta: float) -> bool:
+func _apply_yield_deceleration(delta: float) -> bool:
 	_yield_timer += delta
 	if _yield_timer < YIELD_WAIT_TIME_SEC:
 		host.velocity.x = lerp(host.velocity.x, 0.0, delta * 8.0)
@@ -71,7 +90,7 @@ func _execute_yield_wait_logic(delta: float) -> bool:
 	return false
 
 
-func _perform_proactive_whisker_avoidance(space_state: PhysicsDirectSpaceState3D, delta: float) -> void:
+func _process_whisker_deflection(space_state: PhysicsDirectSpaceState3D) -> void:
 	if _is_navigating_macro_path():
 		return 
 		
@@ -79,130 +98,95 @@ func _perform_proactive_whisker_avoidance(space_state: PhysicsDirectSpaceState3D
 	if wander_direction == Vector3.ZERO:
 		return
 		
-	var r_origin := _get_dynamic_ray_origin()
+	var ray_origin := _get_ray_origin()
 	var center_dir := wander_direction.normalized()
 	var left_dir := center_dir.rotated(Vector3.UP, deg_to_rad(30.0))
 	var right_dir := center_dir.rotated(Vector3.UP, deg_to_rad(-30.0))
 	
-	_cast_whisker_rays(space_state, r_origin, [center_dir, left_dir, right_dir], wander_direction, delta)
+	_evaluate_whisker_rays(space_state, ray_origin, [center_dir, left_dir, right_dir], wander_direction)
 
 
-func _cast_whisker_rays(space_state: PhysicsDirectSpaceState3D, r_origin: Vector3, scan_dirs: Array, wander_dir: Vector3, delta: float) -> void:
+func _evaluate_whisker_rays(space_state: PhysicsDirectSpaceState3D, ray_origin: Vector3, scan_dirs: Array, wander_dir: Vector3) -> void:
 	var best_normal := Vector3.ZERO
-	var closest_dist := 999.0
+	var min_distance := 999.0
 	
 	for dir: Vector3 in scan_dirs:
-		for scan_dist: float in [SCAN_DISTANCE_CLOSE, SCAN_DISTANCE_FAR]:
-			var query := PhysicsRayQueryParameters3D.create(r_origin, r_origin + dir * scan_dist)
-			query.collision_mask = 1 
-			query.exclude = [host.get_rid()]
-			query.hit_back_faces = true
-			
-			var result := space_state.intersect_ray(query)
-			if not result.is_empty():
-				var dist := r_origin.distance_to(result["position"] as Vector3)
-				if dist < closest_dist:
-					closest_dist = dist
-					best_normal = result["normal"] as Vector3
+		var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + dir * SCAN_DISTANCE_FAR)
+		query.collision_mask = 1 
+		query.exclude = [host.get_rid()]
+		
+		var result := space_state.intersect_ray(query)
+		if not result.is_empty():
+			var hit_pos: Vector3 = result["position"] as Vector3
+			var dist := ray_origin.distance_to(hit_pos)
+			if dist < min_distance:
+				min_distance = dist
+				best_normal = result["normal"] as Vector3
 				
-	_apply_whisker_steering(best_normal, wander_dir, delta)
+	_apply_deflection_vector(best_normal, wander_dir)
 
 
-func _apply_whisker_steering(best_normal: Vector3, wander_dir: Vector3, delta: float) -> void:
-	var cooldown: float = host.get_meta("whisker_cooldown") if host.has_meta("whisker_cooldown") else 0.0
-	cooldown -= delta
-	host.set_meta("whisker_cooldown", maxf(0.0, cooldown))
-	
-	if best_normal != Vector3.ZERO and cooldown <= 0.0:
+func _apply_deflection_vector(best_normal: Vector3, wander_dir: Vector3) -> void:
+	if best_normal != Vector3.ZERO:
 		var flat_normal := Vector3(best_normal.x, 0.0, best_normal.z).normalized()
 		if flat_normal != Vector3.ZERO:
-			var dot_prod := wander_dir.dot(-flat_normal)
-			if dot_prod > 0.65:
-				var bounce_dir := flat_normal.rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
-				ai_component.set("wander_direction", bounce_dir)
-				host.set_meta("whisker_cooldown", STEERING_COOLDOWN_SEC)
+			var dot_prod := wander_dir.normalized().dot(-flat_normal)
+			if dot_prod > 0.20:
+				var slide_dir := wander_dir.slide(flat_normal).normalized()
+				if slide_dir == Vector3.ZERO:
+					slide_dir = flat_normal.rotated(Vector3.UP, deg_to_rad(45.0)).normalized()
+				_apply_new_direction_and_sync_blackboard(slide_dir)
 		host.set_meta("diag_whisk", true)
 	else:
 		host.set_meta("diag_whisk", false)
 
 
-func _handle_step_climbing_and_unsticking(delta: float) -> void:
-	var wander_direction: Vector3 = ai_component.get("wander_direction") as Vector3
-	if wander_direction == Vector3.ZERO:
+func _apply_new_direction_and_sync_blackboard(new_dir: Vector3) -> void:
+	ai_component.set("wander_direction", new_dir)
+	if "active_behavior" in ai_component and ai_component.active_behavior != null:
+		var bb: Variant = ai_component.active_behavior.get("_blackboard")
+		if bb != null and bb.has_method("set_memory"):
+			bb.call("set_memory", "wander_direction", new_dir)
+
+
+func _process_step_climbing() -> void:
+	if not host.is_on_wall():
 		return
 		
-	if _is_touching_solid_block():
-		var stuck_timer: float = ai_component.get("stuck_timer") as float
-		ai_component.set("stuck_timer", stuck_timer + delta)
-		_evaluate_step_climbing()
-	else:
-		ai_component.set("stuck_timer", 0.0)
-
-
-func _is_touching_solid_block() -> bool:
-	if not host.is_on_wall():
-		return false
-		
-	for i in range(host.get_slide_collision_count()):
-		var collision := host.get_slide_collision(i)
-		var collider := collision.get_collider()
-		if collider == null and collision.get_collider_rid().is_valid():
-			return true
-		if is_instance_valid(collider) and collider is StaticBody3D:
-			return true
-			
-	return false
-
-
-func _evaluate_step_climbing() -> void:
 	var wall_normal := host.get_wall_normal()
-	if wall_normal == Vector3.ZERO: return
+	if wall_normal == Vector3.ZERO:
+		return
 		
 	var forward_dir := Vector3(-wall_normal.x, 0.0, -wall_normal.z).normalized()
-	var check_pos := host.global_position + forward_dir * 0.6
+	var check_pos := host.global_position + forward_dir * 0.40
 	var feet_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 0.1), floori(check_pos.z))
 	var chest_coord := Vector3i(floori(check_pos.x), floori(check_pos.y + 1.1), floori(check_pos.z))
-	var head_coord := Vector3i(floori(host.global_position.x), floori(host.global_position.y + 2.1), floori(host.global_position.z))
 	
-	var parent_node := host.get_parent()
-	if not is_instance_valid(parent_node) or not "world_state" in parent_node: return
-	var ws: WorldState = parent_node.get("world_state") as WorldState
-	if ws == null: return
+	var world_node := host.get_parent()
+	if not is_instance_valid(world_node) or not "world_state" in world_node:
+		return
 		
-	var is_feet_solid := BlockLibrary.is_solid(ws.get_block(feet_coord))
-	var is_chest_solid := BlockLibrary.is_solid(ws.get_block(chest_coord))
-	var is_head_blocked := BlockLibrary.is_solid(ws.get_block(head_coord))
-	
-	if is_feet_solid and not is_chest_solid and not is_head_blocked:
-		_execute_jump_to_step(feet_coord, parent_node)
-	elif is_chest_solid:
-		_apply_wall_slide_steering(wall_normal)
+	var ws: WorldState = world_node.get("world_state") as WorldState
+	if ws == null:
+		return
+		
+	if BlockLibrary.is_solid(ws.get_block(feet_coord)) and not BlockLibrary.is_solid(ws.get_block(chest_coord)):
+		_trigger_step_jump()
 
 
-func _execute_jump_to_step(_target_coord: Vector3i, _world_node: Node) -> void:
-	var last_jump: float = host.get_meta("last_jump_time") if host.has_meta("last_jump_time") else 0.0
-	var current_time := Time.get_ticks_msec() / 1000.0
-	
-	if (current_time - last_jump) < JUMP_RECOVERY_COOLDOWN:
+func _trigger_step_jump() -> void:
+	var current_time := float(Time.get_ticks_msec()) / 1000.0
+	if (current_time - _last_jump_time) < JUMP_RECOVERY_COOLDOWN_SEC:
 		return
 		
 	if host.is_on_floor():
 		var jump_vel: float = host.get("JUMP_VELOCITY") as float if "JUMP_VELOCITY" in host else 5.0
 		host.velocity.y = jump_vel
-		host.set_meta("last_jump_time", current_time)
-		ai_component.set("stuck_timer", 0.0)
+		_last_jump_time = current_time
 
 
-func _apply_wall_slide_steering(wall_normal: Vector3) -> void:
-	var flat_normal := Vector3(wall_normal.x, 0.0, wall_normal.z).normalized()
-	if flat_normal != Vector3.ZERO:
-		var bounce_dir := flat_normal.rotated(Vector3.UP, randf_range(-0.4, 0.4)).normalized()
-		ai_component.set("wander_direction", bounce_dir)
-		ai_component.set("stuck_timer", 0.0)
-
-
-func _get_dynamic_ray_origin() -> Vector3:
-	var height_offset: float = 0.8
+func _get_ray_origin() -> Vector3:
+	var height_offset: float = MIN_WALKABLE_HEIGHT * 0.4
 	if "_collision_height" in host:
 		height_offset = (host.get("_collision_height") as float) * 0.45
 	return host.global_position + Vector3(0.0, height_offset, 0.0)

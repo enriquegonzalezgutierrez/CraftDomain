@@ -16,13 +16,17 @@ static func apply_motion_vectors(host: Object, ai: Object, direction: Vector3, s
 		
 	var velocity: Vector3 = host.get("velocity") as Vector3
 	if direction != Vector3.ZERO:
-		velocity.x = direction.x * speed
-		velocity.z = direction.z * speed
-		if is_instance_valid(ai): ai.set("wander_direction", direction)
+		var target_x := direction.x * speed
+		var target_z := direction.z * speed
+		velocity.x = lerp(velocity.x, target_x, 0.25)
+		velocity.z = lerp(velocity.z, target_z, 0.25)
+		if is_instance_valid(ai): 
+			ai.set("wander_direction", direction)
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, speed)
-		velocity.z = move_toward(velocity.z, 0.0, speed)
-		if is_instance_valid(ai): ai.set("wander_direction", Vector3.ZERO)
+		velocity.x = move_toward(velocity.x, 0.0, speed * 0.2)
+		velocity.z = move_toward(velocity.z, 0.0, speed * 0.2)
+		if is_instance_valid(ai): 
+			ai.set("wander_direction", Vector3.ZERO)
 		
 	host.set("velocity", velocity)
 
@@ -118,7 +122,6 @@ static func is_direction_safe(host: Object, ws: WorldState, direction: Vector3, 
 	var b_feet := Vector3i(floori(check_pos.x), floori(check_pos.y), floori(check_pos.z))
 	var b_chest := Vector3i(floori(check_pos.x), floori(check_pos.y) + 1, floori(check_pos.z))
 	
-	# BUG FIX: Changed 'and' to 'or' so solid blocks at either feet OR chest trigger blockage
 	if BlockLibrary.is_solid(ws.get_block(b_feet)) or BlockLibrary.is_solid(ws.get_block(b_chest)):
 		return false
 		

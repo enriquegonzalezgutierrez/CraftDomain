@@ -1,32 +1,20 @@
 # ==============================================================================
-# Project: CraftDomain
-# Layer: Domain (World Navigation Service)
-# Class: VoxelNavigationService
-# Description: Pure Domain Service managing the abstract 3D navigation graph.
-# SOLID COMPLIANCE:
-# - Single Responsibility Principle (SRP): Handles exclusively graph nodes allocation,
-#   coordinate-to-ID translations, and mathematical path routing.
-# - Open-Closed Principle (OCP): Dynamically filters target coordinates to the
-#   closest open, walkable node when targets are inside solid walls.
-# - Method Size Limits (Rule 4.2): All methods strictly refactored to remain < 20 lines.
-# Author: Enrique González Gutiérrez <enrique.gonzalez.gutierrez@gmail.com>
-# File: res://src/Domain/World/VoxelNavigationService.gd
+# Pathfile: res://src/Domain/World/VoxelNavigationService.gd
+# Description: Pure Domain Service managing the abstract 3D A* navigation graph
+#              with automatic doorway, archway, and exit detection.
+# Author: Enrique González Gutiérrez
+# Email: enrique.gonzalez.gutierrez@gmail.com
 # ==============================================================================
 class_name VoxelNavigationService
 extends RefCounted
 
-# High-performance C++ data-oriented pathfinding solver
 var _astar: AStar3D
 
-# Bidirectional dictionaries mapping world coordinates to unique sequential graph IDs
-var _coord_to_id: Dictionary = {} # Vector3i -> int
-var _id_to_coord: Dictionary = {} # int -> Vector3i
+var _coord_to_id: Dictionary = {} 
+var _id_to_coord: Dictionary = {} 
 var _next_id: int = 1
 
-# Thread-safe array cache storing registered indoor/roofed shelter coordinates
 var _indoor_nodes: Array[Vector3i] = []
-
-# Mutex to ensure thread-safety during parallel chunk loading compilations
 var _lock: Mutex
 
 
@@ -35,7 +23,6 @@ func _init() -> void:
 	_lock = Mutex.new()
 
 
-## Registers a walkable node coordinate into the navigation graph if not already present.
 func add_navigation_node(coord: Vector3i, is_roofed: bool = false) -> void:
 	_lock.lock()
 	if _coord_to_id.has(coord):
@@ -59,7 +46,6 @@ func add_navigation_node(coord: Vector3i, is_roofed: bool = false) -> void:
 	_lock.unlock()
 
 
-## Removes a coordinate from the navigation graph and clears it from shelter caches.
 func remove_navigation_node(coord: Vector3i) -> void:
 	_lock.lock()
 	if not _coord_to_id.has(coord):
@@ -77,7 +63,6 @@ func remove_navigation_node(coord: Vector3i) -> void:
 	_lock.unlock()
 
 
-## Links two registered coordinate nodes bidirectionally in the graph.
 func connect_nodes(coord_a: Vector3i, coord_b: Vector3i) -> void:
 	_lock.lock()
 	if not _coord_to_id.has(coord_a) or not _coord_to_id.has(coord_b):
@@ -91,7 +76,6 @@ func connect_nodes(coord_a: Vector3i, coord_b: Vector3i) -> void:
 	_lock.unlock()
 
 
-## Clears connections between two coordinates.
 func disconnect_nodes(coord_a: Vector3i, coord_b: Vector3i) -> void:
 	_lock.lock()
 	if not _coord_to_id.has(coord_a) or not _coord_to_id.has(coord_b):
@@ -105,7 +89,6 @@ func disconnect_nodes(coord_a: Vector3i, coord_b: Vector3i) -> void:
 	_lock.unlock()
 
 
-## Cleans up all data structures (Useful during world unloads or fast travel relocations)
 func clear_graph() -> void:
 	_lock.lock()
 	_astar.clear()
@@ -116,8 +99,6 @@ func clear_graph() -> void:
 	_lock.unlock()
 
 
-## Computes the shortest, most optimal path between two global world coordinates.
-## Returns an array of world-space positions, or an empty array if blocked.
 func find_path(start_pos: Vector3, target_pos: Vector3) -> Array[Vector3]:
 	_lock.lock()
 	if _coord_to_id.is_empty():
@@ -141,11 +122,89 @@ func find_path(start_pos: Vector3, target_pos: Vector3) -> Array[Vector3]:
 	return world_path
 
 
+func find_closest_exit_node(from_pos: Vector3) -> Vector3:
+	_lock.lock()
+	if _coord_to_id.is_empty():
+		_lock.unlock()
+		return Vector3.ZERO
+		
+	var closest_coord := Vector3i.ZERO
+	var min_dist_sq := 999999.0
+	
+	for coord: Vector3i in _coord_to_id.keys():
+		if not _indoor_nodes.has(coord):
+			var dist_sq := from_pos.distance_squared_to(Vector3(coord))
+			if dist_sq < min_dist_sq:
+				min_dist_sq = dist_sq
+				closest_coord = coord
+				
+	_lock.unlock()
+	if closest_coord == Vector3i.ZERO:
+		return Vector3.ZERO
+	return Vector3(float(closest_coord.x) + 0.5, float(closest_coord.y) + 0.1, float(closest_coord.z) + 0.5)
+
+
+func get_random_walkable_node_near(from_pos: Vector3, min_dist: float, max_dist: float) -> Vector3:
+	_lock.lock()
+	if _coord_to_id.is_empty():
+		_lock.unlock()
+		return Vector3.ZERO
+		
+	var candidates: Array[Vector3i] = []
+	var min_sq := min_dist * min_dist
+	var max_sq := max_dist * max_dist
+	
+	for coord: Vector3i in _coord_to_id.keys():
+		var dist_sq := from_pos.distance_squared_to(Vector3(coord))
+		if dist_sq >= min_sq and dist_sq <= max_sq:
+			candidates.append(coord)
+			
+	_lock.unlock()
+	if candidates.is_empty():
+		return Vector3.ZERO
+		
+	var chosen := candidates[randi() % candidates.size()]
+	return Vector3(float(chosen.x) + 0.5, float(chosen.y) + 0.1, float(chosen.z) + 0.5)
+
+
+func find_closest_doorway_node(from_pos: Vector3) -> Vector3:
+	_lock.lock()
+	if _coord_to_id.is_empty():
+		_lock.unlock()
+		return Vector3.ZERO
+		
+	var closest_door := Vector3i.ZERO
+	var min_dist_sq := 999999.0
+	
+	for coord: Vector3i in _coord_to_id.keys():
+		if _is_node_a_doorway(coord):
+			var dist_sq := from_pos.distance_squared_to(Vector3(coord))
+			if dist_sq < min_dist_sq and dist_sq > 0.8:
+				min_dist_sq = dist_sq
+				closest_door = coord
+				
+	_lock.unlock()
+	if closest_door == Vector3i.ZERO:
+		return Vector3.ZERO
+	return Vector3(float(closest_door.x) + 0.5, float(closest_door.y) + 0.1, float(closest_door.z) + 0.5)
+
+
+func _is_node_a_doorway(coord: Vector3i) -> bool:
+	var left_right_blocked := not _coord_to_id.has(coord + Vector3i(1, 0, 0)) and not _coord_to_id.has(coord + Vector3i(-1, 0, 0))
+	var front_back_open := _coord_to_id.has(coord + Vector3i(0, 0, 1)) and _coord_to_id.has(coord + Vector3i(0, 0, -1))
+	var is_z_passage := left_right_blocked and front_back_open
+	
+	var front_back_blocked := not _coord_to_id.has(coord + Vector3i(0, 0, 1)) and not _coord_to_id.has(coord + Vector3i(0, 0, -1))
+	var left_right_open := _coord_to_id.has(coord + Vector3i(1, 0, 0)) and _coord_to_id.has(coord + Vector3i(-1, 0, 0))
+	var is_x_passage := front_back_blocked and left_right_open
+	
+	return is_z_passage or is_x_passage
+
+
 func _resolve_target_id(target_coord: Vector3i) -> int:
 	if _coord_to_id.has(target_coord):
 		return _coord_to_id[target_coord] as int
 		
-	# If target is inside a solid block/wall, scan 3x3x3 neighbors for registered air nodes
 	var closest_id := -1
 	var min_dist_sq := 9999.0
 	
@@ -174,8 +233,6 @@ func _translate_id_path_to_world(id_path: PackedInt64Array) -> Array[Vector3]:
 	return world_path
 
 
-## Proximity Scanner: Returns the global coordinates of the closest registered 
-## roofed shelter block relative to the querying NPC position.
 func find_closest_shelter_node(from_pos: Vector3) -> Vector3:
 	_lock.lock()
 	if _indoor_nodes.is_empty():
@@ -195,7 +252,6 @@ func find_closest_shelter_node(from_pos: Vector3) -> Vector3:
 	return Vector3(float(closest_coord.x) + 0.5, float(closest_coord.y) + 0.1, float(closest_coord.z) + 0.5)
 
 
-## Debug Helper: Returns the total count of active walkable nodes registered in the graph
 func get_total_nodes_count() -> int:
 	_lock.lock()
 	var count := _coord_to_id.size()
